@@ -86,6 +86,7 @@ defmodule Padwave.Radio do
        position: persisted["position"] || 0.0,
        duration: nil,
        suspended: false,
+       suspended_by: nil,
        resume_pending: resume_pending,
        paused: paused,
        bags: %{},
@@ -164,14 +165,35 @@ defmodule Padwave.Radio do
 
   def handle_info({:padwave, {:device, :up, info}}, state) do
     Logger.info("[radio] controller connected (#{info.mac})")
-
     state = %{state | suspended: false}
 
-    if state.resume_pending and state.current != nil do
-      Process.send_after(self(), :resume, 1200)
-    end
+    # A DualSense that we powered off often reconnects by itself a few seconds
+    # later. That is not the listener coming back, so an idle/manual shutdown
+    # only resumes on a real input event; a link lost out of range still
+    # resumes as soon as it returns.
+    cond do
+      state.suspended_by in [:idle, :manual] ->
+        {:noreply, state}
 
-    {:noreply, state}
+      state.resume_pending and state.current != nil ->
+        Process.send_after(self(), :resume, 1200)
+        {:noreply, state}
+
+      true ->
+        {:noreply, state}
+    end
+  end
+
+  # Any real input after an idle shutdown is the listener picking the pad back
+  # up: pick the station up where it stopped.
+  def handle_info({:padwave, {:input, :activity}}, state) do
+    if state.suspended_by in [:idle, :manual] and Padwave.Input.Device.connected?() do
+      Logger.info("[radio] woken by input — resuming")
+      send(self(), :resume)
+      {:noreply, %{state | suspended_by: nil, resume_pending: true}}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info({:padwave, {:device, :down, info}}, state) do
@@ -433,12 +455,26 @@ defmodule Padwave.Radio do
     end
   end
 
+  # Small steps are a plain seek (cheap, and mpv is gapless on local files).
+  # Big jumps crossfade between the old and the new position using the idle
+  # slot, exactly like a station change — so hopping from the first hour to the
+  # second stays musical instead of cutting.
   defp seek(state, delta) when is_number(delta) do
     target = clamp(state.position + delta, 0, state.duration || 1.0e12)
+    threshold = Config.get(:seek_crossfade_threshold, 20)
 
-    case Player.seek(target) do
-      {:ok, _} -> %{state | position: target}
-      _ -> state
+    cond do
+      state.playing and abs(delta) >= threshold ->
+        case Player.crossfade_seek(target, fade: Config.get(:seek_crossfade_ms, 600)) do
+          :ok -> %{state | position: target}
+          _ -> state
+        end
+
+      true ->
+        case Player.seek(target) do
+          {:ok, _} -> %{state | position: target}
+          _ -> state
+        end
     end
   end
 
@@ -481,10 +517,17 @@ defmodule Padwave.Radio do
 
     Bus.broadcast({:radio, {:suspended, reason}})
 
+    # Reset the sleep timer with the suspension: otherwise the fade factor
+    # (0.1) would still be in effect when the station resumes, and the timer
+    # could never arm again because idle_warning was left true.
     state
     |> Map.put(:playing, false)
     |> Map.put(:paused, true)
     |> Map.put(:suspended, true)
+    |> Map.put(:suspended_by, reason)
+    |> Map.put(:idle_warning, false)
+    |> Map.put(:warn_at, nil)
+    |> Map.put(:warn_factor, 1.0)
     |> Map.put(:resume_pending, state.current != nil)
     |> Map.put(:position, position)
     |> persist()

@@ -13,7 +13,7 @@ defmodule Padwave.Input.Simulator do
 
   import Bitwise, only: [band: 2, bor: 2, bnot: 1, bsl: 2]
 
-  alias Padwave.Input.{Frame, Mapper}
+  alias Padwave.Input.{Crc, Frame, Mapper}
 
   @bit_positions %{
     {9, :square} => 4,
@@ -69,10 +69,12 @@ defmodule Padwave.Input.Simulator do
 
   defp run(patch, duration_ms) do
     duration_ms = duration_ms |> max(0) |> min(10_000)
-    raw = build(patch)
+    # Re-sign: the patched bytes must look like a report the controller could
+    # have sent, or the CRC check would drop them.
+    raw = Crc.seal_input(build(patch))
 
     with {:ok, held} <- Frame.from_report(raw),
-         {:ok, released} <- Frame.from_report(release(raw)) do
+         {:ok, released} <- Frame.from_report(Crc.seal_input(release(raw))) do
       send(Mapper, {:sim_begin})
       hold(held, System.monotonic_time(:millisecond) + duration_ms)
       send(Mapper, {:sim_frame, released})
@@ -95,6 +97,7 @@ defmodule Padwave.Input.Simulator do
     base
     |> put_byte(6, l2)
     |> put_byte(7, r2)
+    |> apply_sticks(patch)
     |> apply_dpad(dpad)
     |> apply_buttons(buttons)
   end
@@ -145,6 +148,16 @@ defmodule Padwave.Input.Simulator do
 
   defp clear_buttons(frame) do
     Enum.reduce(@by_name, frame, fn {name, _pos}, acc -> set_bit(acc, name, false) end)
+  end
+
+  defp apply_sticks(frame, patch) do
+    [{2, :lx}, {3, :ly}, {4, :rx}, {5, :ry}]
+    |> Enum.reduce(frame, fn {offset, key}, acc ->
+      case Map.get(patch, key, Map.get(patch, to_string(key))) do
+        value when is_integer(value) and value in 0..255 -> put_byte(acc, offset, value)
+        _ -> acc
+      end
+    end)
   end
 
   defp apply_dpad(frame, direction) do

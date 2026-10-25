@@ -37,11 +37,15 @@ defmodule Padwave.Input.Device do
   @impl true
   def init(_opts) do
     send(self(), :scan)
-    {:ok, %{info: nil, pending: nil, reader: nil, ref: nil, spec: :input}}
+    {:ok, %{info: nil, pending: nil, reader: nil, ref: nil, spec: :input, dropped: 0}}
   end
 
   @impl true
-  def handle_call(:info, _from, state), do: {:reply, state.info, state}
+  def handle_call(:info, _from, state) do
+    info = if state.info, do: Map.put(state.info, :dropped, state.dropped), else: nil
+    {:reply, info, state}
+  end
+
   def handle_call(:connected?, _from, state), do: {:reply, not is_nil(state.info), state}
 
   @impl true
@@ -76,11 +80,15 @@ defmodule Padwave.Input.Device do
 
   def handle_info({:hid, bin}, state) do
     case Frame.from_report(bin, state.spec || :input) do
-      {:ok, frame} -> deliver(frame)
-      {:error, _reason} -> :ok
-    end
+      {:ok, frame} ->
+        {:noreply, deliver(frame, state)}
 
-    {:noreply, state}
+      {:error, :bad_crc} ->
+        {:noreply, %{state | dropped: state.dropped + 1}}
+
+      {:error, _reason} ->
+        {:noreply, state}
+    end
   end
 
   def handle_info({:hid_odd, size}, state) do
@@ -158,13 +166,13 @@ defmodule Padwave.Input.Device do
       send(parent, {:hid_closed, error})
   end
 
-  defp deliver(frame) do
+  defp deliver(frame, state) do
     case Process.whereis(Padwave.Input.Mapper) do
       nil -> :ok
       pid -> send(pid, {:frame, frame})
     end
 
-    :ok
+    state
   end
 
   @doc false

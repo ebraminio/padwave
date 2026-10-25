@@ -82,7 +82,12 @@ defmodule Padwave.Session do
   end
 
   def handle_info({:padwave, {:device, :up, _info}}, state) do
-    {:noreply, %{state | connected: true, phase: :active, last_activity: now()}}
+    # After an idle shutdown the controller tends to reconnect on its own.
+    # Do not restart the countdown (and do not re-power it off) until the
+    # listener actually touches it.
+    phase = if state.phase == :suspended, do: :suspended, else: :active
+
+    {:noreply, %{state | connected: true, phase: phase, last_activity: now()}}
   end
 
   def handle_info({:padwave, {:device, :down, _info}}, state) do
@@ -118,7 +123,9 @@ defmodule Padwave.Session do
       Logger.info("[session] idle timeout — stopping playback and powering the controller off")
 
       Radio.suspend(:idle)
-      Power.disconnect()
+      # bluetoothctl takes seconds; never block the watchdog (or the web
+      # stream that asks it for its status) on it.
+      Task.start(fn -> Power.disconnect() end)
 
       %{state | phase: :suspended}
     else

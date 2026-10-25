@@ -68,8 +68,7 @@ defmodule Padwave.Web.Router do
   get "/api/schema/source" do
     files = %{
       "input" => "lib/padwave/schemas/dualsense_input.ex",
-      "output" => "lib/padwave/schemas/dualsense_output.ex",
-      "common" => "lib/padwave/schemas/common.ex"
+      "output" => "lib/padwave/schemas/dualsense_output.ex"
     }
 
     sources =
@@ -151,7 +150,13 @@ defmodule Padwave.Web.Router do
   # -- the live stream -------------------------------------------------------
 
   defp stream(conn, sequence) do
-    payload = Jason.encode!(status_payload())
+    payload =
+      try do
+        Jason.encode!(status_payload())
+      rescue
+        # A slow status call must not kill the live update stream.
+        _ -> ~s({"error":"status unavailable"})
+      end
 
     case chunk(conn, "id: #{sequence}\ndata: #{payload}\n\n") do
       {:ok, conn} ->
@@ -207,6 +212,7 @@ defmodule Padwave.Web.Router do
       node: info && info.node,
       name: info && info.name,
       bus: info && info.bus,
+      dropped: info && info.dropped,
       battery: frame && frame.battery,
       charging: frame && frame.charging && Atom.to_string(frame.charging),
       jack: frame && frame.jack,

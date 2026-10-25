@@ -67,6 +67,7 @@ defmodule Padwave.Input.Mapper do
        last_activity: now,
        last_l2: now,
        last_r2: now,
+       analog_resets: 0,
        last_action: nil,
        last_action_at: nil,
        last_shake: now,
@@ -128,10 +129,10 @@ defmodule Padwave.Input.Mapper do
     now = System.monotonic_time(:millisecond)
 
     state =
-      if Frame.activity?(state.prev, frame) do
-        maybe_activity(now, state)
-      else
-        state
+      cond do
+        Frame.real_activity?(state.prev, frame) -> maybe_activity(now, state, :real)
+        Frame.analog_activity?(state.prev, frame) -> maybe_activity(now, state, :analog)
+        true -> state
       end
 
     state = detect_shake(now, frame, state)
@@ -160,7 +161,7 @@ defmodule Padwave.Input.Mapper do
     if frame.g_force >= threshold and now - state.last_shake > 1_500 do
       Logger.debug("[input] shake detected (#{frame.g_force} g)")
       Bus.broadcast({:input, :shake})
-      state = maybe_activity(now, state)
+      state = maybe_activity(now, state, :real)
       %{state | last_shake: now, last_action: :shake, last_action_at: now}
     else
       state
@@ -249,12 +250,27 @@ defmodule Padwave.Input.Mapper do
 
   # -- activity --------------------------------------------------------------
 
-  defp maybe_activity(now, state) do
-    if now - state.last_activity > 900 do
-      Bus.broadcast({:input, :activity})
-      %{state | last_activity: now}
-    else
-      state
+  # Analogue movement may reset the sleep timer, but only a bounded number of
+  # times in a row: a dirty stick that drifts on its own must not keep the
+  # radio awake forever. Any real button/d-pad/trigger press clears the count.
+  defp maybe_activity(now, state, cause) do
+    cap = Config.get(:analog_wake_cap, 6)
+
+    cond do
+      cause == :analog and state.analog_resets >= cap ->
+        state
+
+      now - state.last_activity > 900 ->
+        Bus.broadcast({:input, :activity})
+
+        resets = if cause == :analog, do: state.analog_resets + 1, else: 0
+        %{state | last_activity: now, analog_resets: resets}
+
+      cause == :real ->
+        %{state | analog_resets: 0}
+
+      true ->
+        state
     end
   end
 

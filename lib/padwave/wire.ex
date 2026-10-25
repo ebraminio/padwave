@@ -42,34 +42,8 @@ defmodule Padwave.Wire do
   @doc false
   defmacro __using__(_opts) do
     quote do
-      import Padwave.Wire, only: [packet: 3, packet: 4, field_list: 2]
+      import Padwave.Wire, only: [packet: 3, packet: 4]
       import Bitwise
-    end
-  end
-
-  @doc """
-  Declares a reusable field list that other packets can `splice` in.
-
-  This is the equivalent of embedding a common struct: the DualSense's USB and
-  Bluetooth reports are the same 63-byte payload behind different headers, so
-  the payload is declared once and spliced into both.
-
-      field_list :dualsense_body do
-        u8 :lx
-        ...
-      end
-
-      packet :input, 0x31, size: 78 do
-        u8 :seq_tag
-        splice MySchema, :dualsense_body
-      end
-  """
-  defmacro field_list(name, do: block) do
-    data = fields(block, __CALLER__)
-
-    quote do
-      @doc false
-      def __wire_fields__(unquote(name)), do: unquote(Macro.escape(data))
     end
   end
 
@@ -159,17 +133,6 @@ defmodule Padwave.Wire do
 
   defp fields({:bits, _, [name, bits]}, _env) when is_atom(name) and is_list(bits) do
     [{:bits, name, bits}]
-  end
-
-  defp fields({:splice, _, [module_ast, name]}, env) when is_atom(name) do
-    module = Macro.expand(module_ast, env)
-    Code.ensure_compiled!(module)
-
-    if function_exported?(module, :__wire_fields__, 1) do
-      module.__wire_fields__(name)
-    else
-      raise ArgumentError, "#{inspect(module)} has no field list #{inspect(name)}"
-    end
   end
 
   defp fields(other, _env) do

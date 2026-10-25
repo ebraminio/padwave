@@ -27,6 +27,15 @@ defmodule Padwave.Player do
   def seek(seconds) when is_number(seconds),
     do: GenServer.call(__MODULE__, {:seek, seconds}, 5000)
 
+  @doc """
+  Jumps to `seconds` the same way a station change works: the idle slot starts
+  at the new position while the current one keeps playing, and the two are
+  crossfaded. Big jumps (an hour into the mix, say) stay continuous instead of
+  cutting.
+  """
+  def crossfade_seek(seconds, opts \\ []) when is_number(seconds),
+    do: GenServer.call(__MODULE__, {:crossfade_seek, seconds, opts}, 10_000)
+
   def stop(opts \\ []), do: GenServer.cast(__MODULE__, {:stop, opts})
 
   def position, do: GenServer.call(__MODULE__, :position, 2000)
@@ -75,6 +84,16 @@ defmodule Padwave.Player do
         result = Slot.seek(state.slots[slot], seconds)
         state = if match?({:ok, _}, result), do: %{state | position: seconds * 1.0}, else: state
         {:reply, result, state}
+    end
+  end
+
+  def handle_call({:crossfade_seek, seconds, opts}, _from, state) do
+    fade = Keyword.get(opts, :fade, Config.get(:seek_crossfade_ms, 600))
+
+    if state.path == nil do
+      {:reply, {:error, :idle}, state}
+    else
+      {:reply, :ok, do_play(state, state.path, seconds, fade)}
     end
   end
 

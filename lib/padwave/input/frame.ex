@@ -7,6 +7,7 @@ defmodule Padwave.Input.Frame do
   import Bitwise
 
   alias Padwave.Config
+  alias Padwave.Input.Crc
 
   @dpad %{
     0 => :up,
@@ -50,11 +51,22 @@ defmodule Padwave.Input.Frame do
   USB; the payload is the same either way, only the framing differs.
   """
   def from_report(bin, spec \\ :input) when is_binary(bin) do
-    case apply(Padwave.Schema.DualSenseInput, :"decode_#{spec}", [bin]) do
-      {:error, reason} -> {:error, reason}
-      fields -> {:ok, from_fields(fields, bin)}
+    with :ok <- check_signature(bin, spec),
+         fields <- apply(Padwave.Schema.DualSenseInput, :"decode_#{spec}", [bin]) do
+      case fields do
+        {:error, reason} -> {:error, reason}
+        fields -> {:ok, from_fields(fields, bin)}
+      end
     end
   end
+
+  # Bluetooth reports are signed; USB reports are not. A corrupted report must
+  # never become a button press.
+  defp check_signature(bin, :input) do
+    if Crc.valid_input?(bin), do: :ok, else: {:error, :bad_crc}
+  end
+
+  defp check_signature(_bin, _spec), do: :ok
 
   def from_fields(fields, bin) do
     %__MODULE__{
@@ -87,26 +99,30 @@ defmodule Padwave.Input.Frame do
   def pressed?(_frame, _button), do: false
 
   @doc """
-  True when something a human did changed since `prev`.
-
-  Analogue sticks are deliberately excluded by default: the sticks on this
-  controller are worn and jitter even when untouched, and a jittering stick
-  must not keep the radio awake forever. Set `:analog_wake_delta` to enable
-  them anyway.
+  True when something a human did changed since `prev` — buttons, d-pad, headset
+  or triggers. This is the reliable half of the signal.
   """
-  def activity?(nil, _frame), do: false
+  def real_activity?(nil, _frame), do: false
 
-  def activity?(prev, frame) do
+  def real_activity?(prev, frame) do
     prev.buttons != frame.buttons or
       prev.dpad != frame.dpad or
       prev.jack != frame.jack or
       abs(prev.l2 - frame.l2) > 10 or
-      abs(prev.r2 - frame.r2) > 10 or
-      sticks_moved?(prev, frame)
+      abs(prev.r2 - frame.r2) > 10
   end
 
-  defp sticks_moved?(prev, frame) do
-    case Config.get(:analog_wake_delta, 0) do
+  @doc """
+  True when a stick moved further than `:analog_wake_delta` counts since `prev`.
+
+  Sticks are worn and jitter by a count or two, so this is thresholded; the
+  mapper additionally caps how many times analogue movement alone may reset the
+  sleep timer, so a drifting stick cannot keep the radio awake all night.
+  """
+  def analog_activity?(nil, _frame), do: false
+
+  def analog_activity?(prev, frame) do
+    case Config.get(:analog_wake_delta, 24) do
       delta when is_integer(delta) and delta > 0 ->
         abs(prev.lx - frame.lx) > delta or abs(prev.ly - frame.ly) > delta or
           abs(prev.rx - frame.rx) > delta or abs(prev.ry - frame.ry) > delta
@@ -115,6 +131,9 @@ defmodule Padwave.Input.Frame do
         false
     end
   end
+
+  @doc "Either kind of activity."
+  def activity?(prev, frame), do: real_activity?(prev, frame) or analog_activity?(prev, frame)
 
   @doc "Battery percentage, 5..100, matching the kernel's power_supply value."
   def battery(status0) do

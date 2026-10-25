@@ -4,10 +4,20 @@ defmodule Padwave.Application do
   use Application
   require Logger
 
+  # A player whose BEAM died without running terminate/2 keeps its mpv and its
+  # PipeWire stream alive. There can only be one padwave, so clear the socket
+  # names we own before starting ours.
+  defp sweep_stale_players do
+    if Padwave.Config.get(:sweep_stale_players, true) do
+      System.cmd("pkill", ["-f", "input-ipc-server=/tmp/padwave-"], stderr_to_stdout: true)
+    end
+  end
+
   @impl true
   def start(_type, _args) do
     Padwave.Config.ensure_dirs!()
     Padwave.Config.load_overrides!()
+    sweep_stale_players()
 
     children = [
       {Padwave.Bus, []},

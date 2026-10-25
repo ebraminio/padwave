@@ -15,7 +15,8 @@ defmodule Padwave.Config do
     "crossfade_ms" => :int,
     "trigger_deadzone" => :int,
     "trigger_repeat_ms" => :int,
-    "analog_wake_delta" => :int
+    "analog_wake_delta" => :int,
+    "analog_wake_cap" => :int
   }
 
   @overrides_key {__MODULE__, :overrides}

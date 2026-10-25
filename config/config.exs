@@ -23,6 +23,10 @@ config :padwave,
   # --- transport -----------------------------------------------------------
   default_volume: 80,
   crossfade_ms: 1500,
+  # Jumps larger than this crossfade between the old and the new position,
+  # using the idle player slot (station changes use the same machinery).
+  seek_crossfade_threshold: 20,
+  seek_crossfade_ms: 600,
   fade_in_ms: 900,
   fade_out_ms: 450,
   volume_fade_ms: 180,
@@ -40,10 +44,12 @@ config :padwave,
   # AntennaPod ends a podcast when its sleep timer expires.
   idle_fade_ms: 10_000,
   idle_fade_floor: 10,
-  # Dirty analogue sticks must not keep the radio awake. Buttons, d-pad and
-  # the analogue triggers always count as activity. Set to a non-zero delta to
-  # also treat stick movement as activity (not recommended with worn sticks).
-  analog_wake_delta: 0,
+  # Analogue sticks count as activity once they move more than this many counts
+  # (they jitter by a count or two even untouched), but at most
+  # `analog_wake_cap` times in a row before a real button press is required —
+  # so a drifting stick cannot keep the radio awake all night.
+  analog_wake_delta: 24,
+  analog_wake_cap: 6,
 
   # --- input ---------------------------------------------------------------
   # Shaking the controller cancels the sleep timer (AntennaPod uses the same
@@ -63,6 +69,9 @@ config :padwave,
   # instead, which is safe. Flip this on to experiment with raw HID writes.
   hid_writes: false,
   lightbar_enabled: true,
+
+  # Kill mpv processes left behind by a BEAM that died abruptly.
+  sweep_stale_players: true,
 
   # --- hot swap ------------------------------------------------------------
   # Watch lib/ and priv/ for edits and reload modules in place.

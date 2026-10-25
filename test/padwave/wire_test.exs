@@ -55,6 +55,14 @@ defmodule Padwave.WireTest do
              DualSenseInput.decode_input(<<0x31, 1, 2, 3, 4>>)
   end
 
+  test "rejects a corrupted Bluetooth report instead of inventing a button", %{raw: raw} do
+    <<head::binary-size(10), byte, tail::binary>> = raw
+    corrupted = <<head::binary, Bitwise.bxor(byte, 0x40), tail::binary>>
+
+    assert {:error, :bad_crc} = Frame.from_report(corrupted)
+    assert {:ok, _frame} = Frame.from_report(raw)
+  end
+
   test "rejects a different report id" do
     assert {:error, _} = DualSenseInput.decode_input(<<0x01, 0::size(77 * 8)>>)
   end
