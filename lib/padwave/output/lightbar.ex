@@ -1,99 +1,64 @@
 defmodule Padwave.Output.Lightbar do
   @moduledoc """
-  Drives the DualSense lightbar through the kernel's LED class rather than raw
-  HID writes.
+  Drives the DualSense lightbar through our own output reports.
 
-  LinuxAudio4Dualsense5 already owns the controller's HID output endpoint for
-  audio, so writing our own `0x31` reports could fight with it. The kernel's
-  `playstation` driver exposes the very same lightbar as
-  `/sys/class/leds/*:rgb:indicator`, which is both safer and instant.
+  This used to paint `/sys/class/leds/*:rgb:indicator`. It now goes through
+  `Padwave.Output.Hid` for the same reason the trigger effects do: one writer
+  for report `0x31`, one place that owns the Bluetooth sequence tag and CRC,
+  and no dependency on the kernel's LED class (or its permissions).
 
   The colour tells you the state from across the room: cyan while playing,
-  amber while paused, a red pulse during the idle warning, dark once the
-  controller is off.
+  amber paused, purple muted, a red pulse during the sleep-timer fade, dark once
+  the controller is off.
   """
 
   use GenServer
-  require Logger
-
   alias Padwave.{Bus, Config}
+  alias Padwave.Output.Hid
 
   @pulse_ms 600
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
-  @doc "Overrides the lightbar colour until the next state change."
+  @doc "Overrides the colour until the next state change."
   def set_rgb(r, g, b), do: GenServer.cast(__MODULE__, {:rgb, {r, g, b}})
 
   @impl true
   def init(_opts) do
     Bus.subscribe()
-
-    dir = find_led()
-
-    state = %{
-      dir: dir,
-      writable: dir != nil and writable?(dir),
-      mode: :off,
-      bright: false,
-      custom: nil
-    }
-
-    if state.writable do
-      Logger.info("[lightbar] using #{dir}")
-      {:ok, paint(state, {0, 0, 0}, 0)}
-    else
-      if dir, do: Logger.info("[lightbar] #{dir} is not writable; lightbar disabled")
-      {:ok, state}
-    end
+    {:ok, %{mode: :off, bright: false, custom: nil, painted: nil}}
   end
 
   @impl true
-  def handle_cast({:rgb, rgb}, state), do: {:noreply, paint(state, rgb, 200)}
+  def handle_cast({:rgb, rgb}, state), do: {:noreply, paint(%{state | custom: rgb})}
 
   @impl true
-  def handle_info({:padwave, {:player, {:playing, _path}}}, state) do
-    {:noreply, light(%{state | mode: :playing, custom: nil})}
-  end
-
-  def handle_info({:padwave, {:radio, {:volume, 0}}}, state) do
-    {:noreply, light(%{state | mode: :muted, custom: nil})}
-  end
-
-  def handle_info({:padwave, {:radio, {:volume, _level}}}, state) do
-    {:noreply, light(%{state | mode: :playing, custom: nil})}
-  end
-
-  def handle_info({:padwave, {:player, :stopped}}, state) do
-    {:noreply, light(%{state | mode: :paused, custom: nil})}
-  end
+  def handle_info({:padwave, {:player, {:playing, _path}}}, state), do: {:noreply, set(state, :playing)}
+  def handle_info({:padwave, {:player, :stopped}}, state), do: {:noreply, set(state, :paused)}
 
   def handle_info({:padwave, {:session, :warning}}, state) do
     Process.send_after(self(), :pulse, @pulse_ms)
-    {:noreply, light(%{state | mode: :warning, custom: nil})}
+    {:noreply, set(state, :warning)}
   end
 
-  def handle_info({:padwave, {:session, :active}}, state) do
-    {:noreply, light(%{state | mode: :playing, custom: nil})}
-  end
+  def handle_info({:padwave, {:session, :active}}, state), do: {:noreply, set(state, :playing)}
+  def handle_info({:padwave, {:radio, {:suspended, _reason}}}, state), do: {:noreply, set(state, :off)}
 
-  def handle_info({:padwave, {:radio, {:suspended, _reason}}}, state) do
-    {:noreply, light(%{state | mode: :off, custom: nil})}
-  end
+  def handle_info({:padwave, {:radio, {:volume, 0}}}, state), do: {:noreply, set(state, :muted)}
+  def handle_info({:padwave, {:radio, {:volume, _level}}}, state), do: {:noreply, set(state, :playing)}
 
-  def handle_info({:padwave, {:device, :down, _info}}, state) do
-    {:noreply, %{state | mode: :off}}
-  end
+  def handle_info({:padwave, {:device, :down, _info}}, state), do: {:noreply, %{state | mode: :off}}
 
   def handle_info({:padwave, {:device, :up, _info}}, state) do
-    # Nothing is necessarily playing yet; the player announces itself.
-    {:noreply, light(%{state | mode: :idle, custom: nil})}
+    # The controller comes back with the kernel's startup animation; repaint.
+    {:noreply, paint(%{state | mode: :idle, custom: nil})}
   end
 
   def handle_info(:pulse, %{mode: :warning} = state) do
     Process.send_after(self(), :pulse, @pulse_ms)
-    bright = if state.bright, do: 30, else: 255
-    {:noreply, paint(%{state | bright: bright}, {255, 0, 0}, bright)}
+    bright = if state.bright, do: 60, else: 255
+    Hid.lightbar(scale({255, 0, 0}, bright))
+    {:noreply, %{state | bright: bright}}
   end
 
   def handle_info(:pulse, state), do: {:noreply, state}
@@ -101,51 +66,26 @@ defmodule Padwave.Output.Lightbar do
 
   # -- painting --------------------------------------------------------------
 
-  defp light(%{writable: false} = state), do: state
+  defp set(state, mode), do: paint(%{state | mode: mode, custom: nil})
 
-  defp light(state), do: paint(state, color(state.mode), brightness(state.mode))
+  defp paint(%{custom: nil} = state), do: do_paint(state, color(state.mode))
+  defp paint(%{custom: rgb} = state), do: do_paint(state, rgb)
+
+  # Only write when the colour actually changes: the volume is broadcast on
+  # every trigger step, and repainting an unchanged bar would waste HID reports.
+  defp do_paint(%{painted: rgb} = state, rgb), do: state
+
+  defp do_paint(state, {r, g, b}) do
+    if Config.get(:lightbar_enabled, true), do: Hid.lightbar(r, g, b)
+    %{state | painted: {r, g, b}}
+  end
+
+  defp scale({r, g, b}, 255), do: {r, g, b}
+  defp scale({r, g, b}, k), do: {round(r * k / 255), round(g * k / 255), round(b * k / 255)}
 
   defp color(:playing), do: {0, 140, 255}
   defp color(:paused), do: {255, 110, 0}
   defp color(:muted), do: {120, 60, 255}
   defp color(:warning), do: {255, 0, 0}
   defp color(_), do: {0, 0, 0}
-
-  defp brightness(:playing), do: 190
-  defp brightness(:paused), do: 70
-  defp brightness(:muted), do: 55
-  defp brightness(:warning), do: 255
-  defp brightness(_), do: 0
-
-  defp paint(%{writable: false} = state, _rgb, _brightness), do: state
-
-  defp paint(%{dir: dir} = state, {r, g, b}, brightness) do
-    _ = File.write(Path.join(dir, "multi_intensity"), "#{r} #{g} #{b}")
-    _ = File.write(Path.join(dir, "brightness"), Integer.to_string(brightness))
-    state
-  end
-
-  defp find_led do
-    cond do
-      not Config.get(:lightbar_enabled, true) ->
-        nil
-
-      true ->
-        "/sys/class/leds/*:rgb:indicator"
-        |> Path.wildcard()
-        |> Enum.find(fn dir ->
-          case File.read_link(dir) do
-            {:ok, target} -> String.contains?(target, "054C:0CE6")
-            _ -> false
-          end
-        end)
-    end
-  end
-
-  defp writable?(dir) do
-    case File.write(Path.join(dir, "brightness"), "0") do
-      :ok -> true
-      _ -> false
-    end
-  end
 end

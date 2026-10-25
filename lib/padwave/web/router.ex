@@ -135,7 +135,8 @@ defmodule Padwave.Web.Router do
         volume: radio.volume
       },
       player: Padwave.Player.state(),
-      audio: Padwave.Audio.status()
+      audio: Padwave.Audio.status(),
+      hid: Padwave.Output.Hid.stats()
     })
   end
 
@@ -194,6 +195,7 @@ defmodule Padwave.Web.Router do
       radio: Radio.status(),
       session: Session.status(),
       audio: Padwave.Audio.status(),
+      hid: Padwave.Output.Hid.stats(),
       controller: controller(),
       bindings: Input.Mapper.bindings(),
       config: Config.public(),

@@ -23,6 +23,8 @@ defmodule Padwave.Output.Report do
   @tag 0x10
   @valid_flag1_lightbar 0x04
   @valid_flag1_player_leds 0x10
+  @valid_flag0_right_trigger 0x04
+  @valid_flag0_left_trigger 0x08
 
   @doc """
   A lightbar update.
@@ -58,6 +60,40 @@ defmodule Padwave.Output.Report do
   end
 
   @doc """
+  A trigger effect: `mode` plus up to ten parameters.
+
+  `0x00` turns the trigger's actuator off; `0x01` is resistance
+  (`[start, force]`), `0x02` a pulse (`[start, end, force]`) and `0x06` the
+  automatic/vibration effect (`[frequency, force, start]`) — the one that
+  buzzes the trigger while it is held.
+
+  Enabled by `valid_flag0` bit 2 for the right trigger and bit 3 for the left.
+  """
+  def trigger(side, mode, params \\ [], opts \\ []) when side in [:left, :right] do
+    bus = Keyword.get(opts, :bus, :bluetooth)
+    seq = Keyword.get(opts, :seq, 0)
+
+    fields =
+      case side do
+        :right ->
+          %{
+            valid_flag0: @valid_flag0_right_trigger,
+            right_trigger_mode: mode,
+            right_trigger_params: trigger_params(params)
+          }
+
+        :left ->
+          %{
+            valid_flag0: @valid_flag0_left_trigger,
+            left_trigger_mode: mode,
+            left_trigger_params: trigger_params(params)
+          }
+      end
+
+    build(header(fields, seq, bus), bus)
+  end
+
+  @doc """
   Builds a report from named fields (see `Padwave.Schema.DualSenseOutput`).
 
   Unset fields are zero. Bluetooth reports get the sequence tag and the CRC;
@@ -78,7 +114,7 @@ defmodule Padwave.Output.Report do
           Map.get(offsets, name) ||
             raise ArgumentError, "unknown output report field #{inspect(name)}"
 
-        put_byte(acc, offset, value)
+        put_value(acc, offset, value)
       end)
 
     if bus == :usb do
@@ -98,6 +134,19 @@ defmodule Padwave.Output.Report do
   @doc "CRC of an output report body (everything before the four CRC bytes)."
   def crc(data) when is_binary(data) do
     :erlang.crc32(<<@seed>> <> data)
+  end
+
+  defp put_value(binary, index, value) when is_integer(value) and value in 0..255,
+    do: put_byte(binary, index, value)
+
+  defp put_value(binary, index, value) when is_binary(value) do
+    <<head::binary-size(index), _::binary-size(byte_size(value)), tail::binary>> = binary
+    <<head::binary, value::binary, tail::binary>>
+  end
+
+  defp trigger_params(params) do
+    bytes = for value <- params, do: <<value::8>>
+    (bytes ++ List.duplicate(<<0>>, 10 - length(bytes))) |> Enum.take(10) |> IO.iodata_to_binary()
   end
 
   defp put_byte(binary, index, value) when value in 0..255 do

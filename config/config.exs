@@ -64,11 +64,17 @@ config :padwave,
   web_port: 8787,
 
   # --- controller / output -------------------------------------------------
-  # Writing 0x31 output reports to hidraw while LinuxAudio4Dualsense5 streams
-  # 0x36 audio reports is untested; the lightbar uses the kernel LED class
-  # instead, which is safe. Flip this on to experiment with raw HID writes.
-  hid_writes: false,
+  # Lightbar and trigger effects are written as 0x31 output reports, which the
+  # controller accepts alongside LinuxAudio4Dualsense5's 0x36 audio stream: the
+  # valid-flag bits mean the two never touch each other's fields.
   lightbar_enabled: true,
+
+  # Buzz the trigger that is currently changing the volume (mode 0x06,
+  # automatic/vibration): [frequency, force, start].
+  trigger_effects: true,
+  trigger_effect_frequency: 25,
+  trigger_effect_force: 200,
+  trigger_effect_start: 5,
 
   # Kill mpv processes left behind by a BEAM that died abruptly.
   sweep_stale_players: true,

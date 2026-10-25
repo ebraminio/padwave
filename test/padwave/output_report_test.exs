@@ -66,6 +66,33 @@ defmodule Padwave.OutputReportTest do
     end
   end
 
+  test "a trigger vibration sets its flag, mode and parameters" do
+    report = Report.trigger(:right, 0x06, [25, 200, 5], seq: 7)
+
+    assert byte_size(report) == 78
+    assert <<0x31, seq_tag, 0x10, _rest::binary>> = report
+    assert seq_tag == 7 <<< 4
+
+    fields = Padwave.Schema.DualSenseOutput.decode_output(report)
+    assert fields.valid_flag0 == 0x04
+    assert fields.right_trigger_mode == 0x06
+    assert fields.right_trigger_params == <<25, 200, 5, 0, 0, 0, 0, 0, 0, 0>>
+    assert fields.left_trigger_mode == 0x00
+
+    # and the report is signed
+    <<body::binary-size(74), crc::little-32>> = report
+    assert Report.crc(body) == crc
+  end
+
+  test "the left trigger uses its own flag and parameter block" do
+    report = Report.trigger(:left, 0x00, [])
+    fields = Padwave.Schema.DualSenseOutput.decode_output(report)
+
+    assert fields.valid_flag0 == 0x08
+    assert fields.left_trigger_mode == 0x00
+    assert fields.right_trigger_mode == 0x00
+  end
+
   test "the output spec describes the same bytes as the encoder" do
     spec = DualSenseOutput.spec(:output)
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)

@@ -10,7 +10,7 @@ again the station is exactly where you left it.
 ```
 DualSense ──BT──▶ hidraw ──▶ packet decode ──▶ actions ──▶ Radio ──▶ mpv ×2 ──▶ PipeWire
    ▲                                                          │                  │
-   └──────── lightbar (sysfs) ◀── state ◀── web UI ◀────────────┘                  │
+   └──────── lightbar + triggers (0x31) ◀── state ◀── web UI ◀───┘                  │
                                                           ds5_membrane sink ◀──────┘
                                                           (LinuxAudio4Dualsense5)
 ```
@@ -214,8 +214,8 @@ cd ~/padwave
 ./scripts/install.sh
 ```
 
-`install.sh` builds with `MIX_ENV=prod`, installs the udev rule that lets the
-user write the lightbar, installs a systemd user unit, and starts it. `sudo
+`install.sh` builds with `MIX_ENV=prod`, installs a systemd user unit, and
+starts it. `sudo
 loginctl enable-linger $USER` is required for it to start at boot (the installer
 assumes it; run it once).
 
@@ -228,15 +228,13 @@ timeouts, web port, and which LED backend to use.
 
 ## Design notes
 
-**Lightbar via the kernel, not raw HID (by default).** The kernel's
-`playstation` driver already speaks the output-report protocol — including the
-Bluetooth sequencing and CRC — and exposes the very same lightbar as
-`/sys/class/leds/*:rgb:indicator`. Writing our own `0x31` reports while
-LinuxAudio4Dualsense5 streams audio in `0x36` reports means two processes owning
-one state machine; the `valid_flag*` bits make it *safe* (unset flags are left
-alone), but it is still a second writer for no benefit when the LED class exists.
-The packet encoder is implemented and tested so the HID path is a config flag
-away, not a rewrite.
+**One writer for output reports.** Lightbar and trigger effects both go through
+`Padwave.Output.Hid`, which is the only thing in padwave writing report `0x31`,
+and it owns the Bluetooth sequence tag and CRC. The kernel's `playstation`
+driver still owns the rumble path, but it exposes neither adaptive triggers nor
+their actuators, so those bytes are ours. The `valid_flag*` bits keep the two
+worlds apart: we only ever set the flags for the fields we touch, and
+LinuxAudio4Dualsense5's `0x36` audio stream is a different report entirely.
 
 **Headset pause button.** The DualSense's jack has no HID path for inline
 headset buttons: the controller exposes a gamepad, motion sensors and a
@@ -280,7 +278,7 @@ Elixir. Having read what it takes, that would be the wrong trade:
   state snapshot, and re-enable the audio path (`0x31`, `audio_control 0x30`)
   after every reconnect;
 * it is **not a collision anyway**. That service writes `0x36` audio; padwave
-  reads `0x31` input and paints the lightbar through the kernel LED class. The
+  reads `0x31` input and writes only its own output fields. The
   kernel already multiplexes those. Two writers only becomes a problem if both
   write the *same* report type.
 

@@ -13,11 +13,6 @@ mix local.rebar --force >/dev/null
 mix deps.get >/dev/null
 mix compile
 
-echo "==> lightbar udev rule"
-sudo install -m 0644 "$ROOT/scripts/99-padwave-leds.rules" /etc/udev/rules.d/99-padwave-leds.rules
-sudo udevadm control --reload-rules
-sudo udevadm trigger --subsystem-match=leds || true
-
 echo "==> systemd user unit"
 mkdir -p "$HOME/.config/systemd/user"
 install -m 0644 "$ROOT/scripts/padwave.service" "$HOME/.config/systemd/user/padwave.service"

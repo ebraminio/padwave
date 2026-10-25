@@ -68,6 +68,8 @@ defmodule Padwave.Input.Mapper do
        last_l2: now,
        last_r2: now,
        analog_resets: 0,
+       l2_down: false,
+       r2_down: false,
        last_action: nil,
        last_action_at: nil,
        last_shake: now,
@@ -139,6 +141,8 @@ defmodule Padwave.Input.Mapper do
     state = emit_new_buttons(state.prev_buttons, frame, state)
     state = handle_dpad(state.prev_dpad, frame, state)
     state = handle_analog(now, frame, state)
+    state = track_trigger(:left, frame.l2, state)
+    state = track_trigger(:right, frame.r2, state)
 
     {:noreply,
      %{
@@ -245,6 +249,31 @@ defmodule Padwave.Input.Mapper do
       emit({:volume, direction * step}, Map.put(state, last_key, now))
     else
       state
+    end
+  end
+
+  # -- trigger press/release -------------------------------------------------
+
+  # Announces when a trigger crosses into use, with hysteresis, so the trigger
+  # actuator can buzz exactly while the trigger is doing something.
+  @trigger_down 30
+  @trigger_up 15
+
+  defp track_trigger(side, value, state) do
+    key = if side == :left, do: :l2_down, else: :r2_down
+    down? = Map.fetch!(state, key)
+
+    cond do
+      not down? and value >= @trigger_down ->
+        Bus.broadcast({:input, {:trigger, side, :pressed}})
+        Map.put(state, key, true)
+
+      down? and value < @trigger_up ->
+        Bus.broadcast({:input, {:trigger, side, :released}})
+        Map.put(state, key, false)
+
+      true ->
+        state
     end
   end
 
