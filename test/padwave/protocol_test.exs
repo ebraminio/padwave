@@ -31,6 +31,7 @@ defmodule Padwave.ProtocolTest do
       |> put(4, 0xFE)
       |> put(11, 0x90)
       |> put(12, 63)
+      |> put(13, 0xF1)
       |> put(76, 0x92)
       |> put(77, 64)
       |> put(142, 0x93)
@@ -40,6 +41,10 @@ defmodule Padwave.ProtocolTest do
 
     assert fields.audio_enable_mask == 0xFE
     assert fields.state_length == 63
+
+    # the snapshot is a full output payload: byte 0 is valid_flag0, and the
+    # 0xF1 there is what stops the audio stream from claiming the triggers
+    assert fields.valid_flag0 == 0xF1
     assert fields.haptics_length == 64
     assert fields.speaker_length == 200
     assert fields.speaker_tag == 0x93

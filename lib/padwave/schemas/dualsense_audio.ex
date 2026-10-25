@@ -30,6 +30,22 @@ defmodule Padwave.Schema.DualSenseAudio do
   audio service mutes the mic in its state snapshot: the input report is also
   where padwave reads buttons from, so a mic-enabled stream would double the
   link's traffic.
+
+  ## The state snapshot is a whole output payload
+
+  Sub-packet `0x10` is not opaque bytes: its first 47 bytes are byte-for-byte
+  the `0x31` output payload — `valid_flag0`, `valid_flag1`, volumes, trigger
+  effect blocks, lightbar — followed by sixteen bytes of padding. So the audio
+  stream re-states the controller's whole output configuration 93 times a
+  second, and every field it does not own must have its valid bit **clear**, or
+  this copy silently overwrites whatever another writer set.
+
+  That is exactly what went wrong here: the snapshot sent `0xFD` in
+  `valid_flag0` — bits 2 and 3 set, i.e. *both trigger effects claimed* — with
+  a zeroed trigger block, so every audio frame cancelled the vibration padwave
+  had just applied. It now sends `0xF1`, which claims volumes and audio routing
+  but leaves the triggers alone. The lightbar was never affected because
+  `valid_flag1` (`0xE3`) does not claim the LED colour bit.
   """
 
   use Padwave.Wire
@@ -47,8 +63,14 @@ defmodule Padwave.Schema.DualSenseAudio do
     # -- sub-packet 0x10: state snapshot ----------------------------------
     u8 :state_tag                # 0x00b  0x10 | 0x80
     u8 :state_length             # 0x00c  63
-    bytes :state_snapshot, 63    # 0x00d..0x04b  first 47 bytes mirror the 0x31
-                                 #        output payload (flags, volumes, LEDs)
+
+    # The snapshot is the 0x31 output payload, spliced so its fields are named
+    # here too. Note valid_flag0: claiming bit 2 or 3 here (0x04/0x08) hands
+    # the trigger effect to this stream, which writes zeros to it 93 times a
+    # second. The fix for the cancelled trigger effects was clearing exactly
+    # those two bits (0xFD -> 0xF1).
+    splice Padwave.Schema.DualSenseOutput.Body, :output_body
+    bytes :state_padding, 16     # 0x03c..0x04b  the rest of the 63-byte block
 
     # -- sub-packet 0x12: haptics (the "subwoofer") ------------------------
     u8 :haptics_tag              # 0x04c  0x12 | 0x80
