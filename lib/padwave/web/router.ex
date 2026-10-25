@@ -59,6 +59,10 @@ defmodule Padwave.Web.Router do
       input_usb: Padwave.Schema.DualSenseInput.spec(:input_usb),
       output: Padwave.Schema.DualSenseOutput.spec(:output),
       output_usb: Padwave.Schema.DualSenseOutput.spec(:output_usb),
+      audio_out: Padwave.Schema.DualSenseAudio.spec(:audio_out),
+      calibration: Padwave.Schema.DualSenseFeature.spec(:calibration),
+      pairing: Padwave.Schema.DualSenseFeature.spec(:pairing),
+      firmware: Padwave.Schema.DualSenseFeature.spec(:firmware),
       bindings: Input.Mapper.bindings()
     })
   end

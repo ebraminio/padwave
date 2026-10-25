@@ -46,7 +46,8 @@ defmodule Padwave.Output.Report do
 
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
   def player_leds(mask, opts \\ []) when is_list(opts) do
-    build(%{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
+    build(
+      %{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
       Keyword.get(opts, :bus, :bluetooth),
       seq: Keyword.get(opts, :seq, 0)
     )
@@ -102,6 +103,7 @@ defmodule Padwave.Output.Report do
       else
         Map.merge(header_defaults(Keyword.get(opts, :seq, 0)), fields)
       end
+
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
 
     zeroed =

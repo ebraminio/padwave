@@ -326,6 +326,11 @@ iex --name me@my-mac.local --cookie ~/.erlang.cookie --remsh padwave@rpi5-second
 That drops you into the running radio with full introspection — which is also
 the fastest way to iterate on the packet description while it is live.
 
+A catalogue of every report id we know about — input, output, audio and feature
+reports — with lengths, direction and who owns each one, is in
+[`docs/protocol.md`](docs/protocol.md). The machine-readable version is
+`GET /api/schema`.
+
 ## Talking to it from the Mac
 
 The controller can only be paired to one host at a time, so the Pi keeps the

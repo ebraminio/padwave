@@ -120,8 +120,7 @@ defmodule Padwave.Output.Hid do
       end
     end)
     |> Enum.reduce(0, fn dir, mask ->
-      index =
-        dir |> Path.basename() |> String.split("player-") |> List.last() |> String.to_integer()
+      index = dir |> Path.basename() |> String.split("player-") |> List.last() |> String.to_integer()
 
       lit? =
         case File.read(Path.join(dir, "brightness")) do
