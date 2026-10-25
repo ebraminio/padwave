@@ -158,12 +158,6 @@
     font-family: var(--mono); font-size: 11px; line-height: 1.6; color: #9fb0d0;
     white-space: pre-wrap; word-break: break-all; max-height: 130px; overflow: auto;
   }
-  pre.source {
-    margin: 10px 0 0; padding: 12px; background: #0b0e14; border: 1px solid var(--line);
-    border-radius: 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.55;
-    color: #b9c6dd; white-space: pre; overflow: auto; max-height: 380px;
-  }
-  .source-head { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   select {
     background: #0e1118; border: 1px solid var(--line); color: var(--text);
     border-radius: 8px; padding: 6px 9px; font-size: 12px;
@@ -270,17 +264,6 @@
         <summary>live packet 0x31 · 78 bytes, every field</summary>
         <pre class="hex" id="hex">waiting for the controller…</pre>
         <div class="fields" id="fields"></div>
-      </details>
-      <details>
-        <summary>protocol spec · documented source</summary>
-        <div class="source-head">
-          <select id="specWhich">
-            <option value="input">input 0x31</option>
-            <option value="output">output 0x31</option>
-          </select>
-          <span style="color:var(--muted);font-size:11.5px">this file is both the decoder and the documentation</span>
-        </div>
-        <pre class="source" id="specSource">loading…</pre>
       </details>
     </section>
 
@@ -390,7 +373,7 @@
         <summary>raw output fields · everything the report can carry</summary>
         <p style="color:var(--muted);font-size:11.5px;margin:8px 0">
           A map of field name to byte value (or array of bytes), framed and CRC-signed for you.
-          Field names and offsets come from the spec below — try <code style="font-family:var(--mono)">{ "valid_flag2": 2, "lightbar_setup": 1 }</code>
+          Field names and offsets live in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> (also at <code style="font-family:var(--mono)">/api/schema</code>) — try <code style="font-family:var(--mono)">{ "valid_flag2": 2, "lightbar_setup": 1 }</code>
           or <code style="font-family:var(--mono)">{ "valid_flag1": 4, "lightbar_red": 255, "led_brightness": 60 }</code>.
         </p>
         <textarea id="labRaw">{ "valid_flag1": 4, "lightbar_red": 0, "lightbar_green": 160, "lightbar_blue": 255 }</textarea>
@@ -857,27 +840,9 @@ document.addEventListener("keydown", (e) => {
 
 // -- boot -------------------------------------------------------------------
 
-let specSources = null;
-
-async function loadSpec() {
-  try {
-    if (!specSources) {
-      specSources = (await fetch("/api/schema/source").then(r => r.json())).sources;
-    }
-    $("#specSource").textContent = specSources[$("#specWhich").value] || "no source";
-  } catch (e) {
-    $("#specSource").textContent = "cannot load the schema source";
-  }
-}
-
 async function boot() {
   buildPad();
 
-  $("#specWhich").addEventListener("change", loadSpec);
-  $("#specWhich").addEventListener("focus", loadSpec, { once: true });
-  document.querySelectorAll("details").forEach(d => {
-    d.addEventListener("toggle", () => { if (d.open) loadSpec(); });
-  });
   requestAnimationFrame(frameLoop);
 
   try {

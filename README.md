@@ -114,10 +114,9 @@ The schema files are excluded from `mix format`: the trailing comments and the
 column layout *are* the documentation, and the formatter reflows a trailing
 comment onto the line above.
 
-Every field carries a trailing comment with its offset and meaning, and the
-same file is served at `GET /api/schema/source` so the UI can show the protocol
-documentation next to the live values — the description is not a separate
-document that can drift.
+Every field carries a trailing comment with its offset and meaning, so the file
+reads as the protocol documentation. `GET /api/schema` returns the same layout
+as data (offsets, bit widths) for tooling.
 
 The output side (`lib/padwave/schemas/dualsense_output.ex`,
 `lib/padwave/output/report.ex`) uses the same mechanism to build lightbar and

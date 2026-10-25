@@ -63,25 +63,6 @@ defmodule Padwave.Web.Router do
     })
   end
 
-  # The packet descriptions double as the protocol documentation: serve the
-  # annotated source so the UI can show it next to the live values.
-  get "/api/schema/source" do
-    files = %{
-      "input" => "lib/padwave/schemas/dualsense_input.ex",
-      "output" => "lib/padwave/schemas/dualsense_output.ex"
-    }
-
-    sources =
-      Map.new(files, fn {key, path} ->
-        case File.read(path) do
-          {:ok, source} -> {key, source}
-          {:error, reason} -> {key, "// cannot read #{path}: #{inspect(reason)}"}
-        end
-      end)
-
-    json(conn, %{sources: sources})
-  end
-
   get "/api/config" do
     json(conn, %{ok: true, config: Config.public(), editable: Config.runtime_keys()})
   end
