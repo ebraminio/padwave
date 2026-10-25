@@ -68,6 +68,16 @@ galloping, machine) are unofficial and firmware-dependent. The panel and the
 "buzz while changing volume" path both go through
 `Padwave.Output.TriggerEffects`.
 
+**Two writers, one state.** The `0x36` audio stream carries a state snapshot
+(sub-packet `0x10`) every 10.667 ms, and its `valid_flag0` decides which fields
+*that* stream owns. If it claims the trigger bits (LinuxAudio4Dualsense5's
+snapshot used `0xFD`, i.e. both trigger flags set, with a zeroed trigger block),
+it silently cancels any adaptive-trigger effect another writer applied — the
+effect works for a fraction of a frame and is then reset. Clearing bits 2 and 3
+(`0xFD` → `0xF1`) leaves volumes and routing claimed and the triggers alone.
+The same rule applies to any field two writers might touch: never claim a field
+you do not intend to write.
+
 **Feature `0x05`.** The calibration words are what make the gyro and
 accelerometer meaningful; the kernel turns them into the usual ±2 g / ±2000 °/s
 ranges at `/dev/input`.

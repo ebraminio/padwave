@@ -231,6 +231,8 @@ defmodule Padwave.Web.Router do
       rx: frame && frame.rx,
       ry: frame && frame.ry,
       temperature: frame && frame.temperature,
+      trigger_feedback_l: frame && frame.fields.trigger_feedback_l,
+      trigger_feedback_r: frame && frame.fields.trigger_feedback_r,
       touches: frame && frame.touches,
       accel: frame && [frame.fields.accel_x, frame.fields.accel_y, frame.fields.accel_z],
       gyro: frame && [frame.fields.gyro_x, frame.fields.gyro_y, frame.fields.gyro_z],
