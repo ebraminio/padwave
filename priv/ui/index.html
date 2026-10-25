@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>padwave — controller radio</title>
+<style>
+  :root {
+    --bg: #0a0c11;
+    --panel: #12151d;
+    --panel-2: #171b25;
+    --line: #232836;
+    --text: #e9ecf5;
+    --muted: #8b93a9;
+    --accent: #7c5cff;
+    --accent-2: #22d3ee;
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(124, 92, 255, .16), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(34, 211, 238, .10), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { max-width: 1180px; margin: 0 auto; padding: 26px 22px 60px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 {
+    margin: 0; font-size: 22px; letter-spacing: .22em; font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .brand span { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line);
+    font-size: 12.5px; color: var(--muted); white-space: nowrap;
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--good); box-shadow: 0 0 10px rgba(52, 211, 153, .8); }
+  .dot.off { background: var(--bad); }
+  .dot.warn { background: var(--warn); box-shadow: 0 0 10px rgba(251, 191, 36, .7); }
+
+  .grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line); border-radius: 18px; padding: 20px;
+    box-shadow: 0 18px 40px -28px #000;
+  }
+
+  .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .game { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
+  .station-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; }
+
+  .progress { margin: 20px 0 8px; cursor: pointer; }
+  .bar { position: relative; height: 8px; border-radius: 999px; background: #1d2230; overflow: hidden; }
+  .fill {
+    position: absolute; inset: 0 auto 0 0; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 999px; transition: width .35s linear;
+  }
+  .times { display: flex; justify-content: space-between; margin-top: 7px; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+  .transport { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  button {
+    appearance: none; border: 1px solid var(--line); background: #1a1f2b; color: var(--text);
+    border-radius: 12px; padding: 10px 14px; font-size: 15px; cursor: pointer;
+    transition: transform .08s ease, background .15s ease, border-color .15s ease;
+  }
+  button:hover { background: #212737; border-color: #2f3650; }
+  button:active { transform: scale(.96); }
+  button.primary {
+    flex: 1; font-weight: 600; letter-spacing: .02em;
+    background: linear-gradient(135deg, rgba(124,92,255,.95), rgba(34,211,238,.9));
+    border: none; color: #0a0c11;
+  }
+  button.icon { padding: 10px 12px; }
+
+  .volume { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .volume input[type=range] { flex: 1; accent-color: var(--accent-2); }
+  .volume .val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  .list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .list-head h2 { margin: 0; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  input[type=search] {
+    background: #0e1118; border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 8px 11px; font-size: 13px; width: 150px; outline: none;
+  }
+  input[type=search]:focus { border-color: var(--accent); }
+  .stations { list-style: none; margin: 12px 0 0; padding: 0; max-height: 360px; overflow: auto; }
+  .stations li {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .stations li:hover { background: #171c28; }
+  .stations li.active { background: rgba(124,92,255,.13); border-color: rgba(124,92,255,.45); }
+  .stations .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .stations .g { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  .pad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; }
+  .pad-key {
+    text-align: center; padding: 9px 6px; border-radius: 10px;
+    background: #0f1219; border: 1px solid var(--line); color: var(--muted);
+    font-size: 12px; letter-spacing: .04em; transition: all .1s ease;
+  }
+  .pad-key.on { background: rgba(34,211,238,.15); border-color: var(--accent-2); color: var(--accent-2); }
+  .pad-key small { display: block; color: inherit; opacity: .6; font-size: 10px; margin-top: 2px; }
+
+  .triggers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .trig { background: #0f1219; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .trig .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .trig .track { height: 6px; background: #1b2130; border-radius: 999px; margin-top: 6px; overflow: hidden; }
+  .trig .val { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+  details { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  pre.hex {
+    margin: 10px 0 0; padding: 12px; background: #0b0e14; border: 1px solid var(--line); border-radius: 10px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.6; color: #9fb0d0;
+    white-space: pre-wrap; word-break: break-all; max-height: 130px; overflow: auto;
+  }
+  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 10px; }
+  .field { background: #0f1219; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 11px; }
+  .field b { display: block; color: var(--muted); font-weight: 500; font-size: 10px; letter-spacing: .05em; }
+  .field span { font-family: var(--mono); color: var(--accent-2); }
+
+  footer { margin-top: 20px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+    background: #1b2030; border: 1px solid var(--line); color: var(--text);
+    padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: all .22s ease; z-index: 10;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .warnbar { background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.4); color: var(--warn); border-radius: 12px; padding: 9px 12px; font-size: 12.5px; margin-top: 14px; display: none; }
+  .warnbar.show { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><h1>PADWAVE</h1><span>dualsense radio</span></div>
+    <div class="chips">
+      <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
+      <span class="chip">battery <b id="battText">—</b></span>
+      <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
+      <span class="chip" id="idleChip">idle <b>—</b></span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <div class="eyebrow">now playing</div>
+      <div class="game" id="game">—</div>
+      <div class="station-title" id="title">Nothing playing</div>
+
+      <div class="progress" id="progress" title="click to seek">
+        <div class="bar"><div class="fill" id="fill"></div></div>
+        <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+      </div>
+
+      <div class="transport">
+        <button class="icon" data-action="previous" title="previous station">⏮</button>
+        <button class="primary" data-action="pause" id="pauseBtn">play</button>
+        <button class="icon" data-action="next" title="next random station">⏭</button>
+        <button class="icon" data-action="shuffle_game" title="random station from another game">🎲</button>
+      </div>
+
+      <div class="volume">
+        <button class="icon" data-action="mute" id="muteBtn" title="mute">🔊</button>
+        <input type="range" id="volume" min="0" max="100" step="1" value="80">
+        <span class="val" id="volLabel">80</span>
+      </div>
+
+      <div class="warnbar" id="warnbar">Idle — raising volume as a warning. Shutting down in <b id="warnLeft">60</b>s unless you touch the controller.</div>
+    </section>
+
+    <section class="card">
+      <div class="list-head">
+        <h2>stations</h2>
+        <input type="search" id="filter" placeholder="filter…" autocomplete="off">
+      </div>
+      <ul class="stations" id="stations"></ul>
+    </section>
+
+    <section class="card">
+      <div class="list-head"><h2>controller</h2><span class="chip" id="lastAction">—</span></div>
+      <div class="pad-grid" id="padGrid"></div>
+      <div class="triggers">
+        <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div></div>
+        <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div></div>
+      </div>
+      <details>
+        <summary>live packet 0x31 · 78 bytes</summary>
+        <pre class="hex" id="hex">waiting for the controller…</pre>
+        <div class="fields" id="fields"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="list-head"><h2>bindings</h2><span class="chip">hold to steer</span></div>
+      <div class="pad-grid" id="bindings"></div>
+      <details>
+        <summary>hot swap</summary>
+        <p style="color:var(--muted);font-size:12.5px">
+          Edit <code style="font-family:var(--mono)">lib/padwave/schemas/dualsense_input.ex</code> or the UI,
+          then reload — the stream keeps playing.
+        </p>
+        <button id="reloadBtn">reload modules</button>
+      </details>
+    </section>
+  </div>
+
+  <footer>
+    <span>padwave · built for a DualSense whose ✕ gave up</span>
+    <span id="statusLine">connecting…</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const padButtons = [
+  ["triangle","△"],["circle","○"],["square","□"],["cross","✕"],
+  ["l1","L1"],["r1","R1"],["l2","L2"],["r2","R2"],
+  ["create","create"],["options","options"],["ps","PS"],["touchpad","touch"],
+  ["mute","mute"],["l3","L3"],["r3","R3"],
+  ["up","↑"],["right","→"],["down","↓"],["left","←"]
+];
+
+let last = null;
+let dragging = false;
+let tracks = [];
+let filterText = "";
+
+const fmt = (s) => {
+  if (s == null || isNaN(s)) return "0:00";
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`
+           : `${m}:${String(sec).padStart(2,"0")}`;
+};
+
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 1600);
+}
+
+async function send(action, args = {}) {
+  try {
+    const res = await fetch("/api/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ...args })
+    });
+    const data = await res.json();
+    if (data.status) render(data);
+    if (!data.ok) toast("failed: " + (data.error || "unknown"));
+  } catch (e) { toast("network: " + e.message); }
+}
+
+function render(s) {
+  last = s;
+  const r = s.radio || {};
+  const c = s.controller || {};
+  const sess = s.session || {};
+  const cur = r.current;
+
+  $("#title").textContent = cur ? cur.title : "Nothing playing";
+  $("#game").textContent = cur ? cur.game : "—";
+  $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
+  $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
+
+  const dur = r.duration || 0;
+  const pos = r.position || 0;
+  $("#fill").style.width = dur ? `${Math.min(100, (pos / dur) * 100)}%` : "0%";
+  $("#pos").textContent = fmt(pos);
+  $("#dur").textContent = dur ? fmt(dur) : "—";
+
+  if (!dragging) {
+    $("#volume").value = r.volume ?? 0;
+    $("#volLabel").textContent = r.volume ?? 0;
+  }
+
+  const dot = $("#connDot");
+  dot.className = "dot " + (c.connected ? "on" : "off");
+  $("#connText").textContent = c.connected ? "controller online" : "controller offline";
+  $("#battText").textContent = c.battery != null ? c.battery + "%" : "—";
+  $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
+
+  const idle = sess.warning_in ?? 0;
+  $("#idleChip").innerHTML = sess.phase === "warning"
+    ? `shutting down <b>${sess.shutdown_in ?? 0}s</b>`
+    : `idle <b>${fmt(idle)}</b>`;
+  $("#warnbar").classList.toggle("show", sess.phase === "warning");
+  if (sess.phase === "warning") $("#warnLeft").textContent = sess.shutdown_in ?? 0;
+
+  if (c.connected) {
+    $("#hex").textContent = c.raw || "—";
+    renderFields(c.fields || {});
+    $("#lastAction").textContent = c.last_action || "—";
+  }
+
+  const pressed = new Set(c.buttons || []);
+  const dirs = { up: "dpad:up", right: "dpad:right", down: "dpad:down", left: "dpad:left" };
+  pressed.forEach(b => pressed.add(dirs[b] || b));
+
+  document.querySelectorAll(".pad-key[data-key]").forEach(el => {
+    const key = el.dataset.key;
+    const on = key.startsWith("dpad:")
+      ? c.dpad === key.slice(5)
+      : pressed.has(key);
+    el.classList.toggle("on", !!on);
+  });
+
+  $("#l2v").textContent = c.l2 ?? 0;
+  $("#r2v").textContent = c.r2 ?? 0;
+  $("#l2bar").style.width = `${((c.l2 ?? 0) / 255) * 100}%`;
+  $("#r2bar").style.width = `${((c.r2 ?? 0) / 255) * 100}%`;
+
+  $("#statusLine").textContent =
+    `v0.1 · idle ${fmt(sess.idle_seconds || 0)} · ${cur ? cur.path : "no station"}`;
+
+  highlightStation(cur && cur.id);
+}
+
+function renderFields(fields) {
+  const el = $("#fields");
+  const wanted = ["seq", "counter", "gyro_x", "gyro_y", "gyro_z", "accel_x", "accel_y", "accel_z",
+                  "temperature", "status0", "status1", "status2", "crc", "sensor_time"];
+  el.innerHTML = wanted.filter(k => fields[k] !== undefined).map(k => {
+    let v = fields[k];
+    if (typeof v === "object") v = JSON.stringify(v);
+    if (k === "crc" || k === "sensor_time") v = "0x" + Number(v).toString(16);
+    return `<div class="field"><b>${k}</b><span>${v}</span></div>`;
+  }).join("");
+}
+
+function highlightStation(id) {
+  document.querySelectorAll("#stations li").forEach(li => {
+    li.classList.toggle("active", li.dataset.id === id);
+  });
+}
+
+function buildStations() {
+  const list = $("#stations");
+  const items = tracks.filter(t =>
+    !filterText || (t.title + " " + t.game).toLowerCase().includes(filterText));
+
+  list.innerHTML = items.map(t =>
+    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.game)}</span></li>`
+  ).join("");
+
+  list.querySelectorAll("li").forEach(li => {
+    li.onclick = () => send("play_track", { id: li.dataset.id });
+  });
+
+  if (last && last.radio && last.radio.current) highlightStation(last.radio.current.id);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+
+function buildPad() {
+  $("#padGrid").innerHTML = padButtons.map(([key, label]) => {
+    const dataKey = ["up","right","down","left"].includes(key) ? `dpad:${key}` : key;
+    return `<div class="pad-key" data-key="${dataKey}">${label}</div>`;
+  }).join("");
+}
+
+function buildBindings(bindings) {
+  const labels = {
+    triangle: "△ pause", circle: "○ play", square: "□ other game",
+    l1: "L1 previous", r1: "R1 next", create: "create previous", options: "options next",
+    touchpad: "touchpad mute", mute: "mute mute", l3: "L3 next", r3: "R3 previous"
+  };
+  $("#bindings").innerHTML = Object.entries(bindings || {}).map(([k, v]) =>
+    `<div class="pad-key" style="cursor:default">${escapeHtml(labels[k] || k)}<small>${escapeHtml(String(v))}</small></div>`
+  ).join("") + `
+    <div class="pad-key" style="cursor:default">↔ d-pad<small>hold = steer</small></div>
+    <div class="pad-key" style="cursor:default">PS<small>hold 2s = off</small></div>`;
+}
+
+// -- wiring -----------------------------------------------------------------
+
+document.querySelectorAll("[data-action]").forEach(btn => {
+  btn.onclick = () => send(btn.dataset.action);
+});
+
+$("#progress").onclick = (ev) => {
+  if (!last || !last.radio || !last.radio.duration) return;
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
+  send("seek_to", { position: Math.round(ratio * last.radio.duration) });
+};
+
+$("#volume").addEventListener("pointerdown", () => dragging = true);
+$("#volume").addEventListener("pointerup", () => {
+  dragging = false;
+  send("volume", { value: Number($("#volume").value) });
+});
+$("#volume").addEventListener("input", () => {
+  $("#volLabel").textContent = $("#volume").value;
+});
+$("#volume").addEventListener("change", () => {
+  dragging = false;
+  send("volume", { value: Number($("#volume").value) });
+});
+
+$("#filter").addEventListener("input", (e) => {
+  filterText = e.target.value.toLowerCase();
+  buildStations();
+});
+
+$("#reloadBtn").onclick = async () => {
+  const res = await fetch("/api/reload", { method: "POST" });
+  const data = await res.json();
+  toast(data.ok ? `reloaded ${data.reloaded.length} module(s)` : "reload failed");
+};
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { e.preventDefault(); send("pause"); }
+  if (e.code === "ArrowRight") send("seek", { delta: 15 });
+  if (e.code === "ArrowLeft") send("seek", { delta: -15 });
+  if (e.key === "n") send("next");
+  if (e.key === "p") send("previous");
+  if (e.key === "m") send("mute");
+});
+
+async function boot() {
+  buildPad();
+  try {
+    const lib = await fetch("/api/library").then(r => r.json());
+    tracks = lib.tracks || [];
+    buildStations();
+  } catch (e) { console.error(e); }
+
+  try {
+    const schema = await fetch("/api/schema").then(r => r.json());
+    buildBindings(schema.bindings);
+  } catch (e) { /* non-fatal */ }
+
+  const loop = async () => {
+    if (document.hidden) { setTimeout(loop, 2000); return; }
+    try {
+      const s = await fetch("/api/status").then(r => r.json());
+      render(s);
+    } catch (e) { /* offline */ }
+    setTimeout(loop, 1000);
+  };
+  loop();
+}
+
+boot();
+</script>
+</body>
+</html>
