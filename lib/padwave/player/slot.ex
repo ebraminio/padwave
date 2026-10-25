@@ -46,12 +46,19 @@ defmodule Padwave.Player.Slot do
         {:args, mpv_args(name, sock)}
       ])
 
+    os_pid =
+      case Port.info(port, :os_pid) do
+        {:os_pid, pid} -> pid
+        _ -> nil
+      end
+
     {:ok,
      %{
        name: name,
        owner: owner,
        sock: sock,
        port: port,
+       os_pid: os_pid,
        conn: nil,
        tries: 0,
        req: 0,
@@ -184,7 +191,18 @@ defmodule Padwave.Player.Slot do
 
   @impl true
   def terminate(_reason, state) do
-    if state.conn, do: :gen_tcp.close(state.conn)
+    # mpv ignores stdin (`--no-input-terminal`), so closing the port does not
+    # end the process. Every restart would otherwise leave an orphan holding a
+    # PipeWire stream on the controller's sink.
+    if state.conn do
+      send_json(state, %{"command" => ["quit"]})
+      :gen_tcp.close(state.conn)
+    end
+
+    if state.os_pid do
+      System.cmd("kill", ["-TERM", Integer.to_string(state.os_pid)], stderr_to_stdout: true)
+    end
+
     if state.port, do: Port.close(state.port)
     :ok
   rescue

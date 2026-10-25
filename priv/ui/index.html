@@ -163,6 +163,7 @@
       <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
       <span class="chip">battery <b id="battText">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
+      <span class="chip" id="audioChip"><i class="dot" id="audioDot"></i><b>audio</b></span>
       <span class="chip" id="idleChip">idle <b>—</b></span>
     </div>
   </header>
@@ -310,6 +311,12 @@ function render(s) {
   $("#connText").textContent = c.connected ? "controller online" : "controller offline";
   $("#battText").textContent = c.battery != null ? c.battery + "%" : "—";
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
+
+  const audio = s.audio || {};
+  $("#audioDot").className = "dot " + (audio.present ? (audio.state === "RUNNING" ? "on" : "warn") : "off");
+  $("#audioChip").title = audio.present
+    ? `${audio.sink} · ${audio.state} · ${(audio.streams || []).join(", ") || "no stream"}`
+    : "the DualSense sink is missing — is LinuxAudio4Dualsense5 running?";
 
   const idle = sess.warning_in ?? 0;
   $("#idleChip").innerHTML = sess.phase === "warning"

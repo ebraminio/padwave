@@ -11,6 +11,7 @@ defmodule Padwave.Application do
     children = [
       {Padwave.Bus, []},
       Padwave.Store,
+      Padwave.Audio,
       Padwave.Output.Lightbar,
       Padwave.Player,
       Padwave.Radio,

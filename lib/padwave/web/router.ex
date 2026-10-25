@@ -35,6 +35,7 @@ defmodule Padwave.Web.Router do
     json(conn, %{
       radio: Radio.status(),
       session: Session.status(),
+      audio: Padwave.Audio.status(),
       controller: controller(),
       bindings: Input.Mapper.bindings(),
       now: System.system_time(:second)
@@ -75,6 +76,27 @@ defmodule Padwave.Web.Router do
       player: Padwave.Player.state(),
       self: inspect(self())
     })
+  end
+
+  post "/api/debug/config" do
+    reply =
+      try do
+        key = conn.body_params["key"]
+        value = conn.body_params["value"]
+
+        if is_binary(key) do
+          atom = String.to_existing_atom(key)
+          current = Application.get_env(:padwave, atom)
+          Application.put_env(:padwave, atom, coerce(current, value))
+          %{ok: true, config: %{key => Application.get_env(:padwave, atom)}}
+        else
+          %{ok: false, error: "key required"}
+        end
+      rescue
+        error -> %{ok: false, error: Exception.message(error)}
+      end
+
+    json(conn, reply)
   end
 
   post "/api/debug/frame" do
@@ -156,6 +178,21 @@ defmodule Padwave.Web.Router do
   defp sanitize(value) when is_binary(value), do: Base.encode16(value, case: :lower)
   defp sanitize(value) when is_atom(value) and not is_boolean(value), do: Atom.to_string(value)
   defp sanitize(value), do: value
+
+  # Keeps the runtime config endpoint honest: numbers stay numbers, booleans
+  # stay booleans, everything else is a string.
+  defp coerce(_current, value) when is_integer(value) or is_float(value) or is_boolean(value),
+    do: value
+
+  defp coerce(current, value) when is_binary(value) do
+    cond do
+      is_integer(current) -> to_int(value, current)
+      is_boolean(current) -> value in ["true", "1", "yes"]
+      true -> value
+    end
+  end
+
+  defp coerce(_current, value), do: value
 
   defp to_int(value, _default) when is_integer(value), do: value
 

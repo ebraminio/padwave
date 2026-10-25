@@ -205,6 +205,61 @@ mix test
 captured kernel packet, battery/headset/axis derivations, the shuffle bag, and
 end-to-end button mapping through the simulator.
 
+## Why not speak the speaker protocol ourselves?
+
+The tempting move is to drop LinuxAudio4Dualsense5 and write report `0x36` from
+Elixir. Having read what it takes, that would be the wrong trade:
+
+* the audio is **Opus, 48 kHz stereo, 200-byte frames, every 10.667 ms** — a
+  jitter budget of a couple of milliseconds. The BEAM is many good things, but
+  it is not a real-time pacer; you would end up writing a C port to hit that
+  deadline, at which point you have rebuilt the thing you replaced;
+* the sink also has to get the **config mask `0xFE`** exactly right (bit 0 turns
+  on duplex/microphone capture and starves the speaker), mute the mic in the
+  state snapshot, and re-enable the audio path (`0x31`, `audio_control 0x30`)
+  after every reconnect;
+* it is **not a collision anyway**. That service writes `0x36` audio; padwave
+  reads `0x31` input and paints the lightbar through the kernel LED class. The
+  kernel already multiplexes those. Two writers only becomes a problem if both
+  write the *same* report type.
+
+So the boundary stays at "push PCM into a PipeWire sink". We keep the health of
+that boundary visible instead (`/api/status` → `audio`: sink present, state,
+and which padwave streams are on it), because a dead sink is the one failure
+that looks like silence rather than an error.
+
+## Why HTTP and not Erlang distribution?
+
+Distribution is genuinely nice and, for a BEAM-to-BEAM link, strictly more
+powerful: no schema, `GenServer.call({Padwave.Radio, node}, ...)` just works, and
+you can attach a remote shell to the live radio. But it is the wrong *product*
+interface:
+
+* the browser is not a BEAM node — HTTP is the only thing the web UI can use
+  anyway, so the API exists regardless;
+* distribution needs a shared cookie and resolvable node names (`-name`/`-sname`
+  and, on Debian, the hostname landing on `127.0.1.1`), and it fails in ways that
+  are opaque from a laptop;
+* the cookie is effectively a root-equivalent secret: a connected node can
+  `:rpc.call/4` anything. Fine between two of your own machines on a home LAN,
+  a poor default for something with a web UI on `0.0.0.0`.
+
+The split that makes sense: **HTTP is the API, distribution is the operator
+channel.** To use the latter, start the node with a name in the unit:
+
+```ini
+Environment=ELIXIR_ERL_OPTIONS=+fnu -name padwave@rpi5-secondary.local
+```
+
+then from the Mac (with the Pi's `~/.erlang.cookie` copied over):
+
+```bash
+iex --name me@my-mac.local --cookie ~/.erlang.cookie --remsh padwave@rpi5-secondary.local
+```
+
+That drops you into the running radio with full introspection — which is also
+the fastest way to iterate on the packet description while it is live.
+
 ## Next iteration
 
 The Pi owns the controller, so a laptop cannot be paired to it at the same time.
