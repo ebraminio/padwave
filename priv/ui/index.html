@@ -202,6 +202,7 @@
       <span class="chip">battery <b id="battText">—</b></span>
       <span class="chip">temp <b id="tempHead">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
+      <span class="chip" id="muteChip" style="display:none;border-color:rgba(251,191,36,.5);color:var(--warn)">🔇 muted</span>
       <span class="chip"><i class="dot" id="audioDot"></i><b>audio</b></span>
       <span class="chip" id="idleChip">idle <b>—</b></span>
     </div>
@@ -405,9 +406,12 @@ function render(s) {
 
   $("#dur").textContent = clock.duration ? fmt(clock.duration) : "—";
 
+  const muted = r.muted || (r.volume ?? 0) === 0;
+  $("#muteChip").style.display = muted ? "inline-flex" : "none";
+
   if (!dragging) {
     $("#volume").value = r.volume ?? 0;
-    $("#volLabel").textContent = r.volume ?? 0;
+    $("#volLabel").textContent = muted ? "muted" : (r.volume ?? 0);
   }
 
   $("#connDot").className = "dot " + (c.connected ? "on" : "off");

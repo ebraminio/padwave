@@ -56,6 +56,14 @@ defmodule Padwave.Output.Lightbar do
     {:noreply, light(%{state | mode: :playing, custom: nil})}
   end
 
+  def handle_info({:padwave, {:radio, {:volume, 0}}}, state) do
+    {:noreply, light(%{state | mode: :muted, custom: nil})}
+  end
+
+  def handle_info({:padwave, {:radio, {:volume, _level}}}, state) do
+    {:noreply, light(%{state | mode: :playing, custom: nil})}
+  end
+
   def handle_info({:padwave, {:player, :stopped}}, state) do
     {:noreply, light(%{state | mode: :paused, custom: nil})}
   end
@@ -99,11 +107,13 @@ defmodule Padwave.Output.Lightbar do
 
   defp color(:playing), do: {0, 140, 255}
   defp color(:paused), do: {255, 110, 0}
+  defp color(:muted), do: {120, 60, 255}
   defp color(:warning), do: {255, 0, 0}
   defp color(_), do: {0, 0, 0}
 
   defp brightness(:playing), do: 190
   defp brightness(:paused), do: 70
+  defp brightness(:muted), do: 55
   defp brightness(:warning), do: 255
   defp brightness(_), do: 0
 

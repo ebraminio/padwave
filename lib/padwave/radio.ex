@@ -479,11 +479,25 @@ defmodule Padwave.Radio do
   defp set_volume(state, value) when is_number(value) do
     value = value |> round() |> clamp(0, 100)
 
+    # Remember the last audible level whenever we hit zero, whichever way we
+    # got there (mute button, slider, or holding L2), so unmuting always comes
+    # back to something audible instead of the default.
+    state =
+      cond do
+        value == 0 and state.volume > 0 -> %{state | volume_before_mute: state.volume}
+        value > 0 and state.volume == 0 -> %{state | volume_before_mute: nil}
+        true -> state
+      end
+
+    state =
+      state
+      |> Map.put(:volume, value)
+      |> Map.put(:muted, value == 0)
+      |> apply_volume()
+      |> persist()
+
+    Bus.broadcast({:radio, {:volume, value}})
     state
-    |> Map.put(:volume, value)
-    |> Map.put(:muted, value == 0)
-    |> apply_volume()
-    |> persist()
   end
 
   # The volume the listener asked for is `state.volume`; what actually reaches
@@ -494,13 +508,10 @@ defmodule Padwave.Radio do
   end
 
   defp toggle_mute(%{muted: true} = state) do
-    restore = state.volume_before_mute || Config.get(:default_volume, 80)
-    set_volume(%{state | muted: false, volume_before_mute: nil}, restore)
+    set_volume(state, state.volume_before_mute || Config.get(:default_volume, 80))
   end
 
-  defp toggle_mute(state) do
-    set_volume(%{state | volume_before_mute: state.volume}, 0)
-  end
+  defp toggle_mute(state), do: set_volume(state, 0)
 
   defp suspend(%{suspended: true} = state, _reason), do: state
 
