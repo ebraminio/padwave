@@ -42,8 +42,46 @@ defmodule Padwave.Wire do
   @doc false
   defmacro __using__(_opts) do
     quote do
-      import Padwave.Wire, only: [packet: 3, packet: 4]
+      import Padwave.Wire, only: [packet: 3, packet: 4, field_list: 2]
       import Bitwise
+    end
+  end
+
+  @doc """
+  Declares a named field list that packets can `splice` in.
+
+  The list lives in its own small module so that it is compiled before the
+  packets that reference it (Elixir applies `@attr` writes after macro
+  expansion, so a same-module lookup would not see it).
+
+  The DualSense's USB and Bluetooth reports are the same payload behind
+  different framing, so the payload is written once, with a comment per field,
+  and referenced by each packet:
+
+      field_list :input_body do
+        u8 :lx                 # +0x00 left stick X
+        ...
+      end
+
+      packet :input, 0x31, size: 78 do
+        u8 :seq_tag            # 0x01
+        splice MySchema.Body, :input_body
+        u32 :crc
+      end
+
+      packet :input_usb, 0x01, size: 64 do
+        splice MySchema.Body, :input_body
+      end
+
+  The splice is resolved at compile time: the generated decoder is still one
+  binary match over the whole report.
+  """
+  defmacro field_list(name, do: block) do
+    data = fields(block, __CALLER__)
+
+    quote do
+      @doc false
+      def __wire_fields__(unquote(name)), do: unquote(Macro.escape(data))
     end
   end
 
@@ -133,6 +171,19 @@ defmodule Padwave.Wire do
 
   defp fields({:bits, _, [name, bits]}, _env) when is_atom(name) and is_list(bits) do
     [{:bits, name, bits}]
+  end
+
+  defp fields({:splice, _, [module_ast, name]}, env) when is_atom(name) do
+    module = Macro.expand(module_ast, env)
+    Code.ensure_compiled!(module)
+
+    if function_exported?(module, :__wire_fields__, 1) do
+      module.__wire_fields__(name)
+    else
+      raise ArgumentError,
+            "#{inspect(module)} has no field list #{inspect(name)}; declare one with " <>
+              "`field_list #{name} do ... end`"
+    end
   end
 
   defp fields(other, _env) do

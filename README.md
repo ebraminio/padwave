@@ -127,28 +127,30 @@ checksum are verified rather than guessed:
 ### Same description, two transports
 
 USB and Bluetooth carry the same 63-byte input payload and the same 47-byte
-output payload; only the framing differs. Each packet is written out as one
-linear list with a comment per field — `u8 :seq_tag` then the payload, or just
-the payload for USB — so a packet can be read top to bottom:
+output payload; only the framing differs. Each payload is described once, with
+a trailing comment per field, and referenced by both packets in the same file:
 
 ```elixir
-packet :input, 0x31, size: 78, doc: "Bluetooth" do
-  u8 :seq_tag          # 0x01 high nibble = sequence tag
-  u8 :lx               # +0x00 left stick X
+field_list :input_body do
+  u8 :lx                 # +0x00  left stick X, 0..255 (128 = centre)
   ...
+end
+
+packet :input, 0x31, size: 78, doc: "Bluetooth" do
+  u8 :seq_tag            # 0x01  high nibble = sequence tag
+  splice :input_body
   bytes :bt_reserved, 9
-  u32 :crc             # 0x4a seed 0xA1
+  u32 :crc               # 0x4a  seed 0xA1
 end
 
 packet :input_usb, 0x01, size: 64, doc: "USB" do
-  u8 :lx               # +0x00 left stick X
-  ...
+  splice :input_body
 end
 ```
 
-The payload is deliberately duplicated rather than factored out: the two copies
-read identically, and a test asserts that every shared field's USB offset is
-exactly its Bluetooth offset minus one, so they cannot drift apart.
+The splice is resolved at compile time, so the decoder is still one binary match
+over the whole report. `+0x00` in the comments is the offset inside the payload,
+which is why one description serves both transports.
 
 The device reads the bus from `HID_ID` (`0x03` USB, `0x05` Bluetooth), picks the
 matching spec for both the report size and the decoder, so nothing above the
@@ -169,7 +171,7 @@ table a `DEFINE_SIZE_STATIC (54)`, embeds other tables by value
 | | harfbuzz (C++) | padwave (Elixir) |
 |---|---|---|
 | Size checking | `DEFINE_SIZE_STATIC` | `size:` on the `packet`, a compile error if the fields don't add up |
-| Embedding | struct members | one linear description per packet, checked by a cross-transport offset test |
+| Embedding | struct members | `field_list` + `splice`, expanded at compile time |
 | Access | offsets, casts, `sanitize()` | one binary pattern match; a wrong length simply does not match |
 | Endianness | `HBUINT16`, converters | `::little-16` / `::little-signed-16` in the pattern |
 | Introspection | none at runtime | `spec/1` returns offsets and bit layouts as data |
