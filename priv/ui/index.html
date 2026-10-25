@@ -177,6 +177,22 @@
   .setting label { display: inline-flex; align-items: center; gap: 6px; }
   .setting button { padding: 8px 12px; font-size: 13px; }
   .setting .msg { color: var(--good); font-size: 12px; }
+  .led {
+    width: 30px; height: 30px; padding: 0; border-radius: 50%;
+    background: #0f1219; border: 1px solid var(--line); color: var(--muted); font-size: 11px;
+  }
+  .led.on { background: rgba(34, 211, 238, .2); border-color: var(--accent-2); color: var(--accent-2); }
+  input[type=color] {
+    width: 44px; height: 30px; padding: 2px; background: #0e1118;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  textarea {
+    width: 100%; min-height: 84px; background: #0b0e14; color: #b9c6dd;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.5; resize: vertical;
+  }
+  .lab-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .lab-row b { color: var(--text); font-weight: 600; }
 
   footer { margin-top: 20px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
   .toast {
@@ -309,6 +325,20 @@
         <button id="saveCfg">save</button>
         <span class="msg" id="cfgMsg"></span>
       </div>
+
+      <div class="setting">
+        <label><input type="checkbox" id="teOn"> trigger buzz</label>
+        <label>force <input type="range" id="teForce" min="0" max="255" step="1" style="width:86px"></label>
+        <b id="teForceV" style="color:var(--accent-2);font-family:var(--mono)">80</b>
+        <label>rate <input type="range" id="teFreq" min="1" max="100" step="1" style="width:76px"></label>
+        <b id="teFreqV" style="color:var(--accent-2);font-family:var(--mono)">10</b>
+        <button id="teTestL" title="buzz the left trigger">test L</button>
+        <button id="teTestR" title="buzz the right trigger">test R</button>
+      </div>
+      <p style="color:var(--muted);font-size:11.5px;margin:6px 0 0">
+        The trigger actuator — not the grip motors — buzzes while that trigger is changing the volume.
+        Lower force and rate make it subtler; the test buttons apply the current settings immediately.
+      </p>
       <details>
         <summary>about</summary>
         <p style="color:var(--muted);font-size:12.5px">
@@ -318,6 +348,55 @@
       </details>
     </section>
   </div>
+
+    <section class="card">
+      <div class="card-head"><h2>controller lab</h2><span class="chip" id="labMsg">raw 0x31</span></div>
+
+      <div class="lab-row">
+        <b>lightbar</b>
+        <input type="color" id="labColor" value="#00a0ff" title="override the lightbar colour">
+        <button id="labBarApply">apply</button>
+        <button id="labBarReset">reset</button>
+        <span style="font-size:11px">(reset returns to cyan / amber / purple / red states)</span>
+      </div>
+
+      <div class="lab-row">
+        <b>player LEDs</b>
+        <button class="led" data-led="1">1</button>
+        <button class="led" data-led="2">2</button>
+        <button class="led" data-led="3">3</button>
+        <button class="led" data-led="4">4</button>
+        <button class="led" data-led="5">5</button>
+        <button id="labLedsApply">apply</button>
+        <button id="labLedsReset">reset</button>
+      </div>
+
+      <div class="lab-row">
+        <b>trigger effect</b>
+        <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
+        <select id="labTrigMode">
+          <option value="0">0x00 off</option>
+          <option value="1">0x01 resistance</option>
+          <option value="2">0x02 pulse</option>
+          <option value="6" selected>0x06 auto / vibration</option>
+        </select>
+        <input type="number" id="labP0" value="10" min="0" max="255" title="param 0 (frequency for 0x06)">
+        <input type="number" id="labP1" value="80" min="0" max="255" title="param 1 (force for 0x06)">
+        <input type="number" id="labP2" value="15" min="0" max="255" title="param 2 (start for 0x06)">
+        <button id="labTrigFire">fire 800ms</button>
+      </div>
+
+      <details>
+        <summary>raw output fields · everything the report can carry</summary>
+        <p style="color:var(--muted);font-size:11.5px;margin:8px 0">
+          A map of field name to byte value (or array of bytes), framed and CRC-signed for you.
+          Field names and offsets come from the spec below — try <code style="font-family:var(--mono)">{ "valid_flag2": 2, "lightbar_setup": 1 }</code>
+          or <code style="font-family:var(--mono)">{ "valid_flag1": 4, "lightbar_red": 255, "led_brightness": 60 }</code>.
+        </p>
+        <textarea id="labRaw">{ "valid_flag1": 4, "lightbar_red": 0, "lightbar_green": 160, "lightbar_blue": 255 }</textarea>
+        <div class="lab-row"><button id="labRawSend">send report</button><span id="labRawMsg"></span></div>
+      </details>
+    </section>
 
   <footer>
     <span>padwave · built for a DualSense whose ✕ gave up</span>
@@ -454,6 +533,17 @@ function render(s) {
   $("#r2bar").style.width = `${((c.r2 ?? 0) / 255) * 100}%`;
 
   const cfg = s.config || {};
+
+  if (document.activeElement !== $("#teForce") && cfg.trigger_effect_force != null) {
+    $("#teForce").value = cfg.trigger_effect_force;
+    $("#teForceV").textContent = cfg.trigger_effect_force;
+  }
+  if (document.activeElement !== $("#teFreq") && cfg.trigger_effect_frequency != null) {
+    $("#teFreq").value = cfg.trigger_effect_frequency;
+    $("#teFreqV").textContent = cfg.trigger_effect_frequency;
+  }
+  $("#teOn").checked = cfg.trigger_effects !== false;
+
   if (document.activeElement !== $("#idleMin") && cfg.idle_timeout_ms)
     $("#idleMin").value = Math.round(cfg.idle_timeout_ms / 60000);
   if (document.activeElement !== $("#warnSec") && cfg.idle_warn_grace_ms)
@@ -648,6 +738,106 @@ $("#saveCfg").onclick = async () => {
   $("#cfgMsg").textContent = data.ok ? "saved" : ("failed: " + data.error);
   setTimeout(() => { $("#cfgMsg").textContent = ""; }, 2500);
 };
+
+let triggerCfgTimer = null;
+
+// -- controller lab ---------------------------------------------------------
+
+async function labSend(payload) {
+  try {
+    const res = await fetch("/api/output", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    $("#labMsg").textContent = data.ok ? data.note : ("failed: " + data.error);
+    if (payload.kind === "player_leds") $("#labRawMsg").textContent = "mask " + payload.mask;
+    return data;
+  } catch (e) {
+    $("#labMsg").textContent = "network: " + e.message;
+    return { ok: false };
+  }
+}
+
+let labLedMask = 0;
+
+document.querySelectorAll(".led").forEach(btn => {
+  btn.onclick = () => {
+    const bit = Number(btn.dataset.led) - 1;
+    labLedMask ^= (1 << bit);
+    btn.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
+  };
+});
+
+$("#labBarApply").onclick = () => {
+  const hex = $("#labColor").value;
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  labSend({ kind: "lightbar", rgb });
+};
+
+$("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
+$("#labLedsApply").onclick = () => labSend({ kind: "player_leds", mask: labLedMask });
+$("#labLedsReset").onclick = () => {
+  labLedMask = 0;
+  document.querySelectorAll(".led").forEach(b => b.classList.remove("on"));
+  labSend({ kind: "player_leds_reset" });
+};
+
+$("#labTrigFire").onclick = () => {
+  labSend({
+    kind: "trigger",
+    side: $("#labTrigSide").value,
+    mode: Number($("#labTrigMode").value),
+    params: [Number($("#labP0").value), Number($("#labP1").value), Number($("#labP2").value)],
+    ms: 800
+  });
+};
+
+$("#labRawSend").onclick = async () => {
+  try {
+    const fields = JSON.parse($("#labRaw").value);
+    const data = await labSend({ kind: "fields", fields });
+    $("#labRawMsg").textContent = data.ok ? "sent" : ("failed: " + data.error);
+  } catch (e) {
+    $("#labRawMsg").textContent = "invalid JSON";
+  }
+};
+
+function pushTriggerConfig(values) {
+  clearTimeout(triggerCfgTimer);
+  triggerCfgTimer = setTimeout(() => {
+    fetch("/api/config", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(values)
+    });
+  }, 250);
+}
+
+$("#teForce").addEventListener("input", (e) => {
+  $("#teForceV").textContent = e.target.value;
+  pushTriggerConfig({ trigger_effect_force: Number(e.target.value) });
+});
+
+$("#teFreq").addEventListener("input", (e) => {
+  $("#teFreqV").textContent = e.target.value;
+  pushTriggerConfig({ trigger_effect_frequency: Number(e.target.value) });
+});
+
+$("#teOn").addEventListener("change", (e) => {
+  pushTriggerConfig({ trigger_effects: e.target.checked });
+});
+
+for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
+  $(`#${id}`).onclick = () => {
+    fetch("/api/debug/trigger", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ side, ms: 700 })
+    });
+  };
+}
 
 $("#reloadBtn").onclick = async () => {
   const res = await fetch("/api/reload", { method: "POST" });

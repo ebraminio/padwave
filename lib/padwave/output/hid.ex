@@ -17,6 +17,8 @@ defmodule Padwave.Output.Hid do
   use GenServer
   require Logger
 
+  import Bitwise, only: [band: 2, bor: 2, bsl: 2]
+
   alias Padwave.{Bus, Config}
   alias Padwave.Output.Report
 
@@ -25,6 +27,15 @@ defmodule Padwave.Output.Hid do
   @doc "Sets the lightbar colour."
   def lightbar(red, green, blue),
     do: GenServer.cast(__MODULE__, {:lightbar, {red, green, blue}})
+
+  @doc "Sends a report built from a map of output-report field names."
+  def send_fields(fields), do: GenServer.cast(__MODULE__, {:fields, fields})
+
+  @doc "Sets the five white player LEDs from a 5-bit mask."
+  def player_leds(mask), do: GenServer.cast(__MODULE__, {:player_leds, mask})
+
+  @doc "Puts the player LEDs back to whatever the kernel has set."
+  def reset_player_leds, do: GenServer.cast(__MODULE__, :reset_player_leds)
 
   @doc "Sets one trigger's effect (`0x00` off, `0x06` vibration, …)."
   def trigger(side, mode, params \\ []),
@@ -47,6 +58,22 @@ defmodule Padwave.Output.Hid do
 
   def handle_cast({:trigger, side, mode, params}, state) do
     write(state, Report.trigger(side, mode, params, seq: state.seq))
+  end
+
+  def handle_cast({:player_leds, mask}, state) do
+    write(state, Report.player_leds(mask, seq: state.seq))
+  end
+
+  def handle_cast(:reset_player_leds, state) do
+    write(state, Report.player_leds(kernel_player_led_mask(), seq: state.seq))
+  end
+
+  def handle_cast({:fields, fields}, state) do
+    write(state, Report.build(atomize(fields), :bluetooth, seq: state.seq))
+  rescue
+    error ->
+      Logger.warning("[hid] cannot build that report: #{Exception.message(error)}")
+      {:noreply, state}
   end
 
   @doc "How many reports have been written, for the debug endpoint."
@@ -80,6 +107,41 @@ defmodule Padwave.Output.Hid do
         {:noreply, state}
     end
   end
+
+  # Reads the kernel's current player-LED state so "reset" can restore it:
+  # each LED's brightness is 0 or 1 and maps to one bit of the output mask.
+  defp kernel_player_led_mask do
+    "/sys/class/leds/*:white:player-*"
+    |> Path.wildcard()
+    |> Enum.filter(fn dir ->
+      case File.read_link(dir) do
+        {:ok, target} -> String.contains?(target, "054C:0CE6")
+        _ -> false
+      end
+    end)
+    |> Enum.reduce(0, fn dir, mask ->
+      index =
+        dir |> Path.basename() |> String.split("player-") |> List.last() |> String.to_integer()
+
+      lit? =
+        case File.read(Path.join(dir, "brightness")) do
+          {:ok, value} -> String.trim(value) not in ["", "0"]
+          _ -> false
+        end
+
+      if lit?, do: bor(mask, bsl(1, index - 1)), else: mask
+    end)
+  end
+
+  defp atomize(fields) do
+    Map.new(fields, fn
+      {key, value} when is_binary(key) -> {String.to_existing_atom(key), normalize(value)}
+      {key, value} -> {key, normalize(value)}
+    end)
+  end
+
+  defp normalize(value) when is_list(value), do: :erlang.list_to_binary(value)
+  defp normalize(value), do: value
 
   defp open(%{fd: nil} = state) do
     case Padwave.Input.Device.node() do

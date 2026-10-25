@@ -4,8 +4,9 @@ defmodule Padwave.ConfigTest do
   alias Padwave.Config
 
   setup do
-    before = Config.get(:idle_timeout_ms)
-    on_exit(fn -> Config.update(%{"idle_timeout_ms" => to_string(before)}) end)
+    # These tests write real settings, so put everything back afterwards.
+    before = Config.public()
+    on_exit(fn -> Config.update(before) end)
     :ok
   end
 
@@ -22,6 +23,22 @@ defmodule Padwave.ConfigTest do
 
   test "rejects a value it cannot coerce" do
     assert {:error, _message} = Config.update(%{"idle_timeout_ms" => "soon"})
+  end
+
+  test "booleans arrive as strings from forms and JSON as booleans" do
+    assert {:ok, config} = Config.update(%{"trigger_effects" => "false"})
+    assert config["trigger_effects"] == false
+
+    assert {:ok, config} = Config.update(%{"trigger_effects" => true})
+    assert config["trigger_effects"] == true
+  end
+
+  test "out-of-range numbers are clamped rather than rejected" do
+    assert {:ok, config} = Config.update(%{"trigger_effect_force" => "9999"})
+    assert config["trigger_effect_force"] == 255
+
+    assert {:ok, config} = Config.update(%{"trigger_effect_force" => 45})
+    assert config["trigger_effect_force"] == 45
   end
 
   test "the published config only exposes whitelisted keys" do

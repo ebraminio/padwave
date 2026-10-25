@@ -121,6 +121,24 @@ defmodule Padwave.Web.Router do
     json(conn, %{ok: true, patch: patch})
   end
 
+  # The playground: lightbar, player LEDs, trigger effects, and a raw field map.
+  post "/api/output" do
+    params = Map.merge(conn.params, conn.body_params)
+
+    case Padwave.Output.Lab.apply(params) do
+      {:ok, note} -> json(conn, %{ok: true, note: note})
+      {:error, reason} -> json(conn, %{ok: false, error: to_string(reason)})
+    end
+  end
+
+  post "/api/debug/trigger" do
+    params = Map.merge(conn.params, conn.body_params)
+    side = if params["side"] == "left", do: :left, else: :right
+    ms = to_int(params["ms"], 500)
+    Padwave.Output.Triggers.test(side, ms)
+    json(conn, %{ok: true, side: side, ms: ms})
+  end
+
   get "/api/debug" do
     radio = :sys.get_state(Padwave.Radio)
 

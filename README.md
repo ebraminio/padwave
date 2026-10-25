@@ -199,6 +199,14 @@ API:
 | `POST /api/command` | `{"action": "pause"}` etc. |
 | `POST /api/reload` | hot-swap changed modules |
 | `POST /api/debug/frame` | inject a synthetic press, e.g. `{"buttons":["triangle"]}` |
+| `POST /api/output` | the controller lab: lightbar override + reset, player-LED mask, trigger effects, or a raw field map |
+
+The **controller lab** panel uses `/api/output` to try the output report's fields
+by hand: a lightbar colour override (and reset back to the state colours), the
+five white player LEDs (and a reset that restores whatever the kernel had set,
+read back from sysfs), a trigger-effect playground (side, mode, three
+parameters, fire), and a raw editor that sends any map of field names to bytes —
+framed, sequenced and CRC-signed like every other report.
 
 The debug endpoint is how the button map is tested without a human: it builds a
 real 0x31 report, pushes it through the normal decode path, and suppresses the

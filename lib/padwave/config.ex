@@ -8,15 +8,19 @@ defmodule Padwave.Config do
   """
 
   @runtime_keys %{
-    "idle_timeout_ms" => :int,
-    "idle_warn_grace_ms" => :int,
-    "idle_fade_ms" => :int,
-    "idle_fade_floor" => :int,
-    "crossfade_ms" => :int,
-    "trigger_deadzone" => :int,
-    "trigger_repeat_ms" => :int,
-    "analog_wake_delta" => :int,
-    "analog_wake_cap" => :int
+    "idle_timeout_ms" => {:int, 5_000, 86_400_000},
+    "idle_warn_grace_ms" => {:int, 1_000, 600_000},
+    "idle_fade_ms" => {:int, 1_000, 600_000},
+    "idle_fade_floor" => {:int, 0, 100},
+    "crossfade_ms" => {:int, 0, 10_000},
+    "trigger_deadzone" => {:int, 0, 255},
+    "trigger_repeat_ms" => {:int, 20, 2_000},
+    "analog_wake_delta" => {:int, 0, 255},
+    "analog_wake_cap" => {:int, 0, 100},
+    "trigger_effects" => :bool,
+    "trigger_effect_frequency" => {:int, 1, 100},
+    "trigger_effect_force" => {:int, 0, 255},
+    "trigger_effect_start" => {:int, 0, 255}
   }
 
   @overrides_key {__MODULE__, :overrides}
@@ -99,17 +103,30 @@ defmodule Padwave.Config do
     end)
   end
 
-  defp coerce(:int, value) when is_integer(value), do: {:ok, value}
-  defp coerce(:int, value) when is_float(value), do: {:ok, round(value)}
+  defp coerce({:int, min, max}, value) do
+    with {:ok, number} <- to_integer(value) do
+      {:ok, number |> max(min) |> min(max)}
+    end
+  end
 
-  defp coerce(:int, value) when is_binary(value) do
+  defp coerce(:bool, value) when is_boolean(value), do: {:ok, value}
+
+  defp coerce(:bool, value) when value in [1, "1", "true", "yes", "on"], do: {:ok, true}
+  defp coerce(:bool, value) when value in [0, "0", "false", "no", "off"], do: {:ok, false}
+
+  defp coerce(_type, _value), do: :error
+
+  defp to_integer(value) when is_integer(value), do: {:ok, value}
+  defp to_integer(value) when is_float(value), do: {:ok, round(value)}
+
+  defp to_integer(value) when is_binary(value) do
     case Integer.parse(value) do
       {number, ""} -> {:ok, number}
       _ -> :error
     end
   end
 
-  defp coerce(_type, _value), do: :error
+  defp to_integer(_value), do: :error
 
   defp apply_overrides(overrides, opts) do
     Enum.each(overrides, fn {key, value} ->

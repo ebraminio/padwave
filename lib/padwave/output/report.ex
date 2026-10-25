@@ -40,22 +40,15 @@ defmodule Padwave.Output.Report do
       lightbar_blue: blue
     }
 
-    fields = Map.merge(fields, Keyword.get(opts, :extra, %{}))
     bus = Keyword.get(opts, :bus, :bluetooth)
-    build(header(fields, Keyword.get(opts, :seq, 0), bus), bus)
+    build(Map.merge(fields, Keyword.get(opts, :extra, %{})), bus, seq: Keyword.get(opts, :seq, 0))
   end
 
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
   def player_leds(mask, opts \\ []) when is_list(opts) do
-    bus = Keyword.get(opts, :bus, :bluetooth)
-
-    build(
-      header(
-        %{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
-        Keyword.get(opts, :seq, 0),
-        bus
-      ),
-      bus
+    build(%{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
+      Keyword.get(opts, :bus, :bluetooth),
+      seq: Keyword.get(opts, :seq, 0)
     )
   end
 
@@ -90,7 +83,7 @@ defmodule Padwave.Output.Report do
           }
       end
 
-    build(header(fields, seq, bus), bus)
+    build(fields, bus, seq: seq)
   end
 
   @doc """
@@ -100,8 +93,15 @@ defmodule Padwave.Output.Report do
   USB reports are just the id plus the shared payload (no CRC — the kernel only
   signs the Bluetooth transport).
   """
-  def build(fields, bus \\ :bluetooth) when is_map(fields) do
+  def build(fields, bus \\ :bluetooth, opts \\ []) when is_map(fields) do
     spec = DualSenseOutput.spec(if bus == :usb, do: :output_usb, else: :output)
+
+    fields =
+      if bus == :usb do
+        fields
+      else
+        Map.merge(header_defaults(Keyword.get(opts, :seq, 0)), fields)
+      end
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
 
     zeroed =
@@ -125,11 +125,7 @@ defmodule Padwave.Output.Report do
     end
   end
 
-  defp header(fields, seq, :bluetooth) do
-    Map.merge(%{seq_tag: band(seq, 0x0F) <<< 4, tag: @tag}, fields)
-  end
-
-  defp header(fields, _seq, :usb), do: fields
+  defp header_defaults(seq), do: %{seq_tag: band(seq, 0x0F) <<< 4, tag: @tag}
 
   @doc "CRC of an output report body (everything before the four CRC bytes)."
   def crc(data) when is_binary(data) do

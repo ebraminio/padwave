@@ -72,9 +72,9 @@ config :padwave,
   # Buzz the trigger that is currently changing the volume (mode 0x06,
   # automatic/vibration): [frequency, force, start].
   trigger_effects: true,
-  trigger_effect_frequency: 25,
-  trigger_effect_force: 200,
-  trigger_effect_start: 5,
+  trigger_effect_frequency: 10,
+  trigger_effect_force: 80,
+  trigger_effect_start: 15,
 
   # Kill mpv processes left behind by a BEAM that died abruptly.
   sweep_stale_players: true,

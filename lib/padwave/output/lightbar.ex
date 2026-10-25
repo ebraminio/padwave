@@ -23,6 +23,9 @@ defmodule Padwave.Output.Lightbar do
   @doc "Overrides the colour until the next state change."
   def set_rgb(r, g, b), do: GenServer.cast(__MODULE__, {:rgb, {r, g, b}})
 
+  @doc "Drops the override and repaints the state colour."
+  def clear, do: GenServer.cast(__MODULE__, :clear)
+
   @impl true
   def init(_opts) do
     Bus.subscribe()
@@ -31,6 +34,7 @@ defmodule Padwave.Output.Lightbar do
 
   @impl true
   def handle_cast({:rgb, rgb}, state), do: {:noreply, paint(%{state | custom: rgb})}
+  def handle_cast(:clear, state), do: {:noreply, paint(%{state | custom: nil})}
 
   @impl true
   def handle_info({:padwave, {:player, {:playing, _path}}}, state), do: {:noreply, set(state, :playing)}

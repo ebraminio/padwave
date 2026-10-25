@@ -27,6 +27,11 @@ defmodule Padwave.Output.Triggers do
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
+  @doc "Buzzes one trigger for `ms`, for tuning the feel from the UI."
+  def test(side, ms \\ 500, mode \\ @vibration, params \\ nil) when side in [:left, :right] do
+    GenServer.cast(__MODULE__, {:test, side, ms, mode, params})
+  end
+
   @impl true
   def init(_opts) do
     Bus.subscribe()
@@ -47,6 +52,17 @@ defmodule Padwave.Output.Triggers do
     {:noreply, Map.put(state, side, false)}
   end
 
+  def handle_cast({:test, side, ms, mode, params}, state) do
+    Hid.trigger(side, mode, params || default_params())
+    Process.send_after(self(), {:test_off, side}, ms |> max(50) |> min(10_000))
+    {:noreply, state}
+  end
+
+  def handle_info({:test_off, side}, state) do
+    vibrate(side, :off)
+    {:noreply, state}
+  end
+
   def handle_info({:padwave, {:device, :down, _info}}, state) do
     # The controller is gone; nothing to switch off, but forget the state so a
     # reconnect starts clean.
@@ -55,12 +71,14 @@ defmodule Padwave.Output.Triggers do
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  defp vibrate(side, :on) do
-    Hid.trigger(side, @vibration, [
-      Config.get(:trigger_effect_frequency, 25),
-      Config.get(:trigger_effect_force, 200),
-      Config.get(:trigger_effect_start, 5)
-    ])
+  defp vibrate(side, :on), do: Hid.trigger(side, @vibration, default_params())
+
+  defp default_params do
+    [
+      Config.get(:trigger_effect_frequency, 10),
+      Config.get(:trigger_effect_force, 80),
+      Config.get(:trigger_effect_start, 15)
+    ]
   end
 
   defp vibrate(side, :off), do: Hid.trigger(side, @off, [0])
