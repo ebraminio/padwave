@@ -291,6 +291,7 @@ let dragging = false;
 let tracks = [];
 let filterText = "";
 let lastSensorsAt = 0;
+let lastTrackId = null;
 
 // The server sends 5 frames a second; the playhead is extrapolated locally so
 // the bar moves at 60 fps instead of stepping.
@@ -337,6 +338,14 @@ function render(s) {
   $("#game").textContent = cur ? cur.game : "—";
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
   $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
+
+  // A new station resets the client clock; otherwise keep the last known
+  // duration so a missing field never snaps the bar back to zero.
+  const trackId = cur ? cur.id : null;
+  if (trackId !== lastTrackId) {
+    lastTrackId = trackId;
+    clock.duration = 0;
+  }
 
   clock.pos = r.position || 0;
   clock.at = performance.now();
