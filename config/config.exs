@@ -31,15 +31,20 @@ config :padwave,
   idle_enabled: true,
   idle_timeout_ms: 15 * 60 * 1000,
   idle_warn_grace_ms: 60 * 1000,
-  # The idle warning is a gentle bump, never a jump to full volume.
-  idle_warn_bump: 12,
-  idle_warn_max: 70,
+  # Sleep timer: nothing for most of the grace period, then a linear fade to
+  # `idle_fade_floor` percent over the last `idle_fade_ms`. Borrowed from how
+  # AntennaPod ends a podcast when its sleep timer expires.
+  idle_fade_ms: 10_000,
+  idle_fade_floor: 10,
   # Dirty analogue sticks must not keep the radio awake. Buttons, d-pad and
   # the analogue triggers always count as activity. Set to a non-zero delta to
   # also treat stick movement as activity (not recommended with worn sticks).
   analog_wake_delta: 0,
 
   # --- input ---------------------------------------------------------------
+  # Shaking the controller cancels the sleep timer (AntennaPod uses the same
+  # 2.25 g threshold for its shake-to-reset).
+  shake_g_force: 2.25,
   trigger_deadzone: 30,
   trigger_repeat_ms: 110,
   dpad_hold_delay_ms: 420,

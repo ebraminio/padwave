@@ -79,8 +79,9 @@ defmodule Padwave.Radio do
        volume: volume,
        muted: false,
        volume_before_mute: nil,
-       volume_before_warning: nil,
        idle_warning: false,
+       warn_at: nil,
+       warn_factor: 1.0,
        playing: false,
        position: persisted["position"] || 0.0,
        duration: nil,
@@ -128,42 +129,29 @@ defmodule Padwave.Radio do
 
   def handle_cast({:set_volume, value}, state), do: {:noreply, set_volume(state, value)}
 
+  # Sleep timer, borrowed from AntennaPod: nothing happens for most of the
+  # grace period, then the volume fades linearly to a floor over the last few
+  # seconds and playback stops. It fades *down*, never up — the point is to
+  # not wake anyone, and a sudden volume increase is the opposite of that.
   def handle_cast(:warn_idle, state) do
     if state.idle_warning do
       {:noreply, state}
     else
-      Logger.info("[radio] idle warning — raising volume")
+      Logger.info("[radio] sleep timer armed — volume will fade out at the end")
       Bus.broadcast({:session, :warning})
-
-      # A nudge, not a blast: enough to be noticed, capped so a late-night
-      # warning cannot wake the house.
-      target = min(state.volume + Config.get(:idle_warn_bump, 12), Config.get(:idle_warn_max, 70))
-
-      state =
-        state
-        |> Map.put(:volume_before_warning, state.volume)
-        |> Map.put(:idle_warning, true)
-        |> set_volume(target)
-
-      {:noreply, state}
+      Process.send_after(self(), :warn_tick, 250)
+      {:noreply, %{state | idle_warning: true, warn_at: now(), warn_factor: 1.0}}
     end
   end
 
   def handle_cast(:unwarn_idle, state) do
-    state =
-      if state.idle_warning do
-        Bus.broadcast({:session, :active})
-        restore = state.volume_before_warning || Config.get(:default_volume, 80)
-
-        state
-        |> Map.put(:idle_warning, false)
-        |> Map.put(:volume_before_warning, nil)
-        |> set_volume(restore)
-      else
-        state
-      end
-
-    {:noreply, state}
+    if state.idle_warning do
+      Logger.info("[radio] sleep timer cancelled — volume restored")
+      Bus.broadcast({:session, :active})
+      {:noreply, apply_volume(%{state | idle_warning: false, warn_at: nil, warn_factor: 1.0})}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_cast({:suspend, reason}, state), do: {:noreply, suspend(state, reason)}
@@ -219,6 +207,23 @@ defmodule Padwave.Radio do
 
   # Save the playhead every so often while playing; a clean shutdown also
   # checkpoints in terminate/2, so a crash costs at most one interval.
+  def handle_info(:warn_tick, state) do
+    if state.idle_warning and state.warn_at do
+      grace = Config.get(:idle_warn_grace_ms, 60_000)
+      fade = max(Config.get(:idle_fade_ms, 10_000), 1)
+      floor = Config.get(:idle_fade_floor, 10) / 100.0
+      remaining = grace - (now() - state.warn_at)
+
+      factor = if remaining <= fade, do: max(remaining / fade, floor), else: 1.0
+
+      state = apply_volume(%{state | warn_factor: factor})
+      if remaining > 0, do: Process.send_after(self(), :warn_tick, 250)
+      {:noreply, state}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info(:checkpoint, state) do
     Process.send_after(self(), :checkpoint, @checkpoint_ms)
 
@@ -329,7 +334,7 @@ defmodule Padwave.Radio do
     fade = Keyword.get(opts, :fade, Config.get(:crossfade_ms, 1500))
 
     :ok = Player.play(track.path, start: start, fade: fade)
-    Player.set_volume(state.volume)
+    apply_volume(state)
 
     state =
       state
@@ -441,12 +446,19 @@ defmodule Padwave.Radio do
 
   defp set_volume(state, value) when is_number(value) do
     value = value |> round() |> clamp(0, 100)
-    if value != state.volume, do: Player.set_volume(value)
 
     state
     |> Map.put(:volume, value)
     |> Map.put(:muted, value == 0)
+    |> apply_volume()
     |> persist()
+  end
+
+  # The volume the listener asked for is `state.volume`; what actually reaches
+  # the player is that times the sleep-timer fade.
+  defp apply_volume(state) do
+    Player.set_volume(round(state.volume * state.warn_factor))
+    state
   end
 
   defp toggle_mute(%{muted: true} = state) do
@@ -525,6 +537,7 @@ defmodule Padwave.Radio do
       suspended: state.suspended,
       resume_pending: state.resume_pending,
       idle_warning: state.idle_warning,
+      fade_percent: round(state.warn_factor * 100),
       history: state.history
     }
   end
@@ -541,4 +554,6 @@ defmodule Padwave.Radio do
   defp to_number(_value, default), do: default
 
   defp clamp(value, min, max), do: value |> max(min) |> min(max)
+
+  defp now, do: System.monotonic_time(:millisecond)
 end

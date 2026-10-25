@@ -69,6 +69,7 @@ defmodule Padwave.Input.Mapper do
        last_r2: now,
        last_action: nil,
        last_action_at: nil,
+       last_shake: now,
        sim_depth: 0
      }}
   end
@@ -133,6 +134,7 @@ defmodule Padwave.Input.Mapper do
         state
       end
 
+    state = detect_shake(now, frame, state)
     state = emit_new_buttons(state.prev_buttons, frame, state)
     state = handle_dpad(state.prev_dpad, frame, state)
     state = handle_analog(now, frame, state)
@@ -145,6 +147,24 @@ defmodule Padwave.Input.Mapper do
          prev_buttons: frame.buttons,
          prev_dpad: frame.dpad
      }}
+  end
+
+  # -- shake -----------------------------------------------------------------
+
+  # AntennaPod resets its sleep timer when the phone is shaken harder than
+  # 2.25 g. Same rule here, using the controller's accelerometer: the timer is
+  # reset (any activity resets it) and the lightbar/UI acknowledge it.
+  defp detect_shake(now, frame, state) do
+    threshold = Config.get(:shake_g_force, 2.25)
+
+    if frame.g_force >= threshold and now - state.last_shake > 1_500 do
+      Logger.debug("[input] shake detected (#{frame.g_force} g)")
+      Bus.broadcast({:input, :shake})
+      state = maybe_activity(now, state)
+      %{state | last_shake: now, last_action: :shake, last_action_at: now}
+    else
+      state
+    end
   end
 
   # -- buttons ---------------------------------------------------------------

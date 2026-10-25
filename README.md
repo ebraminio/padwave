@@ -36,13 +36,16 @@ the one thing they are good for — being ignored.
 
 ### Idle behaviour
 
-* 15 minutes with no real input → the volume is nudged up (`+12`, capped at 70)
-  as a warning, the lightbar pulses red, and the web UI counts down. It is a
-  nudge rather than a jump to full volume, so it stays late-night friendly.
-* 1 more minute → music fades out, the exact playhead is saved, and the
-  controller is disconnected (which puts it to sleep).
+* 15 minutes with no real input → the sleep timer arms. Nothing gets louder:
+  the lightbar pulses red and the web UI counts down.
+* In the **last 10 seconds** the volume fades linearly down to 10 % — borrowed
+  from AntennaPod, whose sleep timer does exactly this (`onSleepTimerUpdated`
+  maps the remaining millis to `max(0.1, remaining / 10 s)`), then pauses.
+* At zero → music fades out, the exact playhead is saved, and the controller is
+  disconnected (which puts it to sleep).
 * Any button, trigger or d-pad press during the warning cancels the shutdown and
-  restores the previous volume.
+  restores the volume — and so does **shaking the controller** harder than
+  2.25 g, the same threshold AntennaPod's `ShakeListener` uses.
 * Controller switched back on (PS button) → the same station resumes at the same
   second.
 
@@ -102,6 +105,11 @@ Each description compiles into
 
 Declaring the description at the wrong size is a compile error, and `skip n`
 keeps the offsets honest about the bytes we have not decoded.
+
+Every field carries a trailing comment with its offset and meaning, and the
+same file is served at `GET /api/schema/source` so the UI can show the protocol
+documentation next to the live values — the description is not a separate
+document that can drift.
 
 The output side (`lib/padwave/schemas/dualsense_output.ex`,
 `lib/padwave/output/report.ex`) uses the same mechanism to build lightbar and

@@ -37,6 +37,8 @@ defmodule Padwave.Input.Frame do
     :mic,
     :mute,
     :temperature,
+    :g_force,
+    :touches,
     :raw,
     :fields
   ]
@@ -69,6 +71,8 @@ defmodule Padwave.Input.Frame do
       mic: (fields.status1 &&& 2) == 2,
       mute: fields.buttons2.mute,
       temperature: fields.temperature,
+      g_force: g_force(fields),
+      touches: [touch(fields.touch1), touch(fields.touch2)],
       raw: bin,
       fields: fields
     }
@@ -123,6 +127,37 @@ defmodule Padwave.Input.Frame do
       _ -> :unknown
     end
   end
+
+  @doc """
+  Total acceleration in g, gravity included — the same quantity AntennaPod's
+  shake listener compares against 2.25 g. The DualSense reports roughly 8192
+  counts per g.
+  """
+  def g_force(fields) do
+    magnitude =
+      :math.sqrt(
+        fields.accel_x * fields.accel_x +
+          fields.accel_y * fields.accel_y +
+          fields.accel_z * fields.accel_z
+      )
+
+    Float.round(magnitude / 8192, 3)
+  end
+
+  @doc """
+  A touch point is four bytes: contact/id, x low, four bits of x high and four
+  bits of y low, then y high. Bit 7 of the contact byte means "not touching".
+  """
+  def touch(<<contact, x_lo, packed, y_hi>>) do
+    %{
+      active: (contact &&& 0x80) == 0,
+      id: contact &&& 0x7F,
+      x: (packed &&& 0x0F) <<< 8 ||| x_lo,
+      y: y_hi <<< 4 ||| packed >>> 4
+    }
+  end
+
+  def touch(_other), do: %{active: false, id: 0, x: 0, y: 0}
 
   defp pressed_buttons(fields) do
     [

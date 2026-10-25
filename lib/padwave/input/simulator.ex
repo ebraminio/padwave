@@ -120,10 +120,19 @@ defmodule Padwave.Input.Simulator do
         raw
 
       _ ->
-        <<0x31, 0xD1>> <>
-          <<128, 128, 128, 128, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0>> <>
-          :binary.copy(<<0>>, 60)
+        # A synthetic but valid 0x31 report, used when no controller is
+        # attached (tests, or the debug endpoint on a headless box):
+        # neutral sticks, d-pad centred, ~1 g on Y, 55 % battery, headset in.
+        <<0x31, 0xD1, 128, 128, 128, 128, 0, 0, 1, 8, 0, 0, 0>>
+        |> pad_to(78)
+        |> put_byte(26, 0x20)
+        |> put_byte(54, 0x05)
+        |> put_byte(55, 0x01)
     end
+  end
+
+  defp pad_to(binary, size) do
+    binary <> :binary.copy(<<0>>, size - byte_size(binary))
   end
 
   defp release(frame) do

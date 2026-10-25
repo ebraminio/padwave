@@ -10,8 +10,8 @@ defmodule Padwave.Config do
   @runtime_keys %{
     "idle_timeout_ms" => :int,
     "idle_warn_grace_ms" => :int,
-    "idle_warn_bump" => :int,
-    "idle_warn_max" => :int,
+    "idle_fade_ms" => :int,
+    "idle_fade_floor" => :int,
     "crossfade_ms" => :int,
     "trigger_deadzone" => :int,
     "trigger_repeat_ms" => :int,
@@ -50,8 +50,11 @@ defmodule Padwave.Config do
       case File.read(state_file()) do
         {:ok, body} ->
           case Jason.decode(body) do
-            {:ok, %{"config" => config}} when is_map(config) -> config
-            _ -> %{}
+            {:ok, %{"config" => config}} when is_map(config) ->
+              Map.take(config, Map.keys(@runtime_keys))
+
+            _ ->
+              %{}
           end
 
         _ ->

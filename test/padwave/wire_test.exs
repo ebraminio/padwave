@@ -75,6 +75,23 @@ defmodule Padwave.WireTest do
     assert offsets.crc == 74
   end
 
+  test "g-force reads about 1 g at rest and touch points decode", %{raw: raw} do
+    {:ok, frame} = Frame.from_report(raw)
+
+    assert frame.g_force > 0.5 and frame.g_force < 1.5
+    assert length(frame.touches) == 2
+
+    # in this capture no finger is on the pad: bit 7 of the contact byte is set
+    assert Enum.all?(frame.touches, &(&1.active == false))
+  end
+
+  test "a touch point unpacks its nibbles the way the kernel does" do
+    # contact 0x05 = finger 5 down; x_lo 0x34; 0x21 packs x_hi=1 (low nibble)
+    # and y_lo=2 (high nibble); y_hi 0x06. Same packing as the kernel's
+    # `u8 x_hi:4, y_lo:4` bitfield.
+    assert %{active: true, id: 5, x: 0x134, y: 0x62} = Frame.touch(<<0x05, 0x34, 0x21, 0x06>>)
+  end
+
   test "frames expose named buttons, battery and jack state", %{raw: raw} do
     {:ok, frame} = Frame.from_report(raw)
 
