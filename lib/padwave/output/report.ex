@@ -24,39 +24,48 @@ defmodule Padwave.Output.Report do
   @valid_flag1_lightbar 0x04
   @valid_flag1_player_leds 0x10
 
-  @doc "A lightbar update. `seq` is the 4-bit report counter (0..15)."
-  def lightbar(red, green, blue, seq \\ 0, extra \\ %{}) do
-    build(
-      Map.merge(
-        %{
-          seq_tag: band(seq, 0x0F) <<< 4,
-          tag: @tag,
-          valid_flag1: @valid_flag1_lightbar,
-          lightbar_red: red,
-          lightbar_green: green,
-          lightbar_blue: blue
-        },
-        extra
-      )
-    )
+  @doc """
+  A lightbar update.
+
+  Options: `:seq` (Bluetooth report counter 0..15), `:bus` (`:bluetooth` or
+  `:usb`), `:extra` (further fields, e.g. player LEDs).
+  """
+  def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
+    fields = %{
+      valid_flag1: @valid_flag1_lightbar,
+      lightbar_red: red,
+      lightbar_green: green,
+      lightbar_blue: blue
+    }
+
+    fields = Map.merge(fields, Keyword.get(opts, :extra, %{}))
+    bus = Keyword.get(opts, :bus, :bluetooth)
+    build(header(fields, Keyword.get(opts, :seq, 0), bus), bus)
   end
 
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
-  def player_leds(mask, seq \\ 0) do
-    build(%{
-      seq_tag: band(seq, 0x0F) <<< 4,
-      tag: @tag,
-      valid_flag1: @valid_flag1_player_leds,
-      player_leds: mask
-    })
+  def player_leds(mask, opts \\ []) when is_list(opts) do
+    bus = Keyword.get(opts, :bus, :bluetooth)
+
+    build(
+      header(
+        %{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
+        Keyword.get(opts, :seq, 0),
+        bus
+      ),
+      bus
+    )
   end
 
   @doc """
   Builds a report from named fields (see `Padwave.Schema.DualSenseOutput`).
-  Unset fields are zero and the CRC is computed and appended.
+
+  Unset fields are zero. Bluetooth reports get the sequence tag and the CRC;
+  USB reports are just the id plus the shared payload (no CRC — the kernel only
+  signs the Bluetooth transport).
   """
-  def build(fields) when is_map(fields) do
-    spec = DualSenseOutput.spec(:output)
+  def build(fields, bus \\ :bluetooth) when is_map(fields) do
+    spec = DualSenseOutput.spec(if bus == :usb, do: :output_usb, else: :output)
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
 
     zeroed =
@@ -72,9 +81,19 @@ defmodule Padwave.Output.Report do
         put_byte(acc, offset, value)
       end)
 
-    data = binary_part(body, 0, spec.size - 4)
-    data <> <<crc(data)::little-32>>
+    if bus == :usb do
+      body
+    else
+      data = binary_part(body, 0, spec.size - 4)
+      data <> <<crc(data)::little-32>>
+    end
   end
+
+  defp header(fields, seq, :bluetooth) do
+    Map.merge(%{seq_tag: band(seq, 0x0F) <<< 4, tag: @tag}, fields)
+  end
+
+  defp header(fields, _seq, :usb), do: fields
 
   @doc "CRC of an output report body (everything before the four CRC bytes)."
   def crc(data) when is_binary(data) do

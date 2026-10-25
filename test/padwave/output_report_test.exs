@@ -36,7 +36,7 @@ defmodule Padwave.OutputReportTest do
   end
 
   test "a lightbar update only sets the lightbar flag" do
-    report = Report.lightbar(10, 20, 30, 3)
+    report = Report.lightbar(10, 20, 30, seq: 3)
     <<0x31, seq_tag, tag, flag0, flag1, _rest::binary>> = report
 
     assert seq_tag == 3 <<< 4
@@ -44,6 +44,26 @@ defmodule Padwave.OutputReportTest do
     assert flag0 == 0
     assert flag1 == 0x04
     assert byte_size(report) == 78
+  end
+
+  test "USB output reports are 63 bytes, id 0x02, no CRC" do
+    report = Report.lightbar(1, 2, 3, bus: :usb)
+
+    assert byte_size(report) == 63
+    assert <<0x02, 0x00, 0x04, rest::binary>> = report
+    assert byte_size(rest) == 60
+  end
+
+  test "the USB spec is the shared payload behind a one-byte header" do
+    bt = Map.new(DualSenseOutput.spec(:output).fields, &{&1.name, &1.offset})
+    usb = Map.new(DualSenseOutput.spec(:output_usb).fields, &{&1.name, &1.offset})
+
+    assert DualSenseOutput.spec(:output_usb).id == 0x02
+    assert DualSenseOutput.spec(:output_usb).size == 63
+
+    for name <- [:valid_flag1, :lightbar_red, :player_leds, :lightbar_blue] do
+      assert usb[name] == bt[name] - 2
+    end
   end
 
   test "the output spec describes the same bytes as the encoder" do

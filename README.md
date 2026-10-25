@@ -122,6 +122,62 @@ checksum are verified rather than guessed:
 31 e0 10 00 04 00 … be … fc 54 72 1b     ← Report.build/1
 ```
 
+### Same description, two transports
+
+USB and Bluetooth carry the same 63-byte input payload and the same 47-byte
+output payload; only the framing differs. The payload is declared once in
+`lib/padwave/schemas/common.ex` and spliced into each packet at compile time:
+
+```elixir
+packet :input, 0x31, size: 78, doc: "Bluetooth" do
+  u8 :seq_tag
+  splice Padwave.Schema.Common, :input_body
+  bytes :bt_reserved, 9
+  u32 :crc
+end
+
+packet :input_usb, 0x01, size: 64, doc: "USB" do
+  splice Padwave.Schema.Common, :input_body
+end
+```
+
+The device reads the bus from `HID_ID` (`0x03` USB, `0x05` Bluetooth), picks the
+matching spec for both the report size and the decoder, so nothing above the
+input layer knows or cares. Tests assert that every shared field's USB offset is
+exactly its Bluetooth offset minus the header. The output encoder takes
+`bus: :usb` (no CRC — only the Bluetooth transport is signed).
+
+The one honest caveat: LinuxAudio4Dualsense5 publishes a *Bluetooth* sink, so a
+wired controller would currently play to a normal output until that project
+gains USB audio. The padwave side needs no change.
+
+## Describing protocols: what Elixir brings
+
+harfbuzz is the reference for this done in C++: `hb-open-type.hh` gives every
+table a `DEFINE_SIZE_STATIC (54)`, embeds other tables by value
+(`OffsetTo<ArrayOf<...>>`), and sanitizes every untrusted access by hand.
+
+| | harfbuzz (C++) | padwave (Elixir) |
+|---|---|---|
+| Size checking | `DEFINE_SIZE_STATIC` | `size:` on the `packet`, a compile error if the fields don't add up |
+| Embedding | struct members | `splice Module, :field_list`, resolved at compile time |
+| Access | offsets, casts, `sanitize()` | one binary pattern match; a wrong length simply does not match |
+| Endianness | `HBUINT16`, converters | `::little-16` / `::little-signed-16` in the pattern |
+| Introspection | none at runtime | `spec/1` returns offsets and bit layouts as data |
+| Live changes | recompile and restart | recompile into the running node, music keeps playing |
+
+The deeper difference is that the *layout* is the code. There are no offsets to
+get wrong, no `reinterpret_cast`, no separate sanitizer: `<<0x31, seq, lx, ly,
+...>>` is simultaneously the documentation, the parser and the bounds check, and
+the compiler proves the arity at build time. Things C++ is better at — zero-copy
+views over gigabyte font tables, no VM — simply do not apply to a 78-byte report
+arriving 250 times a second.
+
+What Elixir adds on top is that the description is *data*: the web UI renders
+the same spec it decodes with, the encoder looks up field offsets from it, and a
+`field_list` can be composed into several packets. That is the part harfbuzz
+cannot do without a second source of truth.
+
 ## Hot swap
 
 `Padwave.HotSwap` watches `lib/**/*.ex` and `priv/**/*.ex` and recompiles what

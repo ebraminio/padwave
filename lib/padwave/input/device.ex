@@ -37,7 +37,7 @@ defmodule Padwave.Input.Device do
   @impl true
   def init(_opts) do
     send(self(), :scan)
-    {:ok, %{info: nil, pending: nil, reader: nil, ref: nil}}
+    {:ok, %{info: nil, pending: nil, reader: nil, ref: nil, spec: :input}}
   end
 
   @impl true
@@ -75,7 +75,7 @@ defmodule Padwave.Input.Device do
   end
 
   def handle_info({:hid, bin}, state) do
-    case Frame.from_report(bin) do
+    case Frame.from_report(bin, state.spec || :input) do
       {:ok, frame} -> deliver(frame)
       {:error, _reason} -> :ok
     end
@@ -104,8 +104,8 @@ defmodule Padwave.Input.Device do
 
   defp start_reader(state, info) do
     parent = self()
-    {reader, ref} = spawn_monitor(fn -> reader_main(info.node, parent) end)
-    %{state | reader: reader, ref: ref, pending: info, info: nil}
+    {reader, ref} = spawn_monitor(fn -> reader_main(info.node, info.spec, parent) end)
+    %{state | reader: reader, ref: ref, pending: info, info: nil, spec: info.spec}
   end
 
   defp shutdown(%{info: nil, reader: nil} = state, _reason), do: state
@@ -121,11 +121,11 @@ defmodule Padwave.Input.Device do
     %{state | info: nil, pending: nil, reader: nil, ref: nil}
   end
 
-  defp reader_main(node, parent) do
+  defp reader_main(node, spec, parent) do
     # hidraw delivers exactly one report per read(); asking for one report's
     # worth of bytes keeps Erlang from concatenating several reports into one
     # buffer (which is what happens if you ask for 512).
-    size = Padwave.Schema.DualSenseInput.spec(:input).size
+    size = Padwave.Schema.DualSenseInput.spec(spec).size
 
     case :file.open(node, [:read, :raw, :binary]) do
       {:ok, fd} ->
@@ -177,14 +177,16 @@ defmodule Padwave.Input.Device do
 
   defp probe(sysfs) do
     with {:ok, uevent} <- File.read(Path.join(sysfs, "device/uevent")),
-         {:ok, vendor, product} <- parse_id(uevent),
+         {:ok, bus, vendor, product} <- parse_id(uevent),
          true <- vendor == @sony and product == @dualsense do
       %{
         node: "/dev/" <> Path.basename(sysfs),
         sysfs: sysfs,
         name: capture(uevent, "HID_NAME") || "DualSense",
         mac: capture(uevent, "HID_UNIQ"),
-        id: {vendor, product}
+        id: {vendor, product},
+        bus: bus,
+        spec: if(bus == :usb, do: :input_usb, else: :input)
       }
     else
       _ -> nil
@@ -198,10 +200,11 @@ defmodule Padwave.Input.Device do
 
       value ->
         case String.split(value, ":") do
-          [_bus, vendor, product] ->
-            with {v, ""} <- Integer.parse(vendor, 16),
+          [bus, vendor, product] ->
+            with {b, ""} <- Integer.parse(bus, 16),
+                 {v, ""} <- Integer.parse(vendor, 16),
                  {p, ""} <- Integer.parse(product, 16) do
-              {:ok, v, p}
+              {:ok, if(b == 0x03, do: :usb, else: :bluetooth), v, p}
             else
               _ -> nil
             end

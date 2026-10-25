@@ -56,7 +56,9 @@ defmodule Padwave.Web.Router do
   get "/api/schema" do
     json(conn, %{
       input: Padwave.Schema.DualSenseInput.spec(:input),
+      input_usb: Padwave.Schema.DualSenseInput.spec(:input_usb),
       output: Padwave.Schema.DualSenseOutput.spec(:output),
+      output_usb: Padwave.Schema.DualSenseOutput.spec(:output_usb),
       bindings: Input.Mapper.bindings()
     })
   end
@@ -66,7 +68,8 @@ defmodule Padwave.Web.Router do
   get "/api/schema/source" do
     files = %{
       "input" => "lib/padwave/schemas/dualsense_input.ex",
-      "output" => "lib/padwave/schemas/dualsense_output.ex"
+      "output" => "lib/padwave/schemas/dualsense_output.ex",
+      "common" => "lib/padwave/schemas/common.ex"
     }
 
     sources =
@@ -203,6 +206,7 @@ defmodule Padwave.Web.Router do
       mac: info && info.mac,
       node: info && info.node,
       name: info && info.name,
+      bus: info && info.bus,
       battery: frame && frame.battery,
       charging: frame && frame.charging && Atom.to_string(frame.charging),
       jack: frame && frame.jack,

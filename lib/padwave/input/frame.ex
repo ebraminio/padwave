@@ -45,9 +45,12 @@ defmodule Padwave.Input.Frame do
 
   @type t :: %__MODULE__{}
 
-  @doc "Decodes a raw report. Returns `{:ok, frame}` or `{:error, reason}`."
-  def from_report(bin) when is_binary(bin) do
-    case Padwave.Schema.DualSenseInput.decode_input(bin) do
+  @doc """
+  Decodes a raw report. `spec` is `:input` for Bluetooth or `:input_usb` for
+  USB; the payload is the same either way, only the framing differs.
+  """
+  def from_report(bin, spec \\ :input) when is_binary(bin) do
+    case apply(Padwave.Schema.DualSenseInput, :"decode_#{spec}", [bin]) do
       {:error, reason} -> {:error, reason}
       fields -> {:ok, from_fields(fields, bin)}
     end

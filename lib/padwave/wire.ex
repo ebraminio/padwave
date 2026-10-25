@@ -42,8 +42,34 @@ defmodule Padwave.Wire do
   @doc false
   defmacro __using__(_opts) do
     quote do
-      import Padwave.Wire, only: [packet: 3, packet: 4]
+      import Padwave.Wire, only: [packet: 3, packet: 4, field_list: 2]
       import Bitwise
+    end
+  end
+
+  @doc """
+  Declares a reusable field list that other packets can `splice` in.
+
+  This is the equivalent of embedding a common struct: the DualSense's USB and
+  Bluetooth reports are the same 63-byte payload behind different headers, so
+  the payload is declared once and spliced into both.
+
+      field_list :dualsense_body do
+        u8 :lx
+        ...
+      end
+
+      packet :input, 0x31, size: 78 do
+        u8 :seq_tag
+        splice MySchema, :dualsense_body
+      end
+  """
+  defmacro field_list(name, do: block) do
+    data = fields(block, __CALLER__)
+
+    quote do
+      @doc false
+      def __wire_fields__(unquote(name)), do: unquote(Macro.escape(data))
     end
   end
 
@@ -64,7 +90,7 @@ defmodule Padwave.Wire do
 
   # -- compile time ----------------------------------------------------------
 
-  defp build_packet(name, id, opts, block, _env) do
+  defp build_packet(name, id, opts, block, env) do
     unless is_atom(name) do
       raise ArgumentError, "packet name must be an atom, got: #{inspect(name)}"
     end
@@ -78,7 +104,7 @@ defmodule Padwave.Wire do
 
     declared =
       block
-      |> fields()
+      |> fields(env)
       |> layout()
 
     used = 1 + Enum.reduce(declared, 0, fn f, acc -> acc + f.size end)
@@ -118,24 +144,35 @@ defmodule Padwave.Wire do
   end
 
   # Turns the block into a flat list of field declarations.
-  defp fields({:__block__, _, statements}), do: Enum.flat_map(statements, &fields/1)
+  defp fields({:__block__, _, statements}, env), do: Enum.flat_map(statements, &fields(&1, env))
 
-  defp fields({:u8, _, [name]}) when is_atom(name), do: [{:u8, name}]
-  defp fields({:u16, _, [name]}) when is_atom(name), do: [{:u16, name}]
-  defp fields({:i16, _, [name]}) when is_atom(name), do: [{:i16, name}]
-  defp fields({:u32, _, [name]}) when is_atom(name), do: [{:u32, name}]
+  defp fields({:u8, _, [name]}, _env) when is_atom(name), do: [{:u8, name}]
+  defp fields({:u16, _, [name]}, _env) when is_atom(name), do: [{:u16, name}]
+  defp fields({:i16, _, [name]}, _env) when is_atom(name), do: [{:i16, name}]
+  defp fields({:u32, _, [name]}, _env) when is_atom(name), do: [{:u32, name}]
 
-  defp fields({:bytes, _, [name, count]}) when is_atom(name) and is_integer(count) do
+  defp fields({:bytes, _, [name, count]}, _env) when is_atom(name) and is_integer(count) do
     [{:bytes, name, count}]
   end
 
-  defp fields({:skip, _, [count]}) when is_integer(count), do: [{:skip, count}]
+  defp fields({:skip, _, [count]}, _env) when is_integer(count), do: [{:skip, count}]
 
-  defp fields({:bits, _, [name, bits]}) when is_atom(name) and is_list(bits) do
+  defp fields({:bits, _, [name, bits]}, _env) when is_atom(name) and is_list(bits) do
     [{:bits, name, bits}]
   end
 
-  defp fields(other) do
+  defp fields({:splice, _, [module_ast, name]}, env) when is_atom(name) do
+    module = Macro.expand(module_ast, env)
+    Code.ensure_compiled!(module)
+
+    if function_exported?(module, :__wire_fields__, 1) do
+      module.__wire_fields__(name)
+    else
+      raise ArgumentError, "#{inspect(module)} has no field list #{inspect(name)}"
+    end
+  end
+
+  defp fields(other, _env) do
     raise ArgumentError, """
     cannot understand packet field: #{Macro.to_string(other)}
 

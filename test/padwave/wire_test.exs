@@ -92,6 +92,35 @@ defmodule Padwave.WireTest do
     assert %{active: true, id: 5, x: 0x134, y: 0x62} = Frame.touch(<<0x05, 0x34, 0x21, 0x06>>)
   end
 
+  test "a USB report decodes through the same body" do
+    usb =
+      <<0x01, 80, 90, 100, 110, 0, 0, 7, 8, 0, 0, 0, 0>> <>
+        :binary.copy(<<0>>, 51)
+
+    assert byte_size(usb) == 64
+    assert {:error, _} = Frame.from_report(usb)
+
+    assert {:ok, frame} = Frame.from_report(usb, :input_usb)
+    assert frame.lx == 80
+    assert frame.ly == 90
+    assert frame.rx == 100
+    assert frame.ry == 110
+    assert frame.seq == 7
+    assert frame.dpad == :none
+  end
+
+  test "USB is the Bluetooth layout minus the header" do
+    bt = Map.new(DualSenseInput.spec(:input).fields, &{&1.name, &1.offset})
+    usb = Map.new(DualSenseInput.spec(:input_usb).fields, &{&1.name, &1.offset})
+
+    assert DualSenseInput.spec(:input_usb).id == 0x01
+    assert DualSenseInput.spec(:input_usb).size == 64
+
+    for name <- [:lx, :seq, :gyro_x, :accel_x, :temperature, :touch1, :status0] do
+      assert usb[name] == bt[name] - 1
+    end
+  end
+
   test "frames expose named buttons, battery and jack state", %{raw: raw} do
     {:ok, frame} = Frame.from_report(raw)
 
