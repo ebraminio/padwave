@@ -66,9 +66,7 @@ defmodule Padwave.Radio do
     Process.send_after(self(), :checkpoint, @checkpoint_ms)
 
     if resume_pending and current do
-      Logger.info(
-        "[radio] will resume #{current.title} at #{Float.round(state_position(persisted), 1)}s"
-      )
+      Logger.info("[radio] will resume #{current.title} at #{Float.round(state_position(persisted), 1)}s")
     end
 
     {:ok,
@@ -267,9 +265,7 @@ defmodule Padwave.Radio do
         {:noreply, state}
 
       true ->
-        Logger.info(
-          "[radio] resuming #{state.current.title} at #{Float.round(state.position, 1)}s"
-        )
+        Logger.info("[radio] resuming #{state.current.title} at #{Float.round(state.position, 1)}s")
 
         state =
           play(state, state.current,

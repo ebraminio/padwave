@@ -3,8 +3,9 @@ defmodule Padwave.Schema.DualSenseInput.Body do
   The 63-byte input payload shared by the USB and Bluetooth reports.
 
   It lives in its own module so it is compiled before the packets that splice
-  it in — Elixir applies module-attribute writes after macro expansion, so a
-  same-module reference would not be visible.
+  it in: Elixir applies module-attribute writes when it evaluates the body,
+  after macro expansion, so a field list declared in the same module as the
+  packets would still be empty when they are expanded.
 
   `+0x00` in the comments is the offset inside this payload: 0x01 in a USB
   report, 0x02 in a Bluetooth one.
@@ -28,7 +29,7 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     # +0x06  report sequence number
     u8(:seq)
 
-    # Bit groups read low bit first: d-pad in the low nibble, face buttons
+    # Bit groups read the low bit first: d-pad in the low nibble, face buttons
     # above it.
     bits(:buttons0, dpad: 4, square: 1, cross: 1, circle: 1, triangle: 1)
     bits(:buttons1, l1: 1, r1: 1, l2: 1, r2: 1, create: 1, options: 1, l3: 1, r3: 1)
@@ -59,19 +60,19 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     bytes(:reserved_14, 3)
 
     # +0x0f  angular velocity, little-endian
-    i16(:gyro_x)
+    i16le(:gyro_x)
     # +0x11
-    i16(:gyro_y)
+    i16le(:gyro_y)
     # +0x13
-    i16(:gyro_z)
+    i16le(:gyro_z)
     # +0x15  acceleration, ~8192 counts per g
-    i16(:accel_x)
+    i16le(:accel_x)
     # +0x17
-    i16(:accel_y)
+    i16le(:accel_y)
     # +0x19
-    i16(:accel_z)
+    i16le(:accel_z)
     # +0x1b  timestamp, 0.33 us units
-    u32(:sensor_time)
+    u32le(:sensor_time)
     # +0x1f  controller temperature, degrees C
     u8(:temperature)
 
@@ -87,7 +88,7 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     # +0x29
     u8(:trigger_feedback_r)
     # +0x2a  host timestamp echoed back
-    u32(:host_time)
+    u32le(:host_time)
     # +0x2e  device timestamp / trigger feedback
     bytes(:device_feedback, 4)
     # +0x32
@@ -119,7 +120,8 @@ defmodule Padwave.Schema.DualSenseInput do
   `&data[2]` (Bluetooth).
 
   Every byte is named, either with what it does or with an honest
-  `reserved`/`feedback` name. `test/padwave/wire_test.exs` asserts that every
+  `reserved`/`feedback` name, and every multi-byte integer states its byte
+  order (`i16le`, `u32le`). `test/padwave/wire_test.exs` asserts that every
   shared field's USB offset is exactly its Bluetooth offset minus one.
 
   Sizes and report ids come from `hid-playstation.c`:
@@ -136,7 +138,7 @@ defmodule Padwave.Schema.DualSenseInput do
     # 0x41..0x49  Bluetooth-only, not documented
     bytes(:bt_reserved, 9)
     # 0x4a  CRC-32 over the report, seed 0xA1
-    u32(:crc)
+    u32le(:crc)
   end
 
   packet :input_usb, 0x01, size: 64, doc: "DualSense input report (USB)" do

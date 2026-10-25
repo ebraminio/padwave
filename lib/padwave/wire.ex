@@ -17,15 +17,19 @@ defmodule Padwave.Wire do
         use Padwave.Wire
 
         packet :input, 0x31, size: 6 do
-          u8   :seq
-          u8   :left_x
-          bits :buttons, dpad: 4, square: 1, cross: 1, circle: 1, triangle: 1
-          i16  :temperature
+          u8    :seq
+          u8    :left_x
+          bits  :buttons, dpad: 4, square: 1, cross: 1, circle: 1, triangle: 1
+          i16le :temperature
         end
       end
 
       MySchema.decode_input(<<0x31, 1, 127, 0x48, 0x01, 0x00>>)
       #=> %{seq: 1, left_x: 127, buttons: %{dpad: 8, square: false, ...}, temperature: 1}
+
+  Multi-byte integers name their byte order (`i16le`, `u32le`) so the
+  description says what it means; `u8` has none to state. Bit groups read the
+  low bit first.
 
   Fields are laid out in declaration order starting at byte 0. Declare the
   packet id as the first pattern byte; the remaining fields must add up to
@@ -159,9 +163,9 @@ defmodule Padwave.Wire do
   defp fields({:__block__, _, statements}, env), do: Enum.flat_map(statements, &fields(&1, env))
 
   defp fields({:u8, _, [name]}, _env) when is_atom(name), do: [{:u8, name}]
-  defp fields({:u16, _, [name]}, _env) when is_atom(name), do: [{:u16, name}]
-  defp fields({:i16, _, [name]}, _env) when is_atom(name), do: [{:i16, name}]
-  defp fields({:u32, _, [name]}, _env) when is_atom(name), do: [{:u32, name}]
+  defp fields({:u16le, _, [name]}, _env) when is_atom(name), do: [{:u16le, name}]
+  defp fields({:i16le, _, [name]}, _env) when is_atom(name), do: [{:i16le, name}]
+  defp fields({:u32le, _, [name]}, _env) when is_atom(name), do: [{:u32le, name}]
 
   defp fields({:bytes, _, [name, count]}, _env) when is_atom(name) and is_integer(count) do
     [{:bytes, name, count}]
@@ -191,7 +195,8 @@ defmodule Padwave.Wire do
     cannot understand packet field: #{Macro.to_string(other)}
 
     Supported fields are:
-      u8 :name  u16 :name  i16 :name  u32 :name
+      u8 :name
+      u16le :name   i16le :name   u32le :name
       bytes :name, count
       skip count
       bits :name, low: 4, high: 1, ...
@@ -211,9 +216,9 @@ defmodule Padwave.Wire do
   end
 
   defp lay_out_field({:u8, name}, offset), do: %{kind: :u8, name: name, offset: offset, size: 1}
-  defp lay_out_field({:u16, name}, offset), do: %{kind: :u16, name: name, offset: offset, size: 2}
-  defp lay_out_field({:i16, name}, offset), do: %{kind: :i16, name: name, offset: offset, size: 2}
-  defp lay_out_field({:u32, name}, offset), do: %{kind: :u32, name: name, offset: offset, size: 4}
+  defp lay_out_field({:u16le, name}, offset), do: %{kind: :u16le, name: name, offset: offset, size: 2}
+  defp lay_out_field({:i16le, name}, offset), do: %{kind: :i16le, name: name, offset: offset, size: 2}
+  defp lay_out_field({:u32le, name}, offset), do: %{kind: :u32le, name: name, offset: offset, size: 4}
 
   defp lay_out_field({:bytes, name, n}, offset),
     do: %{kind: :bytes, name: name, offset: offset, size: n}
@@ -244,17 +249,16 @@ defmodule Padwave.Wire do
           v = var(field.name)
           {pattern ++ [v], prelude, pairs ++ [{field.name, v}]}
 
-        :u16 ->
+        :u16le ->
           v = var(field.name)
           {pattern ++ [quote(do: unquote(v) :: little - 16)], prelude, pairs ++ [{field.name, v}]}
 
-        :i16 ->
+        :i16le ->
           v = var(field.name)
 
-          {pattern ++ [quote(do: unquote(v) :: little - signed - 16)], prelude,
-           pairs ++ [{field.name, v}]}
+          {pattern ++ [quote(do: unquote(v) :: little - signed - 16)], prelude, pairs ++ [{field.name, v}]}
 
-        :u32 ->
+        :u32le ->
           v = var(field.name)
           {pattern ++ [quote(do: unquote(v) :: little - 32)], prelude, pairs ++ [{field.name, v}]}
 
@@ -275,8 +279,7 @@ defmodule Padwave.Wire do
 
           assignment = quote(do: unquote(map) = %{unquote_splicing(bit_pairs)})
 
-          {pattern ++ [quote(do: unquote(raw) :: 8)], prelude ++ [assignment],
-           pairs ++ [{field.name, map}]}
+          {pattern ++ [quote(do: unquote(raw) :: 8)], prelude ++ [assignment], pairs ++ [{field.name, map}]}
       end
     end)
   end

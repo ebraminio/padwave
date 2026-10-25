@@ -51,8 +51,7 @@ defmodule Padwave.WireTest do
   end
 
   test "rejects packets of the wrong size" do
-    assert {:error, {:unexpected_report, 5, _}} =
-             DualSenseInput.decode_input(<<0x31, 1, 2, 3, 4>>)
+    assert {:error, {:unexpected_report, 5, _}} = DualSenseInput.decode_input(<<0x31, 1, 2, 3, 4>>)
   end
 
   test "rejects a corrupted Bluetooth report instead of inventing a button", %{raw: raw} do

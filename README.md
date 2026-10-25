@@ -105,8 +105,14 @@ Each description compiles into
 * `spec(:input)` — the same layout as plain data, which the web UI renders and
   which the encoder uses to find field offsets.
 
-Declaring the description at the wrong size is a compile error, and `skip n`
-keeps the offsets honest about the bytes we have not decoded.
+Declaring the description at the wrong size is a compile error. Multi-byte
+integers name their byte order (`i16le`, `u32le`) so the description says what
+it means, and `skip n` would keep gaps honest if there were any left — there
+are not.
+
+The schema files are excluded from `mix format`: the trailing comments and the
+column layout *are* the documentation, and the formatter reflows a trailing
+comment onto the line above.
 
 Every field carries a trailing comment with its offset and meaning, and the
 same file is served at `GET /api/schema/source` so the UI can show the protocol
@@ -161,33 +167,6 @@ exactly its Bluetooth offset minus the header. The output encoder takes
 The one honest caveat: LinuxAudio4Dualsense5 publishes a *Bluetooth* sink, so a
 wired controller would currently play to a normal output until that project
 gains USB audio. The padwave side needs no change.
-
-## Describing protocols: what Elixir brings
-
-harfbuzz is the reference for this done in C++: `hb-open-type.hh` gives every
-table a `DEFINE_SIZE_STATIC (54)`, embeds other tables by value
-(`OffsetTo<ArrayOf<...>>`), and sanitizes every untrusted access by hand.
-
-| | harfbuzz (C++) | padwave (Elixir) |
-|---|---|---|
-| Size checking | `DEFINE_SIZE_STATIC` | `size:` on the `packet`, a compile error if the fields don't add up |
-| Embedding | struct members | `field_list` + `splice`, expanded at compile time |
-| Access | offsets, casts, `sanitize()` | one binary pattern match; a wrong length simply does not match |
-| Endianness | `HBUINT16`, converters | `::little-16` / `::little-signed-16` in the pattern |
-| Introspection | none at runtime | `spec/1` returns offsets and bit layouts as data |
-| Live changes | recompile and restart | recompile into the running node, music keeps playing |
-
-The deeper difference is that the *layout* is the code. There are no offsets to
-get wrong, no `reinterpret_cast`, no separate sanitizer: `<<0x31, seq, lx, ly,
-...>>` is simultaneously the documentation, the parser and the bounds check, and
-the compiler proves the arity at build time. Things C++ is better at — zero-copy
-views over gigabyte font tables, no VM — simply do not apply to a 78-byte report
-arriving 250 times a second.
-
-What Elixir adds on top is that the description is *data*: the web UI renders
-the same spec it decodes with, the encoder looks up field offsets from it, and a
-`field_list` can be composed into several packets. That is the part harfbuzz
-cannot do without a second source of truth.
 
 ## Hot swap
 

@@ -10,7 +10,7 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
   use Padwave.Wire
 
   field_list :output_body do
-    # A field is only applied when its flag bit is set.
+    # A field is only applied by the controller when its flag bit is set.
     # +0x00  bit0 rumble, bit1 haptics, bit2 right trigger,
     u8(:valid_flag0)
     #        bit3 left trigger, bit5 speaker volume,
@@ -38,7 +38,7 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by valid_flag0 bits 2 and 3. Described here, not driven
-    # yet — see the README.
+    # yet.
     # +0x0a  0x00 off, 0x01 resistance, 0x02 pulse, ...
     u8(:right_trigger_mode)
     # +0x0b..0x14
@@ -103,7 +103,7 @@ defmodule Padwave.Schema.DualSenseOutput do
     # 0x32..0x49
     bytes(:reserved4, 24)
     # 0x4a  CRC-32, seed 0xA2, little-endian
-    u32(:crc)
+    u32le(:crc)
   end
 
   packet :output_usb, 0x02, size: 63, doc: "DualSense output report (USB)" do

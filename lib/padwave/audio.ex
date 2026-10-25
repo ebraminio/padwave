@@ -29,8 +29,7 @@ defmodule Padwave.Audio do
   def init(_opts) do
     send(self(), :poll)
 
-    {:ok,
-     %{sink: Config.get(:audio_sink, "ds5_membrane"), present: false, state: nil, streams: []}}
+    {:ok, %{sink: Config.get(:audio_sink, "ds5_membrane"), present: false, state: nil, streams: []}}
   end
 
   @impl true
