@@ -114,11 +114,15 @@ defmodule Padwave.Radio do
       Logger.info("[radio] idle warning — raising volume")
       Bus.broadcast({:session, :warning})
 
+      # A nudge, not a blast: enough to be noticed, capped so a late-night
+      # warning cannot wake the house.
+      target = min(state.volume + Config.get(:idle_warn_bump, 12), Config.get(:idle_warn_max, 70))
+
       state =
         state
         |> Map.put(:volume_before_warning, state.volume)
         |> Map.put(:idle_warning, true)
-        |> set_volume(Config.get(:idle_warn_volume, 100))
+        |> set_volume(target)
 
       {:noreply, state}
     end

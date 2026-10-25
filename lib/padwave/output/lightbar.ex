@@ -78,7 +78,8 @@ defmodule Padwave.Output.Lightbar do
   end
 
   def handle_info({:padwave, {:device, :up, _info}}, state) do
-    {:noreply, light(%{state | mode: :playing, custom: nil})}
+    # Nothing is necessarily playing yet; the player announces itself.
+    {:noreply, light(%{state | mode: :idle, custom: nil})}
   end
 
   def handle_info(:pulse, %{mode: :warning} = state) do

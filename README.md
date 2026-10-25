@@ -36,8 +36,9 @@ the one thing they are good for — being ignored.
 
 ### Idle behaviour
 
-* 15 minutes with no real input → volume is raised as a warning, lightbar pulses
-  red, web UI counts down.
+* 15 minutes with no real input → the volume is nudged up (`+12`, capped at 70)
+  as a warning, the lightbar pulses red, and the web UI counts down. It is a
+  nudge rather than a jump to full volume, so it stays late-night friendly.
 * 1 more minute → music fades out, the exact playhead is saved, and the
   controller is disconnected (which puts it to sleep).
 * Any button, trigger or d-pad press during the warning cancels the shutdown and

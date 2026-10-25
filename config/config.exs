@@ -31,7 +31,9 @@ config :padwave,
   idle_enabled: true,
   idle_timeout_ms: 15 * 60 * 1000,
   idle_warn_grace_ms: 60 * 1000,
-  idle_warn_volume: 100,
+  # The idle warning is a gentle bump, never a jump to full volume.
+  idle_warn_bump: 12,
+  idle_warn_max: 70,
   # Dirty analogue sticks must not keep the radio awake. Buttons, d-pad and
   # the analogue triggers always count as activity. Set to a non-zero delta to
   # also treat stick movement as activity (not recommended with worn sticks).
