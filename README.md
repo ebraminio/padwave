@@ -36,13 +36,15 @@ the one thing they are good for — being ignored.
 
 ### Idle behaviour
 
-* 15 minutes with no real input → the sleep timer arms. Nothing gets louder:
-  the lightbar pulses red and the web UI counts down.
-* In the **last 10 seconds** the volume fades linearly down to 10 % — borrowed
-  from AntennaPod, whose sleep timer does exactly this (`onSleepTimerUpdated`
-  maps the remaining millis to `max(0.1, remaining / 10 s)`), then pauses.
-* At zero → music fades out, the exact playhead is saved, and the controller is
-  disconnected (which puts it to sleep).
+Defaults are AntennaPod's: a **15 minute** timer whose last **10 seconds** are
+the fade (`NOTIFICATION_THRESHOLD = 10000`, `max(0.1, remaining / 10 s)`).
+
+* 15 minutes with no real input → the sleep timer arms and the fade begins
+  immediately: the lightbar pulses red, the web UI counts down, and the volume
+  ramps linearly to 10 %. Raise `idle_warn_grace_ms` (UI: "warn") if you want
+  the arming light and countdown to last longer than the fade.
+* At zero → music fades out at the floor, the exact playhead is saved, and the
+  controller is disconnected (which puts it to sleep).
 * Any button, trigger or d-pad press during the warning cancels the shutdown and
   restores the volume — and so does **shaking the controller** harder than
   2.25 g, the same threshold AntennaPod's `ShakeListener` uses.

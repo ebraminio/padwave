@@ -18,7 +18,9 @@ defmodule Padwave.Session do
 
   alias Padwave.{Bus, Config, Power, Radio}
 
-  @tick_ms 5_000
+  # AntennaPod's timer is second-accurate; ticking every second keeps our
+  # arming and shutdown within a second of the configured times.
+  @tick_ms 1_000
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 

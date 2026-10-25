@@ -29,8 +29,12 @@ config :padwave,
 
   # --- idle / power --------------------------------------------------------
   idle_enabled: true,
+  # AntennaPod defaults, adopted here: a 15 minute timer, and the last ten
+  # seconds are the only warning — the volume fades out over that window and
+  # then playback stops. Raise idle_warn_grace_ms if you want a quieter arming
+  # period before the fade (the UI exposes it).
   idle_timeout_ms: 15 * 60 * 1000,
-  idle_warn_grace_ms: 60 * 1000,
+  idle_warn_grace_ms: 10 * 1000,
   # Sleep timer: nothing for most of the grace period, then a linear fade to
   # `idle_fade_floor` percent over the last `idle_fade_ms`. Borrowed from how
   # AntennaPod ends a podcast when its sleep timer expires.
