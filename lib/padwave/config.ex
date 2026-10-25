@@ -18,9 +18,9 @@ defmodule Padwave.Config do
     "analog_wake_delta" => {:int, 0, 255},
     "analog_wake_cap" => {:int, 0, 100},
     "trigger_effects" => :bool,
-    "trigger_effect_frequency" => {:int, 1, 100},
-    "trigger_effect_force" => {:int, 0, 255},
-    "trigger_effect_start" => {:int, 0, 255}
+    "trigger_effect_position" => {:int, 0, 9},
+    "trigger_effect_amplitude" => {:int, 0, 8},
+    "trigger_effect_frequency" => {:int, 0, 255}
   }
 
   @overrides_key {__MODULE__, :overrides}

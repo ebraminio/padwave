@@ -11,7 +11,7 @@ defmodule Padwave.Input.Simulator do
   250 Hz stream and look like a rapid series of taps.
   """
 
-  import Bitwise, only: [band: 2, bor: 2, bnot: 1, bsl: 2]
+  import Bitwise, only: [band: 2, bor: 2, bnot: 1, bsl: 2, bsr: 2]
 
   alias Padwave.Input.{Crc, Frame, Mapper}
 
@@ -98,6 +98,7 @@ defmodule Padwave.Input.Simulator do
     |> put_byte(6, l2)
     |> put_byte(7, r2)
     |> apply_sticks(patch)
+    |> apply_touch(patch)
     |> apply_dpad(dpad)
     |> apply_buttons(buttons)
   end
@@ -149,6 +150,37 @@ defmodule Padwave.Input.Simulator do
   defp clear_buttons(frame) do
     Enum.reduce(@by_name, frame, fn {name, _pos}, acc -> set_bit(acc, name, false) end)
   end
+
+  # A touch point is contact/id, x low, (x high | y low), y high. Bit 7 of the
+  # contact byte means "not touching".
+  defp apply_touch(frame, patch) do
+    case Map.get(patch, :touch, Map.get(patch, "touch")) do
+      %{} = touch ->
+        x = Map.get(touch, :x, Map.get(touch, "x", 960)) |> to_int(960) |> min(1919) |> max(0)
+        y = Map.get(touch, :y, Map.get(touch, "y", 540)) |> to_int(540) |> min(1079) |> max(0)
+        id = Map.get(touch, :id, Map.get(touch, "id", 0)) |> to_int(0)
+
+        contact = band(id, 0x7F)
+        packed = bor(band(bsr(x, 8), 0x0F), bsl(band(y, 0x0F), 4))
+
+        <<head::binary-size(34), _old::binary-size(4), tail::binary>> = frame
+        <<head::binary, contact, band(x, 0xFF), packed, bsr(y, 4), tail::binary>>
+
+      _ ->
+        frame
+    end
+  end
+
+  defp to_int(value, _default) when is_integer(value), do: value
+
+  defp to_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, _} -> number
+      :error -> default
+    end
+  end
+
+  defp to_int(_value, default), do: default
 
   defp apply_sticks(frame, patch) do
     [{2, :lx}, {3, :ly}, {4, :rx}, {5, :ry}]

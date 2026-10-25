@@ -148,6 +148,27 @@
     position: absolute; bottom: 4px; left: 0; right: 0; text-align: center;
     font-size: 10px; color: var(--muted); letter-spacing: .1em;
   }
+  .touchpad {
+    position: relative; margin-top: 14px; aspect-ratio: 16 / 9;
+    background:
+      linear-gradient(rgba(255,255,255,.02), rgba(255,255,255,.02)),
+      repeating-linear-gradient(0deg, transparent 0 23px, rgba(255,255,255,.03) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgba(255,255,255,.03) 23px 24px),
+      #0b0e14;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  }
+  .touchpad::after {
+    content: "touchpad"; position: absolute; left: 10px; bottom: 6px;
+    font-size: 10px; color: var(--muted); letter-spacing: .16em; text-transform: uppercase;
+  }
+  .tpoint {
+    position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px;
+    border-radius: 50%; background: var(--accent-2); color: #06121a;
+    font-size: 10px; font-weight: 700; display: none;
+    align-items: center; justify-content: center;
+    box-shadow: 0 0 14px rgba(34, 211, 238, .8);
+  }
+  .tpoint.on { display: flex; }
   .sensor-foot { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--muted); }
   .sensor-foot b { color: var(--text); font-family: var(--mono); font-weight: 500; }
 
@@ -287,6 +308,11 @@
           <span>sticks <b id="sticks">—</b></span>
         </div>
       </div>
+      <div class="touchpad" id="touchpad">
+        <span class="tpoint" id="tp1">1</span>
+        <span class="tpoint" id="tp2">2</span>
+      </div>
+
       <div class="sensor-foot">
         <span>report seq <b id="seqv">—</b></span>
         <span>updated <b id="agetext">—</b></span>
@@ -311,10 +337,11 @@
 
       <div class="setting">
         <label><input type="checkbox" id="teOn"> trigger buzz</label>
-        <label>force <input type="range" id="teForce" min="0" max="255" step="1" style="width:86px"></label>
-        <b id="teForceV" style="color:var(--accent-2);font-family:var(--mono)">80</b>
-        <label>rate <input type="range" id="teFreq" min="1" max="100" step="1" style="width:76px"></label>
-        <b id="teFreqV" style="color:var(--accent-2);font-family:var(--mono)">10</b>
+        <label>strength <input type="range" id="teAmp" min="0" max="8" step="1" style="width:70px"></label>
+        <b id="teAmpV" style="color:var(--accent-2);font-family:var(--mono)">6</b>
+        <label>rate <input type="range" id="teFreq" min="0" max="60" step="1" style="width:70px"></label>
+        <b id="teFreqV" style="color:var(--accent-2);font-family:var(--mono)">25</b>
+        <label>at <input type="number" id="tePos" min="0" max="9" step="1" style="width:56px" title="trigger zone 0-9"></label>
         <button id="teTestL" title="buzz the left trigger">test L</button>
         <button id="teTestR" title="buzz the right trigger">test R</button>
       </div>
@@ -357,15 +384,15 @@
       <div class="lab-row">
         <b>trigger effect</b>
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
-        <select id="labTrigMode">
-          <option value="0">0x00 off</option>
-          <option value="1">0x01 resistance</option>
-          <option value="2">0x02 pulse</option>
-          <option value="6" selected>0x06 auto / vibration</option>
+        <select id="labTrigEffect">
+          <option value="vibration" selected>0x26 vibration</option>
+          <option value="feedback">0x21 feedback</option>
+          <option value="off">0x05 off</option>
         </select>
-        <input type="number" id="labP0" value="10" min="0" max="255" title="param 0 (frequency for 0x06)">
-        <input type="number" id="labP1" value="80" min="0" max="255" title="param 1 (force for 0x06)">
-        <input type="number" id="labP2" value="15" min="0" max="255" title="param 2 (start for 0x06)">
+        <input type="number" id="labP0" value="2" min="0" max="9" title="position / zone 0-9">
+        <input type="number" id="labP1" value="8" min="0" max="8" title="amplitude 0-8">
+        <input type="number" id="labP2" value="30" min="0" max="255" title="frequency in Hz">
+        <span style="font-size:11px">position / amplitude / frequency</span>
         <button id="labTrigFire">fire 800ms</button>
       </div>
 
@@ -517,9 +544,12 @@ function render(s) {
 
   const cfg = s.config || {};
 
-  if (document.activeElement !== $("#teForce") && cfg.trigger_effect_force != null) {
-    $("#teForce").value = cfg.trigger_effect_force;
-    $("#teForceV").textContent = cfg.trigger_effect_force;
+  if (document.activeElement !== $("#teAmp") && cfg.trigger_effect_amplitude != null) {
+    $("#teAmp").value = cfg.trigger_effect_amplitude;
+    $("#teAmpV").textContent = cfg.trigger_effect_amplitude;
+  }
+  if (document.activeElement !== $("#tePos") && cfg.trigger_effect_position != null) {
+    $("#tePos").value = cfg.trigger_effect_position;
   }
   if (document.activeElement !== $("#teFreq") && cfg.trigger_effect_frequency != null) {
     $("#teFreq").value = cfg.trigger_effect_frequency;
@@ -561,8 +591,24 @@ function renderSensors(c) {
   $("#touchText").textContent = t && t.active ? `${t.x},${t.y}` : (t ? "—" : "—");
   $("#sticks").textContent = `${c.lx ?? 0} ${c.ly ?? 0} · ${c.rx ?? 0} ${c.ry ?? 0}`;
   $("#seqv").textContent = (c.fields && c.fields.seq) ?? "—";
+  renderTouch(c.touches);
 
   lastSensorsAt = performance.now();
+}
+
+function renderTouch(touches) {
+  [1, 2].forEach((index) => {
+    const point = (touches || [])[index - 1];
+    const el = $(`#tp${index}`);
+    if (!point || !point.active) {
+      el.classList.remove("on");
+      return;
+    }
+    el.classList.add("on");
+    el.style.left = `${Math.min(100, Math.max(0, (point.x / 1920) * 100))}%`;
+    el.style.top = `${Math.min(100, Math.max(0, (point.y / 1080) * 100))}%`;
+    el.textContent = point.id;
+  });
 }
 
 function setStick(selector, x, y) {
@@ -771,9 +817,11 @@ $("#labTrigFire").onclick = () => {
   labSend({
     kind: "trigger",
     side: $("#labTrigSide").value,
-    mode: Number($("#labTrigMode").value),
-    params: [Number($("#labP0").value), Number($("#labP1").value), Number($("#labP2").value)],
-    ms: 800
+    effect: $("#labTrigEffect").value,
+    position: Number($("#labP0").value),
+    amplitude: Number($("#labP1").value),
+    frequency: Number($("#labP2").value),
+    ms: 900
   });
 };
 
@@ -798,14 +846,18 @@ function pushTriggerConfig(values) {
   }, 250);
 }
 
-$("#teForce").addEventListener("input", (e) => {
-  $("#teForceV").textContent = e.target.value;
-  pushTriggerConfig({ trigger_effect_force: Number(e.target.value) });
+$("#teAmp").addEventListener("input", (e) => {
+  $("#teAmpV").textContent = e.target.value;
+  pushTriggerConfig({ trigger_effect_amplitude: Number(e.target.value) });
 });
 
 $("#teFreq").addEventListener("input", (e) => {
   $("#teFreqV").textContent = e.target.value;
   pushTriggerConfig({ trigger_effect_frequency: Number(e.target.value) });
+});
+
+$("#tePos").addEventListener("change", (e) => {
+  pushTriggerConfig({ trigger_effect_position: Number(e.target.value) });
 });
 
 $("#teOn").addEventListener("change", (e) => {

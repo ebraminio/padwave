@@ -18,7 +18,39 @@ defmodule Padwave.Output.Lab do
 
   import Bitwise, only: [band: 2]
 
-  alias Padwave.Output.{Hid, Lightbar}
+  alias Padwave.Output.{Hid, Lightbar, TriggerEffects}
+
+  # High-level effects keep the panel honest: the UI sends "vibration with
+  # position/amplitude/frequency", not a mode byte and ten opaque bytes.
+  defp effect(%{"effect" => "vibration"} = p) do
+    TriggerEffects.vibration(
+      to_int(p["position"], 2),
+      to_int(p["amplitude"], 6),
+      to_int(p["frequency"], 25)
+    )
+  end
+
+  defp effect(%{"effect" => "feedback"} = p) do
+    TriggerEffects.feedback(to_int(p["position"], 2), to_int(p["amplitude"], 6))
+  end
+
+  defp effect(%{"effect" => "weapon"} = p) do
+    TriggerEffects.weapon(
+      to_int(p["position"], 2),
+      to_int(p["stop"], 6),
+      to_int(p["amplitude"], 6)
+    )
+  end
+
+  defp effect(%{"effect" => "off"}), do: TriggerEffects.off()
+
+  defp effect(p) do
+    mode = p["mode"] |> to_int(0x05) |> clamp()
+    params = p["params"] |> List.wrap() |> Enum.map(&to_int(&1, 0)) |> Enum.map(&clamp/1)
+    {mode, params |> Enum.take(10) |> Enum.map(&<<&1>>) |> Enum.join() |> pad_params()}
+  end
+
+  defp pad_params(bytes), do: bytes <> :binary.copy(<<0>>, max(10 - byte_size(bytes), 0))
 
   def apply(%{"kind" => "lightbar", "rgb" => [r, g, b]}) do
     Lightbar.set_rgb(clamp(r), clamp(g), clamp(b))
@@ -42,15 +74,14 @@ defmodule Padwave.Output.Lab do
 
   def apply(%{"kind" => "trigger"} = params) do
     side = if params["side"] == "left", do: :left, else: :right
-    mode = params["mode"] |> to_int(0) |> clamp()
-    args = params["params"] |> List.wrap() |> Enum.map(&to_int(&1, 0)) |> Enum.map(&clamp/1)
+    {mode, bytes} = effect(params)
 
     case to_int(params["ms"], 800) do
-      0 -> Hid.trigger(side, mode, args)
-      ms -> Padwave.Output.Triggers.test(side, ms, mode, args)
+      ms when ms > 0 -> Padwave.Output.Triggers.test(side, ms, mode, bytes)
+      _ -> Hid.trigger(side, mode, bytes)
     end
 
-    {:ok, "trigger #{side} mode #{mode}"}
+    {:ok, "trigger #{side} #{TriggerEffects.name(mode)}"}
   end
 
   def apply(%{"kind" => "fields", "fields" => fields}) when is_map(fields) do

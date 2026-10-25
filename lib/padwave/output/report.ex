@@ -56,10 +56,10 @@ defmodule Padwave.Output.Report do
   @doc """
   A trigger effect: `mode` plus up to ten parameters.
 
-  `0x00` turns the trigger's actuator off; `0x01` is resistance
-  (`[start, force]`), `0x02` a pulse (`[start, end, force]`) and `0x06` the
-  automatic/vibration effect (`[frequency, force, start]`) — the one that
-  buzzes the trigger while it is held.
+  The official mode bytes are `0x05` off, `0x21` feedback, `0x25` weapon and
+  `0x26` vibration; the parameters are zone masks and 3-bit strengths (see
+  `Padwave.Output.TriggerEffects`, which builds them). `0x00` and `0x06` exist
+  in old probing code but are not what current firmware expects.
 
   Enabled by `valid_flag0` bit 2 for the right trigger and bit 3 for the left.
   """
@@ -142,9 +142,13 @@ defmodule Padwave.Output.Report do
     <<head::binary, value::binary, tail::binary>>
   end
 
-  defp trigger_params(params) do
-    bytes = for value <- params, do: <<value::8>>
-    (bytes ++ List.duplicate(<<0>>, 10 - length(bytes))) |> Enum.take(10) |> IO.iodata_to_binary()
+  defp trigger_params(params) when is_list(params) do
+    params |> Enum.map(&<<&1::8>>) |> IO.iodata_to_binary() |> trigger_params()
+  end
+
+  defp trigger_params(params) when is_binary(params) do
+    take = min(byte_size(params), 10)
+    binary_part(params, 0, take) <> :binary.copy(<<0>>, 10 - take)
   end
 
   defp put_byte(binary, index, value) when value in 0..255 do

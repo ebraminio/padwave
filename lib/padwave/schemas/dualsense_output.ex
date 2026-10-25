@@ -29,8 +29,10 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by valid_flag0 bits 2 and 3. Described here, not driven
     # yet.
-    u8 :right_trigger_mode       # +0x0a  0x00 off, 0x01 resistance, 0x02 pulse, ...
-    bytes :right_trigger_params, 10   # +0x0b..0x14
+    u8 :right_trigger_mode       # +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
+                                 #        0x26 vibration (0x22/0x23/0x27 unofficial)
+    bytes :right_trigger_params, 10   # +0x0b..0x14  zones + 3-bit strength,
+                                      #        vibration frequency at byte 9
     u8 :left_trigger_mode        # +0x15
     bytes :left_trigger_params, 10    # +0x16..0x1f
 

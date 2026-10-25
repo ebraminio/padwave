@@ -60,6 +60,14 @@ grip motors as a subwoofer.
 the controller starts streaming microphone audio back and floods the link).
 The subwoofer is 64 × int8 PCM at 6 kHz in the `0x12` block.
 
+**Trigger effects.** Eleven-byte blocks inside the output payload: a mode byte
+and ten parameter bytes. `0x05` off, `0x21` feedback, `0x25` weapon, `0x26`
+vibration; the official modes address ten trigger *zones* with a 3-bit strength
+each (vibration puts its frequency in byte 9). `0x22`/`0x23`/`0x27` (bow,
+galloping, machine) are unofficial and firmware-dependent. The panel and the
+"buzz while changing volume" path both go through
+`Padwave.Output.TriggerEffects`.
+
 **Feature `0x05`.** The calibration words are what make the gyro and
 accelerometer meaningful; the kernel turns them into the usual ±2 g / ±2000 °/s
 ranges at `/dev/input`.

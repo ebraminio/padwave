@@ -34,11 +34,11 @@ defmodule Padwave.ConfigTest do
   end
 
   test "out-of-range numbers are clamped rather than rejected" do
-    assert {:ok, config} = Config.update(%{"trigger_effect_force" => "9999"})
-    assert config["trigger_effect_force"] == 255
+    assert {:ok, config} = Config.update(%{"trigger_effect_amplitude" => "99"})
+    assert config["trigger_effect_amplitude"] == 8
 
-    assert {:ok, config} = Config.update(%{"trigger_effect_force" => 45})
-    assert config["trigger_effect_force"] == 45
+    assert {:ok, config} = Config.update(%{"trigger_effect_amplitude" => 3})
+    assert config["trigger_effect_amplitude"] == 3
   end
 
   test "the published config only exposes whitelisted keys" do

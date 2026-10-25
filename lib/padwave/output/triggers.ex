@@ -20,10 +20,12 @@ defmodule Padwave.Output.Triggers do
   require Logger
 
   alias Padwave.{Bus, Config}
-  alias Padwave.Output.Hid
+  alias Padwave.Output.{Hid, TriggerEffects}
 
-  @off 0x00
-  @vibration 0x06
+  # 0x05 is "off" and 0x26 is the official vibration effect; 0x00/0x06 are
+  # leftovers from early probing and are not what the firmware expects.
+  @off 0x05
+  @vibration 0x26
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -53,7 +55,8 @@ defmodule Padwave.Output.Triggers do
   end
 
   def handle_cast({:test, side, ms, mode, params}, state) do
-    Hid.trigger(side, mode, params || default_params())
+    {mode, params} = if is_integer(mode), do: {mode, params || <<0::size(80)>>}, else: vibrate_params()
+    Hid.trigger(side, mode, params)
     Process.send_after(self(), {:test_off, side}, ms |> max(50) |> min(10_000))
     {:noreply, state}
   end
@@ -71,15 +74,21 @@ defmodule Padwave.Output.Triggers do
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  defp vibrate(side, :on), do: Hid.trigger(side, @vibration, default_params())
-
-  defp default_params do
-    [
-      Config.get(:trigger_effect_frequency, 10),
-      Config.get(:trigger_effect_force, 80),
-      Config.get(:trigger_effect_start, 15)
-    ]
+  defp vibrate(side, :on) do
+    {mode, params} = vibrate_params()
+    Hid.trigger(side, mode, params)
   end
 
-  defp vibrate(side, :off), do: Hid.trigger(side, @off, [0])
+  defp vibrate_params do
+    TriggerEffects.vibration(
+      Config.get(:trigger_effect_position, 2),
+      Config.get(:trigger_effect_amplitude, 6),
+      Config.get(:trigger_effect_frequency, 25)
+    )
+  end
+
+  defp vibrate(side, :off) do
+    {mode, params} = TriggerEffects.off()
+    Hid.trigger(side, mode, params)
+  end
 end
