@@ -46,6 +46,12 @@ the one thing they are good for — being ignored.
 * Controller switched back on (PS button) → the same station resumes at the same
   second.
 
+The playhead is checkpointed every 15 seconds while playing and written
+synchronously when the service stops, so a `systemctl restart` (or a reboot)
+resumes the same station at the same second. A session that was *paused* comes
+back paused, on the right station and second — nothing starts playing by
+itself.
+
 Sticks do not count as activity by default (see `analog_wake_delta`); triggers
 do, because they rest at zero and are not noisy.
 
@@ -260,6 +266,42 @@ iex --name me@my-mac.local --cookie ~/.erlang.cookie --remsh padwave@rpi5-second
 
 That drops you into the running radio with full introspection — which is also
 the fastest way to iterate on the packet description while it is live.
+
+## Talking to it from the Mac
+
+The controller can only be paired to one host at a time, so the Pi keeps the
+controller and everything else talks to the Pi. `scripts/padwave-ctl` is the
+smallest useful bridge (it is plain curl + `python3 -m json.tool`):
+
+```bash
+scripts/padwave-ctl status
+scripts/padwave-ctl vol -5
+scripts/padwave-ctl next
+```
+
+To make the Mac's volume keys drive the controller's volume, mirror the Mac's
+output volume with Hammerspoon:
+
+```lua
+local dev = hs.audiodevice.defaultOutputDevice()
+local last = -1
+hs.timer.doEvery(0.5, function()
+  local v = math.floor(dev:volume())
+  if v ~= last then
+    last = v
+    hs.execute("~/padwave/scripts/padwave-ctl volset " .. v)
+  end
+end)
+```
+
+That is a one-way mirror and will fight the controller's own L2/R2 changes; the
+honest version is a small menu-bar app that treats the two as one control with
+a short "recently changed by me" debounce. Same API, just more state.
+
+A tray/menu-bar companion (CPU, temperature, battery, now playing, transport)
+is the obvious next step: `/api/events` is already an SSE feed of exactly the
+data such an app needs, so it can be a Swift menu-bar app, a Hammerspoon script,
+or a tiny Elixir `escript` — no new server surface required.
 
 ## Next iteration
 

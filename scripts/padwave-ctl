@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# padwave-ctl — drive the Pi's radio from anywhere on the LAN.
+#
+#   padwave-ctl status
+#   padwave-ctl play | pause | next | prev | shuffle
+#   padwave-ctl vol -5          # nudge the controller volume
+#   padwave-ctl volset 60
+#   padwave-ctl seek +30
+#   padwave-ctl config
+#
+# Point it at another host with PADWAVE_URL=http://192.168.1.175:8787
+set -euo pipefail
+
+BASE="${PADWAVE_URL:-http://192.168.1.175:8787}"
+
+post() {
+  curl -fsS -X POST "$BASE/api/command" \
+    -H 'content-type: application/json' -d "$1" >/dev/null
+}
+
+pretty() { python3 -m json.tool; }
+
+case "${1:-status}" in
+  status)  curl -fsS "$BASE/api/status" | pretty ;;
+  config)  curl -fsS "$BASE/api/config" | pretty ;;
+  play|pause|next|shuffle)
+    post "{\"action\":\"$1\"}"
+    echo "$1 sent"
+    ;;
+  prev)    post '{"action":"previous"}'; echo "previous sent" ;;
+  vol)     post "{\"action\":\"nudge_volume\",\"delta\":${2:-5}}"; echo "volume ${2:-5}" ;;
+  volset)  post "{\"action\":\"volume\",\"value\":${2:-50}}"; echo "volume ${2:-50}" ;;
+  seek)    post "{\"action\":\"seek\",\"delta\":${2:-30}}"; echo "seek ${2:-30}" ;;
+  track)
+    if [ $# -lt 2 ]; then echo "usage: padwave-ctl track <id>" >&2; exit 1; fi
+    post "{\"action\":\"play_track\",\"id\":\"$2\"}"
+    echo "track $2"
+    ;;
+  *)
+    cat >&2 <<'EOF'
+usage: padwave-ctl <command> [value]
+
+  status              full status as JSON
+  config              runtime-tunable settings
+  play                play / resume
+  pause               pause / resume
+  next | prev         next station / previous station
+  shuffle             another game's folder
+  vol <delta>         nudge volume (e.g. vol -5)
+  volset <0-100>      absolute volume
+  seek <seconds>      relative seek (e.g. seek -30)
+  track <id>          play a station by id (see /api/library)
+EOF
+    exit 1
+    ;;
+esac

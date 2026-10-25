@@ -7,6 +7,7 @@ defmodule Padwave.Application do
   @impl true
   def start(_type, _args) do
     Padwave.Config.ensure_dirs!()
+    Padwave.Config.load_overrides!()
 
     children = [
       {Padwave.Bus, []},

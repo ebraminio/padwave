@@ -15,6 +15,10 @@ defmodule Padwave.Radio do
   alias Padwave.{Bus, Config, Library, Player, Store}
   alias Padwave.Library.Track
 
+  # How often the playhead is written to disk while playing. A clean shutdown
+  # also checkpoints in terminate/2.
+  @checkpoint_ms 15_000
+
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   def status, do: GenServer.call(__MODULE__, :status, 2000)
@@ -36,6 +40,9 @@ defmodule Padwave.Radio do
 
   @impl true
   def init(_opts) do
+    # Trap exits so terminate/2 runs on a clean shutdown and can write the
+    # exact playhead to disk before the VM goes away.
+    Process.flag(:trap_exit, true)
     Bus.subscribe()
 
     tracks = Library.scan(Config.music_roots())
@@ -44,11 +51,25 @@ defmodule Padwave.Radio do
 
     current = persisted["track_id"] && Map.get(by_id, persisted["track_id"])
     volume = persisted["volume"] || Config.get(:default_volume, 80)
-    resume_pending = persisted["resume_pending"] == true
+
+    # A service restart should feel like the radio was never away: if it was
+    # playing, play again from the saved second; if it was paused, restore the
+    # station and the playhead but stay paused.
+    was_playing = persisted["playing"] == true
+    resume_pending = persisted["resume_pending"] == true or was_playing
+    paused = not resume_pending and Map.get(persisted, "paused", true) != false
 
     Player.set_volume(volume)
 
     Logger.info("[radio] #{length(tracks)} stations in #{inspect(Config.music_roots())}")
+
+    Process.send_after(self(), :checkpoint, @checkpoint_ms)
+
+    if resume_pending and current do
+      Logger.info(
+        "[radio] will resume #{current.title} at #{Float.round(state_position(persisted), 1)}s"
+      )
+    end
 
     {:ok,
      %{
@@ -60,12 +81,12 @@ defmodule Padwave.Radio do
        volume_before_mute: nil,
        volume_before_warning: nil,
        idle_warning: false,
-       paused: true,
        playing: false,
        position: persisted["position"] || 0.0,
        duration: nil,
        suspended: false,
        resume_pending: resume_pending,
+       paused: paused,
        bags: %{},
        history: List.wrap(persisted["history"])
      }}
@@ -196,6 +217,18 @@ defmodule Padwave.Radio do
     {:noreply, %{state | playing: false, paused: true}}
   end
 
+  # Save the playhead every so often while playing; a clean shutdown also
+  # checkpoints in terminate/2, so a crash costs at most one interval.
+  def handle_info(:checkpoint, state) do
+    Process.send_after(self(), :checkpoint, @checkpoint_ms)
+
+    if state.playing do
+      {:noreply, persist(state)}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info(:resume, state) do
     cond do
       state.current == nil ->
@@ -309,8 +342,15 @@ defmodule Padwave.Radio do
       |> Map.put(:suspended, false)
       |> Map.update!(:history, fn history ->
         case state.current do
-          nil -> history
-          %Track{id: id} -> if id == track.id, do: history, else: Enum.take([id | history], 40)
+          nil ->
+            history
+
+          %Track{id: id} ->
+            cond do
+              id == track.id -> history
+              match?([^id | _], history) -> history
+              true -> Enum.take([id | history], 40)
+            end
         end
       end)
 
@@ -441,16 +481,34 @@ defmodule Padwave.Radio do
   # -- persistence -----------------------------------------------------------
 
   defp persist(state) do
-    Store.save(%{
+    Store.save(state_map(state))
+    state
+  end
+
+  defp state_map(state) do
+    %{
       "track_id" => state.current && state.current.id,
       "position" => Float.round(state.position * 1.0, 2),
       "volume" => state.volume,
       "paused" => state.paused,
+      # `playing` means "should resume on boot"; a paused session must stay paused.
+      "playing" => state.playing and not state.paused,
       "resume_pending" => state.resume_pending,
       "history" => state.history
-    })
+    }
+  end
 
-    state
+  defp state_position(persisted), do: persisted["position"] || 0.0
+
+  @impl true
+  def terminate(_reason, state) do
+    try do
+      Store.save_now(state_map(state))
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
+    end
   end
 
   # -- status ----------------------------------------------------------------

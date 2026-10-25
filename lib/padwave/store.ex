@@ -23,6 +23,12 @@ defmodule Padwave.Store do
   @doc "Merges `data` into the persisted map and schedules a flush."
   def save(data) when is_map(data), do: GenServer.cast(__MODULE__, {:save, data})
 
+  @doc """
+  Merges and writes immediately. Used when the VM is going down and there will
+  be no later flush.
+  """
+  def save_now(data) when is_map(data), do: GenServer.call(__MODULE__, {:save_now, data}, 2000)
+
   @impl true
   def init(_opts) do
     path = Config.state_file()
@@ -37,6 +43,15 @@ defmodule Padwave.Store do
   def handle_cast({:save, data}, state) do
     state = %{state | data: Map.merge(state.data, data)}
     {:noreply, schedule_flush(state)}
+  end
+
+  @impl true
+  def handle_call({:save_now, data}, _from, state) do
+    data = Map.merge(state.data, data)
+    write(state.path, data)
+
+    if state.timer, do: Process.cancel_timer(state.timer)
+    {:reply, :ok, %{state | data: data, timer: nil}}
   end
 
   @impl true

@@ -20,7 +20,6 @@
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
     margin: 0;
     background:
@@ -33,10 +32,7 @@
   }
   .app { max-width: 1180px; margin: 0 auto; padding: 26px 22px 60px; }
 
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
-  }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
   .brand { display: flex; align-items: baseline; gap: 10px; }
   .brand h1 {
     margin: 0; font-size: 22px; letter-spacing: .22em; font-weight: 700;
@@ -47,10 +43,8 @@
 
   .chips { display: flex; gap: 8px; flex-wrap: wrap; }
   .chip {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 6px 12px; border-radius: 999px;
-    background: var(--panel); border: 1px solid var(--line);
-    font-size: 12.5px; color: var(--muted); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); white-space: nowrap;
   }
   .chip b { color: var(--text); font-weight: 600; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -66,6 +60,8 @@
     border: 1px solid var(--line); border-radius: 18px; padding: 20px;
     box-shadow: 0 18px 40px -28px #000;
   }
+  .card h2 { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .game { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
@@ -73,11 +69,7 @@
 
   .progress { margin: 20px 0 8px; cursor: pointer; }
   .bar { position: relative; height: 8px; border-radius: 999px; background: #1d2230; overflow: hidden; }
-  .fill {
-    position: absolute; inset: 0 auto 0 0; width: 0%;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    border-radius: 999px; transition: width .35s linear;
-  }
+  .fill { position: absolute; inset: 0 auto 0 0; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; }
   .times { display: flex; justify-content: space-between; margin-top: 7px; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 
   .transport { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
@@ -90,7 +82,7 @@
   button:active { transform: scale(.96); }
   button.primary {
     flex: 1; font-weight: 600; letter-spacing: .02em;
-    background: linear-gradient(135deg, rgba(124,92,255,.95), rgba(34,211,238,.9));
+    background: linear-gradient(135deg, rgba(124, 92, 255, .95), rgba(34, 211, 238, .9));
     border: none; color: #0a0c11;
   }
   button.icon { padding: 10px 12px; }
@@ -100,38 +92,46 @@
   .volume .val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
   .list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .list-head h2 { margin: 0; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-  input[type=search] {
+  input[type=search], input[type=number] {
     background: #0e1118; border: 1px solid var(--line); color: var(--text);
-    border-radius: 10px; padding: 8px 11px; font-size: 13px; width: 150px; outline: none;
+    border-radius: 10px; padding: 8px 11px; font-size: 13px; outline: none;
   }
-  input[type=search]:focus { border-color: var(--accent); }
+  input[type=search] { width: 150px; }
+  input[type=number] { width: 70px; font-variant-numeric: tabular-nums; }
+  input:focus { border-color: var(--accent); }
   .stations { list-style: none; margin: 12px 0 0; padding: 0; max-height: 360px; overflow: auto; }
-  .stations li {
-    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer;
-    border: 1px solid transparent;
-  }
+  .stations li { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
   .stations li:hover { background: #171c28; }
-  .stations li.active { background: rgba(124,92,255,.13); border-color: rgba(124,92,255,.45); }
+  .stations li.active { background: rgba(124, 92, 255, .13); border-color: rgba(124, 92, 255, .45); }
   .stations .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .stations .g { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
-  .pad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; }
+  .pad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; margin-top: 12px; }
   .pad-key {
-    text-align: center; padding: 9px 6px; border-radius: 10px;
-    background: #0f1219; border: 1px solid var(--line); color: var(--muted);
-    font-size: 12px; letter-spacing: .04em; transition: all .1s ease;
+    text-align: center; padding: 9px 6px; border-radius: 10px; background: #0f1219;
+    border: 1px solid var(--line); color: var(--muted); font-size: 12px; letter-spacing: .04em; transition: all .1s ease;
   }
-  .pad-key.on { background: rgba(34,211,238,.15); border-color: var(--accent-2); color: var(--accent-2); }
+  .pad-key.on { background: rgba(34, 211, 238, .15); border-color: var(--accent-2); color: var(--accent-2); }
   .pad-key small { display: block; color: inherit; opacity: .6; font-size: 10px; margin-top: 2px; }
 
   .triggers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
   .trig { background: #0f1219; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
   .trig .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
   .trig .track { height: 6px; background: #1b2130; border-radius: 999px; margin-top: 6px; overflow: hidden; }
-  .trig .val { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .trig .val { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .12s linear; }
 
-  details { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .sensors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  @media (max-width: 560px) { .sensors { grid-template-columns: 1fr; } }
+  .axis { background: #0f1219; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .axis .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .axis .lbl b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+  .axis .track { position: relative; height: 6px; background: #1b2130; border-radius: 999px; overflow: hidden; }
+  .axis .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #2b3346; }
+  .axis .val { position: absolute; top: 0; bottom: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: left .12s linear, width .12s linear; }
+  .sensor-foot { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .sensor-foot b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+
+  details { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
   pre.hex {
     margin: 10px 0 0; padding: 12px; background: #0b0e14; border: 1px solid var(--line); border-radius: 10px;
@@ -143,6 +143,11 @@
   .field b { display: block; color: var(--muted); font-weight: 500; font-size: 10px; letter-spacing: .05em; }
   .field span { font-family: var(--mono); color: var(--accent-2); }
 
+  .setting { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .setting label { display: inline-flex; align-items: center; gap: 6px; }
+  .setting button { padding: 8px 12px; font-size: 13px; }
+  .setting .msg { color: var(--good); font-size: 12px; }
+
   footer { margin-top: 20px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
   .toast {
     position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
@@ -151,7 +156,10 @@
     transition: all .22s ease; z-index: 10;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .warnbar { background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.4); color: var(--warn); border-radius: 12px; padding: 9px 12px; font-size: 12.5px; margin-top: 14px; display: none; }
+  .warnbar {
+    background: rgba(251, 191, 36, .12); border: 1px solid rgba(251, 191, 36, .4); color: var(--warn);
+    border-radius: 12px; padding: 9px 12px; font-size: 12.5px; margin-top: 14px; display: none;
+  }
   .warnbar.show { display: block; }
 </style>
 </head>
@@ -163,7 +171,7 @@
       <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
       <span class="chip">battery <b id="battText">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
-      <span class="chip" id="audioChip"><i class="dot" id="audioDot"></i><b>audio</b></span>
+      <span class="chip"><i class="dot" id="audioDot"></i><b>audio</b></span>
       <span class="chip" id="idleChip">idle <b>—</b></span>
     </div>
   </header>
@@ -182,17 +190,17 @@
       <div class="transport">
         <button class="icon" data-action="previous" title="previous station">⏮</button>
         <button class="primary" data-action="pause" id="pauseBtn">play</button>
-        <button class="icon" data-action="next" title="next random station">⏭</button>
-        <button class="icon" data-action="shuffle_game" title="random station from another game">🎲</button>
+        <button class="icon" data-action="next" title="next station in this folder">⏭</button>
+        <button class="icon" data-action="shuffle_game" title="another game's folder">🎲</button>
       </div>
 
       <div class="volume">
         <button class="icon" data-action="mute" id="muteBtn" title="mute">🔊</button>
-        <input type="range" id="volume" min="0" max="100" step="1" value="80">
-        <span class="val" id="volLabel">80</span>
+        <input type="range" id="volume" min="0" max="100" step="1" value="70">
+        <span class="val" id="volLabel">70</span>
       </div>
 
-      <div class="warnbar" id="warnbar">Idle — raising volume as a warning. Shutting down in <b id="warnLeft">60</b>s unless you touch the controller.</div>
+      <div class="warnbar" id="warnbar">Idle — nudging the volume. Shutting down in <b id="warnLeft">60</b>s unless you touch the controller.</div>
     </section>
 
     <section class="card">
@@ -204,7 +212,7 @@
     </section>
 
     <section class="card">
-      <div class="list-head"><h2>controller</h2><span class="chip" id="lastAction">—</span></div>
+      <div class="card-head"><h2>controller</h2><span class="chip" id="lastAction">—</span></div>
       <div class="pad-grid" id="padGrid"></div>
       <div class="triggers">
         <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div></div>
@@ -218,15 +226,44 @@
     </section>
 
     <section class="card">
-      <div class="list-head"><h2>bindings</h2><span class="chip">hold to steer</span></div>
+      <div class="card-head"><h2>motion &amp; sensors</h2><span class="chip" id="tempChip">temp —</span></div>
+      <div class="sensors">
+        <div class="axis"><div class="lbl"><span>accel x</span><b id="axv">0.00 g</b></div><div class="track"><div class="mid"></div><div class="val" id="ax"></div></div></div>
+        <div class="axis"><div class="lbl"><span>accel y</span><b id="ayv">0.00 g</b></div><div class="track"><div class="mid"></div><div class="val" id="ay"></div></div></div>
+        <div class="axis"><div class="lbl"><span>accel z</span><b id="azv">0.00 g</b></div><div class="track"><div class="mid"></div><div class="val" id="az"></div></div></div>
+      </div>
+      <div class="sensors">
+        <div class="axis"><div class="lbl"><span>gyro x</span><b id="gxv">0</b></div><div class="track"><div class="mid"></div><div class="val" id="gx"></div></div></div>
+        <div class="axis"><div class="lbl"><span>gyro y</span><b id="gyv">0</b></div><div class="track"><div class="mid"></div><div class="val" id="gy"></div></div></div>
+        <div class="axis"><div class="lbl"><span>gyro z</span><b id="gzv">0</b></div><div class="track"><div class="mid"></div><div class="val" id="gz"></div></div></div>
+      </div>
+      <div class="sensor-foot">
+        <span>sticks <b id="sticks">—</b></span>
+        <span>report seq <b id="seqv">—</b></span>
+        <span>updated <b id="agetext">—</b></span>
+      </div>
+      <p style="color:var(--muted);font-size:11.5px;margin:10px 0 0">
+        Sticks, gyro and accelerometer are decoded on every report but deliberately
+        <em>not</em> used for wake-up or idle detection — worn sticks jitter and a
+        controller on a table is never perfectly still.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>bindings</h2><button class="icon" id="reloadBtn" title="reload changed modules">⟳</button></div>
       <div class="pad-grid" id="bindings"></div>
+      <div class="setting">
+        <label>idle after <input type="number" id="idleMin" min="1" max="240" step="1"> min</label>
+        <label>warn <input type="number" id="warnSec" min="10" max="600" step="1"> s</label>
+        <button id="saveCfg">save</button>
+        <span class="msg" id="cfgMsg"></span>
+      </div>
       <details>
-        <summary>hot swap</summary>
+        <summary>about</summary>
         <p style="color:var(--muted);font-size:12.5px">
-          Edit <code style="font-family:var(--mono)">lib/padwave/schemas/dualsense_input.ex</code> or the UI,
-          then reload — the stream keeps playing.
+          Packet descriptions in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> compile into a
+          binary match and can be swapped into the running service with ⟳ — the music keeps playing.
         </p>
-        <button id="reloadBtn">reload modules</button>
       </details>
     </section>
   </div>
@@ -253,9 +290,14 @@ let last = null;
 let dragging = false;
 let tracks = [];
 let filterText = "";
+let lastSensorsAt = 0;
+
+// The server sends 5 frames a second; the playhead is extrapolated locally so
+// the bar moves at 60 fps instead of stepping.
+const clock = { pos: 0, at: 0, playing: false, duration: 0 };
 
 const fmt = (s) => {
-  if (s == null || isNaN(s)) return "0:00";
+  if (s == null || isNaN(s) || !isFinite(s)) return "0:00";
   s = Math.max(0, Math.floor(s));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`
@@ -267,7 +309,7 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add("show");
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove("show"), 1600);
+  el._t = setTimeout(() => el.classList.remove("show"), 1800);
 }
 
 async function send(action, args = {}) {
@@ -278,10 +320,11 @@ async function send(action, args = {}) {
       body: JSON.stringify({ action, ...args })
     });
     const data = await res.json();
-    if (data.status) render(data);
     if (!data.ok) toast("failed: " + (data.error || "unknown"));
   } catch (e) { toast("network: " + e.message); }
 }
+
+// -- rendering --------------------------------------------------------------
 
 function render(s) {
   last = s;
@@ -295,28 +338,28 @@ function render(s) {
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
   $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
 
-  const dur = r.duration || 0;
-  const pos = r.position || 0;
-  $("#fill").style.width = dur ? `${Math.min(100, (pos / dur) * 100)}%` : "0%";
-  $("#pos").textContent = fmt(pos);
-  $("#dur").textContent = dur ? fmt(dur) : "—";
+  clock.pos = r.position || 0;
+  clock.at = performance.now();
+  clock.playing = !!r.playing && !r.paused;
+  if (r.duration) clock.duration = r.duration;
+  if (!cur) { clock.duration = 0; clock.pos = 0; }
+
+  $("#dur").textContent = clock.duration ? fmt(clock.duration) : "—";
 
   if (!dragging) {
     $("#volume").value = r.volume ?? 0;
     $("#volLabel").textContent = r.volume ?? 0;
   }
 
-  const dot = $("#connDot");
-  dot.className = "dot " + (c.connected ? "on" : "off");
+  $("#connDot").className = "dot " + (c.connected ? "on" : "off");
   $("#connText").textContent = c.connected ? "controller online" : "controller offline";
-  $("#battText").textContent = c.battery != null ? c.battery + "%" : "—";
+  $("#battText").textContent = c.battery != null
+    ? `${c.battery}%${c.charging === "charging" ? " ⚡" : ""}`
+    : "—";
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
 
   const audio = s.audio || {};
   $("#audioDot").className = "dot " + (audio.present ? (audio.state === "RUNNING" ? "on" : "warn") : "off");
-  $("#audioChip").title = audio.present
-    ? `${audio.sink} · ${audio.state} · ${(audio.streams || []).join(", ") || "no stream"}`
-    : "the DualSense sink is missing — is LinuxAudio4Dualsense5 running?";
 
   const idle = sess.warning_in ?? 0;
   $("#idleChip").innerHTML = sess.phase === "warning"
@@ -328,18 +371,14 @@ function render(s) {
   if (c.connected) {
     $("#hex").textContent = c.raw || "—";
     renderFields(c.fields || {});
+    renderSensors(c);
     $("#lastAction").textContent = c.last_action || "—";
   }
 
   const pressed = new Set(c.buttons || []);
-  const dirs = { up: "dpad:up", right: "dpad:right", down: "dpad:down", left: "dpad:left" };
-  pressed.forEach(b => pressed.add(dirs[b] || b));
-
   document.querySelectorAll(".pad-key[data-key]").forEach(el => {
     const key = el.dataset.key;
-    const on = key.startsWith("dpad:")
-      ? c.dpad === key.slice(5)
-      : pressed.has(key);
+    const on = key.startsWith("dpad:") ? c.dpad === key.slice(5) : pressed.has(key);
     el.classList.toggle("on", !!on);
   });
 
@@ -348,20 +387,53 @@ function render(s) {
   $("#l2bar").style.width = `${((c.l2 ?? 0) / 255) * 100}%`;
   $("#r2bar").style.width = `${((c.r2 ?? 0) / 255) * 100}%`;
 
+  const cfg = s.config || {};
+  if (document.activeElement !== $("#idleMin") && cfg.idle_timeout_ms)
+    $("#idleMin").value = Math.round(cfg.idle_timeout_ms / 60000);
+  if (document.activeElement !== $("#warnSec") && cfg.idle_warn_grace_ms)
+    $("#warnSec").value = Math.round(cfg.idle_warn_grace_ms / 1000);
+
   $("#statusLine").textContent =
-    `v0.1 · idle ${fmt(sess.idle_seconds || 0)} · ${cur ? cur.path : "no station"}`;
+    `v0.1 · ${audio.present ? audio.sink + " " + audio.state : "no sink"} · ${cur ? cur.path : "no station"}`;
 
   highlightStation(cur && cur.id);
 }
 
+function renderSensors(c) {
+  const accel = c.accel || [0, 0, 0];
+  const gyro = c.gyro || [0, 0, 0];
+  const g = accel.map(v => v / 8192);
+
+  setAxis("ax", g[0], 1.2, `${g[0].toFixed(2)} g`);
+  setAxis("ay", g[1], 1.2, `${g[1].toFixed(2)} g`);
+  setAxis("az", g[2], 1.2, `${g[2].toFixed(2)} g`);
+  setAxis("gx", gyro[0] / 2000, 1, String(gyro[0]));
+  setAxis("gy", gyro[1] / 2000, 1, String(gyro[1]));
+  setAxis("gz", gyro[2] / 2000, 1, String(gyro[2]));
+
+  $("#tempChip").textContent = c.temperature != null ? `temp ${c.temperature}°` : "temp —";
+  $("#sticks").textContent = `${c.lx ?? 0} ${c.ly ?? 0} · ${c.rx ?? 0} ${c.ry ?? 0}`;
+  $("#seqv").textContent = (c.fields && c.fields.seq) ?? "—";
+
+  lastSensorsAt = performance.now();
+}
+
+function setAxis(id, normalized, range, label) {
+  const clamped = Math.max(-1, Math.min(1, normalized / range));
+  const pct = Math.abs(clamped) * 50;
+  const el = $(`#${id}`);
+  el.style.left = clamped >= 0 ? "50%" : `${50 - pct}%`;
+  el.style.width = `${pct}%`;
+  $(`#${id}v`).textContent = label;
+}
+
 function renderFields(fields) {
-  const el = $("#fields");
-  const wanted = ["seq", "counter", "gyro_x", "gyro_y", "gyro_z", "accel_x", "accel_y", "accel_z",
-                  "temperature", "status0", "status1", "status2", "crc", "sensor_time"];
-  el.innerHTML = wanted.filter(k => fields[k] !== undefined).map(k => {
+  const wanted = ["seq", "counter", "accel_x", "accel_y", "accel_z", "temperature",
+                  "status0", "status1", "status2", "crc"];
+  $("#fields").innerHTML = wanted.filter(k => fields[k] !== undefined).map(k => {
     let v = fields[k];
     if (typeof v === "object") v = JSON.stringify(v);
-    if (k === "crc" || k === "sensor_time") v = "0x" + Number(v).toString(16);
+    if (k === "crc") v = "0x" + Number(v).toString(16);
     return `<div class="field"><b>${k}</b><span>${v}</span></div>`;
   }).join("");
 }
@@ -394,7 +466,7 @@ function escapeHtml(s) {
 
 function buildPad() {
   $("#padGrid").innerHTML = padButtons.map(([key, label]) => {
-    const dataKey = ["up","right","down","left"].includes(key) ? `dpad:${key}` : key;
+    const dataKey = ["up", "right", "down", "left"].includes(key) ? `dpad:${key}` : key;
     return `<div class="pad-key" data-key="${dataKey}">${label}</div>`;
   }).join("");
 }
@@ -412,6 +484,30 @@ function buildBindings(bindings) {
     <div class="pad-key" style="cursor:default">PS<small>hold 2s = off</small></div>`;
 }
 
+// -- frame loop -------------------------------------------------------------
+
+function frameLoop() {
+  const now = performance.now();
+  const p = clock.playing
+    ? (clock.duration ? Math.min(clock.pos + (now - clock.at) / 1000, clock.duration) : clock.pos + (now - clock.at) / 1000)
+    : clock.pos;
+
+  if (clock.duration) {
+    $("#fill").style.width = `${Math.min(100, (p / clock.duration) * 100)}%`;
+  } else {
+    $("#fill").style.width = "0%";
+  }
+
+  $("#pos").textContent = fmt(p);
+
+  if (lastSensorsAt) {
+    const age = Math.round(now - lastSensorsAt);
+    $("#agetext").textContent = age < 1000 ? "now" : `${Math.round(age / 1000)}s ago`;
+  }
+
+  requestAnimationFrame(frameLoop);
+}
+
 // -- wiring -----------------------------------------------------------------
 
 document.querySelectorAll("[data-action]").forEach(btn => {
@@ -419,10 +515,10 @@ document.querySelectorAll("[data-action]").forEach(btn => {
 });
 
 $("#progress").onclick = (ev) => {
-  if (!last || !last.radio || !last.radio.duration) return;
+  if (!clock.duration) return;
   const rect = ev.currentTarget.getBoundingClientRect();
   const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
-  send("seek_to", { position: Math.round(ratio * last.radio.duration) });
+  send("seek_to", { position: Math.round(ratio * clock.duration) });
 };
 
 $("#volume").addEventListener("pointerdown", () => dragging = true);
@@ -443,6 +539,22 @@ $("#filter").addEventListener("input", (e) => {
   buildStations();
 });
 
+$("#saveCfg").onclick = async () => {
+  const minutes = Number($("#idleMin").value);
+  const warn = Number($("#warnSec").value);
+  const res = await fetch("/api/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      idle_timeout_ms: Math.round(minutes * 60000),
+      idle_warn_grace_ms: Math.round(warn * 1000)
+    })
+  });
+  const data = await res.json();
+  $("#cfgMsg").textContent = data.ok ? "saved" : ("failed: " + data.error);
+  setTimeout(() => { $("#cfgMsg").textContent = ""; }, 2500);
+};
+
 $("#reloadBtn").onclick = async () => {
   const res = await fetch("/api/reload", { method: "POST" });
   const data = await res.json();
@@ -459,8 +571,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "m") send("mute");
 });
 
+// -- boot -------------------------------------------------------------------
+
 async function boot() {
   buildPad();
+  requestAnimationFrame(frameLoop);
+
   try {
     const lib = await fetch("/api/library").then(r => r.json());
     tracks = lib.tracks || [];
@@ -472,11 +588,30 @@ async function boot() {
     buildBindings(schema.bindings);
   } catch (e) { /* non-fatal */ }
 
+  connectStream();
+}
+
+function connectStream() {
+  if (!window.EventSource) return pollFallback();
+
+  const source = new EventSource("/api/events");
+
+  source.onmessage = (event) => {
+    try { render(JSON.parse(event.data)); } catch (e) { console.error(e); }
+  };
+
+  source.onerror = () => {
+    // The browser retries on its own, but a dead server needs a reset.
+    if (source.readyState === EventSource.CLOSED) {
+      setTimeout(connectStream, 1500);
+    }
+  };
+}
+
+function pollFallback() {
   const loop = async () => {
-    if (document.hidden) { setTimeout(loop, 2000); return; }
     try {
-      const s = await fetch("/api/status").then(r => r.json());
-      render(s);
+      render(await fetch("/api/status").then(r => r.json()));
     } catch (e) { /* offline */ }
     setTimeout(loop, 1000);
   };
