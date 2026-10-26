@@ -183,6 +183,7 @@ defmodule Padwave.Radio do
   def handle_info({:padwave, {:device, :up, info}}, state) do
     Logger.info("[radio] controller connected (#{info.mac})")
     state = %{state | suspended: false}
+    Bus.broadcast({:radio, {:transport, if(state.paused, do: :paused, else: :playing)}})
 
     # A DualSense that we powered off often reconnects by itself a few seconds
     # later. That is not the listener coming back, so an idle/manual shutdown
@@ -281,6 +282,11 @@ defmodule Padwave.Radio do
       not Padwave.Input.Device.connected?() ->
         # The sink takes a moment to come back after the controller does.
         Process.send_after(self(), :resume, 800)
+        {:noreply, state}
+
+      Padwave.Input.Mapper.jack?() == nil ->
+        # Connected but no report yet: do not guess, wait to be told.
+        Process.send_after(self(), :resume, 300)
         {:noreply, state}
 
       Padwave.Input.Mapper.jack?() == false ->

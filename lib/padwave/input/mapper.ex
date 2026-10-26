@@ -144,6 +144,9 @@ defmodule Padwave.Input.Mapper do
   end
 
   def handle_info({:padwave, {:device, :down, _info}}, state) do
+    # Forget the jack: the next controller should be judged on its own first
+    # report, not on what was plugged into the previous one.
+    state = %{state | jack: nil, jack_pending: nil, jack_since: nil}
     {:noreply, %{state | frame: nil, prev: nil, prev_buttons: [], prev_dpad: :none}}
   end
 

@@ -31,10 +31,11 @@ defmodule Padwave.MapperTest do
 
   test "a one-frame jack flicker is ignored" do
     Simulator.press!(%{jack: true}, 400)
-    Simulator.press!(%{jack: false}, 80)
-    Simulator.press!(%{jack: true}, 400)
+    # one frame out, the very next frame back in: under the debounce window
+    Simulator.frame_once!(%{jack: false})
+    Simulator.frame_once!(%{jack: true})
 
-    refute_receive {:padwave, {:action, :jack_unplugged}}, 800
+    refute_receive {:padwave, {:action, :jack_unplugged}}, 600
   end
 
   test "the Edge back paddles skip stations like L1/R1" do

@@ -55,6 +55,23 @@ defmodule Padwave.Input.Simulator do
   Presses `buttons` (and optionally a d-pad direction / analogue trigger
   values) for `duration_ms`, then releases. Returns immediately.
   """
+  @doc """
+  One synthetic frame, no press/release envelope and no sleep — for tests that
+  care about a single frame rather than a held input.
+  """
+  def frame_once!(patch) when is_map(patch) do
+    raw = Crc.seal_input(build(patch))
+
+    case Frame.from_report(raw) do
+      {:ok, frame} ->
+        send(Mapper, {:sim_frame, frame})
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def press(patch, duration_ms \\ 140) when is_map(patch) do
     spawn(fn -> run(patch, duration_ms) end)
   end
