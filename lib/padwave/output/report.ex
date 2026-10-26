@@ -21,11 +21,6 @@ defmodule Padwave.Output.Report do
 
   @seed 0xA2
   @tag 0x10
-  @valid_flag1_lightbar 0x04
-  @valid_flag1_player_leds 0x10
-  @valid_flag0_right_trigger 0x04
-  @valid_flag0_left_trigger 0x08
-
   @doc """
   A lightbar update.
 
@@ -34,7 +29,7 @@ defmodule Padwave.Output.Report do
   """
   def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
     fields = %{
-      valid_flag1: @valid_flag1_lightbar,
+      valid_flag1: [:lightbar],
       lightbar_red: red,
       lightbar_green: green,
       lightbar_blue: blue
@@ -47,7 +42,7 @@ defmodule Padwave.Output.Report do
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
   def player_leds(mask, opts \\ []) when is_list(opts) do
     build(
-      %{valid_flag1: @valid_flag1_player_leds, player_leds: mask},
+      %{valid_flag1: [:player_leds], player_leds: mask},
       Keyword.get(opts, :bus, :bluetooth),
       seq: Keyword.get(opts, :seq, 0)
     )
@@ -71,14 +66,14 @@ defmodule Padwave.Output.Report do
       case side do
         :right ->
           %{
-            valid_flag0: @valid_flag0_right_trigger,
+            valid_flag0: [:right_trigger],
             right_trigger_mode: mode,
             right_trigger_params: trigger_params(params)
           }
 
         :left ->
           %{
-            valid_flag0: @valid_flag0_left_trigger,
+            valid_flag0: [:left_trigger],
             left_trigger_mode: mode,
             left_trigger_params: trigger_params(params)
           }
@@ -105,6 +100,7 @@ defmodule Padwave.Output.Report do
       end
 
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
+    flag_bits = Map.new(spec.fields, fn field -> {field.name, Map.get(field, :flags, %{})} end)
 
     zeroed =
       :binary.copy(<<0>>, spec.size)
@@ -116,7 +112,7 @@ defmodule Padwave.Output.Report do
           Map.get(offsets, name) ||
             raise ArgumentError, "unknown output report field #{inspect(name)}"
 
-        put_value(acc, offset, value)
+        put_value(acc, offset, resolve_flags(value, Map.get(flag_bits, name, %{})))
       end)
 
     if bus == :usb do
@@ -133,6 +129,24 @@ defmodule Padwave.Output.Report do
   def crc(data) when is_binary(data) do
     :erlang.crc32(<<@seed>> <> data)
   end
+
+  # A flag field accepts either the raw byte or a list of bit names.
+  defp resolve_flags(value, flags) when map_size(flags) == 0, do: value
+
+  defp resolve_flags(bits, flags) when is_list(bits) do
+    Enum.reduce(bits, 0, fn bit, acc ->
+      case Map.fetch(flags, bit) do
+        {:ok, position} ->
+          Bitwise.bor(acc, Bitwise.bsl(1, position))
+
+        :error ->
+          raise ArgumentError,
+                "unknown flag bit #{inspect(bit)}; known: #{inspect(Map.keys(flags))}"
+      end
+    end)
+  end
+
+  defp resolve_flags(value, _flags), do: value
 
   defp put_value(binary, index, value) when is_integer(value) and value in 0..255,
     do: put_byte(binary, index, value)

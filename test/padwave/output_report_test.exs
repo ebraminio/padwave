@@ -66,6 +66,23 @@ defmodule Padwave.OutputReportTest do
     end
   end
 
+  test "flag bytes declare their bits and accept names when encoding" do
+    spec = Padwave.Schema.DualSenseOutput.spec(:output)
+    flag0 = Enum.find(spec.fields, &(&1.name == :valid_flag0))
+
+    assert flag0.flags[:right_trigger] == 2
+    assert flag0.flags[:audio_routing] == 7
+
+    report = Report.build(%{valid_flag0: [:right_trigger, :left_trigger]})
+    fields = Padwave.Schema.DualSenseOutput.decode_output(report)
+
+    assert fields.valid_flag0 == 0x0C
+
+    assert_raise ArgumentError, ~r/unknown flag bit/, fn ->
+      Report.build(%{valid_flag0: [:nonsense]})
+    end
+  end
+
   test "a trigger vibration sets its flag, mode and parameters" do
     report = Report.trigger(:right, 0x06, [25, 200, 5], seq: 7)
 

@@ -20,12 +20,15 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     #
     # Example: 0x0C claims only the two trigger blocks and leaves volumes, LEDs
     # and rumble untouched.
-    u8 :valid_flag0              # +0x00  bit0 rumble, bit1 haptics, bit2 right trigger,
-                                 #        bit3 left trigger, bit5 speaker volume,
-                                 #        bit6 mic volume, bit7 audio routing
-    u8 :valid_flag1              # +0x01  bit0 mic LED, bit1 power save, bit2 lightbar,
-                                 #        bit3 release LEDs, bit4 player LEDs, bit7 audio 2
-                                 #        (same rule: set = this report owns it)
+    u8 :valid_flag0,
+       flags: [rumble: 0, haptics: 1, right_trigger: 2, left_trigger: 3,
+               headphone_volume: 4, speaker_volume: 5, mic_volume: 6, audio_routing: 7]
+    # +0x00  which fields this report owns (see the note above)
+
+    u8 :valid_flag1,
+       flags: [mute_led: 0, audio_mute: 1, lightbar: 2, reset_lights: 3,
+               player_leds: 4, haptic_lpf: 5, motor_power_level: 6, audio_control2: 7]
+    # +0x01  same rule: set = this report owns it
     u8 :motor_right              # +0x02  DS4-compatible rumble
     u8 :motor_left               # +0x03
     u8 :headphone_volume         # +0x04  0x00..0x7f
@@ -51,8 +54,9 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     bytes :reserved_32, 4        # +0x20..0x23
     u8 :haptic_volume            # +0x24
     u8 :audio_control2           # +0x25  speaker preamp gain
-    u8 :valid_flag2              # +0x26  bit0 brightness, bit1 lightbar setup,
-                                 #        bit2 vibration v2
+    u8 :valid_flag2,
+       flags: [brightness: 0, color_fade: 1, improved_rumble: 2]
+    # +0x26
     bytes :reserved_39, 2        # +0x27..0x28
 
     u8 :lightbar_setup           # +0x29  fade-out after power-on
