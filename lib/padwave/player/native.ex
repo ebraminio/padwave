@@ -62,6 +62,7 @@ defmodule Padwave.Player.Native do
         }
 
         send_line(state, play_line(path, start))
+        send_line(state, "fade #{round(Keyword.get(opts, :fade, 0) || 0)}\n")
 
         for queued <- Keyword.get(opts, :queue, []) do
           send_line(state, "queue #{queued}\n")

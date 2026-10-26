@@ -67,8 +67,8 @@ extern "C" {
 #define OPUS_FRAMES 480 /* what the controller's decoder consumes */
 #define OPUS_BYTES 200  /* CBR 160 kbps at 10 ms */
 #define REPORT_SIZE 398
-#define RING_BLOCKS 96 /* about a second of decoded audio */
-#define RING_HIGH 64   /* stop decoding above this many buffered blocks */
+#define RING_BLOCKS 192 /* about two seconds: enough for a 1.5 s crossfade */
+#define RING_HIGH 160   /* stop decoding above this many buffered blocks */
 #define RING_PRIME 24  /* start sending once this many are buffered */
 #define DECODE_BUDGET_MS 3 /* but never spend longer than this per iteration */
 
@@ -98,6 +98,12 @@ struct player {
   char next_path[1024];
   bool has_next;
   bool next_warmed;
+
+  /* Crossfade at a station change: the last fade_total blocks of the current
+   * station are mixed with the first fade_total blocks of the next one. */
+  int fade_ms;
+  bool fading;
+  int fade_pos, fade_total;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
@@ -376,17 +382,87 @@ static bool take_block(struct player *pl, float out[IN_FRAMES][CHANNELS]) {
   return true;
 }
 
+static bool take_next_block(struct player *pl, float out[IN_FRAMES][CHANNELS]) {
+  if (pl->ntail == pl->nhead) return false;
+  memcpy(out, pl->nring[pl->ntail], sizeof(pl->nring[0]));
+  pl->ntail = (pl->ntail + 1) % RING_BLOCKS;
+  return true;
+}
+
+/* The fade is over: the prefetched station becomes the current one. The blocks
+ * already mixed are gone from nring, so the new ring continues exactly after
+ * the faded-in part. */
+static void finish_fade(struct player *pl) {
+  file_close(&pl->cur);
+  pl->cur = pl->nxt;
+  memset(&pl->nxt, 0, sizeof(pl->nxt));
+  pl->nxt.audio_index = -1;
+
+  memcpy(pl->ring, pl->nring, sizeof(pl->ring));
+  pl->head = pl->nhead;
+  pl->tail = pl->ntail;
+  memcpy(pl->acc, pl->nacc, sizeof(pl->acc));
+  pl->acc_frames = pl->nacc_frames;
+
+  pl->nhead = pl->ntail = 0;
+  pl->nacc_frames = 0;
+  pl->npushed = 0;
+
+  snprintf(pl->path, sizeof(pl->path), "%s", pl->next_path);
+  pl->base_ms = 0;
+  pl->consumed = 0;
+  pl->sent = 0;
+  pl->underruns = 0;
+  pl->eof = pl->cur.eof;
+  pl->has_next = false;
+  pl->fading = false;
+  pl->fade_pos = 0;
+  pl->fade_total = 0;
+
+  printf("track %s\n", pl->path);
+  fflush(stdout);
+}
+
 /* ---- the tick ----------------------------------------------------------- */
 
 static void tick(struct player *pl) {
   float block[IN_FRAMES][CHANNELS];
-  bool have = take_block(pl, block);
 
-  if (!have) {
-    pl->underruns++;
-    memset(block, 0, sizeof(block)); /* keep the stream alive with silence */
+  if (pl->fading) {
+    float old[IN_FRAMES][CHANNELS];
+    float next[IN_FRAMES][CHANNELS];
+    bool have_old = take_block(pl, old);
+    bool have_next = take_next_block(pl, next);
+
+    if (!have_next) {
+      /* The prefetched side is not ready yet: keep playing the current one
+       * without advancing the fade. */
+      if (have_old) {
+        memcpy(block, old, sizeof(block));
+        pl->consumed += IN_FRAMES;
+      } else {
+        pl->underruns++;
+        memset(block, 0, sizeof(block));
+      }
+    } else {
+      float g = pl->fade_total > 0 ? (float)pl->fade_pos / (float)pl->fade_total : 1.0f;
+      for (int i = 0; i < IN_FRAMES; i++)
+        for (int ch = 0; ch < CHANNELS; ch++)
+          block[i][ch] = (have_old ? old[i][ch] : 0.0f) * (1.0f - g) + next[i][ch] * g;
+
+      if (have_old) pl->consumed += IN_FRAMES;
+      pl->fade_pos++;
+      if (pl->fade_pos >= pl->fade_total || !have_old) finish_fade(pl);
+    }
   } else {
-    pl->consumed += IN_FRAMES;
+    bool have = take_block(pl, block);
+
+    if (!have) {
+      pl->underruns++;
+      memset(block, 0, sizeof(block)); /* keep the stream alive with silence */
+    } else {
+      pl->consumed += IN_FRAMES;
+    }
   }
 
   float pcm[OPUS_FRAMES * CHANNELS];
@@ -458,6 +534,11 @@ static void handle_line(struct player *pl, char *line) {
       pl->next_warmed = false;
       warm_file(path);
     }
+    return;
+  }
+
+  if (sscanf(line, "fade %ld", &value) == 1) {
+    pl->fade_ms = (int)(value < 0 ? 0 : value);
     return;
   }
 
@@ -581,6 +662,22 @@ int native_main(int argc, char **argv) {
         if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
       }
     }
+
+    if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
+
+    // Crossfade the last fade_ms of the current station into the next one, once
+    // the current end is in sight and the prefetched ring can cover it.
+    if (!pl.fading && pl.playing && !pl.paused && pl.fade_ms > 0 && pl.has_next && pl.nxt.fmt) {
+      int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667); /* 10.667 ms blocks */
+      int left = ring_len(&pl);
+      if (pl.eof && left > 0 && left <= fade_blocks && next_ring_len(&pl) >= left) {
+        pl.fading = true;
+        pl.fade_total = left;
+        pl.fade_pos = 0;
+      }
+    }
+
+    if (!pl.fading && pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0) promote(&pl);
 
     if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
 
