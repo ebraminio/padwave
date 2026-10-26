@@ -105,6 +105,13 @@ struct player {
   bool fading;
   int fade_pos, fade_total;
 
+  /* A manual station change (next/prev) fades too: the new station is opened
+   * into the prefetch slot and the tick blends it in, without reporting a
+   * track (the radio already made that one current). */
+  bool manual_fade;
+  bool manual_pending;
+  char manual_path[1024];
+
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
   float acc[IN_FRAMES][CHANNELS];
@@ -409,19 +416,28 @@ static void finish_fade(struct player *pl) {
   pl->nacc_frames = 0;
   pl->npushed = 0;
 
-  snprintf(pl->path, sizeof(pl->path), "%s", pl->next_path);
+  bool manual = pl->manual_fade;
+  if (manual)
+    snprintf(pl->path, sizeof(pl->path), "%s", pl->manual_path);
+  else
+    snprintf(pl->path, sizeof(pl->path), "%s", pl->next_path);
+
   pl->base_ms = 0;
   pl->consumed = 0;
   pl->sent = 0;
   pl->underruns = 0;
   pl->eof = pl->cur.eof;
-  pl->has_next = false;
   pl->fading = false;
   pl->fade_pos = 0;
   pl->fade_total = 0;
+  pl->manual_fade = false;
+  pl->manual_pending = false;
 
-  printf("track %s\n", pl->path);
-  fflush(stdout);
+  if (!manual) {
+    pl->has_next = false;
+    printf("track %s\n", pl->path);
+    fflush(stdout);
+  }
 }
 
 /* ---- the tick ----------------------------------------------------------- */
@@ -500,6 +516,25 @@ static void handle_line(struct player *pl, char *line) {
   // spaces and the two fields never have to be guessed apart. "play <path>" is
   // still accepted for driving the binary by hand.
   if (sscanf(line, "play %ld %1023[^\n]", &value, path) == 2) {
+    if (pl->playing && !pl->paused && pl->cur.fmt && pl->fade_ms > 0) {
+      close_next(pl);
+      if (file_open(&pl->nxt, path)) {
+        if (value > 0) {
+          int64_t ts = value * (AV_TIME_BASE / 1000);
+          av_seek_frame(pl->nxt.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
+          avcodec_flush_buffers(pl->nxt.dec);
+        }
+        snprintf(pl->manual_path, sizeof(pl->manual_path), "%s", path);
+        pl->manual_fade = true;
+        pl->manual_pending = true;
+        pl->base_ms = value;
+        pl->consumed = 0;
+        pl->sent = 0;
+        pl->underruns = 0;
+        return;
+      }
+    }
+
     close_next(pl);
     if (open_file(pl, path)) {
       pl->playing = true;
@@ -529,7 +564,7 @@ static void handle_line(struct player *pl, char *line) {
   // end of the current one. Only one is held; the radio pushes the one after
   // that once the promotion is reported.
   if (sscanf(line, "queue %1023[^\n]", path) == 1) {
-    if (!pl->nxt.fmt) {
+    if (!pl->has_next) {
       snprintf(pl->next_path, sizeof(pl->next_path), "%s", path);
       pl->has_next = true;
       pl->next_warmed = false;
@@ -667,9 +702,18 @@ int native_main(int argc, char **argv) {
 
     if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
 
+    if (pl.manual_pending && pl.manual_fade && next_ring_len(&pl) >= 8) {
+      int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667);
+      pl.manual_pending = false;
+      pl.fading = true;
+      pl.fade_total = fade_blocks > 0 ? fade_blocks : 1;
+      pl.fade_pos = 0;
+    }
+
     // Crossfade the last fade_ms of the current station into the next one, once
     // the current end is in sight and the prefetched ring can cover it.
-    if (!pl.fading && pl.playing && !pl.paused && pl.fade_ms > 0 && pl.has_next && pl.nxt.fmt) {
+    if (!pl.fading && !pl.manual_fade && pl.playing && !pl.paused && pl.fade_ms > 0 && pl.has_next &&
+        pl.nxt.fmt) {
       int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667); /* 10.667 ms blocks */
       int left = ring_len(&pl);
       if (pl.eof && left > 0 && left <= fade_blocks && next_ring_len(&pl) >= left) {
@@ -679,7 +723,8 @@ int native_main(int argc, char **argv) {
       }
     }
 
-    if (!pl.fading && pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0) promote(&pl);
+    if (!pl.fading && !pl.manual_fade && pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0)
+      promote(&pl);
 
     if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
 
