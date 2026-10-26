@@ -8,10 +8,12 @@ ROOT="$(pwd)"
 
 echo "==> building (MIX_ENV=prod)"
 export MIX_ENV=prod
-mix local.hex --force >/dev/null
-mix local.rebar --force >/dev/null
-mix deps.get >/dev/null
-mix compile
+if [ -z "${SKIP_ERLANG_REBUILD:-}" ]; then
+  mix local.hex --force >/dev/null
+  mix local.rebar --force >/dev/null
+  mix deps.get >/dev/null
+  mix compile
+fi
 
 echo "==> microphone decoder (optional)"
 mkdir -p "$HOME/.local/bin"
@@ -24,7 +26,7 @@ fi
 
 echo "==> native player (experimental)"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
-  if c++ -std=c++17 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
+  if c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
       -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" \
       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz 2>/dev/null; then
     echo "    built ~/.local/bin/padwave_native (not used by the app yet)"

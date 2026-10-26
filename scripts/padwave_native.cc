@@ -59,7 +59,7 @@ extern "C" {
 
 #include <opus/opus.h>
 
-#include "padwave_schemas.hpp"
+#include "padwave_schemas.hh"
 
 #define RATE 48000
 #define CHANNELS 2
