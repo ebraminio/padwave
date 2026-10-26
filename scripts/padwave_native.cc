@@ -32,8 +32,9 @@
 //   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
 //       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
 //       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
-//       -lopus -lz
+//       -lopus -lz -lm
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -471,9 +472,14 @@ static void tick(struct player *pl) {
       }
     } else {
       float g = pl->fade_total > 0 ? (float)pl->fade_pos / (float)pl->fade_total : 1.0f;
+      /* Equal-power: the two sides' powers add to one, so the level stays
+       * constant through the overlap instead of dipping in the middle. */
+      float phase = g * 1.5707963267948966f;
+      float g_out = cosf(phase);
+      float g_in = sinf(phase);
       for (int i = 0; i < IN_FRAMES; i++)
         for (int ch = 0; ch < CHANNELS; ch++)
-          block[i][ch] = (have_old ? old[i][ch] : 0.0f) * (1.0f - g) + next[i][ch] * g;
+          block[i][ch] = (have_old ? old[i][ch] : 0.0f) * g_out + next[i][ch] * g_in;
 
       if (pl->seek_fade) {
         if (have_next) pl->consumed += IN_FRAMES;
@@ -729,7 +735,7 @@ int native_main(int argc, char **argv) {
     // from disk); it lands before the junction, never on it.
     if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt) {
       int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
-      if (pl.eof || (pl.cur.duration_ms > 0 && pos + 3000 >= pl.cur.duration_ms)) {
+      if (pl.eof || (pl.cur.duration_ms > 0 && pos + 5000 >= pl.cur.duration_ms)) {
         warm_file(pl.next_path); /* last call before the blocking open */
         if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
       }
