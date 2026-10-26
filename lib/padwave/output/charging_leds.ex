@@ -4,9 +4,10 @@ defmodule Padwave.Output.ChargingLeds do
   middle one lit the rest of the time.
 
   Sony's firmware animates the player LEDs when the pad is on USB; over
-  Bluetooth nothing does, so this is ours. The sweep is 1-3-5-2-4 and comes
-  back to the middle LED (xx3xx) — which is also the kernel's "player 1"
-  pattern, so handing the LEDs to anyone else looks unchanged.
+  Bluetooth nothing does, so this is ours. The pattern is a slow alternation
+  between the two checkerboards — 01010 and 10101 — and when the cable comes
+  out the LEDs come back to the middle one (xx3xx), which is also the kernel's
+  "player 1" pattern, so handing them to anyone else looks unchanged.
   """
 
   use GenServer
@@ -15,15 +16,15 @@ defmodule Padwave.Output.ChargingLeds do
   alias Padwave.{Bus, Config}
   alias Padwave.Output.Hid
 
-  @tick_ms 220
-  # 1-3-5-2-4, then home to the middle LED.
-  @sweep [0b00001, 0b00100, 0b10000, 0b00010, 0b01000, 0b00100]
+  # Slow alternation: LEDs 2+4, then 1+3+5, and back. Not a chase — a breath.
+  @tick_ms 900
+  @pattern [0b01010, 0b10101]
   @home 0b00100
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   @doc false
-  def sweep, do: @sweep
+  def pattern, do: @pattern
   @doc false
   def home, do: @home
 
@@ -50,9 +51,10 @@ defmodule Padwave.Output.ChargingLeds do
   def handle_info({:padwave, {:device, :down, _info}}, state), do: {:noreply, stop_sweep(state)}
 
   def handle_info(:tick, state) do
-    Hid.player_leds(Enum.at(@sweep, state.index))
-    timer = Process.send_after(self(), :tick, @tick_ms)
-    {:noreply, %{state | index: rem(state.index + 1, length(@sweep)), timer: timer}}
+    Hid.player_leds(Enum.at(@pattern, state.index))
+    step = Config.get(:charging_leds_ms, @tick_ms)
+    timer = Process.send_after(self(), :tick, step)
+    {:noreply, %{state | index: rem(state.index + 1, length(@pattern)), timer: timer}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}

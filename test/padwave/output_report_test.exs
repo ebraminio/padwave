@@ -66,10 +66,9 @@ defmodule Padwave.OutputReportTest do
     end
   end
 
-  test "the charging sweep ends on the middle player LED" do
+  test "the charging pattern alternates the two checkerboards and rests on the middle LED" do
+    assert Padwave.Output.ChargingLeds.pattern() == [0b01010, 0b10101]
     assert Padwave.Output.ChargingLeds.home() == 0b00100
-    assert Enum.at(Padwave.Output.ChargingLeds.sweep(), -1) == Padwave.Output.ChargingLeds.home()
-    assert length(Enum.uniq(Padwave.Output.ChargingLeds.sweep())) == 5
   end
 
   test "the two claim bytes are one 16-bit bit group" do

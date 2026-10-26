@@ -75,6 +75,7 @@ config :padwave,
 
   # Sweep the five player LEDs while the pad charges, middle LED otherwise.
   charging_leds: true,
+  charging_leds_ms: 900,
   trigger_effects: true,
   trigger_effect_position: 2,
   trigger_effect_amplitude: 6,

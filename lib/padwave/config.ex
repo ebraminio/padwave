@@ -20,6 +20,7 @@ defmodule Padwave.Config do
     "trigger_effects" => :bool,
     "pause_on_unplug" => :bool,
     "charging_leds" => :bool,
+    "charging_leds_ms" => {:int, 100, 10_000},
     "trigger_effect_position" => {:int, 0, 9},
     "trigger_effect_amplitude" => {:int, 0, 8},
     "trigger_effect_frequency" => {:int, 0, 255}
