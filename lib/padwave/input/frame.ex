@@ -78,13 +78,13 @@ defmodule Padwave.Input.Frame do
       ry: fields.ry,
       l2: fields.l2,
       r2: fields.r2,
-      dpad: Map.get(@dpad, fields.buttons0.dpad, :unknown),
+      dpad: frame_dpad(fields.buttons.dpad),
       buttons: pressed_buttons(fields),
       battery: battery(fields.status0),
       charging: charging(fields.status0),
       jack: (fields.status1 &&& 1) == 1,
       mic: (fields.status1 &&& 2) == 2,
-      mute: fields.buttons2.mute,
+      mute: fields.buttons.mute,
       temperature: fields.temperature,
       g_force: g_force(fields),
       touches: [touch(fields.touch1), touch(fields.touch2)],
@@ -181,27 +181,30 @@ defmodule Padwave.Input.Frame do
 
   def touch(_other), do: %{active: false, id: 0, x: 0, y: 0}
 
+  defp frame_dpad(value) when is_atom(value), do: value
+  defp frame_dpad(_value), do: :unknown
+
   defp pressed_buttons(fields) do
     [
-      square: fields.buttons0.square,
-      cross: fields.buttons0.cross,
-      circle: fields.buttons0.circle,
-      triangle: fields.buttons0.triangle,
-      l1: fields.buttons1.l1,
-      r1: fields.buttons1.r1,
-      l2: fields.buttons1.l2,
-      r2: fields.buttons1.r2,
-      create: fields.buttons1.create,
-      options: fields.buttons1.options,
-      l3: fields.buttons1.l3,
-      r3: fields.buttons1.r3,
-      ps: fields.buttons2.ps,
-      touchpad: fields.buttons2.touchpad,
-      mute: fields.buttons2.mute,
-      fn1: fields.buttons2.fn1,
-      fn2: fields.buttons2.fn2,
-      left_paddle: fields.buttons2.left_paddle,
-      right_paddle: fields.buttons2.right_paddle
+      square: fields.buttons.square,
+      cross: fields.buttons.cross,
+      circle: fields.buttons.circle,
+      triangle: fields.buttons.triangle,
+      l1: fields.buttons.l1,
+      r1: fields.buttons.r1,
+      l2: fields.buttons.l2,
+      r2: fields.buttons.r2,
+      create: fields.buttons.create,
+      options: fields.buttons.options,
+      l3: fields.buttons.l3,
+      r3: fields.buttons.r3,
+      ps: fields.buttons.ps,
+      touchpad: fields.buttons.touchpad,
+      mute: fields.buttons.mute,
+      fn1: fields.buttons.fn1,
+      fn2: fields.buttons.fn2,
+      left_paddle: fields.buttons.left_paddle,
+      right_paddle: fields.buttons.right_paddle
     ]
     |> Enum.filter(fn {_button, pressed?} -> pressed? end)
     |> Enum.map(fn {button, _} -> button end)

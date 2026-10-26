@@ -28,27 +28,38 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     u8 :r2                       # +0x05  R2 analogue
     u8 :seq                      # +0x06  report sequence number
 
-    # Bit groups read the low bit first: d-pad in the low nibble, face buttons
-    # above it.
-    bits :buttons0, dpad: 4, square: 1, cross: 1, circle: 1, triangle: 1
-    bits :buttons1, l1: 1, r1: 1, l2: 1, r2: 1, create: 1, options: 1, l3: 1, r3: 1
+    # Four button bytes merged into one little-endian 32-bit field: bits 0..7
+    # are the byte at +0x07, 8..15 at +0x08, and so on.
+    #
+    # The d-pad is a 4-bit *hat value*, not four bits. The enum below turns it
+    # into a name; diagonals are the odd values.
+    enum :dpad,
+      up: 0, up_right: 1, right: 2, down_right: 3,
+      down: 4, down_left: 5, left: 6, up_left: 7, none: 8
 
-    # The Edge's four extra buttons live in the top nibble of this byte, per
-    # hid-playstation.c (DS_EDGE_BUTTONS_*): FN1, FN2, left paddle, right
-    # paddle. All zero on a standard DualSense.
-    bits :buttons2,
-      ps: 1,                     # +0x09 bit 0  PS / home
-      touchpad: 1,               #       bit 1  touchpad click
-      mute: 1,                   #       bit 2  microphone mute
-      reserved_0: 1,             #       bit 3
-      fn1: 1,                    #       bit 4  Edge only
-      fn2: 1,                    #       bit 5  Edge only
-      left_paddle: 1,            #       bit 6  Edge only
-      right_paddle: 1            #       bit 7  Edge only
-
-    bits :buttons3, reserved: 8
-    # +0x0a  not read by the kernel; the Edge's L5/R5 paddles may land here on
-    #        some firmware revisions, but nothing consumes them yet
+    bits :buttons,
+      dpad: 4,                     # +0x07 bits 0-3  see enum :dpad
+      square: 1,                   # +0x07 bit 4
+      cross: 1,                    # +0x07 bit 5
+      circle: 1,                   # +0x07 bit 6
+      triangle: 1,                 # +0x07 bit 7
+      l1: 1,                       # +0x08 bit 0
+      r1: 1,                       # +0x08 bit 1
+      l2: 1,                       # +0x08 bit 2
+      r2: 1,                       # +0x08 bit 3
+      create: 1,                   # +0x08 bit 4
+      options: 1,                  # +0x08 bit 5
+      l3: 1,                       # +0x08 bit 6
+      r3: 1,                       # +0x08 bit 7
+      ps: 1,                       # +0x09 bit 0
+      touchpad: 1,                 # +0x09 bit 1
+      mute: 1,                     # +0x09 bit 2
+      reserved_0: 1,               # +0x09 bit 3
+      fn1: 1,                      # +0x09 bit 4  Edge only
+      fn2: 1,                      # +0x09 bit 5  Edge only
+      left_paddle: 1,              # +0x09 bit 6  Edge only
+      right_paddle: 1,             # +0x09 bit 7  Edge only
+      reserved_1: 8                # +0x0a  unread by the kernel; maybe L5/R5
 
     u8 :incremental              # +0x0b  increments every report, wraps at 256
     bytes :reserved_14, 3        # +0x0c..0x0e  not documented

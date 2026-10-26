@@ -24,9 +24,9 @@ defmodule Padwave.WireTest do
     assert fields.seq == 1
 
     # d-pad neutral is 8, no face buttons pressed
-    assert fields.buttons0.dpad == 8
-    refute fields.buttons0.cross
-    refute fields.buttons0.triangle
+    assert fields.buttons.dpad == :none
+    refute fields.buttons.cross
+    refute fields.buttons.triangle
 
     # status0 = 0x01 -> level 1 of 0..10, discharging; the kernel's
     # power_supply node simultaneously reported capacity=15.
@@ -75,7 +75,7 @@ defmodule Padwave.WireTest do
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
 
     assert offsets.lx == 2
-    assert offsets.buttons0 == 9
+    assert offsets.buttons == 9
     assert offsets.gyro_x == 17
     assert offsets.accel_x == 23
     assert offsets.status0 == 54

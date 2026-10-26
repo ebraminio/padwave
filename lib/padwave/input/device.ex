@@ -21,7 +21,10 @@ defmodule Padwave.Input.Device do
 
   @rescan_ms 1000
   @sony 0x054C
+  # 0x0CE6 is the DualSense, 0x0DF2 the DualSense Edge.
   @dualsense 0x0CE6
+  @dualsense_edge 0x0DF2
+  @supported [@dualsense, @dualsense_edge]
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -186,13 +189,14 @@ defmodule Padwave.Input.Device do
   defp probe(sysfs) do
     with {:ok, uevent} <- File.read(Path.join(sysfs, "device/uevent")),
          {:ok, bus, vendor, product} <- parse_id(uevent),
-         true <- vendor == @sony and product == @dualsense do
+         true <- vendor == @sony and product in @supported do
       %{
         node: "/dev/" <> Path.basename(sysfs),
         sysfs: sysfs,
         name: capture(uevent, "HID_NAME") || "DualSense",
         mac: capture(uevent, "HID_UNIQ"),
         id: {vendor, product},
+        model: if(product == @dualsense_edge, do: :edge, else: :dualsense),
         bus: bus,
         spec: if(bus == :usb, do: :input_usb, else: :input)
       }

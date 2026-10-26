@@ -160,7 +160,21 @@ defmodule Padwave.Wire do
   end
 
   # Turns the block into a flat list of field declarations.
-  defp fields({:__block__, _, statements}, env), do: Enum.flat_map(statements, &fields(&1, env))
+  defp fields({:__block__, _, statements}, env) do
+    enums =
+      Enum.reduce(statements, %{}, fn
+        {:enum, _, [name, pairs]}, acc when is_atom(name) and is_list(pairs) ->
+          Map.put(acc, name, Map.new(pairs))
+
+        _, acc ->
+          acc
+      end)
+
+    statements
+    |> Enum.reject(&match?({:enum, _, _}, &1))
+    |> Enum.flat_map(&fields(&1, env))
+    |> attach_enums(enums)
+  end
 
   defp fields({:u8, _, [name]}, _env) when is_atom(name), do: [{:u8, name}]
 
@@ -204,6 +218,22 @@ defmodule Padwave.Wire do
     end
   end
 
+  defp attach_enums(parsed, enums) do
+    Enum.map(parsed, fn
+      {:bits, name, bits} ->
+        bits =
+          Enum.map(bits, fn
+            {bit_name, width, enum} -> {bit_name, width, enum}
+            {bit_name, width} -> {bit_name, width, Map.get(enums, bit_name)}
+          end)
+
+        {:bits, name, bits}
+
+      other ->
+        other
+    end)
+  end
+
   defp fields(other, _env) do
     raise ArgumentError, """
     cannot understand packet field: #{Macro.to_string(other)}
@@ -216,6 +246,7 @@ defmodule Padwave.Wire do
       bytes :name, count
       skip count
       bits :name, low: 4, high: 1, ...
+      enum :name, value_atom: 0, ...      (inside the same do-block, names a bits field)
     """
   end
 
@@ -263,19 +294,35 @@ defmodule Padwave.Wire do
   defp lay_out_field({:skip, n}, offset), do: %{kind: :skip, name: nil, offset: offset, size: n}
 
   defp lay_out_field({:bits, name, bits}, offset) do
-    width = Enum.reduce(bits, 0, fn {_name, w}, acc -> acc + w end)
+    width = Enum.reduce(bits, 0, fn {_name, w, _enum}, acc -> acc + w end)
+    size = div(width + 7, 8)
 
-    if width != 8 do
-      raise ArgumentError,
-            "bit group #{inspect(name)} is #{width} bits wide; only whole bytes are supported"
+    cond do
+      width <= 0 ->
+        raise ArgumentError, "bit group #{inspect(name)} is empty"
+
+      width > 32 ->
+        raise ArgumentError,
+              "bit group #{inspect(name)} is #{width} bits wide; 32 is the maximum " <>
+                "(it becomes one u32le)"
+
+      size * 8 - width >= 8 ->
+        raise ArgumentError,
+              "bit group #{inspect(name)} is #{width} bits wide, which wastes a whole byte; " <>
+                "pad it to #{size * 8} bits and name the padding"
+
+      true ->
+        :ok
     end
 
     {decoded, _} =
-      Enum.map_reduce(bits, 0, fn {bit_name, bit_width}, bit_offset ->
-        {%{name: bit_name, width: bit_width, offset: bit_offset}, bit_offset + bit_width}
+      Enum.map_reduce(bits, 0, fn {bit_name, bit_width, enum}, bit_offset ->
+        bit = %{name: bit_name, width: bit_width, offset: bit_offset}
+        bit = if enum, do: Map.put(bit, :enum, enum), else: bit
+        {bit, bit_offset + bit_width}
       end)
 
-    %{kind: :bits, name: name, offset: offset, size: 1, bits: decoded}
+    %{kind: :bits, name: name, offset: offset, size: size, bits: decoded}
   end
 
   # Generates {pattern_elements, prelude_statements, result_pairs}.
@@ -316,9 +363,25 @@ defmodule Padwave.Wire do
 
           assignment = quote(do: unquote(map) = %{unquote_splicing(bit_pairs)})
 
-          {pattern ++ [quote(do: unquote(raw) :: 8)], prelude ++ [assignment], pairs ++ [{field.name, map}]}
+          {pattern ++ [quote(do: unquote(raw) :: unquote(bits_integer(field.size)))], prelude ++ [assignment],
+           pairs ++ [{field.name, map}]}
       end
     end)
+  end
+
+  # Type spec for a merged bit group: a plain bit count for one byte, and the
+  # little-endian type spec AST for wider ones (unquoted into the pattern).
+  defp bits_integer(1), do: 8
+  defp bits_integer(n) when n in 2..4, do: {:-, [], [{:little, [], Elixir}, n * 8]}
+
+  defp bit_expr(raw, %{enum: enum, width: width, offset: offset}) do
+    mask = bsl(1, width) - 1
+    value = quote(do: unquote(raw) >>> unquote(offset) &&& unquote(mask))
+
+    # The spec keeps the enum as declared (name => value); the decoder needs
+    # the reverse lookup.
+    lookup = Map.new(enum, fn {name, number} -> {number, name} end)
+    quote(do: Map.get(unquote(Macro.escape(lookup)), unquote(value), unquote(value)))
   end
 
   defp bit_expr(raw, %{width: 1, offset: offset}) do
