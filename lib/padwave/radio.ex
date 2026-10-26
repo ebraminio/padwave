@@ -105,6 +105,7 @@ defmodule Padwave.Radio do
        suspended_by: nil,
        resume_pending: resume_pending,
        paused: paused,
+       paused_by_jack: false,
        bags: %{},
        history: List.wrap(persisted["history"])
      }}
@@ -328,6 +329,26 @@ defmodule Padwave.Radio do
   # Pause, but never resume: used when the headset is unplugged.
   defp dispatch_action(:pause, state) do
     if state.playing and not state.paused, do: {:ok, toggle_pause(state)}, else: {:ok, state}
+  end
+
+  # The jack paused it, so the jack can un-pause it. A pause the user made
+  # themselves is not undone by plugging a cable in.
+  defp dispatch_action(:jack_unplugged, state) do
+    if state.playing and not state.paused do
+      Logger.info("[radio] headphones out — pausing for the jack")
+      {:ok, state |> Map.put(:paused_by_jack, true) |> toggle_pause()}
+    else
+      {:ok, state}
+    end
+  end
+
+  defp dispatch_action(:jack_plugged, state) do
+    if state.paused_by_jack and state.paused do
+      Logger.info("[radio] headphones back — resuming")
+      {:ok, state |> Map.put(:paused_by_jack, false) |> toggle_pause()}
+    else
+      {:ok, %{state | paused_by_jack: false}}
+    end
   end
 
   defp dispatch_action(:play, state), do: {:ok, play_or_resume(state)}

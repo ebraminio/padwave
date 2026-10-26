@@ -70,9 +70,6 @@ config :padwave,
 
   # Buzz the trigger that is currently changing the volume (mode 0x06,
   # automatic/vibration): [frequency, force, start].
-  # Pause when the headset is pulled out of the controller.
-  pause_on_unplug: true,
-
   # Sweep the five player LEDs while the pad charges, middle LED otherwise.
   charging_leds: true,
   charging_leds_ms: 3000,

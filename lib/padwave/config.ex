@@ -18,7 +18,6 @@ defmodule Padwave.Config do
     "analog_wake_delta" => {:int, 0, 255},
     "analog_wake_cap" => {:int, 0, 100},
     "trigger_effects" => :bool,
-    "pause_on_unplug" => :bool,
     "charging_leds" => :bool,
     "charging_leds_ms" => {:int, 100, 10_000},
     "trigger_effect_position" => {:int, 0, 9},

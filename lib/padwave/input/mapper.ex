@@ -78,6 +78,9 @@ defmodule Padwave.Input.Mapper do
        analog_resets: 0,
        l2_down: false,
        r2_down: false,
+       jack: nil,
+       jack_pending: nil,
+       jack_since: nil,
        last_action: nil,
        last_action_at: nil,
        last_shake: now,
@@ -151,7 +154,7 @@ defmodule Padwave.Input.Mapper do
     state = handle_analog(now, frame, state)
     state = track_trigger(:left, frame.l2, state)
     state = track_trigger(:right, frame.r2, state)
-    state = track_jack(state, frame)
+    state = track_jack(state, frame, now)
 
     {:noreply,
      %{
@@ -314,19 +317,33 @@ defmodule Padwave.Input.Mapper do
 
   # -- headset jack ----------------------------------------------------------
 
-  # The jack is the output path, so unplugging the headset means the music would
-  # play to an empty plug (the membrane is muted while something is inserted).
-  # Ask the radio to pause instead of pretending nothing happened.
-  defp track_jack(%{prev: %{jack: true}} = state, %{jack: false}) do
-    if Config.get(:pause_on_unplug, true) do
-      Logger.info("[input] headset unplugged")
-      Bus.broadcast({:action, :pause})
+  # The jack is the output path: pulling the headset means the music would play
+  # to an empty plug (the membrane is muted while something is inserted), and
+  # plugging it back in is a clear sign you want to hear it again.
+  #
+  # A worn jack can flicker for a frame or two, so a change only counts once it
+  # has held for @jack_debounce_ms. The actions are separate from :pause/:play so
+  # the radio can resume only what the jack itself paused.
+  @jack_debounce_ms 250
+
+  defp track_jack(state, frame, now) do
+    cond do
+      state.jack == frame.jack ->
+        %{state | jack_since: nil, jack_pending: nil}
+
+      state.jack_pending != frame.jack or state.jack_since == nil ->
+        %{state | jack_pending: frame.jack, jack_since: now}
+
+      now - state.jack_since >= @jack_debounce_ms ->
+        action = if frame.jack, do: :jack_plugged, else: :jack_unplugged
+        Logger.info("[input] headset #{if frame.jack, do: "plugged in", else: "unplugged"}")
+        Bus.broadcast({:action, action})
+        %{state | jack: frame.jack, jack_pending: nil, jack_since: nil}
+
+      true ->
+        state
     end
-
-    state
   end
-
-  defp track_jack(state, _frame), do: state
 
   # -- action plumbing -------------------------------------------------------
 
