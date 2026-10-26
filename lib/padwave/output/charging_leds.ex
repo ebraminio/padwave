@@ -36,7 +36,9 @@ defmodule Padwave.Output.ChargingLeds do
 
   @impl true
   def handle_info({:padwave, {:frame, frame}}, state) do
-    charging? = frame.charging == :charging and Config.get(:charging_leds, true)
+    # :full means "finished charging but still on power" — animate either way.
+    on_power? = frame.charging in [:charging, :full]
+    charging? = on_power? and Config.get(:charging_leds, true)
 
     cond do
       charging? and not state.charging -> {:noreply, start_sweep(state)}
