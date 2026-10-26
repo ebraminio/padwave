@@ -195,6 +195,7 @@ static void warm_file(const char *path) {
   if (fd >= 0) {
     posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
     close(fd);
+    if (getenv("PADWAVE_DEBUG")) fprintf(stderr, "warm %s\n", path);
   }
 }
 
@@ -659,6 +660,7 @@ int native_main(int argc, char **argv) {
     if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt) {
       int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
       if (pl.eof || (pl.cur.duration_ms > 0 && pos + 3000 >= pl.cur.duration_ms)) {
+        warm_file(pl.next_path); /* last call before the blocking open */
         if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
       }
     }
