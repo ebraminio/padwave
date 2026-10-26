@@ -68,6 +68,14 @@ galloping, machine) are unofficial and firmware-dependent. The panel and the
 "buzz while changing volume" path both go through
 `Padwave.Output.TriggerEffects`.
 
+**Microphone over Bluetooth.** No audio class; the mic rides the `0x36`
+duplex. Enable it with bit 0 of the audio enable mask (`0xFF` instead of
+`0xFE`), keep `power_save_control` bit 4 clear and `mic_volume` non-zero with
+`valid_flag0` bit 6 set, then demux the `0x31` input stream: audio frames keep
+the report id but carry the Opus TOC `0xD4` at report byte 3 and are Opus
+48 kHz mono, 10 ms each. Duplex roughly doubles the link's traffic and makes
+those frames look like wild stick input to anything that doesn't check.
+
 **Two writers, one state.** The `0x36` audio stream carries a state snapshot
 (sub-packet `0x10`) every 10.667 ms, and its `valid_flag0` decides which fields
 *that* stream owns. If it claims the trigger bits (LinuxAudio4Dualsense5's

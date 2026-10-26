@@ -9,6 +9,12 @@ defmodule Padwave.Schema.DualSenseInput.Body do
 
   `+0x00` in the comments is the offset inside this payload: 0x01 in a USB
   report, 0x02 in a Bluetooth one.
+
+  When microphone duplex is on (see `Padwave.Schema.DualSenseAudio`), not every
+  `0x31` frame is a gamepad report: the controller interleaves audio frames
+  that keep the report id but put the Opus TOC `0xD4` at report byte 3
+  (payload `+0x01`, i.e. where `ly` normally is). Demux on that byte before
+  trusting any of these fields.
   """
 
   use Padwave.Wire

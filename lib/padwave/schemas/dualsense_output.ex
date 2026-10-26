@@ -10,21 +10,33 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
   use Padwave.Wire
 
   field_list :output_body do
-    # A field is only applied by the controller when its flag bit is set.
+    # The two flag bytes say which of the fields below belong to *this* report.
+    #
+    # A set bit means "adopt my bytes for this feature"; a clear bit means
+    # "leave that feature as it is". Setting a bit is a claim, not a change
+    # notification: the bytes are taken as written, zeros included. So a writer
+    # that sets a bit it does not really own will keep overwriting whoever does
+    # — which is exactly how the audio stream used to cancel trigger effects.
+    #
+    # Example: 0x0C claims only the two trigger blocks and leaves volumes, LEDs
+    # and rumble untouched.
     u8 :valid_flag0              # +0x00  bit0 rumble, bit1 haptics, bit2 right trigger,
                                  #        bit3 left trigger, bit5 speaker volume,
                                  #        bit6 mic volume, bit7 audio routing
     u8 :valid_flag1              # +0x01  bit0 mic LED, bit1 power save, bit2 lightbar,
                                  #        bit3 release LEDs, bit4 player LEDs, bit7 audio 2
+                                 #        (same rule: set = this report owns it)
     u8 :motor_right              # +0x02  DS4-compatible rumble
     u8 :motor_left               # +0x03
     u8 :headphone_volume         # +0x04  0x00..0x7f
     u8 :speaker_volume           # +0x05  0x00..0xff
-    u8 :mic_volume               # +0x06  0x00..0x40
-    u8 :audio_control            # +0x07  output path select (speaker / headset)
+    u8 :mic_volume               # +0x06  0x00..0x40 (claimed by valid_flag0 bit 6)
+    u8 :audio_control            # +0x07  output path select (speaker / headset;
+                                 #        claimed by valid_flag0 bit 7)
 
     u8 :mute_button_led          # +0x08
-    u8 :power_save_control       # +0x09
+    u8 :power_save_control       # +0x09  bit4 = 0x10 microphone mute,
+                                 #        bit6 = 0x40 audio mute
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by valid_flag0 bits 2 and 3. Described here, not driven
@@ -39,7 +51,8 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     bytes :reserved_32, 4        # +0x20..0x23
     u8 :haptic_volume            # +0x24
     u8 :audio_control2           # +0x25  speaker preamp gain
-    u8 :valid_flag2              # +0x26  bit1 lightbar setup, bit2 vibration v2
+    u8 :valid_flag2              # +0x26  bit0 brightness, bit1 lightbar setup,
+                                 #        bit2 vibration v2
     bytes :reserved_39, 2        # +0x27..0x28
 
     u8 :lightbar_setup           # +0x29  fade-out after power-on

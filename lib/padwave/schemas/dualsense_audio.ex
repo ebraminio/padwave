@@ -31,6 +31,23 @@ defmodule Padwave.Schema.DualSenseAudio do
   where padwave reads buttons from, so a mic-enabled stream would double the
   link's traffic.
 
+  ## Enabling the microphone
+
+  There is no audio-class interface over Bluetooth, so the microphone shares
+  this same HID duplex. To capture from it:
+
+  1. Set bit 0 of the audio enable mask at `0x004`: `0xFF` instead of `0xFE`.
+  2. Don't mute it in the state snapshot — `power_save_control` (`+0x09`) must
+     have its 0x10 bit clear, and `mic_volume` (`+0x06`) must be non-zero
+     (0x40 is full) with `valid_flag0` bit 6 set so the value is adopted.
+  3. Demux the input. While duplex is on, the controller interleaves frames
+     that keep report id `0x31` but carry the Opus TOC `0xD4` at report byte 3
+     (input payload `+0x01`). Those are Opus 48 kHz mono, one 10 ms frame each:
+     skip them when reading buttons, decode them to get sound.
+  4. Expect a busy link. Duplex roughly doubles the traffic, and anything that
+     parses every `0x31` as gamepad data will see phantom sticks — the stick
+     fields in those frames are Opus bytes, not positions.
+
   ## The state snapshot is a whole output payload
 
   Sub-packet `0x10` is not opaque bytes: its first 47 bytes are byte-for-byte
@@ -56,7 +73,9 @@ defmodule Padwave.Schema.DualSenseAudio do
     # -- sub-packet 0x11: audio configuration -----------------------------
     u8 :config_tag               # 0x002  0x11 | 0x80 (more sub-packets follow)
     u8 :config_length            # 0x003  7
-    u8 :audio_enable_mask        # 0x004  0xFE — bit 0 clear keeps mic capture off
+    u8 :audio_enable_mask        # 0x004  bit 0 = microphone capture: 0xFE keeps
+                                 #        the mic shut, 0xFF opens it (the input
+                                 #        stream then also carries 0xD4 frames)
     bytes :haptic_lengths, 5     # 0x005..0x009  64 each
     u8 :counter                  # 0x00a  free-running 8-bit counter
 
