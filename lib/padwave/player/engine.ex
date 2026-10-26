@@ -20,9 +20,10 @@ defmodule Padwave.Player.Engine do
   """
 
   def backend do
-    case Padwave.Config.get(:player_engine, :mpv) do
-      :ffmpeg -> Padwave.Player.Ffmpeg
-      _ -> Padwave.Player
+    case Padwave.Config.get(:player_engine, :ffmpeg) do
+      :native -> Padwave.Player.Native
+      :mpv -> Padwave.Player
+      _ -> Padwave.Player.Ffmpeg
     end
   end
 

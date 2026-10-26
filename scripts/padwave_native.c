@@ -52,7 +52,8 @@
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 #include <opus/opus.h>
-#include <zlib.h>
+
+#include "padwave_wire.h"
 
 #define RATE 48000
 #define CHANNELS 2
@@ -136,40 +137,27 @@ static void put_state(uint8_t *p, bool speaker) {
 }
 
 static void send_report(struct player *pl, const uint8_t *opus, int len) {
-  uint8_t pkt[REPORT_SIZE];
-  memset(pkt, 0, sizeof(pkt));
+  uint8_t state[PW_WIRE_STATE];
+  uint8_t pkt[PW_WIRE_SIZE];
 
-  pkt[0] = 0x36;
-  pkt[1] = (uint8_t)((pl->seq & 0x0F) << 4);
-  pkt[2] = 0x11 | 0x80;
-  pkt[3] = 7;
-  pkt[4] = 0xFE; /* no microphone capture */
-  pkt[5] = pkt[6] = pkt[7] = pkt[8] = pkt[9] = 64;
-  pkt[10] = pl->counter;
+  put_state(state, pl->speaker);
 
-  pkt[11] = 0x10 | 0x80;
-  pkt[12] = 63;
-  put_state(pkt + 13, pl->speaker);
+  pw_0x36 report = {
+      .seq = pl->seq,
+      .counter = pl->counter,
+      .enable_mask = 0xFE,
+      .speaker = pl->speaker,
+      .state = state,
+      .haptics = NULL,
+      .opus = opus,
+      .opus_len = (uint8_t)(len > 0 ? (len > PW_WIRE_OPUS ? PW_WIRE_OPUS : len) : 0),
+  };
 
-  pkt[76] = 0x12 | 0x80;
-  pkt[77] = 64; /* haptics stay silent */
-
-  pkt[142] = (uint8_t)((pl->speaker ? 0x13 : 0x16) | 0x80);
-  pkt[143] = OPUS_BYTES;
-  memcpy(pkt + 144, opus, len < OPUS_BYTES ? len : OPUS_BYTES);
-
-  uint8_t seed = 0xA2;
-  uLong crc = crc32(0L, &seed, 1);
-  crc = crc32(crc, pkt, REPORT_SIZE - 4);
-  pkt[394] = crc & 0xFF;
-  pkt[395] = (crc >> 8) & 0xFF;
-  pkt[396] = (crc >> 16) & 0xFF;
-  pkt[397] = (crc >> 24) & 0xFF;
-
-  if (pl->hidraw >= 0) {
-    ssize_t n = write(pl->hidraw, pkt, sizeof(pkt));
+  if (pw_0x36_serialize(pkt, sizeof(pkt), &report) && pl->hidraw >= 0) {
+    ssize_t n = write(pl->hidraw, pkt, PW_WIRE_SIZE);
     (void)n;
   }
+
   pl->seq = (uint8_t)((pl->seq + 1) & 0x0F);
   pl->counter++;
   pl->sent++;
