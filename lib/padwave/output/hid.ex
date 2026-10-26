@@ -85,6 +85,12 @@ defmodule Padwave.Output.Hid do
   def handle_cast({:trigger, side, mode, params}, state),
     do: emit(state, Report.trigger_fields(side, mode, params))
 
+  @doc "Writes an already-built report (the audio test builds its own 0x36)."
+  def send_audio(report) when is_binary(report),
+    do: GenServer.cast(__MODULE__, {:audio, report})
+
+  def handle_cast({:audio, report}, state), do: write(state, report)
+
   def handle_cast({:fields, fields}, state) do
     emit(state, atomize(fields))
   rescue

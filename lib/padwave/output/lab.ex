@@ -18,7 +18,7 @@ defmodule Padwave.Output.Lab do
 
   import Bitwise, only: [band: 2]
 
-  alias Padwave.Output.{Hid, Lightbar, TriggerEffects}
+  alias Padwave.Output.{Audio, Hid, Lightbar, TriggerEffects}
 
   # High-level effects keep the panel honest: the UI sends "vibration with
   # position/amplitude/frequency", not a mode byte and ten opaque bytes.
@@ -55,6 +55,15 @@ defmodule Padwave.Output.Lab do
   def apply(%{"kind" => "lightbar", "rgb" => [r, g, b]}) do
     Lightbar.set_rgb(clamp(r), clamp(g), clamp(b))
     {:ok, "lightbar overridden"}
+  end
+
+  # A 0x36 packet built by padwave itself, carrying Opus noise. Only meaningful
+  # while the audio service is stopped: its own 0x36 would overwrite ours.
+  def apply(%{"kind" => "audio_noise"} = params) do
+    ms = params["ms"] |> to_int(500) |> max(10) |> min(10_000)
+    level = params["level"] |> to_int(3_000) |> max(0) |> min(30_000)
+    output = if params["output"] == "speaker", do: :speaker, else: :jack
+    Audio.noise(ms, level: level, output: output)
   end
 
   # Classic rumble motors, claimed with valid_flag0 bit 0. The kernel drives

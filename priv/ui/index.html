@@ -401,6 +401,17 @@
       </p>
 
       <div class="lab-row">
+        <b>audio test</b>
+        <label>ms <input type="number" id="labNoiseMs" min="10" max="10000" value="500" style="width:64px"></label>
+        <label>level <input type="number" id="labNoiseLevel" min="0" max="30000" value="3000" style="width:64px"></label>
+        <label>out
+          <select id="labNoiseOut"><option value="jack">jack</option><option value="speaker">speaker</option></select>
+        </label>
+        <button id="labNoise">noise</button>
+        <span style="color:var(--muted);font-size:11px">stop ds5-membrane-sink first</span>
+      </div>
+
+      <div class="lab-row">
         <b>microphone</b>
         <span id="micBar" style="flex:1;height:8px;background:#0f1219;border:1px solid var(--line);border-radius:4px;overflow:hidden"><span id="micFill" style="display:block;height:100%;width:0;background:var(--accent)"></span></span>
         <label title="tells the audio service to ask the controller for mic capture"><input type="checkbox" id="micOn"> capture</label>
@@ -933,6 +944,13 @@ $("#labLedsReset").onclick = () => {
   });
   labSend({ kind: "player_leds", mask: labLedMask });
 };
+
+$("#labNoise").onclick = () => labSend({
+  kind: "audio_noise",
+  ms: Number($("#labNoiseMs").value),
+  level: Number($("#labNoiseLevel").value),
+  output: $("#labNoiseOut").value
+});
 
 $("#micOn").onchange = async (e) => {
   await fetch("/api/mic", {
