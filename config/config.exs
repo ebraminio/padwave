@@ -89,3 +89,7 @@ config :padwave,
   hot_swap_interval_ms: 1000
 
 config :logger, level: :info
+
+# Which playback engine to run: :mpv (two slots, crossfade) or :ffmpeg (ffmpeg
+# decodes, padwave writes the 0x36). Set PADWAVE_PLAYER=ffmpeg to switch.
+config :padwave, player_engine: :mpv

@@ -3,7 +3,7 @@ defmodule Padwave.Radio do
   The radio itself: what is playing, what plays next, how loud it is, and
   where to pick up again after the controller has been away.
 
-  All input actions land here; all playback is delegated to `Padwave.Player`;
+  All input actions land here; all playback is delegated to `Padwave.Player.Engine`;
   the resume point is mirrored into `Padwave.Store` so a power cut, an idle
   shutdown or a dead controller all end the same way: the station continues
   where it was.
@@ -12,7 +12,8 @@ defmodule Padwave.Radio do
   use GenServer
   require Logger
 
-  alias Padwave.{Bus, Config, Library, Player, Store}
+  alias Padwave.{Bus, Config, Library, Store}
+  alias Padwave.Player.Engine, as: Player
   alias Padwave.Library.Track
 
   # How often the playhead is written to disk while playing. A clean shutdown
