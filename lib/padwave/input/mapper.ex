@@ -18,6 +18,8 @@ defmodule Padwave.Input.Mapper do
       L1 / R1           previous / next station
       Create / Options  previous / next station
       touchpad click    mute / unmute
+      Edge paddles      previous / next station
+      Edge Fn buttons   pause / mute
       PS (hold ~2 s)    suspend everything and power the controller off
   """
 
@@ -38,7 +40,13 @@ defmodule Padwave.Input.Mapper do
     touchpad: :toggle_mute,
     mute: :toggle_mute,
     l3: :next_random,
-    r3: :previous
+    r3: :previous,
+    # Edge only (standard pads report these as zero): the back paddles skip
+    # stations, the two Fn buttons pause and mute.
+    left_paddle: :previous,
+    right_paddle: :next_random,
+    fn1: :toggle_pause,
+    fn2: :toggle_mute
   }
 
   @seek_tap_seconds 6

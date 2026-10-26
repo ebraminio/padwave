@@ -30,7 +30,11 @@ defmodule Padwave.Input.Simulator do
     {10, :r3} => 7,
     {11, :ps} => 0,
     {11, :touchpad} => 1,
-    {11, :mute} => 2
+    {11, :mute} => 2,
+    {11, :fn1} => 4,
+    {11, :fn2} => 5,
+    {11, :left_paddle} => 6,
+    {11, :right_paddle} => 7
   }
 
   @by_name Map.new(@bit_positions, fn {{byte, name}, position} -> {name, {byte, position}} end)

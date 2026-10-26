@@ -20,6 +20,22 @@ defmodule Padwave.MapperTest do
     assert_receive {:padwave, {:action, :toggle_pause}}, 1000
   end
 
+  test "the Edge back paddles skip stations like L1/R1" do
+    Simulator.press!(%{buttons: ["left_paddle"]}, 80)
+    assert_receive {:padwave, {:action, :previous}}, 1000
+
+    Simulator.press!(%{buttons: ["right_paddle"]}, 80)
+    assert_receive {:padwave, {:action, :next_random}}, 1000
+  end
+
+  test "the Edge Fn buttons pause and mute" do
+    Simulator.press!(%{buttons: ["fn1"]}, 80)
+    assert_receive {:padwave, {:action, :toggle_pause}}, 1000
+
+    Simulator.press!(%{buttons: ["fn2"]}, 80)
+    assert_receive {:padwave, {:action, :toggle_mute}}, 1000
+  end
+
   test "circle is the play button (the broken cross is unbound)" do
     Simulator.press!(%{buttons: ["circle"]}, 80)
     assert_receive {:padwave, {:action, :play}}, 1000

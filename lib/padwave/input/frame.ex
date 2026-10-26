@@ -197,7 +197,11 @@ defmodule Padwave.Input.Frame do
       r3: fields.buttons1.r3,
       ps: fields.buttons2.ps,
       touchpad: fields.buttons2.touchpad,
-      mute: fields.buttons2.mute
+      mute: fields.buttons2.mute,
+      fn1: fields.buttons2.fn1,
+      fn2: fields.buttons2.fn2,
+      left_paddle: fields.buttons2.left_paddle,
+      right_paddle: fields.buttons2.right_paddle
     ]
     |> Enum.filter(fn {_button, pressed?} -> pressed? end)
     |> Enum.map(fn {button, _} -> button end)

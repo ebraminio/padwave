@@ -33,17 +33,22 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     bits :buttons0, dpad: 4, square: 1, cross: 1, circle: 1, triangle: 1
     bits :buttons1, l1: 1, r1: 1, l2: 1, r2: 1, create: 1, options: 1, l3: 1, r3: 1
 
+    # The Edge's four extra buttons live in the top nibble of this byte, per
+    # hid-playstation.c (DS_EDGE_BUTTONS_*): FN1, FN2, left paddle, right
+    # paddle. All zero on a standard DualSense.
     bits :buttons2,
       ps: 1,                     # +0x09 bit 0  PS / home
       touchpad: 1,               #       bit 1  touchpad click
       mute: 1,                   #       bit 2  microphone mute
-      reserved_0: 2,             #       bits 3-4
-      reserved_1: 1,             #       bit 5
-      left_fn: 1,                #       bit 6  Edge only
-      right_fn: 1                #       bit 7  Edge only
+      reserved_0: 1,             #       bit 3
+      fn1: 1,                    #       bit 4  Edge only
+      fn2: 1,                    #       bit 5  Edge only
+      left_paddle: 1,            #       bit 6  Edge only
+      right_paddle: 1            #       bit 7  Edge only
 
-    bits :buttons3, reserved_0: 4, left_paddle: 1, right_paddle: 1, reserved_1: 2
-    # +0x0a  Edge paddles; zero on a standard DualSense
+    bits :buttons3, reserved: 8
+    # +0x0a  not read by the kernel; the Edge's L5/R5 paddles may land here on
+    #        some firmware revisions, but nothing consumes them yet
 
     u8 :incremental              # +0x0b  increments every report, wraps at 256
     bytes :reserved_14, 3        # +0x0c..0x0e  not documented
