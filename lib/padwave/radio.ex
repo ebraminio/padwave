@@ -345,7 +345,10 @@ defmodule Padwave.Radio do
 
   # -- transport -------------------------------------------------------------
 
-  defp play_or_resume(%{playing: true} = state), do: state
+  defp play_or_resume(%{playing: true, paused: false} = state), do: state
+
+  # Playing but paused: "play" means unpause, not "already playing".
+  defp play_or_resume(%{playing: true} = state), do: toggle_pause(state)
 
   defp play_or_resume(state) do
     cond do
