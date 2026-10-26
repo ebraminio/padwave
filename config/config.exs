@@ -36,6 +36,8 @@ config :padwave,
   # seconds are the only warning — the volume fades out over that window and
   # then playback stops. Raise idle_warn_grace_ms if you want a quieter arming
   # period before the fade (the UI exposes it).
+  # Paused, stopped or headset out: switch the controller off after this long.
+  poweroff_when_idle_ms: 60_000,
   idle_timeout_ms: 15 * 60 * 1000,
   idle_warn_grace_ms: 10 * 1000,
   # Sleep timer: nothing for most of the grace period, then a linear fade to

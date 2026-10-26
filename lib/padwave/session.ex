@@ -11,6 +11,12 @@ defmodule Padwave.Session do
   Analogue sticks are not regarded as activity by default (see
   `Padwave.Input.Frame.activity?/2`) because this controller's sticks jitter
   on their own — that would defeat the whole point of going idle.
+
+  Separately, there is nothing worth keeping the controller awake for when the
+  radio is paused or stopped, or when the headset is out of its jack (the jack
+  is the output path). After `poweroff_when_idle_ms` (a minute by default) in
+  that state, the controller is switched off — including straight after an app
+  restart, which otherwise leaves a paused radio and an awake controller behind.
   """
 
   use GenServer
@@ -36,7 +42,8 @@ defmodule Padwave.Session do
        phase: :active,
        last_activity: now(),
        warned_at: nil,
-       connected: false
+       connected: false,
+       off_at: nil
      }}
   end
 
@@ -56,14 +63,15 @@ defmodule Padwave.Session do
            do: max(div(grace, 1000) - (idle - div(timeout, 1000)), 0),
            else: nil
          ),
-       enabled: Config.get(:idle_enabled, true)
+       enabled: Config.get(:idle_enabled, true),
+       poweroff_in: if(state.off_at, do: max(div(state.off_at - now(), 1000), 0), else: nil)
      }, state}
   end
 
   @impl true
   def handle_info(:tick, state) do
     Process.send_after(self(), :tick, @tick_ms)
-    {:noreply, evaluate(state)}
+    {:noreply, state |> evaluate() |> evaluate_no_output()}
   end
 
   def handle_info({:padwave, {:input, :activity}}, state) do
@@ -134,6 +142,40 @@ defmodule Padwave.Session do
   end
 
   defp evaluate_idle(state), do: state
+
+  # -- nothing to play to -----------------------------------------------------
+
+  # Paused, stopped, or no headset: the controller is drawing power for no
+  # reason. Give it a minute in case a button press or a cable fixes that,
+  # then switch it off.
+  defp evaluate_no_output(%{connected: false} = state), do: %{state | off_at: nil}
+  defp evaluate_no_output(%{phase: :suspended} = state), do: %{state | off_at: nil}
+
+  defp evaluate_no_output(state) do
+    radio = Radio.status()
+    frame = Padwave.Input.Mapper.snapshot().frame
+
+    no_output? =
+      radio.playing == false or radio.paused == true or radio.suspended or
+        frame == nil or frame.jack == false
+
+    cond do
+      not no_output? ->
+        %{state | off_at: nil}
+
+      state.off_at == nil ->
+        %{state | off_at: now() + Config.get(:poweroff_when_idle_ms, 60_000)}
+
+      now() >= state.off_at ->
+        Logger.info("[session] nothing to play to — powering the controller off")
+        Radio.suspend(:no_output)
+        Task.start(fn -> Power.disconnect() end)
+        %{state | phase: :suspended, off_at: nil}
+
+      true ->
+        state
+    end
+  end
 
   defp now, do: System.monotonic_time(:millisecond)
 end

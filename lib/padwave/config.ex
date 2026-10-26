@@ -8,6 +8,7 @@ defmodule Padwave.Config do
   """
 
   @runtime_keys %{
+    "poweroff_when_idle_ms" => {:int, 5_000, 3_600_000},
     "idle_timeout_ms" => {:int, 5_000, 86_400_000},
     "idle_warn_grace_ms" => {:int, 1_000, 600_000},
     "idle_fade_ms" => {:int, 1_000, 600_000},
