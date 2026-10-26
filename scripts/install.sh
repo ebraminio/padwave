@@ -18,16 +18,16 @@ fi
 echo "==> microphone decoder (optional)"
 mkdir -p "$HOME/.local/bin"
 if command -v cc >/dev/null && [ -f /usr/include/opus/opus.h ]; then
-  c++ -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$ROOT/scripts" \
+  cc -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$ROOT/scripts" \
     -o "$HOME/.local/bin/padwave_opusdec" "$ROOT/scripts/padwave_opusdec.cc" -lopus -lz
   echo "    built ~/.local/bin/padwave_opusdec"
 else
   echo "    skipped: needs cc and libopus-dev (microphone level meter will be off)"
 fi
 
-echo "==> native player (experimental)"
+echo "==> player"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
-  c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
+  cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
     -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" -Wno-deprecated-declarations \
     $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz || exit 1
   echo "    built ~/.local/bin/padwave_native (the default engine)"
