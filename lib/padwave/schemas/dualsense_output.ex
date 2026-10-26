@@ -29,7 +29,7 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
 
     bits :valid_flag1,
       mute_led: 1,                 # +0x01 bit 0
-      audio_mute: 1,               #       bit 1
+      power_save: 1,               #       bit 1  enables power_save_control
       lightbar: 1,                 #       bit 2
       reset_lights: 1,             #       bit 3
       player_leds: 1,              #       bit 4
@@ -46,12 +46,17 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
                                  #        claimed by :audio_routing)
 
     u8 :mute_button_led          # +0x08
+    # +0x09. Only two bits are documented anywhere in the references: bit 4
+    # mutes the microphone and bit 6 mutes audio (hid-playstation.c uses the
+    # first; DS4Windows comments both). The other six are in the panel's power
+    # save row so they can be probed: if one stops the motion sensors, the gyro
+    # and accelerometer in the UI go flat.
     bits :power_save_control,
-      reserved_0: 4,               # +0x09 bits 0-3
-      microphone_mute: 1,          #       bit 4
-      reserved_1: 1,               #       bit 5
-      audio_mute: 1,               #       bit 6
-      reserved_2: 1                #       bit 7
+      reserved_0: 4,               # bits 0-3
+      microphone_mute: 1,          # bit 4  documented
+      reserved_1: 1,               # bit 5
+      audio_mute: 1,               # bit 6  documented
+      reserved_2: 1                # bit 7
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by the :right_trigger / :left_trigger bits. Described

@@ -316,6 +316,7 @@
 
       <div class="sensor-foot">
         <span>report seq <b id="seqv">—</b></span>
+        <span>rate <b id="ratev">—</b>/s</span>
         <span>updated <b id="agetext">—</b></span>
       </div>
       <p style="color:var(--muted);font-size:11.5px;margin:10px 0 0">
@@ -385,6 +386,18 @@
         <button id="labLedsApply">apply</button>
         <button id="labLedsReset">reset</button>
       </div>
+
+      <div class="lab-row">
+        <b>power save</b>
+        <span id="psBits" style="display:flex;gap:4px"></span>
+        <button id="labPsSend">send</button>
+        <span id="labPsMsg" style="font-family:var(--mono);font-size:11px"></span>
+      </div>
+      <p style="color:var(--muted);font-size:11.5px;margin:6px 0 0">
+        power_save_control (+0x09, gated by valid_flag1 bit 1). Bit 4 is documented as microphone
+        mute, bit 6 as audio mute; the rest are guesses — if one stops the motion sensors, the
+        gyro/accelerometer above will go flat.
+      </p>
 
       <div class="lab-row">
         <b>trigger effect</b>
@@ -601,6 +614,7 @@ function renderSensors(c) {
   $("#touchText").textContent = t && t.active ? `${t.x},${t.y}` : (t ? "—" : "—");
   $("#sticks").textContent = `${c.lx ?? 0} ${c.ly ?? 0} · ${c.rx ?? 0} ${c.ry ?? 0}`;
   $("#seqv").textContent = (c.fields && c.fields.seq) ?? "—";
+  $("#ratev").textContent = c.rate ?? "—";
   renderTouch(c.touches);
 
   lastSensorsAt = performance.now();
@@ -800,6 +814,23 @@ async function labSend(payload) {
 }
 
 let labLedMask = 0;
+
+// Eight toggles for power_save_control.
+for (let bit = 0; bit < 8; bit++) {
+  const b = document.createElement("button");
+  b.className = "led";
+  b.textContent = String(bit);
+  b.dataset.ps = String(bit);
+  b.onclick = () => b.classList.toggle("on");
+  $("#psBits").appendChild(b);
+}
+
+$("#labPsSend").onclick = () => {
+  const bits = [...document.querySelectorAll("[data-ps].on")].map(b => Number(b.dataset.ps));
+  const value = bits.reduce((acc, b) => acc | (1 << b), 0);
+  $("#labPsMsg").textContent = "0x" + value.toString(16).padStart(2, "0");
+  labSend({ kind: "power_save", bits });
+};
 
 document.querySelectorAll(".led").forEach(btn => {
   btn.onclick = () => {

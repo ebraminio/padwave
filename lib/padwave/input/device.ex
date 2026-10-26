@@ -40,12 +40,30 @@ defmodule Padwave.Input.Device do
   @impl true
   def init(_opts) do
     send(self(), :scan)
-    {:ok, %{info: nil, pending: nil, reader: nil, ref: nil, spec: :input, dropped: 0}}
+
+    {:ok,
+     %{
+       info: nil,
+       pending: nil,
+       reader: nil,
+       ref: nil,
+       spec: :input,
+       dropped: 0,
+       rate: 0,
+       frames: 0,
+       since: now()
+     }}
   end
 
   @impl true
   def handle_call(:info, _from, state) do
-    info = if state.info, do: Map.put(state.info, :dropped, state.dropped), else: nil
+    info =
+      if state.info do
+        state.info
+        |> Map.put(:dropped, state.dropped)
+        |> Map.put(:rate, state.rate)
+      end
+
     {:reply, info, state}
   end
 
@@ -178,8 +196,24 @@ defmodule Padwave.Input.Device do
     # Output modules (the charging sweep) watch frames without needing the same
     # direct hand-off the mapper gets.
     Bus.broadcast({:frame, frame}, :sensors)
-    state
+    count(state)
   end
+
+  # Reports per second, averaged over roughly a second. Useful for watching
+  # power-save experiments: turning off sensors should drop this.
+  defp count(state) do
+    now = now()
+    frames = state.frames + 1
+
+    if now - state.since >= 1000 do
+      rate = round(frames * 1000 / max(now - state.since, 1))
+      %{state | frames: 0, since: now, rate: rate}
+    else
+      %{state | frames: frames}
+    end
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   @doc false
   def discover do

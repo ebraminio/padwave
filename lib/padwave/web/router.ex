@@ -223,6 +223,7 @@ defmodule Padwave.Web.Router do
       bus: info && info.bus,
       model: info && info.model,
       dropped: info && info.dropped,
+      rate: info && info.rate,
       battery: frame && frame.battery,
       charging: frame && frame.charging && Atom.to_string(frame.charging),
       jack: frame && frame.jack,

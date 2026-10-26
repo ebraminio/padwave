@@ -48,7 +48,7 @@ defmodule Padwave.ProtocolTest do
     # valid_flag0/1 mask, and the 0xF1 low byte is what stops the audio stream
     # from claiming the triggers
     assert fields.valid_flag1.mute_led
-    assert fields.valid_flag1.audio_mute
+    assert fields.valid_flag1.power_save
     refute fields.valid_flag1.lightbar
     assert fields.valid_flag0.audio_routing
     assert fields.haptics_length == 64

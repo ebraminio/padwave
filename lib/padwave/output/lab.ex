@@ -57,6 +57,15 @@ defmodule Padwave.Output.Lab do
     {:ok, "lightbar overridden"}
   end
 
+  # Eight toggles for power_save_control. Only bit 4 (mic mute) and bit 6
+  # (audio mute) are documented; the rest are for finding out.
+  def apply(%{"kind" => "power_save"} = params) do
+    bits = params["bits"] |> List.wrap() |> Enum.map(&to_int(&1, 0)) |> Enum.map(&band(&1, 7))
+    value = Enum.reduce(bits, 0, fn bit, acc -> Bitwise.bor(acc, Bitwise.bsl(1, bit)) end)
+    Hid.send_fields(%{"valid_flag1" => ["power_save"], "power_save_control" => value})
+    {:ok, "power_save_control = #{value}"}
+  end
+
   # valid_flag2 bit 1 ("color_fade") + lightbar_setup bit 1 = "fade light out".
   def apply(%{"kind" => "lightbar_fade"}) do
     Lightbar.fade_out()
