@@ -1,13 +1,15 @@
 // padwave_schemas.hpp — the DualSense wire formats as C++ structs.
 //
-// No STL, no RTTI, no exceptions: this header is plain structs, plain enums and
-// member functions, and it compiles with -fno-exceptions -fno-rtti. The struct
-// *is* the wire layout (packed, little-endian), so reading a report is a
-// memcpy and writing one is a memcpy after filling the fields.
+// No STL, no RTTI, no exceptions: plain structs, plain enums, member functions,
+// and it builds with -fno-exceptions -fno-rtti. The struct *is* the wire layout
+// (packed, little-endian), so reading a report is a memcpy and writing one is a
+// memcpy after filling the fields.
 //
-// The enums live inside the struct that uses them. The two exceptions are the
-// flag words of the output body, which both OutputReport and AudioReport carry,
-// so they are declared once in OutputBody and referenced from both.
+// Fields come first in every struct; the constants and enums follow. C++ makes
+// enum names and function bodies visible throughout the class, so they may be
+// used below where they are declared — but a nested *type* used as a field's
+// type must still be declared before that field (AudioReport::State is the one
+// case here).
 //
 // Values and comments are transcribed from the Elixir schemas in
 // lib/padwave/schemas, which remain the reference for the decoding side.
@@ -26,12 +28,52 @@
 
 namespace padwave {
 
+// Report ordinals, common to every schema. 0x31 is both the input and the
+// output state report; the direction is the stream, not the id.
+enum Packet : uint8_t {
+  PacketInputUsb = 0x01,
+  PacketOutputUsb = 0x02,
+  PacketFeatureCalibration = 0x05,
+  PacketFeaturePairing = 0x09,
+  PacketFeatureFirmware = 0x20,
+  PacketStateBluetooth = 0x31,
+  PacketAudio = 0x36,
+};
+
 // ===========================================================================
 // Output: the 47-byte state body shared by 0x31 (Bluetooth) and 0x02 (USB)
 // ===========================================================================
 
 struct OutputBody {
-  enum { Size = 47 };
+  uint8_t valid_flag0;              // +0x00  ValidFlag0 bits
+  uint8_t valid_flag1;              // +0x01  ValidFlag1 bits
+  uint8_t motor_right;              // +0x02  DS4-compatible rumble
+  uint8_t motor_left;               // +0x03
+  uint8_t headphone_volume;         // +0x04  0x00..0x7f
+  uint8_t speaker_volume;           // +0x05  0x00..0xff
+  uint8_t mic_volume;               // +0x06  0x00..0x40 (claimed by MicVolume)
+  uint8_t audio_control;            // +0x07  AudioControl; claimed by AudioRouting
+  uint8_t mute_button_led;          // +0x08
+  uint8_t power_save_control;       // +0x09  PowerSave bits
+  uint8_t right_trigger_mode;       // +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
+                                    //        0x26 vibration (0x22/0x23/0x27 unofficial)
+  uint8_t right_trigger_params[10]; // +0x0b  zones + 3-bit strength,
+                                    //        vibration frequency at byte 9
+  uint8_t left_trigger_mode;        // +0x15
+  uint8_t left_trigger_params[10];  // +0x16
+  uint8_t reserved_32[4];           // +0x20..0x23
+  uint8_t haptic_volume;            // +0x24
+  uint8_t audio_control2;           // +0x25  speaker preamp gain
+  uint8_t valid_flag2;              // +0x26  ValidFlag2 bits
+  uint8_t reserved_39[2];           // +0x27..0x28
+  uint8_t lightbar_setup;           // +0x29  fade-out after power-on
+  uint8_t led_brightness;           // +0x2a
+  uint8_t player_leds;              // +0x2b  PlayerLeds bits
+  uint8_t lightbar_red;             // +0x2c
+  uint8_t lightbar_green;           // +0x2d
+  uint8_t lightbar_blue;            // +0x2e
+
+  enum : uint8_t { Size = 47 };
 
   // Which fields this report owns: the kernel's (and DS4Windows', and
   // dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
@@ -98,34 +140,6 @@ struct OutputBody {
     Speaker = 0x09,
   };
 
-  uint8_t valid_flag0;              // +0x00  ValidFlag0 bits
-  uint8_t valid_flag1;              // +0x01  ValidFlag1 bits
-  uint8_t motor_right;              // +0x02  DS4-compatible rumble
-  uint8_t motor_left;               // +0x03
-  uint8_t headphone_volume;         // +0x04  0x00..0x7f
-  uint8_t speaker_volume;           // +0x05  0x00..0xff
-  uint8_t mic_volume;               // +0x06  0x00..0x40 (claimed by MicVolume)
-  uint8_t audio_control;            // +0x07  AudioControl; claimed by AudioRouting
-  uint8_t mute_button_led;          // +0x08
-  uint8_t power_save_control;       // +0x09  PowerSave bits
-  uint8_t right_trigger_mode;       // +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
-                                    //        0x26 vibration (0x22/0x23/0x27 unofficial)
-  uint8_t right_trigger_params[10]; // +0x0b  zones + 3-bit strength,
-                                    //        vibration frequency at byte 9
-  uint8_t left_trigger_mode;        // +0x15
-  uint8_t left_trigger_params[10];  // +0x16
-  uint8_t reserved_32[4];           // +0x20..0x23
-  uint8_t haptic_volume;            // +0x24
-  uint8_t audio_control2;           // +0x25  speaker preamp gain
-  uint8_t valid_flag2;              // +0x26  ValidFlag2 bits
-  uint8_t reserved_39[2];           // +0x27..0x28
-  uint8_t lightbar_setup;           // +0x29  fade-out after power-on
-  uint8_t led_brightness;           // +0x2a
-  uint8_t player_leds;              // +0x2b  PlayerLeds bits
-  uint8_t lightbar_red;             // +0x2c
-  uint8_t lightbar_green;           // +0x2d
-  uint8_t lightbar_blue;            // +0x2e
-
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
@@ -147,18 +161,18 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // ===========================================================================
 
 struct OutputReport {
+  uint8_t report_id;     // 0x00  PacketStateBluetooth
+  uint8_t seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
+  uint8_t tag;           // 0x02  must be 0x10
+  OutputBody body;       // 0x03..0x31
+  uint8_t reserved4[24]; // 0x32..0x49
+  uint32_t crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
+
   enum : uint8_t {
-    ReportId = 0x31,
+    ReportId = PacketStateBluetooth,
     Size = 78,
     CrcSeed = 0xA2,
   };
-
-  uint8_t report_id;    // 0x00  ReportId
-  uint8_t seq_tag;      // 0x01  high nibble = counter 0..15, low nibble = 0
-  uint8_t tag;          // 0x02  must be 0x10
-  OutputBody body;      // 0x03..0x31
-  uint8_t reserved4[24];// 0x32..0x49
-  uint32_t crc;         // 0x4a  CRC-32, seed 0xA2, little-endian
 
   void init() {
     memset(this, 0, sizeof(*this));
@@ -189,7 +203,46 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // ===========================================================================
 
 struct InputBody {
-  enum { Size = 63 };
+  uint8_t lx;                 // +0x00  left stick X, 0..255 (128 = centre)
+  uint8_t ly;                 // +0x01  left stick Y, 0 = up
+  uint8_t rx;                 // +0x02  right stick X
+  uint8_t ry;                 // +0x03  right stick Y
+  uint8_t l2;                 // +0x04  L2 analogue
+  uint8_t r2;                 // +0x05  R2 analogue
+  uint8_t seq;                // +0x06  report sequence number
+  uint32_t buttons;           // +0x07  Buttons bits (d-pad in bits 0-3)
+  uint8_t incremental;        // +0x0b  increments every report, wraps at 256
+  uint8_t reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
+                              //        middle byte ticks up by one every few
+                              //        minutes — a slow counter
+  int16_t gyro_x;             // +0x0f  angular velocity, little-endian
+  int16_t gyro_y;             // +0x11
+  int16_t gyro_z;             // +0x13
+  int16_t accel_x;            // +0x15  acceleration, ~8192 counts per g
+  int16_t accel_y;            // +0x17
+  int16_t accel_z;            // +0x19
+  uint32_t sensor_time;       // +0x1b  timestamp, 0.33 us units
+  uint8_t temperature;        // +0x1f  controller temperature, degrees C
+  uint8_t touch1[4];          // +0x20  contact/id, x low, (x high | y low), y high
+  uint8_t touch2[4];          // +0x24
+  uint8_t trigger_feedback_l; // +0x28  L2 adaptive-trigger status
+  uint8_t trigger_feedback_r; // +0x29
+  uint32_t host_time;         // +0x2a  community calls it the echoed host
+                              //        timestamp; a constant 9 for a whole
+                              //        session, so unverified
+  uint8_t device_feedback[4]; // +0x2e  labelled "device feedback", but the low
+                              //        bytes change every report and 0x31
+                              //        tracks sensor_time's high byte: it
+                              //        behaves like a second device clock
+  uint8_t reserved_52[2];     // +0x32  second byte also tracks sensor_time
+  uint8_t status0;            // +0x34  battery (low nibble) + charging (high)
+  uint8_t status1;            // +0x35  Status1 bits
+  uint8_t status2;            // +0x36  constant 1 in every capture so far
+  uint8_t aes_cmac[8];        // +0x37  high entropy in every report, like a
+                              //        per-report MAC/nonce; not verified
+                              //        against the pairing handshake
+
+  enum : uint8_t { Size = 63 };
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -226,58 +279,19 @@ struct InputBody {
     Ps = 1u << 16,
     Touchpad = 1u << 17,
     Mute = 1u << 18,
-    Fn1 = 1u << 20,          // Edge only
-    Fn2 = 1u << 21,          // Edge only
-    LeftPaddle = 1u << 22,   // Edge only
-    RightPaddle = 1u << 23,  // Edge only
+    Fn1 = 1u << 20,         // Edge only
+    Fn2 = 1u << 21,         // Edge only
+    LeftPaddle = 1u << 22,  // Edge only
+    RightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
   };
 
   // +0x35. Bit 7 of a touch contact byte means "not touching", which is why
-  // the touch fields below are left as raw bytes here.
+  // the touch fields above are left as raw bytes here.
   enum Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
   };
-
-  uint8_t lx;                       // +0x00  left stick X, 0..255 (128 = centre)
-  uint8_t ly;                       // +0x01  left stick Y, 0 = up
-  uint8_t rx;                       // +0x02  right stick X
-  uint8_t ry;                       // +0x03  right stick Y
-  uint8_t l2;                       // +0x04  L2 analogue
-  uint8_t r2;                       // +0x05  R2 analogue
-  uint8_t seq;                      // +0x06  report sequence number
-  uint32_t buttons;                 // +0x07  Buttons bits (d-pad in bits 0-3)
-  uint8_t incremental;              // +0x0b  increments every report, wraps at 256
-  uint8_t reserved_14[3];           // +0x0c  constant (0x84, ?, 0x85) except that
-                                    //        the middle byte ticks up by one every
-                                    //        few minutes — a slow counter
-  int16_t gyro_x;                   // +0x0f  angular velocity, little-endian
-  int16_t gyro_y;                   // +0x11
-  int16_t gyro_z;                   // +0x13
-  int16_t accel_x;                  // +0x15  acceleration, ~8192 counts per g
-  int16_t accel_y;                  // +0x17
-  int16_t accel_z;                  // +0x19
-  uint32_t sensor_time;             // +0x1b  timestamp, 0.33 us units
-  uint8_t temperature;              // +0x1f  controller temperature, degrees C
-  uint8_t touch1[4];                // +0x20  contact/id, x low, (x high | y low), y high
-  uint8_t touch2[4];                // +0x24
-  uint8_t trigger_feedback_l;       // +0x28  L2 adaptive-trigger status
-  uint8_t trigger_feedback_r;       // +0x29
-  uint32_t host_time;               // +0x2a  community calls it the echoed host
-                                    //        timestamp; a constant 9 for a whole
-                                    //        session, so unverified
-  uint8_t device_feedback[4];       // +0x2e  labelled "device feedback", but the low
-                                    //        bytes change every report and 0x31
-                                    //        tracks sensor_time's high byte: it
-                                    //        behaves like a second device clock
-  uint8_t reserved_52[2];           // +0x32  second byte also tracks sensor_time
-  uint8_t status0;                  // +0x34  battery (low nibble) + charging (high)
-  uint8_t status1;                  // +0x35  Status1 bits
-  uint8_t status2;                  // +0x36  constant 1 in every capture so far
-  uint8_t aes_cmac[8];              // +0x37  high entropy in every report, like a
-                                    //        per-report MAC/nonce; not verified
-                                    //        against the pairing handshake
 } __attribute__((packed));
 
 static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 bytes");
@@ -287,21 +301,21 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // ===========================================================================
 
 struct InputReport {
-  enum : uint8_t {
-    ReportId = 0x31,
-    UsbReportId = 0x01,
-    Size = 78,
-    UsbSize = 64,
-    CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
-  };
-
-  uint8_t report_id;      // 0x00  ReportId
+  uint8_t report_id;      // 0x00  PacketStateBluetooth
   uint8_t seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
   InputBody body;         // 0x02..0x40
   uint8_t bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
                           //             distinct values in a 150 s capture), the
                           //             other eight were; unknown
   uint32_t crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+
+  enum : uint8_t {
+    ReportId = PacketStateBluetooth,
+    UsbReportId = PacketInputUsb,
+    Size = 78,
+    UsbSize = 64,
+    CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
+  };
 
   bool valid() const {
     uint8_t seed = CrcSeed;
@@ -318,13 +332,46 @@ static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78
 // ===========================================================================
 
 struct AudioReport {
+  // The state snapshot is the 0x31 output payload plus sixteen bytes of
+  // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
+  // the trigger effect to this stream, which writes zeros to it 93 times a
+  // second. The fix for the cancelled trigger effects was clearing exactly
+  // those two bits (0xFD -> 0xF1).
+  //
+  // This nested type has to precede the field that uses it; everything else in
+  // the class can follow its fields.
+  struct State {
+    OutputBody body;     // +0x00..0x2e
+    uint8_t padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
+  } __attribute__((packed));
+
+  uint8_t report_id;         // 0x000  PacketAudio
+  uint8_t seq_tag;           // 0x001  high nibble = counter, low nibble = 0
+  uint8_t config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
+  uint8_t config_length;     // 0x003  7
+  uint8_t enable_mask;       // 0x004  EnableMask bits
+  uint8_t haptic_lengths[5]; // 0x005..0x009  64 each
+  uint8_t counter;           // 0x00a  free-running 8-bit counter
+  uint8_t state_tag;         // 0x00b  0x10 | 0x80
+  uint8_t state_length;      // 0x00c  63
+  State state;               // 0x00d..0x04b
+  uint8_t haptics_tag;       // 0x04c  0x12 | 0x80
+  uint8_t haptics_length;    // 0x04d  64
+  int8_t haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  uint8_t speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  uint8_t speaker_length;    // 0x08f  200
+  uint8_t opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  uint8_t padding[50];       // 0x158..0x189
+  uint32_t crc;              // 0x18a..0x18d  seed 0xA2
+
   enum : uint8_t {
-    ReportId = 0x36,
+    ReportId = PacketAudio,
     StateSize = 63,
     HapticSize = 64,
     OpusSize = 200,
     CrcSeed = 0xA2,
   };
+
   static constexpr size_t Size = 398;
 
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
@@ -340,35 +387,6 @@ struct AudioReport {
     Speaker = 0x13,
     Jack = 0x16,
   };
-
-  // The state snapshot is the 0x31 output payload plus sixteen bytes of
-  // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
-  // the trigger effect to this stream, which writes zeros to it 93 times a
-  // second. The fix for the cancelled trigger effects was clearing exactly
-  // those two bits (0xFD -> 0xF1).
-  struct State {
-    OutputBody body;    // +0x00..0x2e
-    uint8_t padding[16];// +0x2f..0x3e  the rest of the 63-byte block
-  } __attribute__((packed));
-
-  uint8_t report_id;    // 0x000  0x36
-  uint8_t seq_tag;      // 0x001  high nibble = counter, low nibble = 0
-  uint8_t config_tag;   // 0x002  0x11 | 0x80 (more sub-packets follow)
-  uint8_t config_length;// 0x003  7
-  uint8_t enable_mask;  // 0x004  EnableMask bits
-  uint8_t haptic_lengths[5]; // 0x005..0x009  64 each
-  uint8_t counter;      // 0x00a  free-running 8-bit counter
-  uint8_t state_tag;    // 0x00b  0x10 | 0x80
-  uint8_t state_length; // 0x00c  63
-  State state;          // 0x00d..0x04b
-  uint8_t haptics_tag;  // 0x04c  0x12 | 0x80
-  uint8_t haptics_length; // 0x04d  64
-  int8_t haptics_pcm[64]; // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  uint8_t speaker_tag;  // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  uint8_t speaker_length; // 0x08f  200
-  uint8_t opus[200];    // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  uint8_t padding[50];  // 0x158..0x189
-  uint32_t crc;         // 0x18a..0x18d  seed 0xA2
 
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
@@ -419,9 +437,8 @@ static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 byte
 // visible.
 
 struct Calibration {
-  enum : uint8_t { ReportId = 0x05, Size = 41 };
+  uint8_t report_id; // 0x00  PacketFeatureCalibration
 
-  uint8_t report_id;      // 0x00
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
   // plus/minus at 1 g per axis.
@@ -443,31 +460,34 @@ struct Calibration {
   int16_t acc_z_plus;
   int16_t acc_z_minus;
   uint8_t unknown_35[6]; // 0x23..0x28  not used by the kernel
+
+  enum : uint8_t { ReportId = PacketFeatureCalibration, Size = 41 };
 } __attribute__((packed));
 
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
 
 struct Pairing {
-  enum : uint8_t { ReportId = 0x09, Size = 20 };
+  uint8_t report_id;      // 0x00  PacketFeaturePairing
+  uint8_t mac[6];         // 0x01..0x06  the controller's own address
+  uint8_t unknown_07[13]; // 0x07..0x13
 
-  uint8_t report_id;     // 0x00
-  uint8_t mac[6];        // 0x01..0x06  the controller's own address
-  uint8_t unknown_07[13];// 0x07..0x13
-} __attribute__((packed));
-
-struct Firmware {
-  enum : uint8_t { ReportId = 0x20, Size = 64 };
-
-  uint8_t report_id;      // 0x00
-  uint8_t unknown_01[23]; // 0x01..0x17
-  uint32_t hw_version;    // 0x18..0x1b
-  uint32_t fw_version;    // 0x1c..0x1f
-  uint8_t unknown_32[12]; // 0x20..0x2b
-  uint16_t update_version;// 0x2c..0x2d  feature/PCB revision, varies by model
-  uint8_t unknown_46[18]; // 0x2e..0x3f
+  enum : uint8_t { ReportId = PacketFeaturePairing, Size = 20 };
 } __attribute__((packed));
 
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
+
+struct Firmware {
+  uint8_t report_id;       // 0x00  PacketFeatureFirmware
+  uint8_t unknown_01[23];  // 0x01..0x17
+  uint32_t hw_version;     // 0x18..0x1b
+  uint32_t fw_version;     // 0x1c..0x1f
+  uint8_t unknown_32[12];  // 0x20..0x2b
+  uint16_t update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
+  uint8_t unknown_46[18];  // 0x2e..0x3f
+
+  enum : uint8_t { ReportId = PacketFeatureFirmware, Size = 64 };
+} __attribute__((packed));
+
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 
 // ===========================================================================
@@ -490,7 +510,7 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 
 struct MicFrame {
   enum : uint8_t {
-    ReportId = 0x31,
+    ReportId = PacketStateBluetooth,
     Toc = 0xD4,
     CrcBytes = 4,
   };
