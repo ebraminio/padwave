@@ -27,7 +27,8 @@ defmodule Padwave.Output.Report do
   Options: `:seq` (Bluetooth report counter 0..15), `:bus` (`:bluetooth` or
   `:usb`), `:extra` (further fields, e.g. player LEDs).
   """
-  def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
+  @doc false
+  def lightbar_fields(red, green, blue, opts \\ []) do
     fields = %{
       valid_flag1: [:lightbar],
       lightbar_red: red,
@@ -35,20 +36,29 @@ defmodule Padwave.Output.Report do
       lightbar_blue: blue
     }
 
-    fields =
-      case Keyword.get(opts, :brightness) do
-        nil -> fields
-        value -> Map.merge(fields, %{valid_flag2: [:brightness], led_brightness: value})
-      end
+    case Keyword.get(opts, :brightness) do
+      nil -> fields
+      value -> Map.merge(fields, %{valid_flag2: [:brightness], led_brightness: value})
+    end
+  end
 
+  def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
     bus = Keyword.get(opts, :bus, :bluetooth)
-    build(Map.merge(fields, Keyword.get(opts, :extra, %{})), bus, seq: Keyword.get(opts, :seq, 0))
+
+    fields =
+      lightbar_fields(red, green, blue, opts)
+      |> Map.merge(Keyword.get(opts, :extra, %{}))
+
+    build(fields, bus, seq: Keyword.get(opts, :seq, 0))
   end
 
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
+  @doc false
+  def player_leds_fields(mask), do: %{valid_flag1: [:player_leds], player_leds: mask}
+
   def player_leds(mask, opts \\ []) when is_list(opts) do
     build(
-      %{valid_flag1: [:player_leds], player_leds: mask},
+      player_leds_fields(mask),
       Keyword.get(opts, :bus, :bluetooth),
       seq: Keyword.get(opts, :seq, 0)
     )
@@ -64,28 +74,31 @@ defmodule Padwave.Output.Report do
 
   Enabled by `valid_flag0` bits `:right_trigger` and `:left_trigger`.
   """
+  @doc false
+  def trigger_fields(side, mode, params \\ []) when side in [:left, :right] do
+    case side do
+      :right ->
+        %{
+          valid_flag0: [:right_trigger],
+          right_trigger_mode: mode,
+          right_trigger_params: trigger_params(params)
+        }
+
+      :left ->
+        %{
+          valid_flag0: [:left_trigger],
+          left_trigger_mode: mode,
+          left_trigger_params: trigger_params(params)
+        }
+    end
+  end
+
   def trigger(side, mode, params \\ [], opts \\ []) when side in [:left, :right] do
-    bus = Keyword.get(opts, :bus, :bluetooth)
-    seq = Keyword.get(opts, :seq, 0)
-
-    fields =
-      case side do
-        :right ->
-          %{
-            valid_flag0: [:right_trigger],
-            right_trigger_mode: mode,
-            right_trigger_params: trigger_params(params)
-          }
-
-        :left ->
-          %{
-            valid_flag0: [:left_trigger],
-            left_trigger_mode: mode,
-            left_trigger_params: trigger_params(params)
-          }
-      end
-
-    build(fields, bus, seq: seq)
+    build(
+      trigger_fields(side, mode, params),
+      Keyword.get(opts, :bus, :bluetooth),
+      seq: Keyword.get(opts, :seq, 0)
+    )
   end
 
   @doc """

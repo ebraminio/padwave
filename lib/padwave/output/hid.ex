@@ -42,6 +42,13 @@ defmodule Padwave.Output.Hid do
   @doc "Puts the player LEDs back to whatever the kernel has set."
   def reset_player_leds, do: GenServer.cast(__MODULE__, :reset_player_leds)
 
+  @doc """
+  Makes `power_save_control` a persistent claim: every report this writer sends
+  from now on also sets `valid_flag1` bit 1 and the byte. `nil` stops claiming.
+  """
+  def set_power_save(nil), do: GenServer.cast(__MODULE__, :clear_power_save)
+  def set_power_save(value), do: GenServer.cast(__MODULE__, {:power_save, value})
+
   @doc "Sets one trigger's effect (`0x00` off, `0x06` vibration, …)."
   def trigger(side, mode, params \\ []),
     do: GenServer.cast(__MODULE__, {:trigger, side, mode, params})
@@ -49,35 +56,34 @@ defmodule Padwave.Output.Hid do
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: []}}
+    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: [], power_save: nil}}
   end
 
   @impl true
   def handle_cast({:lightbar, {red, green, blue}, opts}, state) do
     if Config.get(:lightbar_enabled, true) do
-      write(
-        state,
-        Report.lightbar(red, green, blue, seq: state.seq, brightness: Keyword.get(opts, :brightness))
-      )
+      emit(state, Report.lightbar_fields(red, green, blue, opts))
     else
       {:noreply, state}
     end
   end
 
-  def handle_cast({:trigger, side, mode, params}, state) do
-    write(state, Report.trigger(side, mode, params, seq: state.seq))
+  def handle_cast({:power_save, value}, state) do
+    emit(%{state | power_save: value}, %{})
   end
 
-  def handle_cast({:player_leds, mask}, state) do
-    write(state, Report.player_leds(mask, seq: state.seq))
-  end
+  def handle_cast(:clear_power_save, state), do: {:noreply, %{state | power_save: nil}}
 
-  def handle_cast(:reset_player_leds, state) do
-    write(state, Report.player_leds(kernel_player_led_mask(), seq: state.seq))
-  end
+  def handle_cast({:player_leds, mask}, state), do: emit(state, Report.player_leds_fields(mask))
+
+  def handle_cast(:reset_player_leds, state),
+    do: emit(state, Report.player_leds_fields(kernel_player_led_mask()))
+
+  def handle_cast({:trigger, side, mode, params}, state),
+    do: emit(state, Report.trigger_fields(side, mode, params))
 
   def handle_cast({:fields, fields}, state) do
-    write(state, Report.build(atomize(fields), :bluetooth, seq: state.seq))
+    emit(state, atomize(fields))
   rescue
     error ->
       Logger.warning("[hid] cannot build that report: #{Exception.message(error)}")
@@ -89,7 +95,7 @@ defmodule Padwave.Output.Hid do
 
   @impl true
   def handle_call(:stats, _from, state),
-    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent]), state}
+    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent, :power_save]), state}
 
   @impl true
   def handle_info({:padwave, {:device, :down, _info}}, state) do
@@ -98,6 +104,24 @@ defmodule Padwave.Output.Hid do
   end
 
   def handle_info(_other, state), do: {:noreply, state}
+
+  # Every report carries the persistent claims (currently power_save) on top of
+  # whatever the caller asked for, so the controller state does not depend on
+  # which feature wrote last.
+  defp emit(state, fields) do
+    write(state, Report.build(merge_persistent(fields, state), :bluetooth, seq: state.seq))
+  end
+
+  defp merge_persistent(fields, %{power_save: nil}), do: fields
+
+  defp merge_persistent(fields, %{power_save: value}) do
+    fields
+    |> Map.update(:valid_flag1, [:power_save], &claim(&1, :power_save))
+    |> Map.put(:power_save_control, value)
+  end
+
+  defp claim(flags, name) when is_list(flags), do: [name | flags]
+  defp claim(flags, _name) when is_integer(flags), do: flags
 
   defp write(state, report) do
     case open(state) do

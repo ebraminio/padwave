@@ -62,8 +62,16 @@ defmodule Padwave.Output.Lab do
   def apply(%{"kind" => "power_save"} = params) do
     bits = params["bits"] |> List.wrap() |> Enum.map(&to_int(&1, 0)) |> Enum.map(&band(&1, 7))
     value = Enum.reduce(bits, 0, fn bit, acc -> Bitwise.bor(acc, Bitwise.bsl(1, bit)) end)
-    Hid.send_fields(%{"valid_flag1" => ["power_save"], "power_save_control" => value})
-    {:ok, "power_save_control = #{value}"}
+
+    if value == 0 do
+      # Clear the device once, then stop claiming it in every report.
+      Hid.set_power_save(nil)
+      Hid.send_fields(%{"valid_flag1" => ["power_save"], "power_save_control" => 0})
+      {:ok, "power_save cleared"}
+    else
+      Hid.set_power_save(value)
+      {:ok, "power_save_control = #{value} (now in every report)"}
+    end
   end
 
   # valid_flag2 bit 1 ("color_fade") + lightbar_setup bit 1 = "fade light out".

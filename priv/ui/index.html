@@ -196,6 +196,7 @@
     width: 30px; height: 30px; padding: 0; border-radius: 50%;
     background: #0f1219; border: 1px solid var(--line); color: var(--muted); font-size: 11px;
   }
+  .led.ps { width: auto; min-width: 30px; padding: 0 8px; border-radius: 8px; }
   .led.on { background: rgba(34, 211, 238, .2); border-color: var(--accent-2); color: var(--accent-2); }
   input[type=color] {
     width: 44px; height: 30px; padding: 2px; background: #0e1118;
@@ -494,6 +495,14 @@ function render(s) {
 
   $("#title").textContent = cur ? cur.title : "Nothing playing";
   $("#game").textContent = cur ? cur.game : "—";
+  const ps = s.hid ? s.hid.power_save : null;
+  if (!psDirty) {
+    document.querySelectorAll("[data-ps]").forEach(b => {
+      b.classList.toggle("on", ps != null && (ps & (1 << Number(b.dataset.ps))) !== 0);
+    });
+    $("#labPsMsg").textContent = ps == null ? "" : ("0x" + (ps & 0xff).toString(16).padStart(2, "0"));
+  }
+
   const canPlay = c.connected === true && c.jack === true;
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
   $("#pauseBtn").disabled = !canPlay;
@@ -815,13 +824,21 @@ async function labSend(payload) {
 
 let labLedMask = 0;
 
-// Eight toggles for power_save_control.
+// Eight toggles for power_save_control; the value is persistent and comes back
+// from the server, so a reload shows what the controller is actually set to.
+let psDirty = false;
+
+// The only two bits anyone has documented; everything else is a guess, and the
+// panel should say so rather than pretend a bare number is a name.
+const psNames = { 4: "mic mute", 6: "audio mute" };
+
 for (let bit = 0; bit < 8; bit++) {
   const b = document.createElement("button");
-  b.className = "led";
-  b.textContent = String(bit);
+  b.className = "led ps";
+  b.textContent = psNames[bit] ? `${bit} ${psNames[bit]}` : String(bit);
+  b.title = psNames[bit] ? `bit ${bit}: ${psNames[bit]} (documented)` : `bit ${bit}: unknown`;
   b.dataset.ps = String(bit);
-  b.onclick = () => b.classList.toggle("on");
+  b.onclick = () => { psDirty = true; b.classList.toggle("on"); };
   $("#psBits").appendChild(b);
 }
 
@@ -829,6 +846,7 @@ $("#labPsSend").onclick = () => {
   const bits = [...document.querySelectorAll("[data-ps].on")].map(b => Number(b.dataset.ps));
   const value = bits.reduce((acc, b) => acc | (1 << b), 0);
   $("#labPsMsg").textContent = "0x" + value.toString(16).padStart(2, "0");
+  psDirty = false;
   labSend({ kind: "power_save", bits });
 };
 
