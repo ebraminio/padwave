@@ -70,6 +70,9 @@ defmodule Padwave.Player.Ffmpeg do
 
   @impl true
   def init(_opts) do
+    # The sender is a real-time job; it must not queue behind HTTP or the UI.
+    Process.flag(:priority, :high)
+
     {:ok,
      %{
        path: nil,
@@ -337,6 +340,12 @@ defmodule Padwave.Player.Ffmpeg do
     {:noreply, state}
   end
 
+  def handle_info({:probed, path, seconds}, %{next_path: path} = state) when not is_nil(path) do
+    {:noreply, %{state | next_duration: seconds}}
+  end
+
+  def handle_info({:probed, _path, _seconds}, state), do: {:noreply, state}
+
   def handle_info(_other, state), do: {:noreply, state}
 
   @impl true
@@ -346,6 +355,28 @@ defmodule Padwave.Player.Ffmpeg do
   end
 
   # -- the audio path ---------------------------------------------------------
+
+  # How many 512-frame blocks should have been sent by now.
+  defp due_packets(state) do
+    reference = if state.paused, do: state.paused_at || now(), else: now()
+    elapsed = max(reference - (state.started_at || reference) - state.paused_total, 0)
+    trunc(elapsed / @frame_ms)
+  end
+
+  # Send up to `count` blocks, stopping early if the queue runs dry.
+  defp send_due(state, 0), do: state
+
+  defp send_due(state, count) do
+    case :queue.out(state.frames) do
+      {{:value, pcm}, queue} ->
+        state = send_frame(state, pcm)
+        state = %{state | frames: queue, sent: state.sent + 1}
+        send_due(state, count - 1)
+
+      {:empty, _queue} ->
+        %{state | underruns: state.underruns + 1}
+    end
+  end
 
   defp send_frame(state, pcm) do
     gain = gain(state.volume) * fade_gain(state.fade_frames)

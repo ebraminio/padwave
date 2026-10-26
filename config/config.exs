@@ -90,6 +90,9 @@ config :padwave,
 
 config :logger, level: :info
 
-# Which playback engine to run: :mpv (two slots, crossfade) or :ffmpeg (ffmpeg
-# decodes, padwave writes the 0x36). Set PADWAVE_PLAYER=ffmpeg to switch.
-config :padwave, player_engine: :mpv
+# Which playback engine to run.
+#   :ffmpeg — ffmpeg decodes, padwave encodes Opus and writes the 0x36 itself.
+#             One writer, no PipeWire sink, no audio service. The default.
+#   :mpv    — the old two-slot player with crossfade and volume ramps.
+#             PADWAVE_PLAYER=mpv brings it back for comparison.
+config :padwave, player_engine: :ffmpeg

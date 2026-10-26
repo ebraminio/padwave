@@ -22,6 +22,18 @@ else
   echo "    skipped: needs cc and libopus-dev (microphone level meter will be off)"
 fi
 
+echo "==> native player (experimental)"
+if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
+  if cc -O2 -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.c" \
+      $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz 2>/dev/null; then
+    echo "    built ~/.local/bin/padwave_native (not used by the app yet)"
+  else
+    echo "    skipped: build failed"
+  fi
+else
+  echo "    skipped: needs libavformat/libavcodec/libswresample dev packages"
+fi
+
 echo "==> audio folders"
 mkdir -p "$HOME/.config/padwave"
 if [ ! -f "$HOME/.config/padwave/env" ]; then
