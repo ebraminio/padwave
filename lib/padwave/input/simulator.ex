@@ -103,6 +103,7 @@ defmodule Padwave.Input.Simulator do
     |> put_byte(7, r2)
     |> apply_sticks(patch)
     |> apply_touch(patch)
+    |> apply_jack(patch)
     |> apply_dpad(dpad)
     |> apply_buttons(buttons)
   end
@@ -153,6 +154,18 @@ defmodule Padwave.Input.Simulator do
 
   defp clear_buttons(frame) do
     Enum.reduce(@by_name, frame, fn {name, _pos}, acc -> set_bit(acc, name, false) end)
+  end
+
+  # status1 bit 0 is "headset plugged in". The template has one in.
+  defp apply_jack(frame, patch) do
+    case Map.get(patch, :jack, Map.get(patch, "jack")) do
+      nil ->
+        frame
+
+      plugged? ->
+        current = :binary.at(frame, 55)
+        put_byte(frame, 55, if(plugged?, do: bor(current, 1), else: band(current, 0xFE)))
+    end
   end
 
   # A touch point is contact/id, x low, (x high | y low), y high. Bit 7 of the

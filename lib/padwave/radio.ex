@@ -50,6 +50,19 @@ defmodule Padwave.Radio do
     persisted = Store.load()
 
     current = persisted["track_id"] && Map.get(by_id, persisted["track_id"])
+
+    # The library can come back empty (a bad root, an unmounted disk, a typo in
+    # PADWAVE_ROOTS). If the saved track is missing, fall back to the most
+    # recent thing in the history rather than forgetting what was playing.
+    current =
+      current ||
+        (List.wrap(persisted["recent"]) ++ List.wrap(persisted["history"]))
+        |> Enum.find_value(&Map.get(by_id, &1))
+
+    if current && persisted["track_id"] != current.id do
+      Logger.info("[radio] recovered #{current.title} from history")
+    end
+
     volume = persisted["volume"] || Config.get(:default_volume, 80)
 
     # A service restart should feel like the radio was never away: if it was
@@ -63,6 +76,10 @@ defmodule Padwave.Radio do
 
     Logger.info("[radio] #{length(tracks)} stations in #{inspect(Config.music_roots())}")
 
+    if tracks == [] do
+      Logger.warning("[radio] no audio found — check PADWAVE_ROOTS or ~/.config/padwave/env")
+    end
+
     Process.send_after(self(), :checkpoint, @checkpoint_ms)
 
     if resume_pending and current do
@@ -74,6 +91,7 @@ defmodule Padwave.Radio do
        tracks: tracks,
        by_id: by_id,
        current: current,
+       last_track_id: persisted["track_id"],
        volume: volume,
        muted: false,
        volume_before_mute: nil,
@@ -306,6 +324,12 @@ defmodule Padwave.Radio do
   defp dispatch(other, _args, state), do: {{:error, {:unknown_action, other}}, state}
 
   defp dispatch_action(:toggle_pause, state), do: {:ok, toggle_pause(state)}
+
+  # Pause, but never resume: used when the headset is unplugged.
+  defp dispatch_action(:pause, state) do
+    if state.playing and not state.paused, do: {:ok, toggle_pause(state)}, else: {:ok, state}
+  end
+
   defp dispatch_action(:play, state), do: {:ok, play_or_resume(state)}
   defp dispatch_action(:next_random, state), do: {:ok, play_random(state)}
   defp dispatch_action(:previous, state), do: {:ok, go_back(state)}
@@ -357,6 +381,7 @@ defmodule Padwave.Radio do
     state =
       state
       |> Map.put(:current, track)
+      |> Map.put(:last_track_id, track.id)
       |> Map.put(:position, start * 1.0)
       |> Map.put(:duration, nil)
       |> Map.put(:playing, true)
@@ -549,7 +574,9 @@ defmodule Padwave.Radio do
 
   defp state_map(state) do
     %{
-      "track_id" => state.current && state.current.id,
+      # Keep the last known track even if `current` is nil (empty library), so a
+      # bad scan cannot erase the resume point.
+      "track_id" => (state.current && state.current.id) || state.last_track_id,
       "position" => Float.round(state.position * 1.0, 2),
       "volume" => state.volume,
       "paused" => state.paused,

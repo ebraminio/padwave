@@ -151,6 +151,7 @@ defmodule Padwave.Input.Mapper do
     state = handle_analog(now, frame, state)
     state = track_trigger(:left, frame.l2, state)
     state = track_trigger(:right, frame.r2, state)
+    state = track_jack(state, frame)
 
     {:noreply,
      %{
@@ -310,6 +311,22 @@ defmodule Padwave.Input.Mapper do
         state
     end
   end
+
+  # -- headset jack ----------------------------------------------------------
+
+  # The jack is the output path, so unplugging the headset means the music would
+  # play to an empty plug (the membrane is muted while something is inserted).
+  # Ask the radio to pause instead of pretending nothing happened.
+  defp track_jack(%{prev: %{jack: true}} = state, %{jack: false}) do
+    if Config.get(:pause_on_unplug, true) do
+      Logger.info("[input] headset unplugged")
+      Bus.broadcast({:action, :pause})
+    end
+
+    state
+  end
+
+  defp track_jack(state, _frame), do: state
 
   # -- action plumbing -------------------------------------------------------
 

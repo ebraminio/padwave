@@ -20,6 +20,13 @@ defmodule Padwave.MapperTest do
     assert_receive {:padwave, {:action, :toggle_pause}}, 1000
   end
 
+  test "pulling the headset out asks for a pause" do
+    Simulator.press!(%{jack: true}, 60)
+    Simulator.press!(%{jack: false}, 60)
+
+    assert_receive {:padwave, {:action, :pause}}, 1000
+  end
+
   test "the Edge back paddles skip stations like L1/R1" do
     Simulator.press!(%{buttons: ["left_paddle"]}, 80)
     assert_receive {:padwave, {:action, :previous}}, 1000

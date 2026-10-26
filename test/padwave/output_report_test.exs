@@ -66,6 +66,12 @@ defmodule Padwave.OutputReportTest do
     end
   end
 
+  test "the charging sweep ends on the middle player LED" do
+    assert Padwave.Output.ChargingLeds.home() == 0b00100
+    assert Enum.at(Padwave.Output.ChargingLeds.sweep(), -1) == Padwave.Output.ChargingLeds.home()
+    assert length(Enum.uniq(Padwave.Output.ChargingLeds.sweep())) == 5
+  end
+
   test "the two claim bytes are one 16-bit bit group" do
     spec = Padwave.Schema.DualSenseOutput.spec(:output)
     owned = Enum.find(spec.fields, &(&1.name == :owned_fields))

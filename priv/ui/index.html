@@ -367,6 +367,8 @@
         <input type="color" id="labColor" value="#00a0ff" title="override the lightbar colour">
         <button id="labBarApply">apply</button>
         <button id="labBarReset">reset</button>
+        <label>brightness <input type="range" id="labBright" min="0" max="255" value="255" style="width:80px"></label>
+        <button id="labBarFade" title="lightbar_setup bit 1: fade the bar out">fade out</button>
         <span style="font-size:11px">(reset returns to cyan / amber / purple / red states)</span>
       </div>
 
@@ -806,6 +808,8 @@ $("#labBarApply").onclick = () => {
 };
 
 $("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
+$("#labBarFade").onclick = () => labSend({ kind: "lightbar_fade" });
+$("#labBright").onchange = (e) => labSend({ kind: "lightbar_brightness", value: Number(e.target.value) });
 $("#labLedsApply").onclick = () => labSend({ kind: "player_leds", mask: labLedMask });
 $("#labLedsReset").onclick = () => {
   labLedMask = 0;

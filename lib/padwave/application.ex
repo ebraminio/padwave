@@ -26,6 +26,7 @@ defmodule Padwave.Application do
       Padwave.Output.Hid,
       Padwave.Output.Lightbar,
       Padwave.Output.Triggers,
+      Padwave.Output.ChargingLeds,
       Padwave.Player,
       Padwave.Radio,
       Padwave.Session,

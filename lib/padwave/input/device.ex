@@ -175,6 +175,9 @@ defmodule Padwave.Input.Device do
       pid -> send(pid, {:frame, frame})
     end
 
+    # Output modules (the charging sweep) watch frames without needing the same
+    # direct hand-off the mapper gets.
+    Bus.broadcast({:frame, frame}, :sensors)
     state
   end
 
