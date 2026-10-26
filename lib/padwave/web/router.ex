@@ -108,6 +108,15 @@ defmodule Padwave.Web.Router do
   end
 
   # The playground: lightbar, player LEDs, trigger effects, and a raw field map.
+  post "/api/mic" do
+    params = Map.merge(conn.params, conn.body_params)
+
+    case Padwave.Mic.set_enabled(params["enabled"] == true) do
+      {:ok, note} -> json(conn, %{ok: true, note: note, stats: Padwave.Mic.stats()})
+      {:error, reason} -> json(conn, %{ok: false, error: to_string(reason)})
+    end
+  end
+
   post "/api/mic/reset" do
     Padwave.Mic.reset()
     json(conn, %{ok: true})

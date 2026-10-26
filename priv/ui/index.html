@@ -403,6 +403,7 @@
       <div class="lab-row">
         <b>microphone</b>
         <span id="micBar" style="flex:1;height:8px;background:#0f1219;border:1px solid var(--line);border-radius:4px;overflow:hidden"><span id="micFill" style="display:block;height:100%;width:0;background:var(--accent)"></span></span>
+        <label title="tells the audio service to ask the controller for mic capture"><input type="checkbox" id="micOn"> capture</label>
         <span id="micMsg" style="font-family:var(--mono);font-size:11px;min-width:150px">no frames</span>
         <button id="labMicReset">reset</button>
       </div>
@@ -609,6 +610,17 @@ function render(s) {
   $("#statusLine").textContent =
     `v0.1 · ${audio.present ? audio.sink + " " + audio.state : "no sink"} · ${cur ? cur.path : "no station"}`;
 
+  const mic = s.mic || {};
+  $("#micFill").style.width = (mic.level ?? 0) + "%";
+  $("#micMsg").textContent = mic.active
+    ? `${mic.frames} frames · rms ${mic.rms} · peak ${mic.peak}`
+    : (mic.running ? "decoder ready, no frames" : "decoder not installed");
+  $("#micOn").checked = !!mic.enabled;
+
+  const leds = s.hid ? s.hid.player_leds : null;
+  document.querySelectorAll("#leddots i").forEach((d, i) =>
+    d.classList.toggle("on", leds != null && (leds & (1 << i)) !== 0));
+
   highlightStation(cur && cur.id);
 }
 
@@ -636,15 +648,6 @@ function renderSensors(c) {
   $("#sticks").textContent = `${c.lx ?? 0} ${c.ly ?? 0} · ${c.rx ?? 0} ${c.ry ?? 0}`;
   $("#seqv").textContent = (c.fields && c.fields.seq) ?? "—";
   $("#ratev").textContent = c.rate ?? "—";
-  const mic = s.mic || {};
-  $("#micFill").style.width = (mic.level ?? 0) + "%";
-  $("#micMsg").textContent = mic.active
-    ? `${mic.frames} frames · rms ${mic.rms} · peak ${mic.peak}`
-    : (mic.running ? "decoder ready, no frames" : "decoder not installed");
-
-  const leds = s.hid ? s.hid.player_leds : null;
-  document.querySelectorAll("#leddots i").forEach((d, i) =>
-    d.classList.toggle("on", leds != null && (leds & (1 << i)) !== 0));
   renderTouch(c.touches);
 
   lastSensorsAt = performance.now();
@@ -929,6 +932,14 @@ $("#labLedsReset").onclick = () => {
     b.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
   });
   labSend({ kind: "player_leds", mask: labLedMask });
+};
+
+$("#micOn").onchange = async (e) => {
+  await fetch("/api/mic", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled: e.target.checked })
+  });
 };
 
 $("#labMicReset").onclick = async () => {

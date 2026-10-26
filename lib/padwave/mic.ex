@@ -29,6 +29,9 @@ defmodule Padwave.Mic do
 
   @decoder "padwave_opusdec"
   @idle_ms 5_000
+  # The audio service owns the 0x36 stream that turns capture on, and its
+  # config is a small text file it re-reads about once a second.
+  @service_config Path.expand("~/.DS5/config")
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -40,6 +43,25 @@ defmodule Padwave.Mic do
 
   @doc "Forgets the counters (the decoder itself stays open)."
   def reset, do: GenServer.cast(__MODULE__, :reset)
+
+  @doc """
+  Turns microphone capture on or off in the audio service's config.
+
+  The enable itself is a `0x36` field (bit 0 of the enable mask plus the
+  `power_save` claim), which that service owns — this only flips its config and
+  lets it apply the change; there is exactly one writer of `0x36` on purpose.
+  """
+  def set_enabled(enabled?) when is_boolean(enabled?) do
+    GenServer.call(__MODULE__, {:enabled, enabled?}, 2_000)
+  end
+
+  @doc "Whether the audio service config currently asks for capture."
+  def enabled? do
+    case File.read(@service_config) do
+      {:ok, body} -> Regex.match?(~r/^\s*microphone\s*=\s*(on|1|true|yes)\s*$/m, body)
+      {:error, _reason} -> false
+    end
+  end
 
   @impl true
   def init(_opts) do
@@ -101,6 +123,10 @@ defmodule Padwave.Mic do
   def handle_info(_other, state), do: {:noreply, state}
 
   @impl true
+  def handle_call({:enabled, enabled?}, _from, state) do
+    {:reply, write_enabled(enabled?), state}
+  end
+
   def handle_call(:stats, _from, state) do
     active? = state.last_seen != nil and now() - state.last_seen < @idle_ms
 
@@ -116,7 +142,8 @@ defmodule Padwave.Mic do
        peak: state.peak,
        level: level(state.rms),
        samples: state.samples,
-       last_at: state.last_at
+       last_at: state.last_at,
+       enabled: enabled?()
      }, state}
   end
 
@@ -139,6 +166,32 @@ defmodule Padwave.Mic do
   end
 
   defp ensure_port(%{port: port} = state), do: {:ok, state, port}
+
+  defp write_enabled(enabled?) do
+    value = if enabled?, do: "on", else: "off"
+
+    lines =
+      case File.read(@service_config) do
+        {:ok, body} -> String.split(body, "\n")
+        {:error, _reason} -> []
+      end
+
+    {lines, found?} =
+      Enum.map_reduce(lines, false, fn line, found ->
+        if String.starts_with?(String.trim(line), "microphone") do
+          {"microphone = #{value}", true}
+        else
+          {line, found}
+        end
+      end)
+
+    lines = if found?, do: lines, else: lines ++ ["microphone = #{value}"]
+
+    case File.write(@service_config, Enum.join(lines, "\n")) do
+      :ok -> {:ok, "microphone #{value}"}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   defp find_decoder do
     found = System.find_executable(@decoder)
