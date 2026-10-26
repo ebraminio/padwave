@@ -62,7 +62,9 @@ defmodule Padwave.Schema.DualSenseInput.Body do
       reserved_1: 8                # +0x0a  unread by the kernel; maybe L5/R5
 
     u8 :incremental              # +0x0b  increments every report, wraps at 256
-    bytes :reserved_14, 3        # +0x0c..0x0e  not documented
+    # +0x0c..0x0e: constant (0x84, ?, 0x85) except that the middle byte ticks
+    # up by one every few minutes — a slow counter, purpose unknown.
+    bytes :reserved_14, 3
 
     i16le :gyro_x                # +0x0f  angular velocity, little-endian
     i16le :gyro_y                # +0x11
@@ -80,17 +82,26 @@ defmodule Padwave.Schema.DualSenseInput.Body do
 
     u8 :trigger_feedback_l       # +0x28  L2 adaptive-trigger status
     u8 :trigger_feedback_r       # +0x29
-    u32le :host_time             # +0x2a  host timestamp echoed back
-    bytes :device_feedback, 4    # +0x2e  device timestamp / trigger feedback
-    bytes :reserved_52, 2        # +0x32
+    # +0x2a..0x2d: the community calls this the echoed host timestamp; it was a
+    # constant 9 for a whole session, so treat that as unverified.
+    u32le :host_time
+    # +0x2e..0x31: labelled "device feedback" in the community notes, but the
+    # capture says otherwise — the low bytes change on every report and 0x31
+    # tracks the high byte of :sensor_time. It behaves like a second device
+    # clock. Name kept for compatibility; meaning not established.
+    bytes :device_feedback, 4
+    # +0x32..0x33: second byte also tracks :sensor_time's high byte.
+    bytes :reserved_52, 2
 
     u8 :status0                  # +0x34  battery (low nibble) + charging (high)
     bits :status1,
       headset: 1,                  # +0x35 bit 0
       microphone: 1,               #       bit 1
       reserved_0: 6                #       bits 2-7 (bit 2 is set on this pad)
-    u8 :status2                  # +0x36
-    bytes :aes_cmac, 8           # +0x37  pairing CMAC
+    u8 :status2                  # +0x36  constant 1 in every capture so far
+    # +0x37..0x3e: high entropy and different in every report, consistent with
+    # a per-report MAC/nonce. Not verified against the pairing handshake.
+    bytes :aes_cmac, 8
   end
 end
 
@@ -123,7 +134,10 @@ defmodule Padwave.Schema.DualSenseInput do
     u8 :seq_tag                  # 0x01  high nibble = sequence tag, low nibble = 0
     splice Padwave.Schema.DualSenseInput.Body, :input_body
 
-    bytes :bt_reserved, 9        # 0x41..0x49  Bluetooth-only, not documented
+    # 0x41..0x49. Bluetooth-only, and not the nine zero bytes this used to
+    # claim: the first one is not constant (30 distinct values in a 150 s
+    # capture), the other eight were. What it carries is unknown.
+    bytes :bt_reserved, 9
     u32le :crc                   # 0x4a  CRC-32 over the report, seed 0xA1
   end
 
