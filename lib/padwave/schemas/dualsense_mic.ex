@@ -38,10 +38,11 @@ defmodule Padwave.Schema.DualSenseMic do
   | packet rate | ~100 per second |
   | trailing bytes | CRC-32, seed `0xA1` |
 
-  This module deliberately does not decode Opus — that needs a codec library and
-  somewhere to write the PCM, which is the audio service's job. It is the schema
-  and the demultiplexer: `frame?/1` recognises the frames, `payload/1` returns
-  the Opus packet with the CRC stripped, and `valid?/1` adds the CRC test.
+  This module is the schema and the demultiplexer: `frame?/1` recognises the
+  frames, `payload/1` returns the Opus packet with the CRC stripped, and
+  `valid?/1` adds the CRC test. `Padwave.Mic` is what turns those packets into
+  a level for the panel, through a small libopus port helper; it deliberately
+  does not play them, because the speaker is the audio service's.
 
   ## Caveats
 

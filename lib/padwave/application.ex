@@ -32,6 +32,7 @@ defmodule Padwave.Application do
       Padwave.Session,
       Padwave.Input.Mapper,
       Padwave.Input.Device,
+      Padwave.Mic,
       Padwave.Web.Server,
       Padwave.HotSwap
     ]

@@ -108,6 +108,11 @@ defmodule Padwave.Web.Router do
   end
 
   # The playground: lightbar, player LEDs, trigger effects, and a raw field map.
+  post "/api/mic/reset" do
+    Padwave.Mic.reset()
+    json(conn, %{ok: true})
+  end
+
   post "/api/output" do
     params = Map.merge(conn.params, conn.body_params)
 
@@ -142,6 +147,7 @@ defmodule Padwave.Web.Router do
       audio: Padwave.Audio.status(),
       hid: Padwave.Output.Hid.stats(),
       led: Padwave.Output.Lightbar.status(),
+      mic: Padwave.Mic.stats(),
       player: Padwave.Player.state()
     })
   end
@@ -203,6 +209,7 @@ defmodule Padwave.Web.Router do
       audio: Padwave.Audio.status(),
       hid: Padwave.Output.Hid.stats(),
       led: Padwave.Output.Lightbar.status(),
+      mic: Padwave.Mic.stats(),
       player: Padwave.Player.state(),
       controller: controller(),
       bindings: Input.Mapper.bindings(),

@@ -401,6 +401,13 @@
       </p>
 
       <div class="lab-row">
+        <b>microphone</b>
+        <span id="micBar" style="flex:1;height:8px;background:#0f1219;border:1px solid var(--line);border-radius:4px;overflow:hidden"><span id="micFill" style="display:block;height:100%;width:0;background:var(--accent)"></span></span>
+        <span id="micMsg" style="font-family:var(--mono);font-size:11px;min-width:150px">no frames</span>
+        <button id="labMicReset">reset</button>
+      </div>
+
+      <div class="lab-row">
         <b>rumble</b>
         <label>L <input type="range" id="labRumL" min="0" max="255" value="180" style="width:80px"></label>
         <label>R <input type="range" id="labRumR" min="0" max="255" value="180" style="width:80px"></label>
@@ -629,6 +636,12 @@ function renderSensors(c) {
   $("#sticks").textContent = `${c.lx ?? 0} ${c.ly ?? 0} · ${c.rx ?? 0} ${c.ry ?? 0}`;
   $("#seqv").textContent = (c.fields && c.fields.seq) ?? "—";
   $("#ratev").textContent = c.rate ?? "—";
+  const mic = s.mic || {};
+  $("#micFill").style.width = (mic.level ?? 0) + "%";
+  $("#micMsg").textContent = mic.active
+    ? `${mic.frames} frames · rms ${mic.rms} · peak ${mic.peak}`
+    : (mic.running ? "decoder ready, no frames" : "decoder not installed");
+
   const leds = s.hid ? s.hid.player_leds : null;
   document.querySelectorAll("#leddots i").forEach((d, i) =>
     d.classList.toggle("on", leds != null && (leds & (1 << i)) !== 0));
@@ -916,6 +929,10 @@ $("#labLedsReset").onclick = () => {
     b.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
   });
   labSend({ kind: "player_leds", mask: labLedMask });
+};
+
+$("#labMicReset").onclick = async () => {
+  await fetch("/api/mic/reset", { method: "POST" });
 };
 
 $("#labRumBuzz").onclick = () => labSend({

@@ -134,6 +134,9 @@ defmodule Padwave.Input.Device do
   defp start_reader(state, info) do
     parent = self()
     {reader, ref} = spawn_monitor(fn -> reader_main(info.node, info.spec, parent) end)
+    # Mic frames are shorter than the state report (and would be truncated by
+    # its fixed-size read), so they get their own fd and their own buffer.
+    spawn_link(fn -> mic_reader_main(info.node) end)
     %{state | reader: reader, ref: ref, pending: info, info: nil, spec: info.spec}
   end
 
@@ -185,6 +188,32 @@ defmodule Padwave.Input.Device do
   rescue
     error ->
       send(parent, {:hid_closed, error})
+  end
+
+  defp mic_reader_main(node) do
+    case :file.open(node, [:read, :raw, :binary]) do
+      {:ok, fd} -> mic_loop(fd)
+      {:error, _reason} -> :ok
+    end
+  end
+
+  defp mic_loop(fd) do
+    case :file.read(fd, 256) do
+      {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
+        if Padwave.Schema.DualSenseMic.frame?(bin) do
+          Padwave.Mic.ingest(Padwave.Schema.DualSenseMic.payload(bin))
+        end
+
+        mic_loop(fd)
+
+      {:ok, _empty} ->
+        mic_loop(fd)
+
+      {:error, _reason} ->
+        :ok
+    end
+  rescue
+    _error -> :ok
   end
 
   defp deliver(frame, state) do
