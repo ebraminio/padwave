@@ -293,7 +293,7 @@ defmodule Padwave.Radio do
         # Nothing to hear: the jack is the output path. Stay paused, and let
         # the session's "nothing to play to" timer put the pad back to sleep.
         Logger.info("[radio] headset is out — not resuming")
-        {:noreply, %{state | resume_pending: false, paused: true}}
+        {:noreply, %{state | resume_pending: false, paused: true, paused_by_jack: true}}
 
       true ->
         Logger.info("[radio] resuming #{state.current.title} at #{Float.round(state.position, 1)}s")
@@ -334,6 +334,14 @@ defmodule Padwave.Radio do
   defp dispatch("mute", _args, state), do: {:ok, toggle_mute(state)}
   defp dispatch("play_track", args, state), do: {:ok, play_id(state, args["id"])}
   defp dispatch("suspend", _args, state), do: {:ok, suspend(state, :manual)}
+
+  # Explicit "power the pad off" from the UI: stop, save the playhead, disconnect.
+  defp dispatch("disconnect", _args, state) do
+    Logger.info("[radio] disconnect requested")
+    Padwave.Power.disconnect_async()
+    {:ok, suspend(state, :manual)}
+  end
+
   defp dispatch(other, _args, state), do: {{:error, {:unknown_action, other}}, state}
 
   defp dispatch_action(:toggle_pause, state), do: {:ok, toggle_pause(state)}
@@ -355,11 +363,20 @@ defmodule Padwave.Radio do
   end
 
   defp dispatch_action(:jack_plugged, state) do
-    if state.paused_by_jack and state.paused do
-      Logger.info("[radio] headphones back — resuming")
-      {:ok, state |> Map.put(:paused_by_jack, false) |> toggle_pause()}
-    else
-      {:ok, %{state | paused_by_jack: false}}
+    cond do
+      state.paused_by_jack and state.paused ->
+        Logger.info("[radio] headphones back — resuming")
+        {:ok, state |> Map.put(:paused_by_jack, false) |> toggle_pause()}
+
+      # The "nothing to play to" timer parked it because the headset was out;
+      # plugging it in is the reason to come back.
+      state.suspended and state.suspended_by == :no_output and state.current != nil ->
+        Logger.info("[radio] headphones back — resuming after the no-output sleep")
+        send(self(), :resume)
+        {:ok, %{state | paused_by_jack: false, suspended_by: nil, resume_pending: true}}
+
+      true ->
+        {:ok, %{state | paused_by_jack: false}}
     end
   end
 

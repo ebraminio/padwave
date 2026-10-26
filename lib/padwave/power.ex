@@ -13,6 +13,9 @@ defmodule Padwave.Power do
   alias Padwave.Input.Device
 
   @doc "Disconnects the controller. Returns `:ok` or `{:error, reason}`."
+  @doc "Fire and forget: bluetoothctl takes seconds, callers should not block."
+  def disconnect_async, do: Task.start(fn -> disconnect() end)
+
   def disconnect do
     case mac() do
       nil ->
