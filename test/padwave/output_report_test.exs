@@ -87,6 +87,19 @@ defmodule Padwave.OutputReportTest do
     end
   end
 
+  test "other bit-setting fields carry names too" do
+    spec = Padwave.Schema.DualSenseOutput.spec(:output)
+    leds = Enum.find(spec.fields, &(&1.name == :player_leds))
+    power = Enum.find(spec.fields, &(&1.name == :power_save_control))
+
+    assert leds.flags[:led3] == 2
+    assert power.flags[:microphone_mute] == 4
+
+    report = Report.build(%{owned_fields: [:player_leds], player_leds: [:led1, :led3]})
+
+    assert Padwave.Schema.DualSenseOutput.decode_output(report).player_leds == 0x05
+  end
+
   test "a trigger vibration sets its flag, mode and parameters" do
     report = Report.trigger(:right, 0x06, [25, 200, 5], seq: 7)
 

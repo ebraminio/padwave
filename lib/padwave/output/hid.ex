@@ -139,7 +139,16 @@ defmodule Padwave.Output.Hid do
     end)
   end
 
-  defp normalize(value) when is_list(value), do: :erlang.list_to_binary(value)
+  # JSON gives us strings: a list of them is a set of flag-bit names, a list of
+  # integers is raw bytes for a binary field.
+  defp normalize(value) when is_list(value) do
+    if Enum.all?(value, &is_binary/1) do
+      Enum.map(value, fn name -> String.to_existing_atom(name) end)
+    else
+      :erlang.list_to_binary(value)
+    end
+  end
+
   defp normalize(value), do: value
 
   defp open(%{fd: nil} = state) do

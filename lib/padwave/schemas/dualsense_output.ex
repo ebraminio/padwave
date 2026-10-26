@@ -36,8 +36,9 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
                                  #        claimed by :audio_routing)
 
     u8 :mute_button_led          # +0x08
-    u8 :power_save_control       # +0x09  bit4 = 0x10 microphone mute,
-                                 #        bit6 = 0x40 audio mute
+    u8 :power_save_control,
+       flags: [microphone_mute: 4, audio_mute: 6]
+    # +0x09
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by the :right_trigger / :left_trigger bits. Described
@@ -60,7 +61,9 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
 
     u8 :lightbar_setup           # +0x29  fade-out after power-on
     u8 :led_brightness           # +0x2a
-    u8 :player_leds              # +0x2b  bitmask of the five white LEDs
+    u8 :player_leds,
+       flags: [led1: 0, led2: 1, led3: 2, led4: 3, led5: 4]
+    # +0x2b  the five white LEDs under the touchpad
     u8 :lightbar_red             # +0x2c
     u8 :lightbar_green           # +0x2d
     u8 :lightbar_blue            # +0x2e
