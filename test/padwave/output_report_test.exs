@@ -20,7 +20,7 @@ defmodule Padwave.OutputReportTest do
       Report.build(%{
         seq_tag: 0xE0,
         tag: 0x10,
-        valid_flag1: 0x04,
+        owned_fields: 0x0400,
         lightbar_red: 0xBE
       })
 
@@ -61,25 +61,29 @@ defmodule Padwave.OutputReportTest do
     assert DualSenseOutput.spec(:output_usb).id == 0x02
     assert DualSenseOutput.spec(:output_usb).size == 63
 
-    for name <- [:valid_flag1, :lightbar_red, :player_leds, :lightbar_blue] do
+    for name <- [:owned_fields, :lightbar_red, :player_leds, :lightbar_blue] do
       assert usb[name] == bt[name] - 2
     end
   end
 
-  test "flag bytes declare their bits and accept names when encoding" do
+  test "the two flag bytes are one 16-bit mask with named bits" do
     spec = Padwave.Schema.DualSenseOutput.spec(:output)
-    flag0 = Enum.find(spec.fields, &(&1.name == :valid_flag0))
+    owned = Enum.find(spec.fields, &(&1.name == :owned_fields))
 
-    assert flag0.flags[:right_trigger] == 2
-    assert flag0.flags[:audio_routing] == 7
+    assert owned.size == 2
+    assert owned.flags[:right_trigger] == 2
+    assert owned.flags[:audio_routing] == 7
+    assert owned.flags[:lightbar] == 10
+    assert owned.flags[:audio_control2] == 15
 
-    report = Report.build(%{valid_flag0: [:right_trigger, :left_trigger]})
-    fields = Padwave.Schema.DualSenseOutput.decode_output(report)
+    report = Report.build(%{owned_fields: [:right_trigger, :left_trigger]})
+    assert Padwave.Schema.DualSenseOutput.decode_output(report).owned_fields == 0x0C
 
-    assert fields.valid_flag0 == 0x0C
+    report = Report.build(%{owned_fields: [:lightbar, :player_leds]})
+    assert Padwave.Schema.DualSenseOutput.decode_output(report).owned_fields == 0x1400
 
     assert_raise ArgumentError, ~r/unknown flag bit/, fn ->
-      Report.build(%{valid_flag0: [:nonsense]})
+      Report.build(%{owned_fields: [:nonsense]})
     end
   end
 
@@ -91,7 +95,7 @@ defmodule Padwave.OutputReportTest do
     assert seq_tag == 7 <<< 4
 
     fields = Padwave.Schema.DualSenseOutput.decode_output(report)
-    assert fields.valid_flag0 == 0x04
+    assert fields.owned_fields == 0x04
     assert fields.right_trigger_mode == 0x06
     assert fields.right_trigger_params == <<25, 200, 5, 0, 0, 0, 0, 0, 0, 0>>
     assert fields.left_trigger_mode == 0x00
@@ -105,7 +109,7 @@ defmodule Padwave.OutputReportTest do
     report = Report.trigger(:left, 0x00, [])
     fields = Padwave.Schema.DualSenseOutput.decode_output(report)
 
-    assert fields.valid_flag0 == 0x08
+    assert fields.owned_fields == 0x08
     assert fields.left_trigger_mode == 0x00
     assert fields.right_trigger_mode == 0x00
   end
@@ -115,7 +119,7 @@ defmodule Padwave.OutputReportTest do
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
 
     assert spec.size == 78
-    assert offsets.valid_flag1 == 4
+    assert offsets.owned_fields == 3
     assert offsets.lightbar_red == 47
     assert offsets.lightbar_green == 48
     assert offsets.lightbar_blue == 49

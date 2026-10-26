@@ -10,7 +10,8 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
   use Padwave.Wire
 
   field_list :output_body do
-    # The two flag bytes say which of the fields below belong to *this* report.
+    # Which fields this report owns, as one 16-bit little-endian mask: bit
+    # positions 0..7 are the byte at +0x00, 8..15 the byte at +0x01.
     #
     # A set bit means "adopt my bytes for this feature"; a clear bit means
     # "leave that feature as it is". Setting a bit is a claim, not a change
@@ -18,31 +19,29 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     # that sets a bit it does not really own will keep overwriting whoever does
     # — which is exactly how the audio stream used to cancel trigger effects.
     #
-    # Example: 0x0C claims only the two trigger blocks and leaves volumes, LEDs
-    # and rumble untouched.
-    u8 :valid_flag0,
-       flags: [rumble: 0, haptics: 1, right_trigger: 2, left_trigger: 3,
-               headphone_volume: 4, speaker_volume: 5, mic_volume: 6, audio_routing: 7]
-    # +0x00  which fields this report owns (see the note above)
+    # Example: [:right_trigger, :left_trigger] claims only the two trigger
+    # blocks and leaves volumes, LEDs and rumble untouched.
+    u16le :owned_fields,
+          flags: [rumble: 0, haptics: 1, right_trigger: 2, left_trigger: 3,
+                  headphone_volume: 4, speaker_volume: 5, mic_volume: 6, audio_routing: 7,
+                  mute_led: 8, audio_mute: 9, lightbar: 10, reset_lights: 11,
+                  player_leds: 12, haptic_lpf: 13, motor_power_level: 14, audio_control2: 15]
 
-    u8 :valid_flag1,
-       flags: [mute_led: 0, audio_mute: 1, lightbar: 2, reset_lights: 3,
-               player_leds: 4, haptic_lpf: 5, motor_power_level: 6, audio_control2: 7]
-    # +0x01  same rule: set = this report owns it
     u8 :motor_right              # +0x02  DS4-compatible rumble
     u8 :motor_left               # +0x03
     u8 :headphone_volume         # +0x04  0x00..0x7f
     u8 :speaker_volume           # +0x05  0x00..0xff
-    u8 :mic_volume               # +0x06  0x00..0x40 (claimed by valid_flag0 bit 6)
+    u8 :mic_volume               # +0x06  0x00..0x40 (claimed by :mic_volume)
     u8 :audio_control            # +0x07  output path select (speaker / headset;
-                                 #        claimed by valid_flag0 bit 7)
+                                 #        claimed by :audio_routing)
 
     u8 :mute_button_led          # +0x08
     u8 :power_save_control       # +0x09  bit4 = 0x10 microphone mute,
                                  #        bit6 = 0x40 audio mute
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
-    # trigger, enabled by valid_flag0 bits 2 and 3. Described here, not driven
+    # trigger, enabled by the :right_trigger / :left_trigger bits. Described
+    # here, not driven
     # yet.
     u8 :right_trigger_mode       # +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
                                  #        0x26 vibration (0x22/0x23/0x27 unofficial)

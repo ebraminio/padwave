@@ -39,7 +39,8 @@ defmodule Padwave.Schema.DualSenseAudio do
   1. Set bit 0 of the audio enable mask at `0x004`: `0xFF` instead of `0xFE`.
   2. Don't mute it in the state snapshot — `power_save_control` (`+0x09`) must
      have its 0x10 bit clear, and `mic_volume` (`+0x06`) must be non-zero
-     (0x40 is full) with `valid_flag0` bit 6 set so the value is adopted.
+     (0x40 is full) with the `:mic_volume` bit of `owned_fields` set so the
+     value is adopted.
   3. Demux the input. While duplex is on, the controller interleaves frames
      that keep report id `0x31` but carry the Opus TOC `0xD4` at report byte 3
      (input payload `+0x01`). Those are Opus 48 kHz mono, one 10 ms frame each:
@@ -51,18 +52,18 @@ defmodule Padwave.Schema.DualSenseAudio do
   ## The state snapshot is a whole output payload
 
   Sub-packet `0x10` is not opaque bytes: its first 47 bytes are byte-for-byte
-  the `0x31` output payload — `valid_flag0`, `valid_flag1`, volumes, trigger
-  effect blocks, lightbar — followed by sixteen bytes of padding. So the audio
+  the `0x31` output payload — `owned_fields`, volumes, trigger effect blocks,
+  lightbar — followed by sixteen bytes of padding. So the audio
   stream re-states the controller's whole output configuration 93 times a
   second, and every field it does not own must have its valid bit **clear**, or
   this copy silently overwrites whatever another writer set.
 
-  That is exactly what went wrong here: the snapshot sent `0xFD` in
-  `valid_flag0` — bits 2 and 3 set, i.e. *both trigger effects claimed* — with
-  a zeroed trigger block, so every audio frame cancelled the vibration padwave
-  had just applied. It now sends `0xF1`, which claims volumes and audio routing
-  but leaves the triggers alone. The lightbar was never affected because
-  `valid_flag1` (`0xE3`) does not claim the LED colour bit.
+  That is exactly what went wrong here: the snapshot's low byte was `0xFD` —
+  bits 2 and 3 set, i.e. *both trigger effects claimed* — with a zeroed trigger
+  block, so every audio frame cancelled the vibration padwave had just applied.
+  It now sends `0xF1`, which claims volumes and audio routing but leaves the
+  triggers alone. The lightbar was never affected because the high byte
+  (`0xE3`) does not claim the LED colour bit.
   """
 
   use Padwave.Wire
@@ -84,10 +85,10 @@ defmodule Padwave.Schema.DualSenseAudio do
     u8 :state_length             # 0x00c  63
 
     # The snapshot is the 0x31 output payload, spliced so its fields are named
-    # here too. Note valid_flag0: claiming bit 2 or 3 here (0x04/0x08) hands
-    # the trigger effect to this stream, which writes zeros to it 93 times a
-    # second. The fix for the cancelled trigger effects was clearing exactly
-    # those two bits (0xFD -> 0xF1).
+    # here too. Note owned_fields: claiming :right_trigger or :left_trigger
+    # here hands the trigger effect to this stream, which writes zeros to it
+    # 93 times a second. The fix for the cancelled trigger effects was clearing
+    # exactly those two bits (0xFD -> 0xF1).
     splice Padwave.Schema.DualSenseOutput.Body, :output_body
     bytes :state_padding, 16     # 0x03c..0x04b  the rest of the 63-byte block
 

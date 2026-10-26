@@ -29,7 +29,7 @@ defmodule Padwave.Output.Report do
   """
   def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
     fields = %{
-      valid_flag1: [:lightbar],
+      owned_fields: [:lightbar],
       lightbar_red: red,
       lightbar_green: green,
       lightbar_blue: blue
@@ -42,7 +42,7 @@ defmodule Padwave.Output.Report do
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
   def player_leds(mask, opts \\ []) when is_list(opts) do
     build(
-      %{valid_flag1: [:player_leds], player_leds: mask},
+      %{owned_fields: [:player_leds], player_leds: mask},
       Keyword.get(opts, :bus, :bluetooth),
       seq: Keyword.get(opts, :seq, 0)
     )
@@ -56,7 +56,7 @@ defmodule Padwave.Output.Report do
   `Padwave.Output.TriggerEffects`, which builds them). `0x00` and `0x06` exist
   in old probing code but are not what current firmware expects.
 
-  Enabled by `valid_flag0` bit 2 for the right trigger and bit 3 for the left.
+  Enabled by `owned_fields` bits `:right_trigger` and `:left_trigger`.
   """
   def trigger(side, mode, params \\ [], opts \\ []) when side in [:left, :right] do
     bus = Keyword.get(opts, :bus, :bluetooth)
@@ -66,14 +66,14 @@ defmodule Padwave.Output.Report do
       case side do
         :right ->
           %{
-            valid_flag0: [:right_trigger],
+            owned_fields: [:right_trigger],
             right_trigger_mode: mode,
             right_trigger_params: trigger_params(params)
           }
 
         :left ->
           %{
-            valid_flag0: [:left_trigger],
+            owned_fields: [:left_trigger],
             left_trigger_mode: mode,
             left_trigger_params: trigger_params(params)
           }
@@ -100,6 +100,7 @@ defmodule Padwave.Output.Report do
       end
 
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
+    sizes = Map.new(spec.fields, fn field -> {field.name, field.size} end)
     flag_bits = Map.new(spec.fields, fn field -> {field.name, Map.get(field, :flags, %{})} end)
 
     zeroed =
@@ -112,7 +113,7 @@ defmodule Padwave.Output.Report do
           Map.get(offsets, name) ||
             raise ArgumentError, "unknown output report field #{inspect(name)}"
 
-        put_value(acc, offset, resolve_flags(value, Map.get(flag_bits, name, %{})))
+        put_value(acc, offset, resolve_flags(value, Map.get(flag_bits, name, %{})), Map.get(sizes, name, 1))
       end)
 
     if bus == :usb do
@@ -148,12 +149,21 @@ defmodule Padwave.Output.Report do
 
   defp resolve_flags(value, _flags), do: value
 
-  defp put_value(binary, index, value) when is_integer(value) and value in 0..255,
+  defp put_value(binary, index, value, 1) when is_integer(value) and value in 0..0xFF,
     do: put_byte(binary, index, value)
 
-  defp put_value(binary, index, value) when is_binary(value) do
-    <<head::binary-size(index), _::binary-size(byte_size(value)), tail::binary>> = binary
-    <<head::binary, value::binary, tail::binary>>
+  defp put_value(binary, index, value, 2) when is_integer(value) and value in 0..0xFFFF,
+    do: put_bytes(binary, index, <<value::little-16>>)
+
+  defp put_value(binary, index, value, 4) when is_integer(value) and value in 0..0xFFFFFFFF,
+    do: put_bytes(binary, index, <<value::little-32>>)
+
+  defp put_value(binary, index, value, size) when is_binary(value) and byte_size(value) == size,
+    do: put_bytes(binary, index, value)
+
+  defp put_bytes(binary, index, bytes) do
+    <<head::binary-size(index), _::binary-size(byte_size(bytes)), tail::binary>> = binary
+    <<head::binary, bytes::binary, tail::binary>>
   end
 
   defp trigger_params(params) when is_list(params) do
