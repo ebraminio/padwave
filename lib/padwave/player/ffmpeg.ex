@@ -43,6 +43,8 @@ defmodule Padwave.Player.Ffmpeg do
   # would otherwise happily decode the whole file into the mailbox.
   @high_water 150
   @low_water 75
+  @next_high_water 400
+  @prefetch_seconds 2.0
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -50,6 +52,9 @@ defmodule Padwave.Player.Ffmpeg do
   def pause(paused?), do: GenServer.cast(__MODULE__, {:pause, paused?})
   def set_volume(value) when is_number(value), do: GenServer.cast(__MODULE__, {:volume, value})
   def seek(seconds) when is_number(seconds), do: GenServer.call(__MODULE__, {:seek, seconds}, 10_000)
+
+  @doc "Appends paths to the gapless queue (the radio manages the shuffle)."
+  def enqueue(paths) when is_list(paths), do: GenServer.cast(__MODULE__, {:enqueue, paths})
 
   # One hard cut; the seam keeps the mpv engine's API so the radio does not care.
   def crossfade_seek(seconds, _opts \\ []), do: seek(seconds)
@@ -83,7 +88,15 @@ defmodule Padwave.Player.Ffmpeg do
        output: :jack,
        last_broadcast: now(),
        eof_sent: false,
-       throttled: false
+       throttled: false,
+       queue: [],
+       next_path: nil,
+       next_duration: nil,
+       next_port: nil,
+       next_os_pid: nil,
+       next_buffer: <<>>,
+       next_frames: :queue.new(),
+       next_throttled: false
      }}
   end
 
@@ -109,7 +122,15 @@ defmodule Padwave.Player.Ffmpeg do
         underruns: 0,
         last_broadcast: now(),
         eof_sent: false,
-        throttled: false
+        throttled: false,
+        queue: Keyword.get(opts, :queue, []),
+        next_path: nil,
+        next_duration: nil,
+        next_port: nil,
+        next_os_pid: nil,
+        next_buffer: <<>>,
+        next_frames: :queue.new(),
+        next_throttled: false
     }
 
     state = if state.duration, do: broadcast_duration(state), else: state
@@ -185,11 +206,37 @@ defmodule Padwave.Player.Ffmpeg do
     end
   end
 
+  def handle_cast({:enqueue, paths}, state),
+    do: {:noreply, %{state | queue: state.queue ++ paths}}
+
   def handle_cast({:volume, value}, state), do: {:noreply, %{state | volume: value}}
 
   def handle_cast({:stop, _opts}, state), do: {:noreply, shutdown(state)}
 
   @impl true
+  def handle_info({port, {:data, chunk}}, %{next_port: port} = state) when not is_nil(port) do
+    state = %{state | next_buffer: state.next_buffer <> chunk}
+    {frames, buffer} = split_frames(state.next_buffer)
+    queue = Enum.reduce(frames, state.next_frames, &:queue.in/2)
+    state = %{state | next_buffer: buffer, next_frames: queue}
+
+    # The prefetch decoder only needs to be a few seconds ahead; keep it from
+    # decoding the whole file into memory before the current one ends.
+    state =
+      if :queue.len(state.next_frames) >= @next_high_water and not state.next_throttled do
+        %{pause_next(state, true) | next_throttled: true}
+      else
+        state
+      end
+
+    {:noreply, state}
+  end
+
+  def handle_info({port, {:exit_status, status}}, %{next_port: port} = state) when not is_nil(port) do
+    Logger.info("[ffmpeg engine] prefetched decoder finished (#{status})")
+    {:noreply, %{state | next_port: nil, next_os_pid: nil, next_throttled: false}}
+  end
+
   def handle_info({port, {:data, chunk}}, %{port: port} = state) do
     state = %{state | buffer: state.buffer <> chunk}
     {frames, buffer} = split_frames(state.buffer)
@@ -242,12 +289,20 @@ defmodule Padwave.Player.Ffmpeg do
         state.paused ->
           state
 
+        state.port == nil and :queue.is_empty(state.frames) and not :queue.is_empty(state.next_frames) ->
+          state
+          |> promote_next()
+          |> broadcast_position()
+          |> schedule_tick()
+
         state.port == nil and :queue.is_empty(state.frames) ->
           state
           |> broadcast_eof()
           |> cancel_tick()
 
         true ->
+          state = maybe_prefetch(state)
+
           case :queue.out(state.frames) do
             {{:value, pcm}, queue} ->
               send_frame(state, pcm)
@@ -337,6 +392,21 @@ defmodule Padwave.Player.Ffmpeg do
     %{state | port: port, os_pid: os_pid, throttled: false}
   end
 
+  defp close_next_decoder(%{next_port: nil} = state), do: state
+
+  defp close_next_decoder(state) do
+    if Port.info(state.next_port), do: Port.close(state.next_port)
+
+    %{
+      state
+      | next_port: nil,
+        next_os_pid: nil,
+        next_buffer: <<>>,
+        next_frames: :queue.new(),
+        next_throttled: false
+    }
+  end
+
   defp close_ffmpeg(%{port: nil} = state), do: state
 
   defp close_ffmpeg(state) do
@@ -371,6 +441,7 @@ defmodule Padwave.Player.Ffmpeg do
   defp shutdown(state) do
     state = cancel_tick(state)
     state = close_ffmpeg(state)
+    state = close_next_decoder(state)
     if state.encoder, do: Port.close(state.encoder)
 
     %{
@@ -433,6 +504,100 @@ defmodule Padwave.Player.Ffmpeg do
   defp broadcast_duration(state) do
     Padwave.Bus.broadcast({:player, {:duration, state.duration}})
     state
+  end
+
+  # Start decoding the next station a couple of seconds before this one ends,
+  # so the frame queue never runs dry at the junction.
+  defp maybe_prefetch(%{next_path: nil, queue: [next | rest]} = state) do
+    remaining = (state.duration || 0) - position_of(state)
+
+    if remaining <= @prefetch_seconds or state.port == nil do
+      state = %{state | queue: rest, next_path: next, next_duration: probe_duration(next)}
+      open_next_decoder(state)
+    else
+      state
+    end
+  end
+
+  defp maybe_prefetch(state), do: state
+
+  defp open_next_decoder(%{next_path: nil} = state), do: state
+
+  defp open_next_decoder(state) do
+    ffmpeg = System.find_executable("ffmpeg") || raise "ffmpeg is not installed"
+
+    args = [
+      "-v",
+      "error",
+      "-nostdin",
+      "-i",
+      state.next_path,
+      "-f",
+      "s16le",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      "-"
+    ]
+
+    port = Port.open({:spawn_executable, ffmpeg}, [:binary, :exit_status, {:args, args}])
+
+    os_pid =
+      case Port.info(port, :os_pid) do
+        {:os_pid, pid} -> pid
+        _ -> nil
+      end
+
+    %{
+      state
+      | next_port: port,
+        next_os_pid: os_pid,
+        next_buffer: <<>>,
+        next_frames: :queue.new(),
+        next_throttled: false
+    }
+  end
+
+  # The current station has run out and the next one is already decoded: hand
+  # its frames straight to the sender, so there is no silence at the junction.
+  defp promote_next(state) do
+    state = close_ffmpeg(state)
+
+    state = %{
+      state
+      | path: state.next_path,
+        duration: state.next_duration,
+        frames: state.next_frames,
+        next_path: nil,
+        next_duration: nil,
+        next_port: nil,
+        next_os_pid: nil,
+        next_buffer: <<>>,
+        next_frames: :queue.new(),
+        next_throttled: false,
+        base: 0.0,
+        started_at: now(),
+        paused_total: 0,
+        sent: 0,
+        eof_sent: false,
+        last_broadcast: now(),
+        underruns: 0
+    }
+
+    Padwave.Bus.broadcast({:player, {:track, state.path}})
+    Padwave.Bus.broadcast({:player, {:duration, state.duration}})
+    state
+  end
+
+  defp pause_next(%{next_os_pid: nil} = state, _paused?), do: state
+
+  defp pause_next(state, paused?) do
+    signal = if paused?, do: "-STOP", else: "-CONT"
+    System.cmd("kill", [signal, to_string(state.next_os_pid)], stderr_to_stdout: true)
+    state
+  rescue
+    _error -> state
   end
 
   defp broadcast_eof(%{eof_sent: true} = state), do: state

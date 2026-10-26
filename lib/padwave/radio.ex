@@ -232,6 +232,10 @@ defmodule Padwave.Radio do
     {:noreply, %{state | playing: true, paused: false}}
   end
 
+  def handle_info({:padwave, {:player, {:track, path}}}, state) do
+    {:noreply, adopt_transition(state, path)}
+  end
+
   def handle_info({:padwave, {:player, :eof}}, state) do
     Logger.info("[radio] station finished — picking another")
     {:noreply, play_random(state)}
@@ -453,7 +457,12 @@ defmodule Padwave.Radio do
     start = Keyword.get(opts, :start, 0) || 0
     fade = Keyword.get(opts, :fade, Config.get(:crossfade_ms, 1500))
 
-    :ok = Player.play(track.path, start: start, fade: fade)
+    # Peek the next station for a gapless engine: it is only committed when the
+    # engine actually promotes to it, so a manual station change costs nothing.
+    {peeked, _state} = take_next(state, true)
+    queue = if peeked, do: [peeked.path], else: []
+
+    :ok = Player.play(track.path, start: start, fade: fade, queue: queue)
     apply_volume(state)
 
     state =
@@ -482,6 +491,40 @@ defmodule Padwave.Radio do
 
     Bus.broadcast({:radio, {:now_playing, Track.to_json(track)}})
     persist(state)
+  end
+
+  # The gapless engine moved to the next station by itself. Commit the pick the
+  # bag was already holding, adopt it, and queue the one after it.
+  defp adopt_transition(state, path) do
+    {peeked, state} = take_next(state, true)
+    track = peeked || Enum.find(state.tracks, &(&1.path == path))
+
+    case track do
+      nil ->
+        state
+
+      %Track{} = track ->
+        state =
+          state
+          |> Map.put(:current, track)
+          |> Map.put(:last_track_id, track.id)
+          |> Map.put(:position, 0.0)
+          |> Map.put(:duration, nil)
+          |> Map.put(:playing, true)
+          |> Map.put(:paused, false)
+          |> Map.update!(:history, fn history ->
+            case state.current do
+              %Track{id: id} when id != track.id -> Enum.take([id | history], 40)
+              _ -> history
+            end
+          end)
+
+        {next, _state} = take_next(state, true)
+        if next, do: Player.enqueue([next.path])
+
+        Bus.broadcast({:radio, {:now_playing, Track.to_json(track)}})
+        persist(state)
+    end
   end
 
   # Stations are played "bag style": every station of a folder is played once

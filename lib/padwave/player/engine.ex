@@ -32,6 +32,7 @@ defmodule Padwave.Player.Engine do
   def seek(seconds), do: backend().seek(seconds)
   def crossfade_seek(seconds, opts \\ []), do: backend().crossfade_seek(seconds, opts)
   def stop(opts \\ []), do: backend().stop(opts)
+  def enqueue(paths), do: backend().enqueue(paths)
   def position, do: backend().position()
   def duration, do: backend().duration()
   def state, do: backend().state()

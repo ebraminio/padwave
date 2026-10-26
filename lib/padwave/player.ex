@@ -38,6 +38,10 @@ defmodule Padwave.Player do
 
   def stop(opts \\ []), do: GenServer.cast(__MODULE__, {:stop, opts})
 
+  # The mpv engine transitions through the radio (play/crossfade), so it has no
+  # queue of its own; the call exists so the radio can stay engine-agnostic.
+  def enqueue(_paths), do: :ok
+
   def position, do: GenServer.call(__MODULE__, :position, 2000)
   def duration, do: GenServer.call(__MODULE__, :duration, 2000)
   def state, do: GenServer.call(__MODULE__, :state, 2000)
