@@ -15,24 +15,18 @@ if [ -z "${SKIP_ERLANG_REBUILD:-}" ]; then
   mix compile
 fi
 
-echo "==> microphone decoder (optional)"
+echo "==> native player + codec helper"
 mkdir -p "$HOME/.local/bin"
-if command -v cc >/dev/null && [ -f /usr/include/opus/opus.h ]; then
-  cc -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$ROOT/scripts" \
-    -o "$HOME/.local/bin/padwave_opusdec" "$ROOT/scripts/padwave_opusdec.cc" -lopus -lz
-  echo "    built ~/.local/bin/padwave_opusdec"
-else
-  echo "    skipped: needs cc and libopus-dev (microphone level meter will be off)"
-fi
-
-echo "==> player"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
-  cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
-    -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" -Wno-deprecated-declarations \
+  cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 -I "$ROOT/scripts" \
+    -o "$HOME/.local/bin/padwave" \
+    "$ROOT/scripts/padwave.cc" "$ROOT/scripts/padwave_native.cc" "$ROOT/scripts/padwave_opusdec.cc" \
+    -Wno-deprecated-declarations \
     $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz || exit 1
-  echo "    built ~/.local/bin/padwave_native (the default engine)"
+  rm -f "$HOME/.local/bin/padwave_native" "$HOME/.local/bin/padwave_opusdec"
+  echo "    built ~/.local/bin/padwave (native + opusdec)"
 else
-  echo "    skipped: needs libavformat/libavcodec/libswresample dev packages"
+  echo "    skipped: needs libavformat/libavcodec/libswresample and libopus dev packages"
 fi
 
 echo "==> audio folders"

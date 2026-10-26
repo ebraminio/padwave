@@ -5,7 +5,7 @@ defmodule Padwave.Mic do
   The frames themselves are described in `Padwave.Schema.DualSenseMic`: Opus,
   48 kHz mono, 10 ms each, marked by the `0xD4` TOC at byte 3 of an `0x31`
   report. This module is the other half — it keeps a long-lived
-  `padwave_opusdec` process (libopus through a port, the same library the audio
+  `padwave opusdec` process (libopus through a port, the same library the audio
   service links) and turns each decoded frame into a level for the panel.
 
   Nothing here is required for playback. It exists so the microphone path can be
@@ -27,7 +27,7 @@ defmodule Padwave.Mic do
 
   require Logger
 
-  @decoder "padwave_opusdec"
+  @decoder "padwave"
   @idle_ms 5_000
   # The audio service owns the 0x36 stream that turns capture on, and its
   # config is a small text file it re-reads about once a second.
@@ -156,7 +156,7 @@ defmodule Padwave.Mic do
   defp ensure_port(%{port: nil, path: nil} = state), do: {:error, state}
 
   defp ensure_port(%{port: nil, path: path} = state) do
-    case Port.open({:spawn_executable, path}, [:binary, :exit_status, packet: 4, args: []]) do
+    case Port.open({:spawn_executable, path}, [:binary, :exit_status, packet: 4, args: ["opusdec"]]) do
       port -> {:ok, %{state | port: port}, port}
     end
   rescue

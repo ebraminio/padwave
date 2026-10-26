@@ -229,11 +229,9 @@ defmodule Padwave.Output.Audio do
   end
 
   defp open_encoder do
-    path =
-      System.find_executable("padwave_opusdec") ||
-        Path.expand("~/.local/bin/padwave_opusdec")
+    path = System.find_executable("padwave") || Path.expand("~/.local/bin/padwave")
 
-    Port.open({:spawn_executable, path}, [:binary, :exit_status, packet: 4, args: ["-e"]])
+    Port.open({:spawn_executable, path}, [:binary, :exit_status, packet: 4, args: ["opusdec", "-e"]])
   end
 
   defp encode(port, pcm) do

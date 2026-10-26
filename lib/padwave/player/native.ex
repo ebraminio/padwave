@@ -1,6 +1,6 @@
 defmodule Padwave.Player.Native do
   @moduledoc """
-  A playback engine that hands the whole audio path to `padwave_native`.
+  A playback engine that hands the whole audio path to `padwave native`.
 
   That program is one C file: libavformat/libavcodec decode → 48 kHz stereo →
   512-frame blocks → resample to the 480-sample Opus frame → libopus CBR →
@@ -21,7 +21,7 @@ defmodule Padwave.Player.Native do
 
   require Logger
 
-  @binary "padwave_native"
+  @binary "padwave"
   @status_broadcast_ms 500
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -117,7 +117,7 @@ defmodule Padwave.Player.Native do
   def handle_info({port, {:data, {:noeol, _chunk}}}, %{port: port} = state), do: {:noreply, state}
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    if status != 0, do: Logger.warning("[native engine] padwave_native exited with #{status}")
+    if status != 0, do: Logger.warning("[native engine] padwave native exited with #{status}")
     {:noreply, %{new_state() | volume: state.volume}}
   end
 
@@ -167,14 +167,14 @@ defmodule Padwave.Player.Native do
             :binary,
             :exit_status,
             {:line, 1024},
-            {:args, []}
+            {:args, ["native"]}
           ])
 
         {:ok, %{state | port: port}}
     end
   rescue
     error ->
-      Logger.warning("[native engine] cannot start #{@binary}: #{Exception.message(error)}")
+      Logger.warning("[native engine] cannot start #{@binary} native: #{Exception.message(error)}")
       {:error, state}
   end
 

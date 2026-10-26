@@ -1,8 +1,8 @@
 // padwave_opusdec.cc — the Opus helper, in C++ and on the schema's constants.
 //
-// Two modes, one binary:
-//   encode (-e): 512 stereo frames in, resampled to 480, Opus CBR 200 bytes out
-//   decode     : Opus in, 480 samples out (mono microphone; -s for stereo)
+// The opusdec mode of the padwave binary:
+//   padwave opusdec -e : 512 stereo frames in, resampled to 480, Opus CBR out
+//   padwave opusdec    : Opus in, 480 samples out (mono; -s for stereo)
 //
 // Framing is a 4-byte big-endian length before each packet, both directions —
 // padwave's private port protocol, not the controller's.
@@ -146,7 +146,7 @@ int decode_loop(bool stereo) {
 
 } // namespace
 
-int main(int argc, char **argv) {
+int opusdec_main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "-e") == 0) return encode_loop();
 
   bool stereo = argc > 1 && strcmp(argv[1], "-s") == 0;

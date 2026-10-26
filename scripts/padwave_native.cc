@@ -20,7 +20,7 @@
 // engine does, minus the process boundary around ffmpeg and the round trip
 // through the encoder port.
 //
-// Usage:  padwave_native [hidraw-node]
+// Usage:  padwave native [hidraw-node]
 //         (without a node it scans /sys/class/hidraw for a DualSense)
 //
 // stdin commands, one per line:
@@ -29,8 +29,8 @@
 //   pos <ms>   dur <ms>   sent <n>   underruns <n>   eof
 //
 // Build (no STL, no RTTI, no exceptions):
-//   c++ -std=c++17 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
-//       -o padwave_native padwave_native.cc \
+//   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
+//       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc \
 //       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) \
 //       -lopus -lz
 #include <errno.h>
@@ -370,7 +370,7 @@ static void handle_line(struct player *pl, char *line) {
 
 /* ---- main --------------------------------------------------------------- */
 
-int main(int argc, char **argv) {
+int native_main(int argc, char **argv) {
   struct player pl;
   memset(&pl, 0, sizeof(pl));
   pl.volume = 80;
