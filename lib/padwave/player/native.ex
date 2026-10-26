@@ -30,7 +30,10 @@ defmodule Padwave.Player.Native do
   def pause(paused?), do: GenServer.cast(__MODULE__, {:pause, paused?})
   def set_volume(value) when is_number(value), do: GenServer.cast(__MODULE__, {:volume, value})
   def seek(seconds) when is_number(seconds), do: GenServer.cast(__MODULE__, {:seek, seconds})
-  def crossfade_seek(seconds, _opts \\ []), do: seek(seconds)
+
+  @doc "Seeks with a crossfade: the old position fades into the new one."
+  def crossfade_seek(seconds, opts \\ []) when is_number(seconds),
+    do: GenServer.cast(__MODULE__, {:crossfade_seek, seconds, Keyword.get(opts, :fade, 600)})
   def stop(opts \\ []), do: GenServer.cast(__MODULE__, {:stop, opts})
   @doc "Appends paths to the player's gapless queue."
   def enqueue(paths) when is_list(paths), do: GenServer.cast(__MODULE__, {:enqueue, paths})
@@ -103,6 +106,11 @@ defmodule Padwave.Player.Native do
   def handle_cast({:volume, value}, state) do
     send_line(state, "volume #{round(value)}\n")
     {:noreply, %{state | volume: value}}
+  end
+
+  def handle_cast({:crossfade_seek, seconds, fade}, state) do
+    send_line(state, "seek #{round(seconds * 1000)} #{round(fade)}\n")
+    {:noreply, %{state | position: seconds * 1.0, eof: false}}
   end
 
   def handle_cast({:seek, seconds}, state) do

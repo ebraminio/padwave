@@ -112,6 +112,10 @@ struct player {
   bool manual_pending;
   char manual_path[1024];
 
+  /* A seek inside the file can fade too: a second decoder opens the target
+   * position and the tick blends into it, same as a station change. */
+  bool seek_fade;
+
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
   float acc[IN_FRAMES][CHANNELS];
@@ -417,13 +421,16 @@ static void finish_fade(struct player *pl) {
   pl->npushed = 0;
 
   bool manual = pl->manual_fade;
+  bool seek = pl->seek_fade;
   if (manual)
     snprintf(pl->path, sizeof(pl->path), "%s", pl->manual_path);
-  else
+  else if (!seek)
     snprintf(pl->path, sizeof(pl->path), "%s", pl->next_path);
 
-  pl->base_ms = 0;
-  pl->consumed = 0;
+  if (!seek) {
+    pl->base_ms = 0;
+    pl->consumed = 0;
+  }
   pl->sent = 0;
   pl->underruns = 0;
   pl->eof = pl->cur.eof;
@@ -432,8 +439,9 @@ static void finish_fade(struct player *pl) {
   pl->fade_total = 0;
   pl->manual_fade = false;
   pl->manual_pending = false;
+  pl->seek_fade = false;
 
-  if (!manual) {
+  if (!manual && !seek) {
     pl->has_next = false;
     printf("track %s\n", pl->path);
     fflush(stdout);
@@ -467,7 +475,11 @@ static void tick(struct player *pl) {
         for (int ch = 0; ch < CHANNELS; ch++)
           block[i][ch] = (have_old ? old[i][ch] : 0.0f) * (1.0f - g) + next[i][ch] * g;
 
-      if (have_old) pl->consumed += IN_FRAMES;
+      if (pl->seek_fade) {
+        if (have_next) pl->consumed += IN_FRAMES;
+      } else if (have_old) {
+        pl->consumed += IN_FRAMES;
+      }
       pl->fade_pos++;
       if (pl->fade_pos >= pl->fade_total || !have_old) finish_fade(pl);
     }
@@ -588,6 +600,28 @@ static void handle_line(struct player *pl, char *line) {
     return;
   }
 
+  long fade = 0;
+  if (sscanf(line, "seek %ld %ld", &value, &fade) == 2 && pl->cur.fmt) {
+    if (fade > 0 && pl->playing && !pl->paused && !pl->fading) {
+      if (file_open(&pl->nxt, pl->path)) {
+        int64_t ts = value * (AV_TIME_BASE / 1000);
+        av_seek_frame(pl->nxt.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
+        avcodec_flush_buffers(pl->nxt.dec);
+        pl->nhead = pl->ntail = 0;
+        pl->nacc_frames = 0;
+        pl->seek_fade = true;
+        pl->fading = true;
+        pl->fade_pos = 0;
+        pl->fade_total = (int)((long)fade * 1000 / 10667);
+        if (pl->fade_total < 1) pl->fade_total = 1;
+        pl->base_ms = value;
+        pl->consumed = 0;
+        return;
+      }
+    }
+    /* Fall through to the hard seek if the crossfade could not start. */
+  }
+
   if (sscanf(line, "seek %ld", &value) == 1 && pl->cur.fmt) {
     int64_t ts = value * (AV_TIME_BASE / 1000);
     if (av_seek_frame(pl->cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
@@ -599,6 +633,7 @@ static void handle_line(struct player *pl, char *line) {
       pl->primed = false;
       pl->base_ms = value;
       pl->consumed = 0;
+      pl->seek_fade = false;
     }
     return;
   }
