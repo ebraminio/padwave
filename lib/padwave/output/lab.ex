@@ -66,6 +66,20 @@ defmodule Padwave.Output.Lab do
     Audio.noise(ms, level: level, output: output)
   end
 
+  # The prototype playback path: ffmpeg decodes the current station, our encoder
+  # and 0x36 builder do the rest. Stop the radio and the audio service first.
+  def apply(%{"kind" => "audio_file"} = params) do
+    case Padwave.Radio.status() do
+      %{current: %{path: path}} when is_binary(path) ->
+        ms = params["ms"] |> to_int(5_000) |> max(100) |> min(120_000)
+        output = if params["output"] == "speaker", do: :speaker, else: :jack
+        Audio.play_file(path, limit_ms: ms, output: output)
+
+      _ ->
+        {:error, "no current station"}
+    end
+  end
+
   # Classic rumble motors, claimed with valid_flag0 bit 0. The kernel drives
   # these too for a game's force feedback, so our values last until the next FF
   # event — fine for poking at the hardware, not a persistent setting. A zero

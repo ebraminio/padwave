@@ -408,6 +408,7 @@
           <select id="labNoiseOut"><option value="jack">jack</option><option value="speaker">speaker</option></select>
         </label>
         <button id="labNoise">noise</button>
+        <button id="labFile" title="decode the current station with ffmpeg and send it as 0x36">file</button>
         <span style="color:var(--muted);font-size:11px">stop ds5-membrane-sink first</span>
       </div>
 
@@ -949,6 +950,12 @@ $("#labNoise").onclick = () => labSend({
   kind: "audio_noise",
   ms: Number($("#labNoiseMs").value),
   level: Number($("#labNoiseLevel").value),
+  output: $("#labNoiseOut").value
+});
+
+$("#labFile").onclick = () => labSend({
+  kind: "audio_file",
+  ms: Number($("#labNoiseMs").value),
   output: $("#labNoiseOut").value
 });
 

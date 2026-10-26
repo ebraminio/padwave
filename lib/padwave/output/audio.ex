@@ -66,6 +66,26 @@ defmodule Padwave.Output.Audio do
 
   def noise(_duration_ms, _opts), do: {:error, :bad_duration}
 
+  @doc """
+  Streams a file to the controller through ffmpeg, our Opus encoder and our own
+  `0x36` reports — no mpv, no PipeWire sink.
+
+  This is a prototype for the idea of owning the playback path: ffmpeg only
+  decodes, and everything after it is the code we already have. Pacing is a
+  10 ms scheduler on a monotonic clock; the decoder is allowed to run ahead by
+  whatever it likes, because the send loop is the clock.
+
+  Stop the radio (and LinuxAudio4Dualsense5) first: two writers of `0x36` fight.
+  """
+  def play_file(path, opts \\ []) when is_binary(path) do
+    limit = Keyword.get(opts, :limit_ms, 30_000)
+    output = Keyword.get(opts, :output, :jack)
+
+    Task.start(fn -> stream_file(path, limit, output) end)
+
+    {:ok, "ffmpeg -> 0x36: #{Path.basename(path)} (#{limit} ms)"}
+  end
+
   @doc "One complete `0x36` report carrying `opus` (padded to 200 bytes)."
   def build(opus, opts \\ []) when is_binary(opus) do
     seq = Keyword.get(opts, :seq, 0) |> Bitwise.band(0x0F)
@@ -129,6 +149,70 @@ defmodule Padwave.Output.Audio do
     end
   end
 
+  defp stream_file(path, limit_ms, output) do
+    ffmpeg = System.find_executable("ffmpeg") || raise "ffmpeg is not installed"
+    encoder = open_encoder()
+
+    port =
+      Port.open({:spawn_executable, ffmpeg}, [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        {:args, ["-v", "error", "-nostdin", "-i", path, "-f", "s16le", "-ar", "48000", "-ac", "2", "-"]}
+      ])
+
+    try do
+      pump(port, encoder, <<>>, 0, now(), limit_ms, output)
+    after
+      if encoder, do: Port.close(encoder)
+      if Port.info(port), do: Port.close(port)
+    end
+  end
+
+  # Read decoded PCM, cut it into 480-sample frames, and send one frame every
+  # 10 ms. The sleep is computed from the start time rather than accumulated, so
+  # a slow decode does not make the stream drift.
+  defp pump(port, encoder, buffer, sent, started, limit_ms, output) do
+    cond do
+      now() - started > limit_ms ->
+        :ok
+
+      true ->
+        receive do
+          {^port, {:data, chunk}} ->
+            {frames, rest} = frames(buffer <> chunk)
+            sent = Enum.reduce(frames, sent, &send_frame(encoder, &1, &2, started, output))
+            pump(port, encoder, rest, sent, started, limit_ms, output)
+
+          {^port, {:exit_status, _status}} ->
+            :ok
+        after
+          2_000 -> :ok
+        end
+    end
+  end
+
+  defp send_frame(encoder, pcm, seq, started, output) do
+    wait = started + seq * 10 - now()
+    if wait > 0, do: Process.sleep(wait)
+
+    opus = encode(encoder, pcm)
+    Hid.send_audio(build(opus, seq: seq, counter: seq, output: output))
+    seq + 1
+  end
+
+  defp frames(buffer) do
+    size = @frame * @channels * 2
+    do_frames(buffer, size, [])
+  end
+
+  defp do_frames(buffer, size, acc) when byte_size(buffer) >= size do
+    <<frame::binary-size(size), rest::binary>> = buffer
+    do_frames(rest, size, [frame | acc])
+  end
+
+  defp do_frames(buffer, _size, acc), do: {Enum.reverse(acc), buffer}
+
   defp play(packets, level, output) do
     port = open_encoder()
 
@@ -172,6 +256,8 @@ defmodule Padwave.Output.Audio do
 
   defp pad_opus(opus) when byte_size(opus) >= 200, do: binary_part(opus, 0, 200)
   defp pad_opus(opus), do: opus <> :binary.copy(<<0>>, 200 - byte_size(opus))
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   defp put(bin, offset, byte) do
     <<head::binary-size(offset), _, tail::binary>> = bin
