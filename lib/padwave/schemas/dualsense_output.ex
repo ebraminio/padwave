@@ -10,12 +10,14 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
   use Padwave.Wire
 
   field_list :output_body do
-    # Which fields this report owns, as one 16-bit little-endian mask (bits 0..7
-    # are the byte at +0x00, 8..15 the byte at +0x01). A set bit means "adopt
-    # my bytes for this feature"; a clear bit means "leave that feature as it
-    # is". Setting a bit is a claim, not a change notification: the bytes are
-    # taken as written, zeros included.
-    bits :owned_fields,
+    # Which fields this report owns: the kernel's (and DS4Windows', and
+    # dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
+    # means "adopt my bytes for this feature"; a clear bit means "leave that
+    # feature as it is" — a claim, not a change notification.
+    #
+    # Example: [:right_trigger, :left_trigger] claims only the two trigger
+    # blocks, leaving volumes, LEDs and rumble untouched.
+    bits :valid_flag0,
       rumble: 1,                   # +0x00 bit 0
       haptics: 1,                  #       bit 1
       right_trigger: 1,            #       bit 2
@@ -23,7 +25,9 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
       headphone_volume: 1,         #       bit 4
       speaker_volume: 1,           #       bit 5
       mic_volume: 1,               #       bit 6
-      audio_routing: 1,            #       bit 7
+      audio_routing: 1             #       bit 7
+
+    bits :valid_flag1,
       mute_led: 1,                 # +0x01 bit 0
       audio_mute: 1,               #       bit 1
       lightbar: 1,                 #       bit 2

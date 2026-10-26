@@ -45,12 +45,12 @@ defmodule Padwave.ProtocolTest do
     assert fields.state_length == 63
 
     # the snapshot is a full output payload: its first two bytes are the
-    # owned_fields mask, and the 0xF1 low byte is what stops the audio stream
+    # valid_flag0/1 mask, and the 0xF1 low byte is what stops the audio stream
     # from claiming the triggers
-    assert fields.owned_fields.mute_led
-    assert fields.owned_fields.audio_mute
-    refute fields.owned_fields.lightbar
-    assert fields.owned_fields.audio_routing
+    assert fields.valid_flag1.mute_led
+    assert fields.valid_flag1.audio_mute
+    refute fields.valid_flag1.lightbar
+    assert fields.valid_flag0.audio_routing
     assert fields.haptics_length == 64
     assert fields.speaker_length == 200
     assert fields.speaker_tag == 0x93

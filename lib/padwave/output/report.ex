@@ -29,7 +29,7 @@ defmodule Padwave.Output.Report do
   """
   def lightbar(red, green, blue, opts \\ []) when is_list(opts) do
     fields = %{
-      owned_fields: [:lightbar],
+      valid_flag1: [:lightbar],
       lightbar_red: red,
       lightbar_green: green,
       lightbar_blue: blue
@@ -42,7 +42,7 @@ defmodule Padwave.Output.Report do
   @doc "A player-LED update. `mask` uses bits 0..4 for the five LEDs."
   def player_leds(mask, opts \\ []) when is_list(opts) do
     build(
-      %{owned_fields: [:player_leds], player_leds: mask},
+      %{valid_flag1: [:player_leds], player_leds: mask},
       Keyword.get(opts, :bus, :bluetooth),
       seq: Keyword.get(opts, :seq, 0)
     )
@@ -56,7 +56,7 @@ defmodule Padwave.Output.Report do
   `Padwave.Output.TriggerEffects`, which builds them). `0x00` and `0x06` exist
   in old probing code but are not what current firmware expects.
 
-  Enabled by `owned_fields` bits `:right_trigger` and `:left_trigger`.
+  Enabled by `valid_flag0` bits `:right_trigger` and `:left_trigger`.
   """
   def trigger(side, mode, params \\ [], opts \\ []) when side in [:left, :right] do
     bus = Keyword.get(opts, :bus, :bluetooth)
@@ -66,14 +66,14 @@ defmodule Padwave.Output.Report do
       case side do
         :right ->
           %{
-            owned_fields: [:right_trigger],
+            valid_flag0: [:right_trigger],
             right_trigger_mode: mode,
             right_trigger_params: trigger_params(params)
           }
 
         :left ->
           %{
-            owned_fields: [:left_trigger],
+            valid_flag0: [:left_trigger],
             left_trigger_mode: mode,
             left_trigger_params: trigger_params(params)
           }
