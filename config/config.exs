@@ -91,8 +91,9 @@ config :padwave,
 config :logger, level: :info
 
 # Which playback engine to run.
-#   :ffmpeg — ffmpeg decodes, padwave encodes Opus and writes the 0x36 itself.
-#             One writer, no PipeWire sink, no audio service. The default.
+#   :native — padwave_native (C++): decode, resample, Opus and the 0x36 in one
+#             process, no IPC per packet. The default.
+#   :ffmpeg — ffmpeg decodes and padwave does the rest in Elixir. Selectable
+#             because it still has the gapless queue the native player lacks.
 #   :mpv    — the old two-slot player with crossfade and volume ramps.
-#             PADWAVE_PLAYER=mpv brings it back for comparison.
-config :padwave, player_engine: :ffmpeg
+config :padwave, player_engine: :native

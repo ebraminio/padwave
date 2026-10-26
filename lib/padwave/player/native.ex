@@ -191,9 +191,9 @@ defmodule Padwave.Player.Native do
   defp send_line(%{port: nil}, _line), do: :ok
   defp send_line(%{port: port}, line), do: Port.command(port, line)
 
-  defp play_line(path, start) do
-    if start > 0, do: "play #{path} #{round(start * 1000)}\n", else: "play #{path}\n"
-  end
+  # The start time comes first: the path may contain spaces, and the player's
+  # parser must not have to guess where one ends.
+  defp play_line(path, start), do: "play #{round(start * 1000)} #{path}\n"
 
   # -- status -----------------------------------------------------------------
 

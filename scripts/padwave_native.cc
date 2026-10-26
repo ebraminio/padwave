@@ -314,13 +314,15 @@ static void handle_line(struct player *pl, char *line) {
   char path[1024];
   long value;
 
-  if (sscanf(line, "play %1023[^\n] %ld", path, &value) == 2) {
+  // "play <start_ms> <path>" — the number comes first so a path can contain
+  // spaces and the two fields never have to be guessed apart. "play <path>" is
+  // still accepted for driving the binary by hand.
+  if (sscanf(line, "play %ld %1023[^\n]", &value, path) == 2) {
     if (open_file(pl, path)) {
       pl->playing = true;
       pl->paused = false;
       pl->primed = false;
       if (value > 0) {
-        /* seek in the demuxer's time base */
         int64_t ts = value * (AV_TIME_BASE / 1000);
         av_seek_frame(pl->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
         avcodec_flush_buffers(pl->dec);
