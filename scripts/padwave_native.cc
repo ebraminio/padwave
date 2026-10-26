@@ -29,10 +29,10 @@
 //   pos <ms>   dur <ms>   sent <n>   underruns <n>   eof
 //
 // Build (no STL, no RTTI, no exceptions):
-//   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
-//       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc \
-//       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) \
-//       -lopus -lz
+//   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
+//       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
+//       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
+//       -lopus -lz -pthread
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -199,10 +199,8 @@ struct open_request {
   bool stop;
 };
 
-static struct open_request g_open = {
-    .lock = PTHREAD_MUTEX_INITIALIZER,
-    .cond = PTHREAD_COND_INITIALIZER,
-};
+static struct open_request g_open; /* zero-initialised; the mutex and cond are
+                                      initialised in native_main */
 
 static void *open_thread_main(void *) {
   for (;;) {
@@ -274,10 +272,17 @@ static bool file_open(struct file *f, const char *path) {
   if (avcodec_parameters_to_context(f->dec, st->codecpar) < 0) return false;
   if (avcodec_open2(f->dec, codec, NULL) < 0) return false;
 
-  int64_t layout = av_get_default_channel_layout(f->dec->channels);
-  f->swr = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_FLT, RATE, layout,
-                              f->dec->sample_fmt, f->dec->sample_rate, 0, NULL);
-  if (!f->swr || swr_init(f->swr) < 0) return false;
+  AVChannelLayout in_layout;
+  AVChannelLayout out_layout;
+  av_channel_layout_copy(&in_layout, &f->dec->ch_layout);
+  av_channel_layout_default(&out_layout, CHANNELS);
+
+  int converted = swr_alloc_set_opts2(&f->swr, &out_layout, AV_SAMPLE_FMT_FLT, RATE, &in_layout,
+                                      f->dec->sample_fmt, f->dec->sample_rate, 0, NULL);
+
+  av_channel_layout_uninit(&in_layout);
+  av_channel_layout_uninit(&out_layout);
+  if (converted < 0 || !f->swr || swr_init(f->swr) < 0) return false;
 
   f->duration_ms = f->fmt->duration > 0 ? f->fmt->duration / (AV_TIME_BASE / 1000) : 0;
   f->eof = false;
@@ -561,6 +566,9 @@ int native_main(int argc, char **argv) {
   pl.pkt = av_packet_alloc();
   pl.frame = av_frame_alloc();
 
+  pthread_mutex_init(&g_open.lock, NULL);
+  pthread_cond_init(&g_open.cond, NULL);
+
   pthread_t open_thread;
   pthread_create(&open_thread, NULL, open_thread_main, NULL);
 
@@ -691,6 +699,8 @@ int native_main(int argc, char **argv) {
   pthread_cond_signal(&g_open.cond);
   pthread_mutex_unlock(&g_open.lock);
   pthread_join(open_thread, NULL);
+  pthread_mutex_destroy(&g_open.lock);
+  pthread_cond_destroy(&g_open.cond);
 
   close_file(&pl);
   close_next(&pl);

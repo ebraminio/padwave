@@ -21,7 +21,7 @@ if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswr
   cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 -I "$ROOT/scripts" \
     -o "$HOME/.local/bin/padwave" \
     "$ROOT/scripts/padwave.cc" "$ROOT/scripts/padwave_native.cc" "$ROOT/scripts/padwave_opusdec.cc" \
-    -Wno-deprecated-declarations -pthread \
+    -pthread \
     $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz || exit 1
   rm -f "$HOME/.local/bin/padwave_native" "$HOME/.local/bin/padwave_opusdec"
   echo "    built ~/.local/bin/padwave (native + opusdec)"
