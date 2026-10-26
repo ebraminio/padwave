@@ -415,7 +415,7 @@
       <div class="lab-row">
         <b>microphone</b>
         <span id="micBar" style="flex:1;height:8px;background:#0f1219;border:1px solid var(--line);border-radius:4px;overflow:hidden"><span id="micFill" style="display:block;height:100%;width:0;background:var(--accent)"></span></span>
-        <label title="tells the audio service to ask the controller for mic capture"><input type="checkbox" id="micOn"> capture</label>
+        <label title="experimental: opens the controller's microphone and streams its level"><input type="checkbox" id="micMonitor"> level stream</label>
         <span id="micMsg" style="font-family:var(--mono);font-size:11px;min-width:150px">no frames</span>
         <button id="labMicReset">reset</button>
       </div>
@@ -627,7 +627,7 @@ function render(s) {
   $("#micMsg").textContent = mic.active
     ? `${mic.frames} frames · rms ${mic.rms} · peak ${mic.peak}`
     : (mic.running ? "decoder ready, no frames" : "decoder not installed");
-  $("#micOn").checked = !!mic.enabled;
+  $("#micMonitor").checked = !!mic.monitor;
 
   const leds = s.hid ? s.hid.player_leds : null;
   document.querySelectorAll("#leddots i").forEach((d, i) =>
@@ -959,11 +959,11 @@ $("#labFile").onclick = () => labSend({
   output: $("#labNoiseOut").value
 });
 
-$("#micOn").onchange = async (e) => {
-  await fetch("/api/mic", {
+$("#micMonitor").onchange = async (e) => {
+  await fetch("/api/output", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ enabled: e.target.checked })
+    body: JSON.stringify({ kind: "mic_monitor", enabled: e.target.checked })
   });
 };
 
@@ -1085,6 +1085,14 @@ function connectStream() {
   source.onmessage = (event) => {
     try { render(JSON.parse(event.data)); } catch (e) { console.error(e); }
   };
+
+  source.addEventListener("mic", (event) => {
+    try {
+      const { level } = JSON.parse(event.data);
+      const fill = document.getElementById("micFill");
+      if (fill) fill.style.width = (level ?? 0) + "%";
+    } catch (e) { console.error(e); }
+  });
 
   source.onerror = () => {
     // The browser retries on its own, but a dead server needs a reset.

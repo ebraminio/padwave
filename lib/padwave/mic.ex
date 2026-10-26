@@ -173,7 +173,8 @@ defmodule Padwave.Mic do
        level: level(state.rms),
        samples: state.samples,
        last_at: state.last_at,
-       enabled: enabled?()
+       enabled: enabled?(),
+       monitor: state.monitor
      }, state}
   end
 

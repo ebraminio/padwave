@@ -10,7 +10,7 @@ defmodule Padwave.Web.Router do
 
   use Plug.Router
 
-  alias Padwave.{Config, Input, Radio, Session}
+  alias Padwave.{Bus, Config, Input, Radio, Session}
 
   @event_interval_ms 200
 
@@ -172,21 +172,34 @@ defmodule Padwave.Web.Router do
   # -- the live stream -------------------------------------------------------
 
   defp stream(conn, sequence) do
-    payload =
-      try do
-        Jason.encode!(status_payload())
-      rescue
-        # A slow status call must not kill the live update stream.
-        _ -> ~s({"error":"status unavailable"})
-      end
+    Bus.subscribe()
+    stream_loop(conn, sequence)
+  end
 
-    case chunk(conn, "id: #{sequence}\ndata: #{payload}\n\n") do
-      {:ok, conn} ->
-        Process.sleep(@event_interval_ms)
-        stream(conn, sequence + 1)
+  # Two kinds of events on one stream: the whole status every 200 ms, and the
+  # experimental microphone level as a compact "mic" event at the monitor's own
+  # 10 Hz. The panel listens for both.
+  defp stream_loop(conn, sequence) do
+    receive do
+      {:padwave, {:mic, {:level, level}}} ->
+        case chunk(conn, "event: mic\ndata: #{Jason.encode!(%{level: level})}\n\n") do
+          {:ok, conn} -> stream_loop(conn, sequence)
+          {:error, _closed} -> conn
+        end
+    after
+      @event_interval_ms ->
+        payload =
+          try do
+            Jason.encode!(status_payload())
+          rescue
+            # A slow status call must not kill the live update stream.
+            _ -> ~s({"error":"status unavailable"})
+          end
 
-      {:error, _closed} ->
-        conn
+        case chunk(conn, "id: #{sequence}\ndata: #{payload}\n\n") do
+          {:ok, conn} -> stream_loop(conn, sequence + 1)
+          {:error, _closed} -> conn
+        end
     end
   end
 
