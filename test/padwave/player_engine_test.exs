@@ -11,15 +11,18 @@ defmodule Padwave.PlayerEngineTest do
 
     put(:ffmpeg)
     assert Engine.backend() == Padwave.Player.Ffmpeg
+
+    put(:native)
+    assert Engine.backend() == Padwave.Player.Native
   after
-    put(:mpv)
+    put(:ffmpeg)
   end
 
-  test "an unknown value falls back to mpv rather than crashing" do
+  test "an unknown value falls back to the default engine rather than crashing" do
     put(:nonsense)
-    assert Engine.backend() == Padwave.Player
+    assert Engine.backend() == Padwave.Player.Ffmpeg
   after
-    put(:mpv)
+    put(:ffmpeg)
   end
 
   defp put(value), do: Application.put_env(:padwave, :player_engine, value)
