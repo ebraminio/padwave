@@ -32,7 +32,8 @@ defmodule Padwave.Player.Native do
   def seek(seconds) when is_number(seconds), do: GenServer.cast(__MODULE__, {:seek, seconds})
   def crossfade_seek(seconds, _opts \\ []), do: seek(seconds)
   def stop(opts \\ []), do: GenServer.cast(__MODULE__, {:stop, opts})
-  def enqueue(_paths), do: :ok
+  @doc "Appends paths to the player's gapless queue."
+  def enqueue(paths) when is_list(paths), do: GenServer.cast(__MODULE__, {:enqueue, paths})
 
   def position, do: GenServer.call(__MODULE__, :position, 2_000)
   def duration, do: GenServer.call(__MODULE__, :duration, 2_000)
@@ -61,6 +62,11 @@ defmodule Padwave.Player.Native do
         }
 
         send_line(state, play_line(path, start))
+
+        for queued <- Keyword.get(opts, :queue, []) do
+          send_line(state, "queue #{queued}\n")
+        end
+
         Process.send_after(self(), :status_tick, @status_broadcast_ms)
         {:reply, :ok, state}
 
@@ -101,6 +107,11 @@ defmodule Padwave.Player.Native do
   def handle_cast({:seek, seconds}, state) do
     send_line(state, "seek #{round(seconds * 1000)}\n")
     {:noreply, %{state | position: seconds * 1.0}}
+  end
+
+  def handle_cast({:enqueue, paths}, state) do
+    Enum.each(paths, fn path -> send_line(state, "queue #{path}\n") end)
+    {:noreply, state}
   end
 
   def handle_cast({:stop, _opts}, state) do
@@ -223,6 +234,11 @@ defmodule Padwave.Player.Native do
       {n, _} -> %{state | underruns: n}
       _ -> state
     end
+  end
+
+  defp parse_line("track " <> path, state) do
+    Padwave.Bus.broadcast({:player, {:track, path}})
+    %{state | path: path, position: 0.0, duration: nil, eof: false}
   end
 
   defp parse_line("eof", %{eof: false} = state) do

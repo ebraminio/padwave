@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
@@ -72,6 +73,17 @@ extern "C" {
 #define RING_PRIME 24  /* start sending once this many are buffered */
 #define DECODE_BUDGET_MS 3 /* but never spend longer than this per iteration */
 
+struct file {
+  AVFormatContext *fmt;
+  AVCodecContext *dec;
+  struct SwrContext *swr;
+  int audio_index;
+  int64_t duration_ms;
+  bool eof;
+};
+
+typedef float block_t[IN_FRAMES][CHANNELS];
+
 struct player {
   int hidraw;
   bool speaker; /* 0x13 tag instead of 0x16 */
@@ -79,18 +91,29 @@ struct player {
   OpusEncoder *enc;
   uint8_t seq, counter;
 
-  AVFormatContext *fmt;
-  AVCodecContext *dec;
-  struct SwrContext *swr;
+  struct file cur; /* the station playing now */
+  struct file nxt; /* the prefetched one, if any */
   AVPacket *pkt;
   AVFrame *frame;
-  int audio_index;
-  int64_t duration_ms;
+  char path[1024];
+  char next_path[1024];
+  bool has_next;
+  bool next_warmed;
+  int open_generation; /* bumped whenever the queued path changes */
+  bool opening;        /* a request is in flight */
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
   float acc[IN_FRAMES][CHANNELS];
   int acc_frames;
+
+  /* Back-to-back playback: the next station is decoded into its own ring, then
+   * swapped in when the current one drains. */
+  block_t nring[RING_BLOCKS];
+  int nhead, ntail;
+  float nacc[IN_FRAMES][CHANNELS];
+  int nacc_frames;
+  int64_t npushed;
 
   bool playing, paused, eof, primed;
   int volume;
@@ -158,42 +181,129 @@ static void send_report(struct player *pl, const uint8_t *opus, int len) {
   pl->sent++;
 }
 
+/* One thread, and only for opening the next file: libav's open/probe reads from
+ * disk and blocks for tens of milliseconds, which is audible if it happens
+ * inside the send loop. The thread produces an opened struct file; the main
+ * thread keeps owning the decoder, the ring and the 15 ms timer. */
+static bool file_open(struct file *f, const char *path);
+
+struct open_request {
+  pthread_mutex_t lock;
+  pthread_cond_t cond;
+  char path[1024];
+  int generation;   /* which request this is */
+  bool requested;   /* path waiting for the thread */
+  bool done;        /* thread finished */
+  bool ok;
+  struct file file;
+  bool stop;
+};
+
+static struct open_request g_open = {
+    .lock = PTHREAD_MUTEX_INITIALIZER,
+    .cond = PTHREAD_COND_INITIALIZER,
+};
+
+static void *open_thread_main(void *) {
+  for (;;) {
+    pthread_mutex_lock(&g_open.lock);
+    while (!g_open.requested && !g_open.stop) pthread_cond_wait(&g_open.cond, &g_open.lock);
+    if (g_open.stop) {
+      pthread_mutex_unlock(&g_open.lock);
+      return NULL;
+    }
+    char path[1024];
+    snprintf(path, sizeof(path), "%s", g_open.path);
+    int generation = g_open.generation;
+    g_open.requested = false;
+    pthread_mutex_unlock(&g_open.lock);
+
+    struct file file;
+    memset(&file, 0, sizeof(file));
+    file.audio_index = -1;
+    bool ok = file_open(&file, path);
+
+    pthread_mutex_lock(&g_open.lock);
+    g_open.file = file;
+    g_open.ok = ok;
+    g_open.done = true;
+    g_open.generation = generation;
+    pthread_mutex_unlock(&g_open.lock);
+  }
+}
+
 /* ---- decode ------------------------------------------------------------- */
 
+static int count_of(int head, int tail, int size) { return (head - tail + size) % size; }
+
+/* Ask the kernel to read a file ahead of time. Non-blocking: the read happens
+ * on the kernel's schedule, so the later open() finds the pages in cache. */
+static void warm_file(const char *path) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd >= 0) {
+    posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
+    close(fd);
+  }
+}
+
+static void file_close(struct file *f) {
+  if (f->swr) swr_free(&f->swr);
+  if (f->dec) avcodec_free_context(&f->dec);
+  if (f->fmt) avformat_close_input(&f->fmt);
+  f->fmt = NULL;
+  f->dec = NULL;
+  f->swr = NULL;
+  f->audio_index = -1;
+  f->duration_ms = 0;
+  f->eof = false;
+}
+
+static bool file_open(struct file *f, const char *path) {
+  file_close(f);
+
+  if (avformat_open_input(&f->fmt, path, NULL, NULL) < 0) return false;
+  if (avformat_find_stream_info(f->fmt, NULL) < 0) return false;
+
+  const AVCodec *codec = NULL;
+  f->audio_index = av_find_best_stream(f->fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+  if (f->audio_index < 0 || !codec) return false;
+
+  AVStream *st = f->fmt->streams[f->audio_index];
+  f->dec = avcodec_alloc_context3(codec);
+  if (!f->dec) return false;
+  if (avcodec_parameters_to_context(f->dec, st->codecpar) < 0) return false;
+  if (avcodec_open2(f->dec, codec, NULL) < 0) return false;
+
+  int64_t layout = av_get_default_channel_layout(f->dec->channels);
+  f->swr = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_FLT, RATE, layout,
+                              f->dec->sample_fmt, f->dec->sample_rate, 0, NULL);
+  if (!f->swr || swr_init(f->swr) < 0) return false;
+
+  f->duration_ms = f->fmt->duration > 0 ? f->fmt->duration / (AV_TIME_BASE / 1000) : 0;
+  f->eof = false;
+  return true;
+}
+
+static int ring_len(struct player *pl) { return count_of(pl->head, pl->tail, RING_BLOCKS); }
+static int next_ring_len(struct player *pl) { return count_of(pl->nhead, pl->ntail, RING_BLOCKS); }
+
 static void close_file(struct player *pl) {
-  if (pl->swr) swr_free(&pl->swr);
-  if (pl->dec) avcodec_free_context(&pl->dec);
-  if (pl->fmt) avformat_close_input(&pl->fmt);
-  pl->fmt = NULL;
-  pl->dec = NULL;
-  pl->audio_index = -1;
-  pl->duration_ms = 0;
+  file_close(&pl->cur);
   pl->head = pl->tail = 0;
   pl->acc_frames = 0;
 }
 
+static void close_next(struct player *pl) {
+  file_close(&pl->nxt);
+  pl->nhead = pl->ntail = 0;
+  pl->nacc_frames = 0;
+  pl->has_next = false;
+}
+
 static bool open_file(struct player *pl, const char *path) {
   close_file(pl);
-
-  if (avformat_open_input(&pl->fmt, path, NULL, NULL) < 0) return false;
-  if (avformat_find_stream_info(pl->fmt, NULL) < 0) return false;
-
-  const AVCodec *codec = NULL;
-  pl->audio_index = av_find_best_stream(pl->fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
-  if (pl->audio_index < 0 || !codec) return false;
-
-  AVStream *st = pl->fmt->streams[pl->audio_index];
-  pl->dec = avcodec_alloc_context3(codec);
-  if (!pl->dec) return false;
-  if (avcodec_parameters_to_context(pl->dec, st->codecpar) < 0) return false;
-  if (avcodec_open2(pl->dec, codec, NULL) < 0) return false;
-
-  int64_t layout = av_get_default_channel_layout(pl->dec->channels);
-  pl->swr = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_FLT, RATE, layout,
-                               pl->dec->sample_fmt, pl->dec->sample_rate, 0, NULL);
-  if (!pl->swr || swr_init(pl->swr) < 0) return false;
-
-  pl->duration_ms = pl->fmt->duration > 0 ? pl->fmt->duration / (AV_TIME_BASE / 1000) : 0;
+  if (!file_open(&pl->cur, path)) return false;
+  snprintf(pl->path, sizeof(pl->path), "%s", path);
   pl->eof = false;
   pl->consumed = 0;
   pl->sent = 0;
@@ -202,65 +312,107 @@ static bool open_file(struct player *pl, const char *path) {
   return true;
 }
 
-static int ring_len(struct player *pl) { return (pl->head - pl->tail + RING_BLOCKS) % RING_BLOCKS; }
-
-/* Decode at most DECODE_BUDGET_MS worth of work. This is the whole trick: the
- * loop keeps servicing the 10.667 ms timer because no single iteration can sit
- * inside libav for long. */
-static void fill(struct player *pl) {
-  if (!pl->fmt || pl->paused) return;
+/* Decode at most DECODE_BUDGET_MS worth of work into `ring`. This is the whole
+ * trick: the loop keeps servicing the 10.667 ms timer because no single
+ * iteration can sit inside libav for long. It serves the current station and
+ * the prefetched one equally. */
+static void fill_into(struct player *pl, struct file *f, block_t *ring, int *head, int *tail,
+                      float acc[IN_FRAMES][CHANNELS], int *acc_frames, int high,
+                      int64_t *pushed) {
+  if (!f->fmt || pl->paused) return;
 
   struct timespec start, now;
   clock_gettime(CLOCK_MONOTONIC, &start);
 
-  while (ring_len(pl) < RING_HIGH && !pl->eof) {
+  while (count_of(*head, *tail, RING_BLOCKS) < high && !f->eof) {
     clock_gettime(CLOCK_MONOTONIC, &now);
     long elapsed = (now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000;
     if (elapsed >= DECODE_BUDGET_MS) break;
-    int ret = av_read_frame(pl->fmt, pl->pkt);
+
+    int ret = av_read_frame(f->fmt, pl->pkt);
     if (getenv("PADWAVE_DEBUG") && ret < 0) fprintf(stderr, "read: %d\n", ret);
     if (ret == AVERROR_EOF) {
-      avcodec_send_packet(pl->dec, NULL);
-      pl->eof = true;
+      avcodec_send_packet(f->dec, NULL);
+      f->eof = true;
     } else if (ret < 0) {
-      pl->eof = true;
+      f->eof = true;
     } else {
-      if (pl->pkt->stream_index == pl->audio_index) avcodec_send_packet(pl->dec, pl->pkt);
+      if (pl->pkt->stream_index == f->audio_index) avcodec_send_packet(f->dec, pl->pkt);
       av_packet_unref(pl->pkt);
     }
 
     for (;;) {
-      ret = avcodec_receive_frame(pl->dec, pl->frame);
+      ret = avcodec_receive_frame(f->dec, pl->frame);
       if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
       if (ret < 0) break;
 
       uint8_t *out[1];
       float tmp[8192 * CHANNELS];
       out[0] = (uint8_t *)tmp;
-      int cap = swr_get_out_samples(pl->swr, pl->frame->nb_samples);
+      int cap = swr_get_out_samples(f->swr, pl->frame->nb_samples);
       if (cap > 8192) cap = 8192;
-      int got = swr_convert(pl->swr, out, cap, (const uint8_t **)pl->frame->extended_data,
+      int got = swr_convert(f->swr, out, cap, (const uint8_t **)pl->frame->extended_data,
                             pl->frame->nb_samples);
       for (int i = 0; i < got; i++) {
-        pl->acc[pl->acc_frames][0] = tmp[i * CHANNELS + 0];
-        pl->acc[pl->acc_frames][1] = tmp[i * CHANNELS + 1];
-        if (++pl->acc_frames == IN_FRAMES) {
-          int next = (pl->head + 1) % RING_BLOCKS;
-          if (next == pl->tail) { /* ring full: keep the partial block */
-            pl->acc_frames = 0;
-            pl->head = pl->head; /* drop */
+        acc[*acc_frames][0] = tmp[i * CHANNELS + 0];
+        acc[*acc_frames][1] = tmp[i * CHANNELS + 1];
+        if (++(*acc_frames) == IN_FRAMES) {
+          int next = (*head + 1) % RING_BLOCKS;
+          if (next == *tail) { /* ring full: keep the partial block */
+            *acc_frames = 0;
             break;
           }
-          memcpy(pl->ring[pl->head], pl->acc, sizeof(pl->acc));
-          pl->head = next;
-          pl->pushed++;
-          pl->acc_frames = 0;
+          memcpy(ring[*head], acc, sizeof(float) * IN_FRAMES * CHANNELS);
+          *head = next;
+          if (pushed) (*pushed)++;
+          *acc_frames = 0;
         }
       }
       av_frame_unref(pl->frame);
-      if (((pl->head + 1) % RING_BLOCKS) == pl->tail) break;
+      if (((*head + 1) % RING_BLOCKS) == *tail) break;
     }
   }
+}
+
+static void fill(struct player *pl) {
+  fill_into(pl, &pl->cur, pl->ring, &pl->head, &pl->tail, pl->acc, &pl->acc_frames, RING_HIGH,
+            &pl->pushed);
+  pl->eof = pl->cur.eof;
+}
+
+static void fill_next(struct player *pl) {
+  fill_into(pl, &pl->nxt, pl->nring, &pl->nhead, &pl->ntail, pl->nacc, &pl->nacc_frames,
+            RING_HIGH, &pl->npushed);
+}
+
+/* The current station is exhausted; the prefetched one becomes current without
+ * touching the encoder or the timer, which is what makes it gapless. */
+static void promote(struct player *pl) {
+  file_close(&pl->cur);
+  pl->cur = pl->nxt;
+  memset(&pl->nxt, 0, sizeof(pl->nxt));
+  pl->nxt.audio_index = -1;
+
+  memcpy(pl->ring, pl->nring, sizeof(pl->ring));
+  pl->head = pl->nhead;
+  pl->tail = pl->ntail;
+  memcpy(pl->acc, pl->nacc, sizeof(pl->acc));
+  pl->acc_frames = pl->nacc_frames;
+
+  pl->nhead = pl->ntail = 0;
+  pl->nacc_frames = 0;
+  pl->npushed = 0;
+
+  snprintf(pl->path, sizeof(pl->path), "%s", pl->next_path);
+  pl->base_ms = 0;
+  pl->consumed = 0;
+  pl->sent = 0;
+  pl->underruns = 0;
+  pl->eof = pl->cur.eof;
+  pl->has_next = false;
+
+  printf("track %s\n", pl->path);
+  fflush(stdout);
 }
 
 /* Take one 512-frame block out of the ring; returns false on underrun. */
@@ -318,14 +470,15 @@ static void handle_line(struct player *pl, char *line) {
   // spaces and the two fields never have to be guessed apart. "play <path>" is
   // still accepted for driving the binary by hand.
   if (sscanf(line, "play %ld %1023[^\n]", &value, path) == 2) {
+    close_next(pl);
     if (open_file(pl, path)) {
       pl->playing = true;
       pl->paused = false;
       pl->primed = false;
       if (value > 0) {
         int64_t ts = value * (AV_TIME_BASE / 1000);
-        av_seek_frame(pl->fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
-        avcodec_flush_buffers(pl->dec);
+        av_seek_frame(pl->cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
+        avcodec_flush_buffers(pl->cur.dec);
         pl->base_ms = value;
       }
     }
@@ -333,10 +486,25 @@ static void handle_line(struct player *pl, char *line) {
   }
 
   if (sscanf(line, "play %1023[^\n]", path) == 1) {
+    close_next(pl);
     if (open_file(pl, path)) {
       pl->playing = true;
       pl->paused = false;
       pl->primed = false;
+    }
+    return;
+  }
+
+  // "queue <path>" — the next station, to be decoded ahead and promoted at the
+  // end of the current one. Only one is held; the radio pushes the one after
+  // that once the promotion is reported.
+  if (sscanf(line, "queue %1023[^\n]", path) == 1) {
+    if (!pl->nxt.fmt) {
+      snprintf(pl->next_path, sizeof(pl->next_path), "%s", path);
+      pl->has_next = true;
+      pl->next_warmed = false;
+      pl->open_generation++;
+      warm_file(path);
     }
     return;
   }
@@ -351,12 +519,13 @@ static void handle_line(struct player *pl, char *line) {
     return;
   }
 
-  if (sscanf(line, "seek %ld", &value) == 1 && pl->fmt) {
+  if (sscanf(line, "seek %ld", &value) == 1 && pl->cur.fmt) {
     int64_t ts = value * (AV_TIME_BASE / 1000);
-    if (av_seek_frame(pl->fmt, -1, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
-      avcodec_flush_buffers(pl->dec);
+    if (av_seek_frame(pl->cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
+      avcodec_flush_buffers(pl->cur.dec);
       pl->head = pl->tail = 0;
       pl->acc_frames = 0;
+      pl->cur.eof = false;
       pl->eof = false;
       pl->primed = false;
       pl->base_ms = value;
@@ -391,6 +560,9 @@ int native_main(int argc, char **argv) {
 
   pl.pkt = av_packet_alloc();
   pl.frame = av_frame_alloc();
+
+  pthread_t open_thread;
+  pthread_create(&open_thread, NULL, open_thread_main, NULL);
 
   signal(SIGINT, on_signal);
   signal(SIGTERM, on_signal);
@@ -438,6 +610,57 @@ int native_main(int argc, char **argv) {
 
     if (pl.playing && !pl.paused) fill(&pl);
 
+    // Warm the next file again shortly before it is needed: the queue-time
+    // readahead can be stale by the end of a long track, and the open() at the
+    // prefetch point must not read cold pages while the stream is running.
+    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt && !pl.next_warmed &&
+        pl.cur.duration_ms > 0) {
+      int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
+      if (pos + 8000 >= pl.cur.duration_ms) {
+        warm_file(pl.next_path);
+        pl.next_warmed = true;
+      }
+    }
+
+    // Gapless: ask the open thread for the next station a few seconds before
+    // this one ends, adopt it when ready, and swap the rings when the current
+    // one is drained. The open itself never runs on this thread.
+    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt && !pl.opening) {
+      int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
+      if (pl.eof || (pl.cur.duration_ms > 0 && pos + 3000 >= pl.cur.duration_ms)) {
+        pthread_mutex_lock(&g_open.lock);
+        snprintf(g_open.path, sizeof(g_open.path), "%s", pl.next_path);
+        g_open.generation = pl.open_generation;
+        g_open.done = false;
+        g_open.requested = true;
+        pthread_cond_signal(&g_open.cond);
+        pthread_mutex_unlock(&g_open.lock);
+        pl.opening = true;
+      }
+    }
+
+    pthread_mutex_lock(&g_open.lock);
+    bool opened = g_open.done;
+    bool opened_ok = g_open.ok;
+    struct file opened_file = g_open.file;
+    int opened_gen = g_open.generation;
+    if (opened) g_open.done = false;
+    pthread_mutex_unlock(&g_open.lock);
+
+    if (opened) {
+      pl.opening = false;
+      if (opened_ok && opened_gen == pl.open_generation) {
+        pl.nxt = opened_file;
+      } else {
+        file_close(&opened_file);
+        pl.has_next = false;
+      }
+    }
+
+    if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
+
+    if (pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0) promote(&pl);
+
     if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
 
     if (fds[1].revents & POLLIN) {
@@ -457,13 +680,20 @@ int native_main(int argc, char **argv) {
       last_status = ms;
       int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
       printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\n", (long)pos,
-             (long)pl.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
-      if (pl.eof && pl.tail == pl.head) printf("eof\n");
+             (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
+      if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
       fflush(stdout);
     }
   }
 
+  pthread_mutex_lock(&g_open.lock);
+  g_open.stop = true;
+  pthread_cond_signal(&g_open.cond);
+  pthread_mutex_unlock(&g_open.lock);
+  pthread_join(open_thread, NULL);
+
   close_file(&pl);
+  close_next(&pl);
   if (pl.hidraw >= 0) close(pl.hidraw);
   opus_encoder_destroy(pl.enc);
   av_packet_free(&pl.pkt);
