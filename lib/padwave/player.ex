@@ -232,16 +232,32 @@ defmodule Padwave.Player do
       {name, _pid} ->
         Logger.error("[player] slot #{name} crashed: #{inspect(reason)} — restarting")
         {:ok, new_pid} = Slot.start_link(name: name, owner: self())
-        Process.send_after(self(), :restart_ramps, 200)
 
-        {:noreply,
-         %{
-           state
-           | slots: Map.put(state.slots, name, new_pid),
-             applied: Map.put(state.applied, name, -1),
-             gain: Map.put(state.gain, name, 0.0),
-             active: if(state.active == name, do: nil, else: state.active)
-         }}
+        # If the slot that died was the one playing, this is a transport
+        # restart, not a state change: reload what it had and put its gain
+        # straight back to 1.0. Leaving it at 0.0 made the radio look like it
+        # was playing while mpv sat at volume zero and stopped reporting its
+        # position.
+        was_active = state.active == name
+
+        state = %{
+          state
+          | slots: Map.put(state.slots, name, new_pid),
+            applied: Map.put(state.applied, name, -1),
+            gain: Map.put(state.gain, name, if(was_active, do: 1.0, else: 0.0))
+        }
+
+        state =
+          if was_active and state.path != nil do
+            Slot.load(new_pid, state.path, start: state.position)
+            Slot.pause(new_pid, false)
+            state
+          else
+            state
+          end
+
+        Process.send_after(self(), :restart_ramps, 200)
+        {:noreply, state}
     end
   end
 
