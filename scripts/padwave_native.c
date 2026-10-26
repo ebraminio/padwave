@@ -126,35 +126,24 @@ static int find_dualsense(void) {
 
 /* ---- 0x36 report -------------------------------------------------------- */
 
-static void put_state(uint8_t *p, bool speaker) {
-  memset(p, 0, 63);
-  p[0] = 0xF0; /* valid_flag0: volumes + audio routing */
-  p[1] = 0x80; /* valid_flag1: audio_control2 */
-  p[4] = 0x7F; /* headphone_volume */
-  p[5] = 0x64; /* speaker_volume */
-  p[7] = speaker ? 0x09 : 0x00;
-  p[37] = 0x0A;
-}
-
 static void send_report(struct player *pl, const uint8_t *opus, int len) {
-  uint8_t state[PW_WIRE_STATE];
-  uint8_t pkt[PW_WIRE_SIZE];
+  struct pw_0x36 report;
 
-  put_state(state, pl->speaker);
+  pw_0x36_init(&report, pl->speaker);
+  pw_output_state_init(&report.state,
+                       pl->speaker ? PW_AUDIO_CONTROL_SPEAKER : PW_AUDIO_CONTROL_HEADPHONES);
 
-  pw_0x36 report = {
-      .seq = pl->seq,
-      .counter = pl->counter,
-      .enable_mask = 0xFE,
-      .speaker = pl->speaker,
-      .state = state,
-      .haptics = NULL,
-      .opus = opus,
-      .opus_len = (uint8_t)(len > 0 ? (len > PW_WIRE_OPUS ? PW_WIRE_OPUS : len) : 0),
-  };
+  report.seq = (uint8_t)((pl->seq & 0x0F) << 4);
+  report.counter = pl->counter;
 
-  if (pw_0x36_serialize(pkt, sizeof(pkt), &report) && pl->hidraw >= 0) {
-    ssize_t n = write(pl->hidraw, pkt, PW_WIRE_SIZE);
+  size_t copy = len > 0 ? (size_t)len : 0;
+  if (copy > PW_0X36_OPUS_SIZE) copy = PW_0X36_OPUS_SIZE;
+  if (copy) memcpy(report.opus, opus, copy);
+
+  pw_0x36_sign(&report);
+
+  if (pl->hidraw >= 0) {
+    ssize_t n = write(pl->hidraw, &report, sizeof(report));
     (void)n;
   }
 
