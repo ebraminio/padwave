@@ -50,6 +50,11 @@ static int encode_loop(void) {
     return 1;
   }
   opus_encoder_ctl(enc, OPUS_SET_BITRATE(160000));
+  // CBR, like the audio service: the 0x36 speaker block is a fixed 200 bytes,
+  // and a VBR packet shorter than that would be zero-padded, leaving trailing
+  // bytes the controller's decoder has to make sense of (audible clicks).
+  opus_encoder_ctl(enc, OPUS_SET_VBR(0));
+  opus_encoder_ctl(enc, OPUS_SET_COMPLEXITY(0));
 
   unsigned char out[200];
   int16_t pcm[480 * 2];

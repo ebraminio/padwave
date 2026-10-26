@@ -34,7 +34,7 @@ defmodule Padwave.Player.Ffmpeg do
 
   alias Padwave.Output.{Audio, Hid}
 
-  @prebuffer 10
+  @prebuffer 25
   @frame_ms 10
   @frame_bytes 480 * 2 * 2
   @idle_poll_ms 20
@@ -45,6 +45,7 @@ defmodule Padwave.Player.Ffmpeg do
   @low_water 75
   @next_high_water 400
   @prefetch_seconds 2.0
+  @fade_frames 4
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -90,6 +91,7 @@ defmodule Padwave.Player.Ffmpeg do
        eof_sent: false,
        throttled: false,
        queue: [],
+       fade_frames: 0,
        next_path: nil,
        next_duration: nil,
        next_port: nil,
@@ -124,6 +126,7 @@ defmodule Padwave.Player.Ffmpeg do
         eof_sent: false,
         throttled: false,
         queue: Keyword.get(opts, :queue, []),
+        fade_frames: @fade_frames,
         next_path: nil,
         next_duration: nil,
         next_port: nil,
@@ -149,7 +152,8 @@ defmodule Padwave.Player.Ffmpeg do
         paused_total: 0,
         buffer: <<>>,
         frames: :queue.new(),
-        sent: 0
+        sent: 0,
+        fade_frames: @fade_frames
     }
 
     state = open_ffmpeg(state, seconds)
@@ -278,6 +282,10 @@ defmodule Padwave.Player.Ffmpeg do
     {:noreply, state}
   end
 
+  # A tick that was already in the mailbox when playback stopped must not be
+  # serviced: it would see an empty queue and count a phantom underrun.
+  def handle_info(:tick, %{ticking: false} = state), do: {:noreply, state}
+
   def handle_info(:tick, state) do
     state = %{state | ticking: false}
 
@@ -305,8 +313,7 @@ defmodule Padwave.Player.Ffmpeg do
 
           case :queue.out(state.frames) do
             {{:value, pcm}, queue} ->
-              send_frame(state, pcm)
-
+              state = send_frame(state, pcm)
               state = %{state | frames: queue, sent: state.sent + 1}
 
               state =
@@ -338,12 +345,18 @@ defmodule Padwave.Player.Ffmpeg do
   # -- the audio path ---------------------------------------------------------
 
   defp send_frame(state, pcm) do
-    gain = gain(state.volume)
+    gain = gain(state.volume) * fade_gain(state.fade_frames)
     pcm = if gain >= 0.999, do: pcm, else: scale(pcm, gain)
     opus = encode(state.encoder, pcm)
     report = Audio.build(opus, seq: rem(state.sent, 16), counter: rem(state.sent, 256), output: state.output)
     Hid.send_audio(report)
+    %{state | fade_frames: max(state.fade_frames - 1, 0)}
   end
+
+  # A hard start or a seek cuts the waveform; a ramp over a few frames removes
+  # the click without delaying anything audible.
+  defp fade_gain(0), do: 1.0
+  defp fade_gain(remaining), do: (@fade_frames - remaining + 1) / @fade_frames
 
   # (volume/100)^3, the curve the panel already feels: 50 is an eighth, 12 is
   # quiet but not silent.
@@ -582,7 +595,8 @@ defmodule Padwave.Player.Ffmpeg do
         sent: 0,
         eof_sent: false,
         last_broadcast: now(),
-        underruns: 0
+        underruns: 0,
+        fade_frames: @fade_frames
     }
 
     Padwave.Bus.broadcast({:player, {:track, state.path}})
