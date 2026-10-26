@@ -479,7 +479,12 @@ function render(s) {
 
   $("#title").textContent = cur ? cur.title : "Nothing playing";
   $("#game").textContent = cur ? cur.game : "—";
+  const canPlay = c.connected === true && c.jack === true;
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
+  $("#pauseBtn").disabled = !canPlay;
+  $("#pauseBtn").title = canPlay
+    ? ""
+    : "needs the controller connected with the headset plugged in";
   $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
 
   // A new station resets the client clock; otherwise keep the last known

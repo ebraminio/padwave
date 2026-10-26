@@ -402,18 +402,41 @@ defmodule Padwave.Radio do
 
   defp play_or_resume(state) do
     cond do
-      state.current != nil -> play(state, state.current, start: state.position)
-      true -> play_random(state)
+      not output_ready?() ->
+        Logger.info("[radio] no controller or headset — not starting")
+        state
+
+      state.current != nil ->
+        play(state, state.current, start: state.position)
+
+      true ->
+        play_random(state)
     end
+  end
+
+  # Playing without either of these is playing into nothing: the controller has
+  # to be there, and so does something in its jack.
+  defp output_ready? do
+    Padwave.Input.Device.connected?() and Padwave.Input.Mapper.jack?() == true
   end
 
   defp toggle_pause(%{playing: false} = state), do: play_or_resume(state)
 
+  defp toggle_pause(%{paused: true} = state) do
+    if output_ready?() do
+      Player.pause(false)
+      Bus.broadcast({:radio, {:transport, :playing}})
+      persist(%{state | paused: false})
+    else
+      Logger.info("[radio] no controller or headset — not resuming")
+      state
+    end
+  end
+
   defp toggle_pause(state) do
-    paused = not state.paused
-    Player.pause(paused)
-    Bus.broadcast({:radio, {:transport, if(paused, do: :paused, else: :playing)}})
-    persist(%{state | paused: paused})
+    Player.pause(true)
+    Bus.broadcast({:radio, {:transport, :paused}})
+    persist(%{state | paused: true})
   end
 
   defp play_id(state, nil), do: state
