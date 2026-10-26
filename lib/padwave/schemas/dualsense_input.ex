@@ -14,7 +14,8 @@ defmodule Padwave.Schema.DualSenseInput.Body do
   `0x31` frame is a gamepad report: the controller interleaves audio frames
   that keep the report id but put the Opus TOC `0xD4` at report byte 3
   (payload `+0x01`, i.e. where `ly` normally is). Demux on that byte before
-  trusting any of these fields.
+  trusting any of these fields — `Padwave.Schema.DualSenseMic` is the schema
+  for those frames.
   """
 
   use Padwave.Wire

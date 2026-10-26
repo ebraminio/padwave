@@ -71,9 +71,12 @@ galloping, machine) are unofficial and firmware-dependent. The panel and the
 ## Microphone stream
 
 The DualSense has no audio class over Bluetooth: the microphone shares the
-reports with everything else, and its frames are Opus, not PCM. Capturing it
-takes three separate changes; all three live in the outgoing `0x36` audio
-report.
+reports with everything else, and its frames are Opus, not PCM. The schema and
+the demultiplexing helpers live in `Padwave.Schema.DualSenseMic`; the short
+version follows.
+
+Capturing it takes three separate changes; all three live in the outgoing `0x36`
+audio report.
 
 ### Enabling it
 

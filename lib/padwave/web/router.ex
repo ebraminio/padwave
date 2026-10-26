@@ -63,6 +63,7 @@ defmodule Padwave.Web.Router do
       calibration: Padwave.Schema.DualSenseFeature.spec(:calibration),
       pairing: Padwave.Schema.DualSenseFeature.spec(:pairing),
       firmware: Padwave.Schema.DualSenseFeature.spec(:firmware),
+      mic_in: Padwave.Schema.DualSenseMic.spec(),
       bindings: Input.Mapper.bindings()
     })
   end
