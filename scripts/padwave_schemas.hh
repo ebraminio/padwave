@@ -350,6 +350,10 @@ struct AudioReport {
     CrcSeed = 0xA2,
   };
 
+  // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
+  // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
+  enum : uint16_t { OpusFrames = 480, InputBlock = 512, Channels = 2 };
+
   static constexpr size_t Size = 398;
 
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF

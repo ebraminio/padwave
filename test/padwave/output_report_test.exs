@@ -114,15 +114,6 @@ defmodule Padwave.OutputReportTest do
     assert fields.player_leds.led3
   end
 
-  test "the volume gain is linear and never floors to silence" do
-    alias Padwave.Player.Slot
-
-    assert Slot.gain(0) == 0.0
-    assert Slot.gain(12) > 0
-    assert Slot.gain(12) < Slot.gain(13)
-    assert_in_delta Slot.gain(100), 1.0, 1.0e-9
-    assert_in_delta Slot.gain(50), 0.125, 1.0e-9
-  end
 
   test "a trigger vibration sets its flag, mode and parameters" do
     report = Report.trigger(:right, 0x06, [25, 200, 5], seq: 7)

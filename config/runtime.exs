@@ -19,11 +19,4 @@ roots =
 
 config :padwave, music_roots: roots
 
-player_engine =
-  case System.get_env("PADWAVE_PLAYER") do
-    "mpv" -> :mpv
-    "ffmpeg" -> :ffmpeg
-    _ -> :native
-  end
 
-config :padwave, player_engine: player_engine

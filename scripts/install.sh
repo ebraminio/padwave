@@ -18,7 +18,8 @@ fi
 echo "==> microphone decoder (optional)"
 mkdir -p "$HOME/.local/bin"
 if command -v cc >/dev/null && [ -f /usr/include/opus/opus.h ]; then
-  cc -O2 -o "$HOME/.local/bin/padwave_opusdec" "$ROOT/scripts/padwave_opusdec.c" -lopus
+  c++ -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$ROOT/scripts" \
+    -o "$HOME/.local/bin/padwave_opusdec" "$ROOT/scripts/padwave_opusdec.cc" -lopus -lz
   echo "    built ~/.local/bin/padwave_opusdec"
 else
   echo "    skipped: needs cc and libopus-dev (microphone level meter will be off)"

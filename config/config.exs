@@ -90,10 +90,4 @@ config :padwave,
 
 config :logger, level: :info
 
-# Which playback engine to run.
-#   :native — padwave_native (C++): decode, resample, Opus and the 0x36 in one
-#             process, no IPC per packet. The default.
-#   :ffmpeg — ffmpeg decodes and padwave does the rest in Elixir. Selectable
-#             because it still has the gapless queue the native player lacks.
-#   :mpv    — the old two-slot player with crossfade and volume ramps.
-config :padwave, player_engine: :native
+

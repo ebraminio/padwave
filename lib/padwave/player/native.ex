@@ -9,10 +9,9 @@ defmodule Padwave.Player.Native do
   (`play`, `pause`, `volume`, `seek`, `quit`) and reads the status lines the
   program prints ten times a second.
 
-  Compared with `Padwave.Player.Ffmpeg`, which spawns ffmpeg *and* an encoder
-  port and does the report building in Elixir, this is the same audio path with
-  the serialization moved into C (`scripts/padwave_schemas.hh`) and one fewer
-  process.
+  The report bytes come from `scripts/padwave_schemas.hh`, so the protocol has
+  one description (in C++) and this module only speaks the command/status line
+  protocol to it.
 
   The port protocol deliberately stays line-oriented: it is debuggable from a
   shell without the app, which is how the program was tested.

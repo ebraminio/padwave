@@ -71,7 +71,7 @@ defmodule Padwave.Output.Lab do
   # differs.
   def apply(%{"kind" => "engine_play", "path" => path}) when is_binary(path) do
     if File.regular?(path) do
-      Padwave.Player.Engine.play(path, start: 0, fade: 0)
+      Padwave.Player.Native.play(path, start: 0, fade: 0)
       {:ok, "engine playing #{path}"}
     else
       {:error, "no such file"}
@@ -79,7 +79,7 @@ defmodule Padwave.Output.Lab do
   end
 
   def apply(%{"kind" => "engine_stop"}) do
-    Padwave.Player.Engine.stop(fade: 0)
+    Padwave.Player.Native.stop(fade: 0)
     {:ok, "engine stopped"}
   end
 

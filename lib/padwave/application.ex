@@ -27,7 +27,7 @@ defmodule Padwave.Application do
       Padwave.Output.Lightbar,
       Padwave.Output.Triggers,
       Padwave.Output.ChargingLeds,
-      Padwave.Player.Engine.backend(),
+      Padwave.Player.Native,
       Padwave.Radio,
       Padwave.Session,
       Padwave.Input.Mapper,
