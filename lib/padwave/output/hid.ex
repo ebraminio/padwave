@@ -1,23 +1,23 @@
 defmodule Padwave.Output.Hid do
   @moduledoc """
-  Writes DualSense output reports straight to the controller's hidraw node.
+  The 0x31 writer.
 
-  The kernel's `playstation` driver owns rumble and exposes the lightbar through
-  sysfs, but it does not expose the adaptive triggers or their actuators at all.
-  Those live in the same report `0x31` we already know how to frame and sign, so
-  padwave writes that report itself — for the lightbar (instead of sysfs) and
-  for trigger effects.
+  The packet itself is built by `padwave output` (`scripts/padwave_output.cc`):
+  this process only decides *what* changes and sends a line of named fields.
+  The C++ side owns the report id, the sequence tag, the CRC and the field
+  offsets, all from `padwave_schemas.hh`, so the byte layout has one definition
+  and no Elixir code needs to know where a byte lives.
 
-  Everything goes through this one process, which serialises writes and owns
-  the Bluetooth report counter (the high nibble of the sequence tag, 0..15).
-  Writes are only issued on change (a few per second at most), so this never
-  competes with the audio stream for meaningful bandwidth.
+  Fields are the `OutputBody` members; a `valid_flag*` value is a comma list of
+  flag names (`rumble`, `lightbar`, `player_leds`, …), exactly the names in the
+  schema's enums. Binary fields (`*_trigger_params`) travel as hex.
+
+  Everything goes through this one process, which serialises the command stream.
+  Reports are only sent on change, a few per second at most.
   """
 
   use GenServer
   require Logger
-
-  import Bitwise, only: [band: 2, bor: 2, bsl: 2]
 
   alias Padwave.{Bus, Config}
   alias Padwave.Output.Report
@@ -32,6 +32,9 @@ defmodule Padwave.Output.Hid do
   """
   def lightbar(red, green, blue, opts \\ []),
     do: GenServer.cast(__MODULE__, {:lightbar, {red, green, blue}, opts})
+
+  @doc "Sets the lightbar from a single RGB tuple."
+  def lightbar({red, green, blue}), do: lightbar(red, green, blue)
 
   @doc "Sends a report built from a map of output-report field names."
   def send_fields(fields), do: GenServer.cast(__MODULE__, {:fields, fields})
@@ -53,10 +56,16 @@ defmodule Padwave.Output.Hid do
   def trigger(side, mode, params \\ []),
     do: GenServer.cast(__MODULE__, {:trigger, side, mode, params})
 
+  @doc "Writes an already-built report (the audio test builds its own 0x36)."
+  def send_audio(report) when is_binary(report),
+    do: GenServer.cast(__MODULE__, {:audio, report})
+
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: [], power_save: nil, player_leds: nil}}
+
+    {:ok,
+     %{port: nil, writes: 0, errors: 0, recent: [], power_save: nil, player_leds: nil}}
   end
 
   @impl true
@@ -68,10 +77,7 @@ defmodule Padwave.Output.Hid do
     end
   end
 
-  def handle_cast({:power_save, value}, state) do
-    emit(%{state | power_save: value}, %{})
-  end
-
+  def handle_cast({:power_save, value}, state), do: emit(%{state | power_save: value}, %{})
   def handle_cast(:clear_power_save, state), do: {:noreply, %{state | power_save: nil}}
 
   def handle_cast({:player_leds, mask}, state),
@@ -85,11 +91,7 @@ defmodule Padwave.Output.Hid do
   def handle_cast({:trigger, side, mode, params}, state),
     do: emit(state, Report.trigger_fields(side, mode, params))
 
-  @doc "Writes an already-built report (the audio test builds its own 0x36)."
-  def send_audio(report) when is_binary(report),
-    do: GenServer.cast(__MODULE__, {:audio, report})
-
-  def handle_cast({:audio, report}, state), do: write(state, report)
+  def handle_cast({:audio, report}, state), do: raw(state, report)
 
   def handle_cast({:fields, fields}, state) do
     emit(state, atomize(fields))
@@ -99,17 +101,26 @@ defmodule Padwave.Output.Hid do
       {:noreply, state}
   end
 
-  @doc "How many reports have been written, for the debug endpoint."
+  @doc "How many reports have been sent, for the debug endpoint."
   def stats, do: GenServer.call(__MODULE__, :stats, 2_000)
 
   @impl true
   def handle_call(:stats, _from, state),
-    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent, :power_save, :player_leds]), state}
+    do: {:reply, Map.take(state, [:writes, :errors, :recent, :power_save, :player_leds]), state}
 
   @impl true
+  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
+    if String.starts_with?(line, "err"), do: {:noreply, %{state | errors: state.errors + 1}}, else: {:noreply, state}
+  end
+
+  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
+    Logger.warning("[hid] output writer exited: #{status}")
+    {:noreply, %{state | port: nil}}
+  end
+
   def handle_info({:padwave, {:device, :down, _info}}, state) do
-    if state.fd, do: :file.close(state.fd)
-    {:noreply, %{state | fd: nil}}
+    if state.port, do: Port.close(state.port)
+    {:noreply, %{state | port: nil}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -118,8 +129,10 @@ defmodule Padwave.Output.Hid do
   # whatever the caller asked for, so the controller state does not depend on
   # which feature wrote last.
   defp emit(state, fields) do
-    write(state, Report.build(merge_persistent(fields, state), :bluetooth, seq: state.seq))
+    send_line(state, "fields " <> serialize(merge_persistent(fields, state)))
   end
+
+  defp raw(state, report), do: send_line(state, "raw " <> Base.encode16(report, case: :lower))
 
   defp merge_persistent(fields, %{power_save: nil}), do: fields
 
@@ -132,24 +145,49 @@ defmodule Padwave.Output.Hid do
   defp claim(flags, name) when is_list(flags), do: [name | flags]
   defp claim(flags, _name) when is_integer(flags), do: flags
 
-  defp write(state, report) do
-    case open(state) do
-      {:ok, state} ->
-        case :file.write(state.fd, report) do
-          :ok ->
-            entry = %{seq: state.seq, hex: Base.encode16(report, case: :lower)}
-            recent = [entry | state.recent] |> Enum.take(4)
+  defp send_line(%{port: nil} = state, line) do
+    case open_port() do
+      {:ok, port} -> do_send(%{state | port: port}, line)
+      :error -> {:noreply, %{state | errors: state.errors + 1}}
+    end
+  end
 
-            {:noreply, %{state | seq: rem(state.seq + 1, 16), writes: state.writes + 1, recent: recent}}
+  defp send_line(state, line), do: do_send(state, line)
 
-          {:error, reason} ->
-            Logger.warning("[hid] output report failed: #{inspect(reason)}")
-            :file.close(state.fd)
-            {:noreply, %{state | fd: nil, errors: state.errors + 1}}
-        end
+  defp do_send(state, line) do
+    Port.command(state.port, line <> "\n")
+    recent = [%{seq: state.writes, hex: line} | state.recent] |> Enum.take(4)
+    {:noreply, %{state | writes: state.writes + 1, recent: recent}}
+  end
 
-      {:error, state} ->
-        {:noreply, state}
+  defp open_port do
+    path = System.find_executable("padwave") || Path.expand("~/.local/bin/padwave")
+
+    case Port.open({:spawn_executable, path}, [
+           :binary,
+           :exit_status,
+           {:line, 2048},
+           {:args, ["output"]}
+         ]) do
+      port -> {:ok, port}
+    end
+  rescue
+    _ -> :error
+  end
+
+  defp serialize(fields) do
+    Enum.map_join(fields, ";", fn {key, value} -> "#{key}=#{encode(value)}" end)
+  end
+
+  defp encode(value) when is_integer(value), do: Integer.to_string(value)
+  defp encode(value) when is_atom(value), do: Atom.to_string(value)
+  defp encode(value) when is_binary(value), do: Base.encode16(value, case: :lower)
+
+  defp encode(value) when is_list(value) do
+    if Enum.all?(value, &is_atom/1) do
+      Enum.map_join(value, ",", &Atom.to_string/1)
+    else
+      Enum.map_join(value, ",", &to_string/1)
     end
   end
 
@@ -173,7 +211,7 @@ defmodule Padwave.Output.Hid do
           _ -> false
         end
 
-      if lit?, do: bor(mask, bsl(1, index - 1)), else: mask
+      if lit?, do: Bitwise.bor(mask, Bitwise.bsl(1, index - 1)), else: mask
     end)
   end
 
@@ -195,23 +233,4 @@ defmodule Padwave.Output.Hid do
   end
 
   defp normalize(value), do: value
-
-  defp open(%{fd: nil} = state) do
-    case Padwave.Input.Device.node() do
-      nil ->
-        {:error, state}
-
-      node ->
-        case :file.open(node, [:write, :raw, :binary]) do
-          {:ok, fd} ->
-            {:ok, %{state | fd: fd}}
-
-          {:error, reason} ->
-            Logger.warning("[hid] cannot open #{node} for writing: #{inspect(reason)}")
-            {:error, state}
-        end
-    end
-  end
-
-  defp open(state), do: {:ok, state}
 end

@@ -6,3 +6,4 @@
 //   padwave opusdec [-e|-s]   the codec helper: encode or decode framed Opus
 int native_main(int argc, char **argv);
 int opusdec_main(int argc, char **argv);
+int output_main(int argc, char **argv);
