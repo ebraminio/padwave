@@ -384,14 +384,13 @@
         <button class="led" data-led="3">3</button>
         <button class="led" data-led="4">4</button>
         <button class="led" data-led="5">5</button>
-        <button id="labLedsApply">apply</button>
         <button id="labLedsReset">reset</button>
       </div>
 
       <div class="lab-row">
         <b>power save</b>
         <span id="psBits" style="display:flex;gap:4px"></span>
-        <button id="labPsSend">send</button>
+        <button id="labPsReset">reset</button>
         <span id="labPsMsg" style="font-family:var(--mono);font-size:11px"></span>
       </div>
       <p style="color:var(--muted);font-size:11.5px;margin:6px 0 0">
@@ -496,12 +495,8 @@ function render(s) {
   $("#title").textContent = cur ? cur.title : "Nothing playing";
   $("#game").textContent = cur ? cur.game : "—";
   const ps = s.hid ? s.hid.power_save : null;
-  if (!psDirty) {
-    document.querySelectorAll("[data-ps]").forEach(b => {
-      b.classList.toggle("on", ps != null && (ps & (1 << Number(b.dataset.ps))) !== 0);
-    });
-    $("#labPsMsg").textContent = ps == null ? "" : ("0x" + (ps & 0xff).toString(16).padStart(2, "0"));
-  }
+  if (bootPs === undefined) bootPs = ps;
+  if (!psDirty) psSetButtons(ps);
 
   const canPlay = c.connected === true && c.jack === true;
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
@@ -822,11 +817,35 @@ async function labSend(payload) {
   }
 }
 
-let labLedMask = 0;
+const kernelLedMask = 0b00100; // the kernel's default: the middle LED
+let labLedMask = kernelLedMask;
 
 // Eight toggles for power_save_control; the value is persistent and comes back
 // from the server, so a reload shows what the controller is actually set to.
 let psDirty = false;
+let bootPs;              // the value the controller had when the page opened
+let psDirtyTimer = null;
+
+function psBitsToMask(bits) {
+  return bits.reduce((acc, b) => acc | (1 << b), 0);
+}
+
+function psSetButtons(value) {
+  document.querySelectorAll("[data-ps]").forEach(b => {
+    const bit = Number(b.dataset.ps);
+    b.classList.toggle("on", value != null && (value & (1 << bit)) !== 0);
+  });
+  $("#labPsMsg").textContent = value == null ? "" : ("0x" + (value & 0xff).toString(16).padStart(2, "0"));
+}
+
+function psSend(bits) {
+  const value = psBitsToMask(bits);
+  psSetButtons(bits.length ? value : null);
+  psDirty = true;
+  clearTimeout(psDirtyTimer);
+  psDirtyTimer = setTimeout(() => { psDirty = false; }, 800);
+  labSend({ kind: "power_save", bits });
+}
 
 // The only two bits anyone has documented; everything else is a guess, and the
 // panel should say so rather than pretend a bare number is a name.
@@ -838,25 +857,28 @@ for (let bit = 0; bit < 8; bit++) {
   b.textContent = psNames[bit] ? `${bit} ${psNames[bit]}` : String(bit);
   b.title = psNames[bit] ? `bit ${bit}: ${psNames[bit]} (documented)` : `bit ${bit}: unknown`;
   b.dataset.ps = String(bit);
-  b.onclick = () => { psDirty = true; b.classList.toggle("on"); };
+  b.onclick = () => {
+    b.classList.toggle("on");
+    const bits = [...document.querySelectorAll("[data-ps].on")].map(x => Number(x.dataset.ps));
+    psSend(bits);
+  };
   $("#psBits").appendChild(b);
 }
 
-$("#labPsSend").onclick = () => {
-  const bits = [...document.querySelectorAll("[data-ps].on")].map(b => Number(b.dataset.ps));
-  const value = bits.reduce((acc, b) => acc | (1 << b), 0);
-  $("#labPsMsg").textContent = "0x" + value.toString(16).padStart(2, "0");
-  psDirty = false;
-  labSend({ kind: "power_save", bits });
+$("#labPsReset").onclick = () => {
+  const bits = bootPs == null ? [] : [...Array(8).keys()].filter(i => (bootPs & (1 << i)) !== 0);
+  psSend(bits);
 };
 
 // Only the player-LED buttons carry data-led; the power-save toggles are also
 // .led for styling, and a broad ".led" selector used to steal their clicks.
 document.querySelectorAll("[data-led]").forEach(btn => {
+  const bit = Number(btn.dataset.led) - 1;
+  btn.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
   btn.onclick = () => {
-    const bit = Number(btn.dataset.led) - 1;
     labLedMask ^= (1 << bit);
     btn.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
+    labSend({ kind: "player_leds", mask: labLedMask });
   };
 });
 
@@ -870,11 +892,13 @@ $("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
 $("#labBarFade").onclick = () => labSend({ kind: "lightbar_fade" });
 $("#labBarSetup").onclick = () => labSend({ kind: "lightbar_setup", value: Number($("#labSetup").value) });
 $("#labBright").onchange = (e) => labSend({ kind: "lightbar_brightness", value: Number(e.target.value) });
-$("#labLedsApply").onclick = () => labSend({ kind: "player_leds", mask: labLedMask });
 $("#labLedsReset").onclick = () => {
-  labLedMask = 0;
-  document.querySelectorAll(".led").forEach(b => b.classList.remove("on"));
-  labSend({ kind: "player_leds_reset" });
+  labLedMask = kernelLedMask;
+  document.querySelectorAll("[data-led]").forEach(b => {
+    const bit = Number(b.dataset.led) - 1;
+    b.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
+  });
+  labSend({ kind: "player_leds", mask: labLedMask });
 };
 
 $("#labTrigFire").onclick = () => {
