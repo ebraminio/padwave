@@ -57,6 +57,27 @@ defmodule Padwave.Output.Lab do
     {:ok, "lightbar overridden"}
   end
 
+  # Classic rumble motors, claimed with valid_flag0 bit 0. The kernel drives
+  # these too for a game's force feedback, so our values last until the next FF
+  # event — fine for poking at the hardware, not a persistent setting. A zero
+  # report after `ms` stops them.
+  def apply(%{"kind" => "rumble"} = params) do
+    left = params["left"] |> to_int(0) |> clamp()
+    right = params["right"] |> to_int(0) |> clamp()
+    ms = params["ms"] |> to_int(400) |> max(0) |> min(5_000)
+
+    Hid.send_fields(%{"valid_flag0" => ["rumble"], "motor_left" => left, "motor_right" => right})
+
+    if ms > 0 do
+      Task.start(fn ->
+        Process.sleep(ms)
+        Hid.send_fields(%{"valid_flag0" => ["rumble"], "motor_left" => 0, "motor_right" => 0})
+      end)
+    end
+
+    {:ok, "rumble #{left}/#{right} for #{ms} ms"}
+  end
+
   # Eight toggles for power_save_control. Only bit 4 (mic mute) and bit 6
   # (audio mute) are documented; the rest are for finding out.
   def apply(%{"kind" => "power_save"} = params) do

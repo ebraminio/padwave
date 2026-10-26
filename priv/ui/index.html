@@ -401,6 +401,15 @@
       </p>
 
       <div class="lab-row">
+        <b>rumble</b>
+        <label>L <input type="range" id="labRumL" min="0" max="255" value="180" style="width:80px"></label>
+        <label>R <input type="range" id="labRumR" min="0" max="255" value="180" style="width:80px"></label>
+        <label>ms <input type="number" id="labRumMs" min="0" max="5000" value="400" style="width:60px"></label>
+        <button id="labRumBuzz">buzz</button>
+        <button id="labRumStop">stop</button>
+      </div>
+
+      <div class="lab-row">
         <b>trigger effect</b>
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
         <select id="labTrigEffect">
@@ -908,6 +917,14 @@ $("#labLedsReset").onclick = () => {
   });
   labSend({ kind: "player_leds", mask: labLedMask });
 };
+
+$("#labRumBuzz").onclick = () => labSend({
+  kind: "rumble",
+  left: Number($("#labRumL").value),
+  right: Number($("#labRumR").value),
+  ms: Number($("#labRumMs").value)
+});
+$("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms: 0 });
 
 $("#labTrigFire").onclick = () => {
   labSend({
