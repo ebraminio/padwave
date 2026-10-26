@@ -187,14 +187,18 @@ defmodule Padwave.Player.Slot do
     {:noreply, state}
   end
 
+  # The mpv process is gone. Stop the slot as well, so the Player's EXIT
+  # handler starts a fresh one and reloads what was playing — a slot that just
+  # drops its connection keeps queueing commands at a dead socket and leaves the
+  # UI reporting a playhead that never moves.
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.warning("[slot #{state.name}] mpv exited with #{status}")
-    {:noreply, %{state | conn: nil}}
+    {:stop, {:mpv_died, status}, %{state | conn: nil, port: nil, loaded: false}}
   end
 
   def handle_info({:EXIT, port, reason}, %{port: port} = state) do
     Logger.warning("[slot #{state.name}] mpv port died: #{inspect(reason)}")
-    {:noreply, %{state | conn: nil}}
+    {:stop, {:mpv_died, reason}, %{state | conn: nil, port: nil, loaded: false}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
