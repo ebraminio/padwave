@@ -11,7 +11,7 @@ defmodule Padwave.Player.Native do
 
   Compared with `Padwave.Player.Ffmpeg`, which spawns ffmpeg *and* an encoder
   port and does the report building in Elixir, this is the same audio path with
-  the serialization moved into C (`scripts/padwave_schemas.hpp`) and one fewer
+  the serialization moved into C (`scripts/padwave_schemas.hh`) and one fewer
   process.
 
   The port protocol deliberately stays line-oriented: it is debuggable from a

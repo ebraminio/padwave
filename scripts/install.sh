@@ -26,13 +26,10 @@ fi
 
 echo "==> native player (experimental)"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
-  if c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
-      -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" \
-      $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz 2>/dev/null; then
-    echo "    built ~/.local/bin/padwave_native (not used by the app yet)"
-  else
-    echo "    skipped: build failed"
-  fi
+  c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
+    -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" \
+    $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz || exit 1
+  echo "    built ~/.local/bin/padwave_native (not used by the app yet)"
 else
   echo "    skipped: needs libavformat/libavcodec/libswresample dev packages"
 fi

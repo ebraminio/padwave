@@ -40,6 +40,17 @@ enum Packet : uint8_t {
   PacketAudio = 0x36,
 };
 
+// The CRC the controller checks: zlib's crc32 seeded with the stream's seed
+// byte (0xA1 input, 0xA2 output, 0xA3 features), over everything before the
+// trailing `crc` member. Every report type carries `crc`, `CrcSeed` and a
+// `report_id`, so one template covers them all.
+template <typename Report>
+static inline uint32_t crc_of(const Report &report) {
+  uint8_t seed = (uint8_t)Report::CrcSeed;
+  uLong c = crc32(0L, &seed, 1);
+  return (uint32_t)crc32(c, (const Bytef *)&report, offsetof(Report, crc));
+}
+
 // ===========================================================================
 // Output: the 47-byte state body shared by 0x31 (Bluetooth) and 0x02 (USB)
 // ===========================================================================
@@ -181,19 +192,9 @@ struct OutputReport {
     body.init();
   }
 
-  void sign() {
-    uint8_t seed = CrcSeed;
-    uLong c = crc32(0L, &seed, 1);
-    c = crc32(c, (const Bytef *)this, offsetof(OutputReport, crc));
-    crc = (uint32_t)c;
-  }
+  void sign() { crc = crc_of(*this); }
 
-  bool valid() const {
-    uint8_t seed = CrcSeed;
-    uLong c = crc32(0L, &seed, 1);
-    c = crc32(c, (const Bytef *)this, offsetof(OutputReport, crc));
-    return report_id == ReportId && crc == (uint32_t)c;
-  }
+  bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
 } __attribute__((packed));
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
@@ -317,12 +318,7 @@ struct InputReport {
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
-  bool valid() const {
-    uint8_t seed = CrcSeed;
-    uLong c = crc32(0L, &seed, 1);
-    c = crc32(c, (const Bytef *)this, offsetof(InputReport, crc));
-    return crc == (uint32_t)c;
-  }
+  bool valid() const { return crc == crc_of(*this); }
 } __attribute__((packed));
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
@@ -405,19 +401,9 @@ struct AudioReport {
     speaker_length = OpusSize;
   }
 
-  void sign() {
-    uint8_t seed = CrcSeed;
-    uLong c = crc32(0L, &seed, 1);
-    c = crc32(c, (const Bytef *)this, offsetof(AudioReport, crc));
-    crc = (uint32_t)c;
-  }
+  void sign() { crc = crc_of(*this); }
 
-  bool valid() const {
-    uint8_t seed = CrcSeed;
-    uLong c = crc32(0L, &seed, 1);
-    c = crc32(c, (const Bytef *)this, offsetof(AudioReport, crc));
-    return report_id == ReportId && crc == (uint32_t)c;
-  }
+  bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
 } __attribute__((packed));
 
 static_assert(sizeof(AudioReport::State) == AudioReport::StateSize,
