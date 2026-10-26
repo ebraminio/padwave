@@ -17,7 +17,7 @@ defmodule Padwave.Output.ChargingLeds do
   alias Padwave.Output.Hid
 
   # Slow alternation: LEDs 2+4, then 1+3+5, and back. Not a chase — a breath.
-  @tick_ms 900
+  @tick_ms 3_000
   @pattern [0b01010, 0b10101]
   @home 0b00100
 
