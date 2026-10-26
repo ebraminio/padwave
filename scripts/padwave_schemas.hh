@@ -1,20 +1,4 @@
-// padwave_schemas.hpp — the DualSense wire formats as C++ structs.
-//
-// No STL, no RTTI, no exceptions: plain structs, plain enums, member functions,
-// and it builds with -fno-exceptions -fno-rtti. The struct *is* the wire layout
-// (packed, little-endian), so reading a report is a memcpy and writing one is a
-// memcpy after filling the fields.
-//
-// Fields come first in every struct; the constants and enums follow. C++ makes
-// enum names and function bodies visible throughout the class, so they may be
-// used below where they are declared — but a nested *type* used as a field's
-// type must still be declared before that field (AudioReport::State is the one
-// case here).
-//
-// Values and comments are transcribed from the Elixir schemas in
-// lib/padwave/schemas, which remain the reference for the decoding side.
-#ifndef PADWAVE_SCHEMAS_HPP
-#define PADWAVE_SCHEMAS_HPP
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -22,11 +6,7 @@
 
 #include <zlib.h>
 
-#include "dsu-open-type.hh"
-
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
-#error "padwave_schemas.hpp assumes a little-endian host"
-#endif
+#include "padwave_number.hh"
 
 namespace padwave {
 
@@ -58,33 +38,33 @@ static inline uint32_t crc_of(const Report &report) {
 // ===========================================================================
 
 struct OutputBody {
-  DSUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
-  DSUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
-  DSUINT8 motor_right;              // +0x02  DS4-compatible rumble
-  DSUINT8 motor_left;               // +0x03
-  DSUINT8 headphone_volume;         // +0x04  0x00..0x7f
-  DSUINT8 speaker_volume;           // +0x05  0x00..0xff
-  DSUINT8 mic_volume;               // +0x06  0x00..0x40 (claimed by MicVolume)
-  DSUINT8 audio_control;            // +0x07  AudioControl; claimed by AudioRouting
-  DSUINT8 mute_button_led;          // +0x08
-  DSUINT8 power_save_control;       // +0x09  PowerSave bits
-  DSUINT8 right_trigger_mode;       // +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
+  PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
+  PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
+  PWUINT8 motor_right;              // +0x02  DS4-compatible rumble
+  PWUINT8 motor_left;               // +0x03
+  PWUINT8 headphone_volume;         // +0x04  0x00..0x7f
+  PWUINT8 speaker_volume;           // +0x05  0x00..0xff
+  PWUINT8 mic_volume;               // +0x06  0x00..0x40 (claimed by MicVolume)
+  PWUINT8 audio_control;            // +0x07  AudioControl; claimed by AudioRouting
+  PWUINT8 mute_button_led;          // +0x08
+  PWUINT8 power_save_control;       // +0x09  PowerSave bits
+  PWUINT8 right_trigger_mode;       // +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
                                     //        0x26 vibration (0x22/0x23/0x27 unofficial)
-  DSUINT8 right_trigger_params[10]; // +0x0b  zones + 3-bit strength,
+  PWUINT8 right_trigger_params[10]; // +0x0b  zones + 3-bit strength,
                                     //        vibration frequency at byte 9
-  DSUINT8 left_trigger_mode;        // +0x15
-  DSUINT8 left_trigger_params[10];  // +0x16
-  DSUINT8 reserved_32[4];           // +0x20..0x23
-  DSUINT8 haptic_volume;            // +0x24
-  DSUINT8 audio_control2;           // +0x25  speaker preamp gain
-  DSUINT8 valid_flag2;              // +0x26  ValidFlag2 bits
-  DSUINT8 reserved_39[2];           // +0x27..0x28
-  DSUINT8 lightbar_setup;           // +0x29  fade-out after power-on
-  DSUINT8 led_brightness;           // +0x2a
-  DSUINT8 player_leds;              // +0x2b  PlayerLeds bits
-  DSUINT8 lightbar_red;             // +0x2c
-  DSUINT8 lightbar_green;           // +0x2d
-  DSUINT8 lightbar_blue;            // +0x2e
+  PWUINT8 left_trigger_mode;        // +0x15
+  PWUINT8 left_trigger_params[10];  // +0x16
+  PWUINT8 reserved_32[4];           // +0x20..0x23
+  PWUINT8 haptic_volume;            // +0x24
+  PWUINT8 audio_control2;           // +0x25  speaker preamp gain
+  PWUINT8 valid_flag2;              // +0x26  ValidFlag2 bits
+  PWUINT8 reserved_39[2];           // +0x27..0x28
+  PWUINT8 lightbar_setup;           // +0x29  fade-out after power-on
+  PWUINT8 led_brightness;           // +0x2a
+  PWUINT8 player_leds;              // +0x2b  PlayerLeds bits
+  PWUINT8 lightbar_red;             // +0x2c
+  PWUINT8 lightbar_green;           // +0x2d
+  PWUINT8 lightbar_blue;            // +0x2e
 
   enum : uint8_t { Size = 47 };
 
@@ -174,12 +154,12 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // ===========================================================================
 
 struct OutputReport {
-  DSUINT8 report_id;     // 0x00  PacketStateBluetooth
-  DSUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
-  DSUINT8 tag;           // 0x02  must be 0x10
+  PWUINT8 report_id;     // 0x00  PacketStateBluetooth
+  PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
+  PWUINT8 tag;           // 0x02  must be 0x10
   OutputBody body;       // 0x03..0x31
-  DSUINT8 reserved4[24]; // 0x32..0x49
-  DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
+  PWUINT8 reserved4[24]; // 0x32..0x49
+  PWUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
   enum : uint8_t {
     ReportId = PacketStateBluetooth,
@@ -206,42 +186,42 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // ===========================================================================
 
 struct InputBody {
-  DSUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
-  DSUINT8 ly;                 // +0x01  left stick Y, 0 = up
-  DSUINT8 rx;                 // +0x02  right stick X
-  DSUINT8 ry;                 // +0x03  right stick Y
-  DSUINT8 l2;                 // +0x04  L2 analogue
-  DSUINT8 r2;                 // +0x05  R2 analogue
-  DSUINT8 seq;                // +0x06  report sequence number
-  DSUINT32 buttons;           // +0x07  Buttons bits (d-pad in bits 0-3)
-  DSUINT8 incremental;        // +0x0b  increments every report, wraps at 256
-  DSUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
+  PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
+  PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
+  PWUINT8 rx;                 // +0x02  right stick X
+  PWUINT8 ry;                 // +0x03  right stick Y
+  PWUINT8 l2;                 // +0x04  L2 analogue
+  PWUINT8 r2;                 // +0x05  R2 analogue
+  PWUINT8 seq;                // +0x06  report sequence number
+  PWUINT32 buttons;           // +0x07  Buttons bits (d-pad in bits 0-3)
+  PWUINT8 incremental;        // +0x0b  increments every report, wraps at 256
+  PWUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
                               //        minutes — a slow counter
-  DSINT16 gyro_x;             // +0x0f  angular velocity, little-endian
-  DSINT16 gyro_y;             // +0x11
-  DSINT16 gyro_z;             // +0x13
-  DSINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
-  DSINT16 accel_y;            // +0x17
-  DSINT16 accel_z;            // +0x19
-  DSUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
-  DSUINT8 temperature;        // +0x1f  controller temperature, degrees C
-  DSUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low), y high
-  DSUINT8 touch2[4];          // +0x24
-  DSUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
-  DSUINT8 trigger_feedback_r; // +0x29
-  DSUINT32 host_time;         // +0x2a  community calls it the echoed host
+  PWINT16 gyro_x;             // +0x0f  angular velocity, little-endian
+  PWINT16 gyro_y;             // +0x11
+  PWINT16 gyro_z;             // +0x13
+  PWINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
+  PWINT16 accel_y;            // +0x17
+  PWINT16 accel_z;            // +0x19
+  PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
+  PWUINT8 temperature;        // +0x1f  controller temperature, degrees C
+  PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low), y high
+  PWUINT8 touch2[4];          // +0x24
+  PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
+  PWUINT8 trigger_feedback_r; // +0x29
+  PWUINT32 host_time;         // +0x2a  community calls it the echoed host
                               //        timestamp; a constant 9 for a whole
                               //        session, so unverified
-  DSUINT8 device_feedback[4]; // +0x2e  labelled "device feedback", but the low
+  PWUINT8 device_feedback[4]; // +0x2e  labelled "device feedback", but the low
                               //        bytes change every report and 0x31
                               //        tracks sensor_time's high byte: it
                               //        behaves like a second device clock
-  DSUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
-  DSUINT8 status0;            // +0x34  battery (low nibble) + charging (high)
-  DSUINT8 status1;            // +0x35  Status1 bits
-  DSUINT8 status2;            // +0x36  constant 1 in every capture so far
-  DSUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
+  PWUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
+  PWUINT8 status0;            // +0x34  battery (low nibble) + charging (high)
+  PWUINT8 status1;            // +0x35  Status1 bits
+  PWUINT8 status2;            // +0x36  constant 1 in every capture so far
+  PWUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
                               //        per-report MAC/nonce; not verified
                               //        against the pairing handshake
 
@@ -304,13 +284,13 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // ===========================================================================
 
 struct InputReport {
-  DSUINT8 report_id;      // 0x00  PacketStateBluetooth
-  DSUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
+  PWUINT8 report_id;      // 0x00  PacketStateBluetooth
+  PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
   InputBody body;         // 0x02..0x40
-  DSUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
+  PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
                           //             distinct values in a 150 s capture), the
                           //             other eight were; unknown
-  DSUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+  PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
 
   enum : uint8_t {
     ReportId = PacketStateBluetooth,
@@ -340,27 +320,27 @@ struct AudioReport {
   // the class can follow its fields.
   struct State {
     OutputBody body;     // +0x00..0x2e
-    DSUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
+    PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
   } __attribute__((packed));
 
-  DSUINT8 report_id;         // 0x000  PacketAudio
-  DSUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
-  DSUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  DSUINT8 config_length;     // 0x003  7
-  DSUINT8 enable_mask;       // 0x004  EnableMask bits
-  DSUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
-  DSUINT8 counter;           // 0x00a  free-running 8-bit counter
-  DSUINT8 state_tag;         // 0x00b  0x10 | 0x80
-  DSUINT8 state_length;      // 0x00c  63
+  PWUINT8 report_id;         // 0x000  PacketAudio
+  PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
+  PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
+  PWUINT8 config_length;     // 0x003  7
+  PWUINT8 enable_mask;       // 0x004  EnableMask bits
+  PWUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
+  PWUINT8 counter;           // 0x00a  free-running 8-bit counter
+  PWUINT8 state_tag;         // 0x00b  0x10 | 0x80
+  PWUINT8 state_length;      // 0x00c  63
   State state;               // 0x00d..0x04b
-  DSUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
-  DSUINT8 haptics_length;    // 0x04d  64
-  DSINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  DSUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  DSUINT8 speaker_length;    // 0x08f  200
-  DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  DSUINT8 padding[50];       // 0x158..0x189
-  DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
+  PWUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
+  PWUINT8 haptics_length;    // 0x04d  64
+  PWINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  PWUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  PWUINT8 speaker_length;    // 0x08f  200
+  PWUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  PWUINT8 padding[50];       // 0x158..0x189
+  PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
   enum : uint8_t {
     ReportId = PacketAudio,
@@ -425,29 +405,29 @@ static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 byte
 // visible.
 
 struct Calibration {
-  DSUINT8 report_id; // 0x00  PacketFeatureCalibration
+  PWUINT8 report_id; // 0x00  PacketFeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
   // plus/minus at 1 g per axis.
-  DSINT16 gyro_pitch_bias;
-  DSINT16 gyro_yaw_bias;
-  DSINT16 gyro_roll_bias;
-  DSINT16 gyro_pitch_plus;
-  DSINT16 gyro_pitch_minus;
-  DSINT16 gyro_yaw_plus;
-  DSINT16 gyro_yaw_minus;
-  DSINT16 gyro_roll_plus;
-  DSINT16 gyro_roll_minus;
-  DSINT16 gyro_speed_plus;
-  DSINT16 gyro_speed_minus;
-  DSINT16 acc_x_plus;
-  DSINT16 acc_x_minus;
-  DSINT16 acc_y_plus;
-  DSINT16 acc_y_minus;
-  DSINT16 acc_z_plus;
-  DSINT16 acc_z_minus;
-  DSUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
+  PWINT16 gyro_pitch_bias;
+  PWINT16 gyro_yaw_bias;
+  PWINT16 gyro_roll_bias;
+  PWINT16 gyro_pitch_plus;
+  PWINT16 gyro_pitch_minus;
+  PWINT16 gyro_yaw_plus;
+  PWINT16 gyro_yaw_minus;
+  PWINT16 gyro_roll_plus;
+  PWINT16 gyro_roll_minus;
+  PWINT16 gyro_speed_plus;
+  PWINT16 gyro_speed_minus;
+  PWINT16 acc_x_plus;
+  PWINT16 acc_x_minus;
+  PWINT16 acc_y_plus;
+  PWINT16 acc_y_minus;
+  PWINT16 acc_z_plus;
+  PWINT16 acc_z_minus;
+  PWUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
 
   enum : uint8_t { ReportId = PacketFeatureCalibration, Size = 41 };
 } __attribute__((packed));
@@ -455,9 +435,9 @@ struct Calibration {
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
 
 struct Pairing {
-  DSUINT8 report_id;      // 0x00  PacketFeaturePairing
-  DSUINT8 mac[6];         // 0x01..0x06  the controller's own address
-  DSUINT8 unknown_07[13]; // 0x07..0x13
+  PWUINT8 report_id;      // 0x00  PacketFeaturePairing
+  PWUINT8 mac[6];         // 0x01..0x06  the controller's own address
+  PWUINT8 unknown_07[13]; // 0x07..0x13
 
   enum : uint8_t { ReportId = PacketFeaturePairing, Size = 20 };
 } __attribute__((packed));
@@ -465,13 +445,13 @@ struct Pairing {
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
-  DSUINT8 report_id;       // 0x00  PacketFeatureFirmware
-  DSUINT8 unknown_01[23];  // 0x01..0x17
-  DSUINT32 hw_version;     // 0x18..0x1b
-  DSUINT32 fw_version;     // 0x1c..0x1f
-  DSUINT8 unknown_32[12];  // 0x20..0x2b
-  DSUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
-  DSUINT8 unknown_46[18];  // 0x2e..0x3f
+  PWUINT8 report_id;       // 0x00  PacketFeatureFirmware
+  PWUINT8 unknown_01[23];  // 0x01..0x17
+  PWUINT32 hw_version;     // 0x18..0x1b
+  PWUINT32 fw_version;     // 0x1c..0x1f
+  PWUINT8 unknown_32[12];  // 0x20..0x2b
+  PWUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
+  PWUINT8 unknown_46[18];  // 0x2e..0x3f
 
   enum : uint8_t { ReportId = PacketFeatureFirmware, Size = 64 };
 } __attribute__((packed));
@@ -522,5 +502,3 @@ struct MicFrame {
 };
 
 } // namespace padwave
-
-#endif // PADWAVE_SCHEMAS_HPP

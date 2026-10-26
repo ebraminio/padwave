@@ -27,7 +27,7 @@ fi
 echo "==> native player (experimental)"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 \
-    -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" \
+    -o "$HOME/.local/bin/padwave_native" "$ROOT/scripts/padwave_native.cc" -Wno-deprecated-declarations \
     $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz || exit 1
   echo "    built ~/.local/bin/padwave_native (not used by the app yet)"
 else
