@@ -1,6 +1,5 @@
 [Unit]
 Description=padwave — DualSense radio
-Documentation=https://github.com/ebrahim/padwave
 After=pipewire.service wireplumber.service bluetooth.target network-online.target
 Wants=pipewire.service
 
@@ -11,6 +10,8 @@ Environment=MIX_ENV=prod
 Environment=HOME=%h
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=ELIXIR_ERL_OPTIONS=+fnu
+# Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
+EnvironmentFile=-%h/.config/padwave/env
 ExecStart=/usr/bin/mix run --no-halt
 Restart=on-failure
 RestartSec=3

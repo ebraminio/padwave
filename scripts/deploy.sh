@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Deploy from the Mac to the Pi and restart the service.
 #
-#   PADWAVE_HOST=ebrahim@192.168.1.175 ./scripts/deploy.sh
+#   PADWAVE_HOST=user@host ./scripts/deploy.sh
 set -euo pipefail
 
-HOST="${PADWAVE_HOST:-ebrahim@192.168.1.175}"
+HOST="${PADWAVE_HOST:?set PADWAVE_HOST=user@host}"
 TARGET="${PADWAVE_DIR:-padwave}"
 
 cd "$(dirname "$0")/.."

@@ -13,6 +13,17 @@ mix local.rebar --force >/dev/null
 mix deps.get >/dev/null
 mix compile
 
+echo "==> audio folders"
+mkdir -p "$HOME/.config/padwave"
+if [ ! -f "$HOME/.config/padwave/env" ]; then
+  cat > "$HOME/.config/padwave/env" <<'ENVEOF'
+# padwave reads this at startup.
+# Colon-separated folders, scanned recursively for audio files.
+# PADWAVE_ROOTS=/srv/audio:/media/usb/podcasts
+ENVEOF
+  echo "    created ~/.config/padwave/env (default: ~/Music)"
+fi
+
 echo "==> systemd user unit"
 mkdir -p "$HOME/.config/systemd/user"
 install -m 0644 "$ROOT/scripts/padwave.service" "$HOME/.config/systemd/user/padwave.service"

@@ -8,8 +8,7 @@ import Config
 # ---------------------------------------------------------------------------
 
 config :padwave,
-  # Where the radio stations live. Scanned recursively for audio files.
-  music_roots: ["/home/ebrahim/GTA-Radio-Stations"],
+  # music_roots comes from config/runtime.exs: PADWAVE_ROOTS, default ~/Music.
 
   # PipeWire sink that LinuxAudio4Dualsense5 exposes. Pinning the player to it
   # means the music keeps going to the controller even if the system default

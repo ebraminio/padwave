@@ -1,8 +1,11 @@
 # padwave
 
-A controller-driven radio for the Raspberry Pi. One DualSense over Bluetooth, a
-folder of GTA radio stations, and the controller's own headphone jack as the
-speaker.
+A controller-driven player for the Raspberry Pi. One DualSense over Bluetooth, a
+folder of audio files, and the controller's own headphone jack as the speaker.
+
+A station is a file, so anything that sits in a folder already works: radio
+rips, long mixes, albums, podcast feeds you have already downloaded. Online
+feeds and live streams are the next step, not today's.
 
 ```
 DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ Radio ──▶ mpv ×2 ──▶ PipeWire
@@ -26,7 +29,8 @@ DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ 
 | PS held ~2 s | save the playhead and power the controller off |
 | Edge paddles, Fn buttons | previous / next station, pause, mute |
 
-Analogue sticks are unbound on purpose: this controller's are worn and jitter.
+Analogue sticks are deliberately unbound: ours are worn and jitter, so they do
+the one thing they are good for — being ignored.
 
 ## Idle
 
@@ -42,6 +46,13 @@ git clone <this repo> ~/padwave
 cd ~/padwave
 ./scripts/install.sh          # builds, installs a systemd user unit, starts it
 sudo loginctl enable-linger $USER   # once, so it starts at boot
+```
+
+Audio folders come from `PADWAVE_ROOTS` (colon-separated, default `~/Music`),
+set in `~/.config/padwave/env`:
+
+```bash
+PADWAVE_ROOTS=/srv/audio:/media/usb/podcasts
 ```
 
 Needs `mpv`, `pipewire` + `pipewire-pulse`, Elixir ≥ 1.14, and
@@ -115,3 +126,7 @@ mix test
 Covers packet decoding against captured reports, the output encoder against a
 captured kernel packet, CRC, the shuffle bag, the idle timer, and end-to-end
 button mapping through the report simulator.
+
+---
+
+*built for a DualSense whose ✕ gave up.*

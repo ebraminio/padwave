@@ -2,9 +2,9 @@ defmodule Padwave.Library do
   @moduledoc """
   Scans the music roots for playable files.
 
-  A "track" here is a whole radio station — the GTA stations are 25–45 minute
-  single files — so seeking and steering inside a track matter as much as
-  switching between them.
+  A "track" here is a whole station or episode — one 25–45 minute file — so
+  seeking and steering inside a track matter as much as switching between
+  them.
   """
 
   defmodule Track do

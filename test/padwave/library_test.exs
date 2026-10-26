@@ -5,14 +5,14 @@ defmodule Padwave.LibraryTest do
 
   setup do
     root = Path.join(System.tmp_dir!(), "padwave-library-#{System.unique_integer([:positive])}")
-    File.mkdir_p!(Path.join(root, "GTA Vice City"))
-    File.mkdir_p!(Path.join(root, "GTA III"))
+    File.mkdir_p!(Path.join(root, "Radio One"))
+    File.mkdir_p!(Path.join(root, "Radio Two"))
 
     for {dir, name} <- [
-          {"GTA Vice City", "VCPR.flac"},
-          {"GTA Vice City", "Wave 103.wav"},
-          {"GTA III", "Head Radio.flac"},
-          {"GTA III", "notes.txt"}
+          {"Radio One", "One.flac"},
+          {"Radio One", "Two.wav"},
+          {"Radio Two", "Three.flac"},
+          {"Radio Two", "notes.txt"}
         ] do
       File.write!(Path.join([root, dir, name]), "")
     end
@@ -29,18 +29,18 @@ defmodule Padwave.LibraryTest do
     refute Enum.any?(tracks, &String.ends_with?(&1.path, ".txt"))
   end
 
-  test "splits the path into a station and a game", %{root: root} do
+  test "splits the path into a title and a folder", %{root: root} do
     tracks = Library.scan([root])
-    vcpr = Enum.find(tracks, &(&1.title == "VCPR"))
+    one = Enum.find(tracks, &(&1.title == "One"))
 
-    assert vcpr.game == "GTA Vice City"
-    assert vcpr.id =~ ~r/^[0-9a-f]{12}$/
+    assert one.game == "Radio One"
+    assert one.id =~ ~r/^[0-9a-f]{12}$/
   end
 
-  test "sorts by game then station", %{root: root} do
+  test "sorts by folder then title", %{root: root} do
     titles = Library.scan([root]) |> Enum.map(& &1.title)
 
-    assert titles == ["Head Radio", "VCPR", "Wave 103"]
+    assert titles == ["One", "Two", "Three"]
   end
 
   test "a missing root is not a crash" do
