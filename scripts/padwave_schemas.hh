@@ -145,7 +145,7 @@ struct OutputBody {
     audio_control = routing;
     audio_control2 = 0x0A;
   }
-} __attribute__((packed));
+};
 
 static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 bytes");
 
@@ -177,7 +177,7 @@ struct OutputReport {
   void sign() { crc = crc_of(*this); }
 
   bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
-} __attribute__((packed));
+};
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
 
@@ -275,7 +275,7 @@ struct InputBody {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
   };
-} __attribute__((packed));
+};
 
 static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 bytes");
 
@@ -301,7 +301,7 @@ struct InputReport {
   };
 
   bool valid() const { return crc == crc_of(*this); }
-} __attribute__((packed));
+};
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
 
@@ -321,7 +321,7 @@ struct AudioReport {
   struct State {
     OutputBody body;     // +0x00..0x2e
     PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
-  } __attribute__((packed));
+  };
 
   PWUINT8 report_id;         // 0x000  PacketAudio
   PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
@@ -386,7 +386,7 @@ struct AudioReport {
   void sign() { crc = crc_of(*this); }
 
   bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
-} __attribute__((packed));
+};
 
 static_assert(sizeof(AudioReport::State) == AudioReport::StateSize,
               "the audio state snapshot must stay 63 bytes");
@@ -430,7 +430,7 @@ struct Calibration {
   PWUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
 
   enum : uint8_t { ReportId = PacketFeatureCalibration, Size = 41 };
-} __attribute__((packed));
+};
 
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
 
@@ -440,7 +440,7 @@ struct Pairing {
   PWUINT8 unknown_07[13]; // 0x07..0x13
 
   enum : uint8_t { ReportId = PacketFeaturePairing, Size = 20 };
-} __attribute__((packed));
+};
 
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
@@ -454,7 +454,7 @@ struct Firmware {
   PWUINT8 unknown_46[18];  // 0x2e..0x3f
 
   enum : uint8_t { ReportId = PacketFeatureFirmware, Size = 64 };
-} __attribute__((packed));
+};
 
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 
