@@ -26,10 +26,28 @@ defmodule Padwave.Output.Lightbar do
   @doc "Drops the override and repaints the state colour."
   def clear, do: GenServer.cast(__MODULE__, :clear)
 
+  @doc "What the bar is showing, for the debug endpoint."
+  def status, do: GenServer.call(__MODULE__, :status, 2_000)
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    {:reply,
+     %{
+       mode: state.mode,
+       muted: state.muted,
+       painted: rgb(state.painted),
+       custom: rgb(state.custom)
+     }, state}
+  end
+
+  # Tuples are not JSON, and the debug endpoint is JSON.
+  defp rgb(nil), do: nil
+  defp rgb({r, g, b}), do: [r, g, b]
+
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{mode: :off, bright: false, custom: nil, painted: nil}}
+    {:ok, %{mode: :off, muted: false, bright: false, custom: nil, painted: nil}}
   end
 
   @impl true
@@ -48,8 +66,19 @@ defmodule Padwave.Output.Lightbar do
   def handle_info({:padwave, {:session, :active}}, state), do: {:noreply, set(state, :playing)}
   def handle_info({:padwave, {:radio, {:suspended, _reason}}}, state), do: {:noreply, set(state, :off)}
 
-  def handle_info({:padwave, {:radio, {:volume, 0}}}, state), do: {:noreply, set(state, :muted)}
-  def handle_info({:padwave, {:radio, {:volume, _level}}}, state), do: {:noreply, set(state, :playing)}
+  # Transport and mute are independent: unmuting returns to whatever the
+  # transport was, not to "playing".
+  def handle_info({:padwave, {:radio, {:transport, transport}}}, state)
+      when transport in [:playing, :paused],
+      do: {:noreply, set(state, transport)}
+
+  def handle_info({:padwave, {:radio, {:volume, 0}}}, state) do
+    {:noreply, paint(%{state | muted: true, custom: nil})}
+  end
+
+  def handle_info({:padwave, {:radio, {:volume, _level}}}, state) do
+    {:noreply, paint(%{state | muted: false})}
+  end
 
   def handle_info({:padwave, {:device, :down, _info}}, state), do: {:noreply, %{state | mode: :off}}
 
@@ -72,6 +101,7 @@ defmodule Padwave.Output.Lightbar do
 
   defp set(state, mode), do: paint(%{state | mode: mode, custom: nil})
 
+  defp paint(%{custom: nil, muted: true} = state), do: do_paint(state, color(:muted))
   defp paint(%{custom: nil} = state), do: do_paint(state, color(state.mode))
   defp paint(%{custom: rgb} = state), do: do_paint(state, rgb)
 

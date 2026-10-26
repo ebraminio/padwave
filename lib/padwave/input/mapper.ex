@@ -59,6 +59,17 @@ defmodule Padwave.Input.Mapper do
   @doc "Latest frame plus a little context, for the UI."
   def snapshot, do: GenServer.call(__MODULE__, :snapshot, 2000)
 
+  @doc """
+  Whether a headset is in the jack: `true`, `false`, or `nil` before the first
+  frame (so callers can tell "out" from "don't know yet").
+  """
+  def jack? do
+    case snapshot() do
+      %{frame: %{jack: jack}} -> jack
+      _ -> nil
+    end
+  end
+
   @impl true
   def init(_opts) do
     Bus.subscribe()

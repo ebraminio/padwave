@@ -283,6 +283,12 @@ defmodule Padwave.Radio do
         Process.send_after(self(), :resume, 800)
         {:noreply, state}
 
+      Padwave.Input.Mapper.jack?() == false ->
+        # Nothing to hear: the jack is the output path. Stay paused, and let
+        # the session's "nothing to play to" timer put the pad back to sleep.
+        Logger.info("[radio] headset is out — not resuming")
+        {:noreply, %{state | resume_pending: false, paused: true}}
+
       true ->
         Logger.info("[radio] resuming #{state.current.title} at #{Float.round(state.position, 1)}s")
 
@@ -383,6 +389,7 @@ defmodule Padwave.Radio do
   defp toggle_pause(state) do
     paused = not state.paused
     Player.pause(paused)
+    Bus.broadcast({:radio, {:transport, if(paused, do: :paused, else: :playing)}})
     persist(%{state | paused: paused})
   end
 
