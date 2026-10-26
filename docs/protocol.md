@@ -32,7 +32,7 @@ payload + 15 reserved`) and the descriptor in DualSenseClient suggests 48 (`id +
 | `0x31` | out | 78 | state report: LEDs, player LEDs, rumble, triggers, audio routing | driven (lightbar, trigger actuators, lab) |
 | `0x02` | out | 48–63 | state report, USB | encoded (`:output_usb`), unused |
 | `0x36` | out | 398 | audio: config + state + haptics + Opus speaker | described (`:audio_out`), owned by LinuxAudio4Dualsense5 |
-| `0x31` + | in | 78 | microphone Opus inside the input report, marker `0xD4` | not used; the audio service mutes it |
+| `0x31` | in | variable | microphone Opus: same report id, but byte 3 is the TOC `0xD4` | not decoded; see [Microphone stream](#microphone-stream) |
 | `0x32` | out | 78 | haptics-only variant used in the audio project's early experiments | documented only |
 | `0x05` | feat | 41 | motion-sensor calibration: 17 × int16 LE | described (`:calibration`) |
 | `0x09` | feat | 20 | pairing info: MAC at `[1..6]` | described (`:pairing`) |
@@ -68,13 +68,74 @@ galloping, machine) are unofficial and firmware-dependent. The panel and the
 "buzz while changing volume" path both go through
 `Padwave.Output.TriggerEffects`.
 
-**Microphone over Bluetooth.** No audio class; the mic rides the `0x36`
-duplex. Enable it with bit 0 of the audio enable mask (`0xFF` instead of
-`0xFE`), keep `power_save_control` bit 4 clear and `mic_volume` non-zero with
-`valid_flag0` bit 6 set, then demux the `0x31` input stream: audio frames keep
-the report id but carry the Opus TOC `0xD4` at report byte 3 and are Opus
-48 kHz mono, 10 ms each. Duplex roughly doubles the link's traffic and makes
-those frames look like wild stick input to anything that doesn't check.
+## Microphone stream
+
+The DualSense has no audio class over Bluetooth: the microphone shares the
+reports with everything else, and its frames are Opus, not PCM. Capturing it
+takes three separate changes; all three live in the outgoing `0x36` audio
+report.
+
+### Enabling it
+
+| # | field | value | why |
+|---|---|---|---|
+| 1 | `power_save_control` (+0x09) | bit 4 = 0, **and** `valid_flag1` bit 1 (`power_save`) claims the byte | unmutes the mic — without the claim the write is inert |
+| 2 | audio enable mask (`0x36` byte 4) | bit 0 set: `0xFF` instead of `0xFE` | asks the controller to start sending capture frames |
+| 3 | `mic_volume` (+0x06) | `0x40`, claimed by `valid_flag0` bit 6 | without it the frames are silence |
+
+Step 2 is the one that opens the tap; step 1 is the one people forget, because
+the controller happily accepts an unmute for a field nobody claimed.
+
+### What comes back
+
+Still report id `0x31`, but **not** the state report: byte 3 is the constant
+Opus table-of-contents byte `0xD4`. That marker is the whole demultiplexing
+trick — a state report has the sequence/tag nibbles there instead.
+
+```
+0x31  seq  ..  0xD4 | one Opus frame | CRC-32 (4 bytes, seed 0xA1)
+```
+
+Frames arrive about every 10 ms. The audio project's reader is exactly this
+filter plus a decoder:
+
+```c
+if (buf[0] != 0x31 || n < 16 || buf[3] != MIC_TOC) continue;
+int ns = opus_decode(dec, buf + 3, n - 3 - 4, pcm, MIC_FRAME, 0);
+```
+
+### Format
+
+| property | value |
+|---|---|
+| codec | Opus (not PCM) |
+| sample rate | 48 000 Hz |
+| channels | mono |
+| frame | 480 samples = 10 ms |
+| packet rate | ~100/s |
+| trailing bytes | CRC-32, seed `0xA1` |
+
+`LinuxAudio4Dualsense5` decodes each frame to s16, stores it in a one-second
+ring buffer with a 100 ms prebuffer, and publishes it as the PipeWire source
+`ds5_mic` — that node is the only way to hear it, because the kernel
+does not decode these blocks at all.
+
+### Caveats
+
+* **It disturbs the gamepad input.** Mic frames carry the same report id as the
+  state report; anything that assumes every `0x31` is 78 bytes will read them as
+  wild sticks and buttons. Padwave drops them by length, but they still cost
+  link time and can delay state frames — the audio project says so next to its
+  own microphone checkbox.
+* **The kernel ignores it.** `hid-playstation` never parses the audio blocks, so
+  there is no ALSA capture device; `ds5_mic` belongs to the audio project.
+* **Both directions share the link.** Speaker down and mic up are each roughly
+  160 kbps of Opus; duplex nearly doubles the Bluetooth traffic.
+* **Our own sink no longer claims `power_save`.** The membrane snapshot was
+  trimmed to audio-output fields only, so if the microphone is ever enabled
+  there, bit 1 of `valid_flag1` has to come back or step 1 does nothing.
+
+## Two writers, one state
 
 **Two writers, one state.** The `0x36` audio stream carries a state snapshot
 (sub-packet `0x10`) every 10.667 ms, and its `valid_flag0` decides which fields

@@ -38,9 +38,10 @@ defmodule Padwave.Schema.DualSenseAudio do
 
   1. Set bit 0 of the audio enable mask at `0x004`: `0xFF` instead of `0xFE`.
   2. Don't mute it in the state snapshot — `power_save_control` (`+0x09`) must
-     have its 0x10 bit clear, and `mic_volume` (`+0x06`) must be non-zero
-     (0x40 is full) with the `:mic_volume` bit of `valid_flag0` set so the
-     value is adopted.
+     have its 0x10 bit clear, **and** `valid_flag1` bit 1 (`:power_save`) must
+     claim the byte or the write is inert. `mic_volume` (`+0x06`) must be
+     non-zero (0x40 is full) with the `:mic_volume` bit of `valid_flag0` set so
+     the value is adopted.
   3. Demux the input. While duplex is on, the controller interleaves frames
      that keep report id `0x31` but carry the Opus TOC `0xD4` at report byte 3
      (input payload `+0x01`). Those are Opus 48 kHz mono, one 10 ms frame each:
@@ -48,6 +49,9 @@ defmodule Padwave.Schema.DualSenseAudio do
   4. Expect a busy link. Duplex roughly doubles the traffic, and anything that
      parses every `0x31` as gamepad data will see phantom sticks — the stick
      fields in those frames are Opus bytes, not positions.
+
+  `docs/protocol.md` has the same recipe with the packet layout and the
+  reasoning; this is the short version.
 
   ## The state snapshot is a whole output payload
 
