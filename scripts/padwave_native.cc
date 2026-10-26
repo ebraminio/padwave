@@ -32,7 +32,7 @@
 //   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
 //       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
 //       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
-//       -lopus -lz -pthread
+//       -lopus -lz
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -42,7 +42,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
@@ -99,8 +98,6 @@ struct player {
   char next_path[1024];
   bool has_next;
   bool next_warmed;
-  int open_generation; /* bumped whenever the queued path changes */
-  bool opening;        /* a request is in flight */
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
@@ -179,55 +176,6 @@ static void send_report(struct player *pl, const uint8_t *opus, int len) {
   pl->seq = (uint8_t)((pl->seq + 1) & 0x0F);
   pl->counter++;
   pl->sent++;
-}
-
-/* One thread, and only for opening the next file: libav's open/probe reads from
- * disk and blocks for tens of milliseconds, which is audible if it happens
- * inside the send loop. The thread produces an opened struct file; the main
- * thread keeps owning the decoder, the ring and the 15 ms timer. */
-static bool file_open(struct file *f, const char *path);
-
-struct open_request {
-  pthread_mutex_t lock;
-  pthread_cond_t cond;
-  char path[1024];
-  int generation;   /* which request this is */
-  bool requested;   /* path waiting for the thread */
-  bool done;        /* thread finished */
-  bool ok;
-  struct file file;
-  bool stop;
-};
-
-static struct open_request g_open; /* zero-initialised; the mutex and cond are
-                                      initialised in native_main */
-
-static void *open_thread_main(void *) {
-  for (;;) {
-    pthread_mutex_lock(&g_open.lock);
-    while (!g_open.requested && !g_open.stop) pthread_cond_wait(&g_open.cond, &g_open.lock);
-    if (g_open.stop) {
-      pthread_mutex_unlock(&g_open.lock);
-      return NULL;
-    }
-    char path[1024];
-    snprintf(path, sizeof(path), "%s", g_open.path);
-    int generation = g_open.generation;
-    g_open.requested = false;
-    pthread_mutex_unlock(&g_open.lock);
-
-    struct file file;
-    memset(&file, 0, sizeof(file));
-    file.audio_index = -1;
-    bool ok = file_open(&file, path);
-
-    pthread_mutex_lock(&g_open.lock);
-    g_open.file = file;
-    g_open.ok = ok;
-    g_open.done = true;
-    g_open.generation = generation;
-    pthread_mutex_unlock(&g_open.lock);
-  }
 }
 
 /* ---- decode ------------------------------------------------------------- */
@@ -508,7 +456,6 @@ static void handle_line(struct player *pl, char *line) {
       snprintf(pl->next_path, sizeof(pl->next_path), "%s", path);
       pl->has_next = true;
       pl->next_warmed = false;
-      pl->open_generation++;
       warm_file(path);
     }
     return;
@@ -565,12 +512,6 @@ int native_main(int argc, char **argv) {
 
   pl.pkt = av_packet_alloc();
   pl.frame = av_frame_alloc();
-
-  pthread_mutex_init(&g_open.lock, NULL);
-  pthread_cond_init(&g_open.cond, NULL);
-
-  pthread_t open_thread;
-  pthread_create(&open_thread, NULL, open_thread_main, NULL);
 
   signal(SIGINT, on_signal);
   signal(SIGTERM, on_signal);
@@ -630,44 +571,16 @@ int native_main(int argc, char **argv) {
       }
     }
 
-    // Gapless: ask the open thread for the next station a few seconds before
-    // this one ends, adopt it when ready, and swap the rings when the current
-    // one is drained. The open itself never runs on this thread.
-    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt && !pl.opening) {
+    // Gapless: start the next station three seconds before this one ends, keep
+    // its frames in their own ring, and swap when the current one is drained.
+    // Opening here blocks the loop for a few tens of milliseconds (libav reads
+    // from disk); it lands before the junction, never on it.
+    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt) {
       int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
       if (pl.eof || (pl.cur.duration_ms > 0 && pos + 3000 >= pl.cur.duration_ms)) {
-        pthread_mutex_lock(&g_open.lock);
-        snprintf(g_open.path, sizeof(g_open.path), "%s", pl.next_path);
-        g_open.generation = pl.open_generation;
-        g_open.done = false;
-        g_open.requested = true;
-        pthread_cond_signal(&g_open.cond);
-        pthread_mutex_unlock(&g_open.lock);
-        pl.opening = true;
+        if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
       }
     }
-
-    pthread_mutex_lock(&g_open.lock);
-    bool opened = g_open.done;
-    bool opened_ok = g_open.ok;
-    struct file opened_file = g_open.file;
-    int opened_gen = g_open.generation;
-    if (opened) g_open.done = false;
-    pthread_mutex_unlock(&g_open.lock);
-
-    if (opened) {
-      pl.opening = false;
-      if (opened_ok && opened_gen == pl.open_generation) {
-        pl.nxt = opened_file;
-      } else {
-        file_close(&opened_file);
-        pl.has_next = false;
-      }
-    }
-
-    if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
-
-    if (pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0) promote(&pl);
 
     if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
 
@@ -693,14 +606,6 @@ int native_main(int argc, char **argv) {
       fflush(stdout);
     }
   }
-
-  pthread_mutex_lock(&g_open.lock);
-  g_open.stop = true;
-  pthread_cond_signal(&g_open.cond);
-  pthread_mutex_unlock(&g_open.lock);
-  pthread_join(open_thread, NULL);
-  pthread_mutex_destroy(&g_open.lock);
-  pthread_cond_destroy(&g_open.cond);
 
   close_file(&pl);
   close_next(&pl);
