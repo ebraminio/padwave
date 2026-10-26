@@ -66,6 +66,23 @@ defmodule Padwave.Output.Lab do
     Audio.noise(ms, level: level, output: output)
   end
 
+  # Drive the selected playback engine directly, bypassing the radio. Used for
+  # the mpv-vs-ffmpeg comparisons: same file, same capture, only the engine
+  # differs.
+  def apply(%{"kind" => "engine_play", "path" => path}) when is_binary(path) do
+    if File.regular?(path) do
+      Padwave.Player.Engine.play(path, start: 0, fade: 0)
+      {:ok, "engine playing #{path}"}
+    else
+      {:error, "no such file"}
+    end
+  end
+
+  def apply(%{"kind" => "engine_stop"}) do
+    Padwave.Player.Engine.stop(fade: 0)
+    {:ok, "engine stopped"}
+  end
+
   # The prototype playback path: ffmpeg decodes the current station, our encoder
   # and 0x36 builder do the rest. Stop the radio and the audio service first.
   def apply(%{"kind" => "audio_file"} = params) do

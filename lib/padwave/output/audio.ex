@@ -32,7 +32,7 @@ defmodule Padwave.Output.Audio do
 
   alias Padwave.Output.Hid
 
-  @frame 480
+  @frame 512
   @channels 2
   @report_size 398
   # The state snapshot: only the audio fields are claimed. This mirrors the

@@ -39,9 +39,11 @@ static int write_exact(const void *buf, size_t len) {
   return fflush(stdout) == 0;
 }
 
-// -e: encode mode. Reads framed s16le stereo PCM (480 samples per channel =
-// 1920 bytes) and writes framed Opus packets, CBR 200 bytes, matching the
-// speaker block the controller expects.
+// -e: encode mode. Reads framed s16le stereo PCM (512 samples per channel =
+// 2048 bytes), linearly resamples to 480 samples, and writes framed Opus
+// packets, CBR 200 bytes. This mirrors LinuxAudio4Dualsense5 exactly: the
+// controller consumes 512-sample blocks (93.75 per second), so sending 480
+// input frames at 100 per second overfeeds it and it starts dropping.
 static int encode_loop(void) {
   int error = 0;
   OpusEncoder *enc = opus_encoder_create(48000, 2, OPUS_APPLICATION_AUDIO, &error);
@@ -57,22 +59,30 @@ static int encode_loop(void) {
   opus_encoder_ctl(enc, OPUS_SET_COMPLEXITY(0));
 
   unsigned char out[200];
-  int16_t pcm[480 * 2];
+  int16_t in[512 * 2];
+  float fpcm[480 * 2];
   uint8_t header[4];
 
   while (read_exact(header, 4)) {
     uint32_t len = ((uint32_t)header[0] << 24) | ((uint32_t)header[1] << 16) |
                    ((uint32_t)header[2] << 8) | (uint32_t)header[3];
-    if (len != sizeof(pcm)) break;
-    if (!read_exact(pcm, len)) break;
+    if (len != sizeof(in)) break;
+    if (!read_exact(in, len)) break;
 
-    if (getenv("PADWAVE_DEBUG")) {
-      int16_t mx = 0;
-      for (int i = 0; i < 480 * 2; i++) if (pcm[i] > mx || -pcm[i] > mx) mx = pcm[i] < 0 ? -pcm[i] : pcm[i];
-      fprintf(stderr, "enc input peak %d\n", mx);
+    // 512 input frames -> 480 Opus samples, the same linear resampling the
+    // audio service has always done. The block rate is 93.75/s either way.
+    double step = 511.0 / 479.0;
+    for (int i = 0; i < 480; i++) {
+      double src = i * step;
+      int idx = (int)src;
+      int nxt = idx < 511 ? idx + 1 : 511;
+      float frac = (float)(src - idx);
+      for (int ch = 0; ch < 2; ch++) {
+        float a = (float)in[idx * 2 + ch] / 32768.0f;
+        float b = (float)in[nxt * 2 + ch] / 32768.0f;
+        fpcm[i * 2 + ch] = a + (b - a) * frac;
+      }
     }
-    float fpcm[480 * 2];
-    for (int i = 0; i < 480 * 2; i++) fpcm[i] = (float)pcm[i] / 32768.0f;
 
     int n = opus_encode_float(enc, fpcm, 480, out, sizeof(out));
     if (n < 0) break;

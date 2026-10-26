@@ -35,8 +35,11 @@ defmodule Padwave.Player.Ffmpeg do
   alias Padwave.Output.{Audio, Hid}
 
   @prebuffer 25
-  @frame_ms 10
-  @frame_bytes 480 * 2 * 2
+  # The controller consumes 512-sample blocks (93.75/s), which is why the audio
+  # service resamples 512 input frames down to its 480-sample Opus frame. Same
+  # block size, same rate, same pitch.
+  @frame_ms 10.667
+  @frame_bytes 512 * 2 * 2
   @idle_poll_ms 20
   # Keep at most a couple of seconds of decoded audio in memory. Above the high
   # water mark ffmpeg is stopped and below the low one it is resumed; the port
@@ -496,8 +499,10 @@ defmodule Padwave.Player.Ffmpeg do
 
   defp schedule_tick(state, delay \\ @frame_ms) do
     next = (state.next_at || now()) + delay
+    # `next_at` is a float so 10.667 ms does not round away; the timer needs
+    # whole milliseconds, and alternating 10/11 keeps the average exact.
     wait = max(next - now(), 0)
-    Process.send_after(self(), :tick, wait)
+    Process.send_after(self(), :tick, round(wait))
     %{state | ticking: true, next_at: next}
   end
 
