@@ -96,8 +96,18 @@ defmodule Padwave.Player.Slot do
     {:noreply, %{state | loaded: path}}
   end
 
+  @doc """
+  Linear gain for a percentage on our scale.
+
+  mpv's own `volume` follows a cubic curve *and* quantises it, so anything below
+  about 12.7 % came out as digital silence (13 % was audible, 12 % was not).
+  A volume *filter* is a plain float gain, so the same curve can be applied
+  without the floor: 12 % is quiet, not mute.
+  """
+  def gain(percent) when is_number(percent), do: :math.pow(max(percent, 0) / 100, 3)
+
   def handle_cast({:volume, value}, state) do
-    command = ["set_property", "volume", value]
+    command = ["set_property", "af", "volume=#{gain(value)}"]
     {:noreply, %{state | volume: value} |> enqueue(command)}
   end
 
@@ -219,7 +229,7 @@ defmodule Padwave.Player.Slot do
       "--vo=null",
       "--ao=pipewire",
       "--audio-client-name=padwave-" <> Atom.to_string(name),
-      "--volume=0",
+      "--volume=100",
       "--volume-max=100",
       "--terminal=yes",
       "--term-status-msg=",

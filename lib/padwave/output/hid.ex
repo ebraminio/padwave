@@ -44,7 +44,7 @@ defmodule Padwave.Output.Hid do
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0}}
+    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: []}}
   end
 
   @impl true
@@ -80,7 +80,8 @@ defmodule Padwave.Output.Hid do
   def stats, do: GenServer.call(__MODULE__, :stats, 2_000)
 
   @impl true
-  def handle_call(:stats, _from, state), do: {:reply, Map.take(state, [:writes, :errors, :seq]), state}
+  def handle_call(:stats, _from, state),
+    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent]), state}
 
   @impl true
   def handle_info({:padwave, {:device, :down, _info}}, state) do
@@ -95,7 +96,10 @@ defmodule Padwave.Output.Hid do
       {:ok, state} ->
         case :file.write(state.fd, report) do
           :ok ->
-            {:noreply, %{state | seq: rem(state.seq + 1, 16), writes: state.writes + 1}}
+            entry = %{seq: state.seq, hex: Base.encode16(report, case: :lower)}
+            recent = [entry | state.recent] |> Enum.take(4)
+
+            {:noreply, %{state | seq: rem(state.seq + 1, 16), writes: state.writes + 1, recent: recent}}
 
           {:error, reason} ->
             Logger.warning("[hid] output report failed: #{inspect(reason)}")

@@ -108,7 +108,11 @@ defmodule Padwave.Player do
        position: state.position,
        duration: state.duration,
        paused: state.paused,
-       volume: round(state.master)
+       volume: round(state.master),
+       gain: state.gain,
+       ramps: Map.keys(state.ramps),
+       applied: state.applied,
+       fading_from: state.fading_from
      }, state}
   end
 

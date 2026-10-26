@@ -685,6 +685,7 @@ defmodule Padwave.Radio do
       position: Float.round(state.position * 1.0, 1),
       duration: state.duration && Float.round(state.duration, 1),
       volume: state.volume,
+      applied_volume: round(state.volume * state.warn_factor),
       muted: state.muted,
       paused: state.paused,
       playing: state.playing,
