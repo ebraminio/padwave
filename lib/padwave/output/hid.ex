@@ -56,7 +56,7 @@ defmodule Padwave.Output.Hid do
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: [], power_save: nil}}
+    {:ok, %{fd: nil, seq: 0, writes: 0, errors: 0, recent: [], power_save: nil, player_leds: nil}}
   end
 
   @impl true
@@ -74,10 +74,13 @@ defmodule Padwave.Output.Hid do
 
   def handle_cast(:clear_power_save, state), do: {:noreply, %{state | power_save: nil}}
 
-  def handle_cast({:player_leds, mask}, state), do: emit(state, Report.player_leds_fields(mask))
+  def handle_cast({:player_leds, mask}, state),
+    do: emit(%{state | player_leds: mask}, Report.player_leds_fields(mask))
 
-  def handle_cast(:reset_player_leds, state),
-    do: emit(state, Report.player_leds_fields(kernel_player_led_mask()))
+  def handle_cast(:reset_player_leds, state) do
+    mask = kernel_player_led_mask()
+    emit(%{state | player_leds: mask}, Report.player_leds_fields(mask))
+  end
 
   def handle_cast({:trigger, side, mode, params}, state),
     do: emit(state, Report.trigger_fields(side, mode, params))
@@ -95,7 +98,7 @@ defmodule Padwave.Output.Hid do
 
   @impl true
   def handle_call(:stats, _from, state),
-    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent, :power_save]), state}
+    do: {:reply, Map.take(state, [:writes, :errors, :seq, :recent, :power_save, :player_leds]), state}
 
   @impl true
   def handle_info({:padwave, {:device, :down, _info}}, state) do
