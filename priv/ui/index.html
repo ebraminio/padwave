@@ -850,7 +850,9 @@ $("#labPsSend").onclick = () => {
   labSend({ kind: "power_save", bits });
 };
 
-document.querySelectorAll(".led").forEach(btn => {
+// Only the player-LED buttons carry data-led; the power-save toggles are also
+// .led for styling, and a broad ".led" selector used to steal their clicks.
+document.querySelectorAll("[data-led]").forEach(btn => {
   btn.onclick = () => {
     const bit = Number(btn.dataset.led) - 1;
     labLedMask ^= (1 << bit);
