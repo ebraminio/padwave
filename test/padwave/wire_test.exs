@@ -32,7 +32,7 @@ defmodule Padwave.WireTest do
     # power_supply node simultaneously reported capacity=15.
     assert fields.status0 == 0x01
     # headphones were plugged in
-    assert Bitwise.band(fields.status1, 1) == 1
+    assert fields.status1.headset
   end
 
   test "the sensor block is little-endian and lands where the accelerometer says 1g",

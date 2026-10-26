@@ -74,9 +74,11 @@ defmodule Padwave.Schema.DualSenseAudio do
     # -- sub-packet 0x11: audio configuration -----------------------------
     u8 :config_tag               # 0x002  0x11 | 0x80 (more sub-packets follow)
     u8 :config_length            # 0x003  7
-    u8 :audio_enable_mask        # 0x004  bit 0 = microphone capture: 0xFE keeps
-                                 #        the mic shut, 0xFF opens it (the input
-                                 #        stream then also carries 0xD4 frames)
+    bits :audio_enable_mask,
+      microphone_capture: 1,       # 0x004 bit 0: 0xFE keeps the mic shut,
+                                   #       0xFF opens it (the input stream then
+                                   #       also carries 0xD4 frames)
+      reserved_0: 7                #       bits 1-7: always set in practice
     bytes :haptic_lengths, 5     # 0x005..0x009  64 each
     u8 :counter                  # 0x00a  free-running 8-bit counter
 

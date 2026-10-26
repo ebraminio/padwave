@@ -40,13 +40,17 @@ defmodule Padwave.ProtocolTest do
 
     fields = DualSenseAudio.decode_audio_out(packet)
 
-    assert fields.audio_enable_mask == 0xFE
+    refute fields.audio_enable_mask.microphone_capture
+    assert fields.audio_enable_mask.reserved_0 == 0x7F
     assert fields.state_length == 63
 
     # the snapshot is a full output payload: its first two bytes are the
     # owned_fields mask, and the 0xF1 low byte is what stops the audio stream
     # from claiming the triggers
-    assert fields.owned_fields == 0xE3F1
+    assert fields.owned_fields.mute_led
+    assert fields.owned_fields.audio_mute
+    refute fields.owned_fields.lightbar
+    assert fields.owned_fields.audio_routing
     assert fields.haptics_length == 64
     assert fields.speaker_length == 200
     assert fields.speaker_tag == 0x93

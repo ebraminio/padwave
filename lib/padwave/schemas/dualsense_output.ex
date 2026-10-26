@@ -10,22 +10,28 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
   use Padwave.Wire
 
   field_list :output_body do
-    # Which fields this report owns, as one 16-bit little-endian mask: bit
-    # positions 0..7 are the byte at +0x00, 8..15 the byte at +0x01.
-    #
-    # A set bit means "adopt my bytes for this feature"; a clear bit means
-    # "leave that feature as it is". Setting a bit is a claim, not a change
-    # notification: the bytes are taken as written, zeros included. So a writer
-    # that sets a bit it does not really own will keep overwriting whoever does
-    # — which is exactly how the audio stream used to cancel trigger effects.
-    #
-    # Example: [:right_trigger, :left_trigger] claims only the two trigger
-    # blocks and leaves volumes, LEDs and rumble untouched.
-    u16le :owned_fields,
-          flags: [rumble: 0, haptics: 1, right_trigger: 2, left_trigger: 3,
-                  headphone_volume: 4, speaker_volume: 5, mic_volume: 6, audio_routing: 7,
-                  mute_led: 8, audio_mute: 9, lightbar: 10, reset_lights: 11,
-                  player_leds: 12, haptic_lpf: 13, motor_power_level: 14, audio_control2: 15]
+    # Which fields this report owns, as one 16-bit little-endian mask (bits 0..7
+    # are the byte at +0x00, 8..15 the byte at +0x01). A set bit means "adopt
+    # my bytes for this feature"; a clear bit means "leave that feature as it
+    # is". Setting a bit is a claim, not a change notification: the bytes are
+    # taken as written, zeros included.
+    bits :owned_fields,
+      rumble: 1,                   # +0x00 bit 0
+      haptics: 1,                  #       bit 1
+      right_trigger: 1,            #       bit 2
+      left_trigger: 1,             #       bit 3
+      headphone_volume: 1,         #       bit 4
+      speaker_volume: 1,           #       bit 5
+      mic_volume: 1,               #       bit 6
+      audio_routing: 1,            #       bit 7
+      mute_led: 1,                 # +0x01 bit 0
+      audio_mute: 1,               #       bit 1
+      lightbar: 1,                 #       bit 2
+      reset_lights: 1,             #       bit 3
+      player_leds: 1,              #       bit 4
+      haptic_lpf: 1,               #       bit 5
+      motor_power_level: 1,        #       bit 6
+      audio_control2: 1            #       bit 7
 
     u8 :motor_right              # +0x02  DS4-compatible rumble
     u8 :motor_left               # +0x03
@@ -36,9 +42,12 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
                                  #        claimed by :audio_routing)
 
     u8 :mute_button_led          # +0x08
-    u8 :power_save_control,
-       flags: [microphone_mute: 4, audio_mute: 6]
-    # +0x09
+    bits :power_save_control,
+      reserved_0: 4,               # +0x09 bits 0-3
+      microphone_mute: 1,          #       bit 4
+      reserved_1: 1,               #       bit 5
+      audio_mute: 1,               #       bit 6
+      reserved_2: 1                #       bit 7
 
     # Adaptive trigger effects: a mode byte and ten parameter bytes per
     # trigger, enabled by the :right_trigger / :left_trigger bits. Described
@@ -54,16 +63,22 @@ defmodule Padwave.Schema.DualSenseOutput.Body do
     bytes :reserved_32, 4        # +0x20..0x23
     u8 :haptic_volume            # +0x24
     u8 :audio_control2           # +0x25  speaker preamp gain
-    u8 :valid_flag2,
-       flags: [brightness: 0, color_fade: 1, improved_rumble: 2]
-    # +0x26
+    bits :valid_flag2,
+      brightness: 1,               # +0x26 bit 0
+      color_fade: 1,               #       bit 1
+      improved_rumble: 1,          #       bit 2
+      reserved_0: 5                #       bits 3-7
     bytes :reserved_39, 2        # +0x27..0x28
 
     u8 :lightbar_setup           # +0x29  fade-out after power-on
     u8 :led_brightness           # +0x2a
-    u8 :player_leds,
-       flags: [led1: 0, led2: 1, led3: 2, led4: 3, led5: 4]
-    # +0x2b  the five white LEDs under the touchpad
+    bits :player_leds,
+      led1: 1,                     # +0x2b bit 0
+      led2: 1,                     #       bit 1
+      led3: 1,                     #       bit 2
+      led4: 1,                     #       bit 3
+      led5: 1,                     #       bit 4
+      reserved_0: 3                #       bits 5-7
     u8 :lightbar_red             # +0x2c
     u8 :lightbar_green           # +0x2d
     u8 :lightbar_blue            # +0x2e

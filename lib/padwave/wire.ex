@@ -178,19 +178,7 @@ defmodule Padwave.Wire do
 
   defp fields({:u8, _, [name]}, _env) when is_atom(name), do: [{:u8, name}]
 
-  # Flag bytes declare their bits by position, like a C enum of 1<<n values:
-  # `u8 :valid_flag0, flags: [rumble: 0, haptics: 1, ...]`. Decoding still
-  # yields the byte, but the spec carries the names and the encoder accepts
-  # them (`%{valid_flag0: [:rumble, :right_trigger]}`).
-  defp fields({:u8, _, [name, opts]}, _env) when is_atom(name) and is_list(opts) do
-    [{:u8, name, normalize_flags(Keyword.get(opts, :flags, []), 7)}]
-  end
-
   defp fields({:u16le, _, [name]}, _env) when is_atom(name), do: [{:u16le, name}]
-
-  defp fields({:u16le, _, [name, opts]}, _env) when is_atom(name) and is_list(opts) do
-    [{:u16le, name, normalize_flags(Keyword.get(opts, :flags, []), 15)}]
-  end
 
   defp fields({:i16le, _, [name]}, _env) when is_atom(name), do: [{:i16le, name}]
   defp fields({:u32le, _, [name]}, _env) when is_atom(name), do: [{:u32le, name}]
@@ -240,9 +228,7 @@ defmodule Padwave.Wire do
 
     Supported fields are:
       u8 :name
-      u8 :name, flags: [bit_name: bit_position, ...]
       u16le :name   i16le :name   u32le :name
-      u16le :name, flags: [bit_name: bit_position, ...]
       bytes :name, count
       skip count
       bits :name, low: 4, high: 1, ...
@@ -264,26 +250,7 @@ defmodule Padwave.Wire do
 
   defp lay_out_field({:u8, name}, offset), do: %{kind: :u8, name: name, offset: offset, size: 1}
 
-  defp lay_out_field({:u8, name, flags}, offset),
-    do: %{kind: :u8, name: name, offset: offset, size: 1, flags: flags}
-
-  # Stored as a map so `spec/1` is JSON-friendly; the declaration stays a
-  # readable keyword list.
-  defp normalize_flags(flags, max_bit) when is_list(flags) do
-    Map.new(flags, fn
-      {name, bit} when is_atom(name) and is_integer(bit) and bit in 0..max_bit ->
-        {name, bit}
-
-      other ->
-        raise ArgumentError,
-              "flag bits are `name: bit_position` pairs (0..#{max_bit}), got #{inspect(other)}"
-    end)
-  end
-
   defp lay_out_field({:u16le, name}, offset), do: %{kind: :u16le, name: name, offset: offset, size: 2}
-
-  defp lay_out_field({:u16le, name, flags}, offset),
-    do: %{kind: :u16le, name: name, offset: offset, size: 2, flags: flags}
 
   defp lay_out_field({:i16le, name}, offset), do: %{kind: :i16le, name: name, offset: offset, size: 2}
   defp lay_out_field({:u32le, name}, offset), do: %{kind: :u32le, name: name, offset: offset, size: 4}

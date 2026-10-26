@@ -85,9 +85,10 @@ defmodule Padwave.Schema.DualSenseInput.Body do
     bytes :reserved_52, 2        # +0x32
 
     u8 :status0                  # +0x34  battery (low nibble) + charging (high)
-    u8 :status1,
-       flags: [headset: 0, microphone: 1]
-    # +0x35  what is plugged into the 3.5 mm jack
+    bits :status1,
+      headset: 1,                  # +0x35 bit 0
+      microphone: 1,               #       bit 1
+      reserved_0: 6                #       bits 2-7 (bit 2 is set on this pad)
     u8 :status2                  # +0x36
     bytes :aes_cmac, 8           # +0x37  pairing CMAC
   end

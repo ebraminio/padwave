@@ -101,7 +101,7 @@ defmodule Padwave.Output.Report do
 
     offsets = Map.new(spec.fields, fn field -> {field.name, field.offset} end)
     sizes = Map.new(spec.fields, fn field -> {field.name, field.size} end)
-    flag_bits = Map.new(spec.fields, fn field -> {field.name, Map.get(field, :flags, %{})} end)
+    bit_layouts = Map.new(spec.fields, fn field -> {field.name, Map.get(field, :bits, [])} end)
 
     zeroed =
       :binary.copy(<<0>>, spec.size)
@@ -113,7 +113,8 @@ defmodule Padwave.Output.Report do
           Map.get(offsets, name) ||
             raise ArgumentError, "unknown output report field #{inspect(name)}"
 
-        put_value(acc, offset, resolve_flags(value, Map.get(flag_bits, name, %{})), Map.get(sizes, name, 1))
+        resolved = resolve_bits(value, Map.get(bit_layouts, name, []))
+        put_value(acc, offset, resolved, Map.get(sizes, name, 1))
       end)
 
     if bus == :usb do
@@ -131,23 +132,46 @@ defmodule Padwave.Output.Report do
     :erlang.crc32(<<@seed>> <> data)
   end
 
-  # A flag field accepts either the raw byte or a list of bit names.
-  defp resolve_flags(value, flags) when map_size(flags) == 0, do: value
+  # A bit-group field takes the raw integer, a list of one-bit names to set, or
+  # a map of name => value for groups wider than one bit.
+  defp resolve_bits(value, []), do: value
+  defp resolve_bits(value, _bits) when is_integer(value), do: value
+  defp resolve_bits(names, bits) when is_list(names), do: encode_bits(bits, names)
+  defp resolve_bits(values, bits) when is_map(values), do: encode_bits(bits, values)
 
-  defp resolve_flags(bits, flags) when is_list(bits) do
-    Enum.reduce(bits, 0, fn bit, acc ->
-      case Map.fetch(flags, bit) do
-        {:ok, position} ->
-          Bitwise.bor(acc, Bitwise.bsl(1, position))
+  defp encode_bits(bits, names) when is_list(names) do
+    Enum.reduce(names, 0, fn name, acc ->
+      case Enum.find(bits, &(&1.name == name)) do
+        %{offset: offset, width: 1} ->
+          Bitwise.bor(acc, Bitwise.bsl(1, offset))
 
-        :error ->
+        %{width: width} ->
           raise ArgumentError,
-                "unknown flag bit #{inspect(bit)}; known: #{inspect(Map.keys(flags))}"
+                "bit #{inspect(name)} is #{width} bits wide; pass a map instead"
+
+        nil ->
+          raise ArgumentError,
+                "unknown bit #{inspect(name)}; known: #{inspect(Enum.map(bits, & &1.name))}"
       end
     end)
   end
 
-  defp resolve_flags(value, _flags), do: value
+  defp encode_bits(bits, values) when is_map(values) do
+    Enum.reduce(values, 0, fn {name, value}, acc ->
+      case Enum.find(bits, &(&1.name == name)) do
+        %{offset: offset, width: 1} ->
+          if value in [true, 1], do: Bitwise.bor(acc, Bitwise.bsl(1, offset)), else: acc
+
+        %{offset: offset, width: width} ->
+          mask = Bitwise.bsl(1, width) - 1
+          Bitwise.bor(acc, Bitwise.bsl(Bitwise.band(value, mask), offset))
+
+        nil ->
+          raise ArgumentError,
+                "unknown bit #{inspect(name)}; known: #{inspect(Enum.map(bits, & &1.name))}"
+      end
+    end)
+  end
 
   defp put_value(binary, index, value, 1) when is_integer(value) and value in 0..0xFF,
     do: put_byte(binary, index, value)
