@@ -35,6 +35,12 @@ defmodule Padwave.Output.Report do
       lightbar_blue: blue
     }
 
+    fields =
+      case Keyword.get(opts, :brightness) do
+        nil -> fields
+        value -> Map.merge(fields, %{valid_flag2: [:brightness], led_brightness: value})
+      end
+
     bus = Keyword.get(opts, :bus, :bluetooth)
     build(Map.merge(fields, Keyword.get(opts, :extra, %{})), bus, seq: Keyword.get(opts, :seq, 0))
   end

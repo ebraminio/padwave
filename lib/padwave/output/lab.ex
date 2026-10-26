@@ -57,19 +57,20 @@ defmodule Padwave.Output.Lab do
     {:ok, "lightbar overridden"}
   end
 
-  # valid_flag2 bit 1 + lightbar_setup bit 1 = the kernel's "fade light out".
+  # valid_flag2 bit 1 ("color_fade") + lightbar_setup bit 1 = "fade light out".
   def apply(%{"kind" => "lightbar_fade"}) do
-    Hid.send_fields(%{"valid_flag2" => ["lightbar_setup"], "lightbar_setup" => 0x02})
+    Lightbar.fade_out()
     {:ok, "lightbar fade-out sent"}
   end
 
-  # valid_flag2 bit 0 = brightness, then the value in led_brightness.
-  def apply(%{"kind" => "lightbar_brightness", "value" => value}) do
-    Hid.send_fields(%{
-      "valid_flag2" => ["brightness"],
-      "led_brightness" => value |> to_int(255) |> clamp()
-    })
+  def apply(%{"kind" => "lightbar_setup", "value" => value}) do
+    Lightbar.set_setup(value |> to_int(0) |> clamp())
+    {:ok, "lightbar_setup set"}
+  end
 
+  # valid_flag2 bit 0 = brightness; the bar repaints with the current colour.
+  def apply(%{"kind" => "lightbar_brightness", "value" => value}) do
+    Lightbar.set_brightness(value |> to_int(255) |> clamp())
     {:ok, "lightbar brightness set"}
   end
 

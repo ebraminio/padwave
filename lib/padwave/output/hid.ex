@@ -24,9 +24,14 @@ defmodule Padwave.Output.Hid do
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
-  @doc "Sets the lightbar colour."
-  def lightbar(red, green, blue),
-    do: GenServer.cast(__MODULE__, {:lightbar, {red, green, blue}})
+  @doc """
+  Sets the lightbar colour.
+
+  Options: `:brightness` also claims `valid_flag2` bit 0 and sends
+  `led_brightness`, which a colour-only report does not.
+  """
+  def lightbar(red, green, blue, opts \\ []),
+    do: GenServer.cast(__MODULE__, {:lightbar, {red, green, blue}, opts})
 
   @doc "Sends a report built from a map of output-report field names."
   def send_fields(fields), do: GenServer.cast(__MODULE__, {:fields, fields})
@@ -48,9 +53,12 @@ defmodule Padwave.Output.Hid do
   end
 
   @impl true
-  def handle_cast({:lightbar, {red, green, blue}}, state) do
+  def handle_cast({:lightbar, {red, green, blue}, opts}, state) do
     if Config.get(:lightbar_enabled, true) do
-      write(state, Report.lightbar(red, green, blue, seq: state.seq))
+      write(
+        state,
+        Report.lightbar(red, green, blue, seq: state.seq, brightness: Keyword.get(opts, :brightness))
+      )
     else
       {:noreply, state}
     end

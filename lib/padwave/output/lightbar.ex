@@ -26,6 +26,15 @@ defmodule Padwave.Output.Lightbar do
   @doc "Drops the override and repaints the state colour."
   def clear, do: GenServer.cast(__MODULE__, :clear)
 
+  @doc "Sets the lightbar brightness field (valid_flag2 bit 0) and repaints."
+  def set_brightness(value), do: GenServer.cast(__MODULE__, {:brightness, value})
+
+  @doc "Sends a `lightbar_setup` value (valid_flag2 bit 1) and forgets the paint."
+  def set_setup(value), do: GenServer.cast(__MODULE__, {:setup, value})
+
+  @doc "The kernel's fade-out: lightbar_setup bit 1, light out."
+  def fade_out, do: GenServer.cast(__MODULE__, {:setup, 0x02})
+
   @doc "What the bar is showing, for the debug endpoint."
   def status, do: GenServer.call(__MODULE__, :status, 2_000)
 
@@ -47,12 +56,34 @@ defmodule Padwave.Output.Lightbar do
   @impl true
   def init(_opts) do
     Bus.subscribe()
-    {:ok, %{mode: :off, muted: false, bright: false, custom: nil, painted: nil}}
+
+    {:ok,
+     %{
+       mode: :off,
+       muted: false,
+       bright: false,
+       custom: nil,
+       painted: nil,
+       brightness: nil,
+       setup: nil
+     }}
   end
 
   @impl true
   def handle_cast({:rgb, rgb}, state), do: {:noreply, paint(%{state | custom: rgb})}
   def handle_cast(:clear, state), do: {:noreply, paint(%{state | custom: nil})}
+
+  def handle_cast({:brightness, value}, state) do
+    state = %{state | brightness: value, painted: nil}
+    {:noreply, paint(state)}
+  end
+
+  def handle_cast({:setup, value}, state) do
+    fields = %{valid_flag2: ["color_fade"], lightbar_setup: value}
+
+    if Config.get(:lightbar_enabled, true), do: Hid.send_fields(fields)
+    {:noreply, %{state | setup: value, painted: nil}}
+  end
 
   @impl true
   def handle_info({:padwave, {:player, {:playing, _path}}}, state), do: {:noreply, set(state, :playing)}
@@ -110,7 +141,10 @@ defmodule Padwave.Output.Lightbar do
   defp do_paint(%{painted: rgb} = state, rgb), do: state
 
   defp do_paint(state, {r, g, b}) do
-    if Config.get(:lightbar_enabled, true), do: Hid.lightbar(r, g, b)
+    if Config.get(:lightbar_enabled, true) do
+      Hid.lightbar(r, g, b, brightness: state.brightness)
+    end
+
     %{state | painted: {r, g, b}}
   end
 
