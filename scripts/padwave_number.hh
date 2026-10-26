@@ -13,40 +13,8 @@
 
 namespace padwave_number {
 
-// The unsigned type of the same width, used to move values in and out of the
-// byte array without relying on unsigned-to-signed conversion.
-template <typename Type>
-struct UnsignedOf;
-
-template <>
-struct UnsignedOf<uint8_t> {
-  typedef uint8_t type;
-};
-template <>
-struct UnsignedOf<int8_t> {
-  typedef uint8_t type;
-};
-template <>
-struct UnsignedOf<uint16_t> {
-  typedef uint16_t type;
-};
-template <>
-struct UnsignedOf<int16_t> {
-  typedef uint16_t type;
-};
-template <>
-struct UnsignedOf<uint32_t> {
-  typedef uint32_t type;
-};
-template <>
-struct UnsignedOf<int32_t> {
-  typedef uint32_t type;
-};
-
-template <typename Type>
+template <typename Type, typename UnsignedType = Type>
 struct NumType {
-  typedef Type type;
-  typedef typename UnsignedOf<Type>::type unsigned_type;
   static constexpr unsigned int static_size = sizeof(Type);
 
   NumType() = default;
@@ -61,17 +29,17 @@ struct NumType {
 
   // bytes[0] is the least significant byte, on every host.
   Type get() const {
-    unsigned_type v = 0;
+    UnsignedType v = 0;
     for (unsigned int i = 0; i < sizeof(Type); i++)
-      v = (unsigned_type)((v << 8) | bytes[sizeof(Type) - 1 - i]);
+      v = (UnsignedType)((v << 8) | bytes[sizeof(Type) - 1 - i]);
     return (Type)v;
   }
 
   void set(Type value) {
-    unsigned_type v = (unsigned_type)value;
+    UnsignedType v = (UnsignedType)value;
     for (unsigned int i = 0; i < sizeof(Type); i++) {
       bytes[i] = (unsigned char)(v & 0xFF);
-      v = (unsigned_type)(v >> 8);
+      v = (UnsignedType)(v >> 8);
     }
   }
 
@@ -105,9 +73,9 @@ struct NumType {
 typedef padwave_number::NumType<uint8_t> PWUINT8;
 typedef padwave_number::NumType<uint16_t> PWUINT16;
 typedef padwave_number::NumType<uint32_t> PWUINT32;
-typedef padwave_number::NumType<int8_t> PWINT8;
-typedef padwave_number::NumType<int16_t> PWINT16;
-typedef padwave_number::NumType<int32_t> PWINT32;
+typedef padwave_number::NumType<int8_t, uint8_t> PWINT8;
+typedef padwave_number::NumType<int16_t, uint16_t> PWINT16;
+typedef padwave_number::NumType<int32_t, uint32_t> PWINT32;
 
 static_assert(sizeof(PWUINT8) == 1, "PWUINT8 is one byte");
 static_assert(sizeof(PWUINT16) == 2, "PWUINT16 is two bytes");
