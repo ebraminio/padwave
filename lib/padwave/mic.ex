@@ -38,6 +38,18 @@ defmodule Padwave.Mic do
   @doc "Hands one Opus packet (already stripped of TOC and CRC) to the decoder."
   def ingest(payload) when is_binary(payload), do: GenServer.cast(__MODULE__, {:packet, payload})
 
+  @doc """
+  Experimental: streams the input level to the UI while enabled, and turns the
+  controller's microphone capture on (`0x36` enable mask) for the duration.
+  Off by default; the radio never asks for it.
+  """
+  def set_monitor(enabled?) when is_boolean(enabled?) do
+    GenServer.call(__MODULE__, {:monitor, enabled?}, 2_000)
+  end
+
+  @doc "Whether the experimental input-level monitor is on."
+  def monitoring?, do: GenServer.call(__MODULE__, :monitoring, 2_000)
+
   @doc "Packet count, level and the last decoded frame size."
   def stats, do: GenServer.call(__MODULE__, :stats, 2_000)
 
@@ -76,7 +88,9 @@ defmodule Padwave.Mic do
        peak: 0,
        samples: 0,
        last_at: nil,
-       last_seen: nil
+       last_seen: nil,
+       monitor: false,
+       last_level_at: 0
      }}
   end
 
@@ -104,15 +118,24 @@ defmodule Padwave.Mic do
   def handle_info({port, {:data, pcm}}, %{port: port} = state) do
     {rms, peak} = measure(pcm)
 
-    {:noreply,
-     %{
-       state
-       | frames: state.frames + 1,
-         rms: rms,
-         peak: peak,
-         samples: byte_size(pcm) |> div(2),
-         last_at: now()
-     }}
+    state = %{
+      state
+      | frames: state.frames + 1,
+        rms: rms,
+        peak: peak,
+        samples: byte_size(pcm) |> div(2),
+        last_at: now()
+    }
+
+    state =
+      if state.monitor and now() - state.last_level_at >= 100 do
+        Padwave.Bus.broadcast({:mic, {:level, level(rms)}})
+        %{state | last_level_at: now()}
+      else
+        state
+      end
+
+    {:noreply, state}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -123,6 +146,13 @@ defmodule Padwave.Mic do
   def handle_info(_other, state), do: {:noreply, state}
 
   @impl true
+  def handle_call({:monitor, enabled?}, _from, state) do
+    Padwave.Player.Native.command(if enabled?, do: "mic 1", else: "mic 0")
+    {:reply, :ok, %{state | monitor: enabled?, last_level_at: 0}}
+  end
+
+  def handle_call(:monitoring, _from, state), do: {:reply, state.monitor, state}
+
   def handle_call({:enabled, enabled?}, _from, state) do
     {:reply, write_enabled(enabled?), state}
   end

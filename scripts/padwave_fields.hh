@@ -1,28 +1,20 @@
-// padwave output — the 0x31 writer, driven by field maps.
+#pragma once
+// Output-body field application, shared by the player's 0x31 writer.
 //
-// The Elixir side decides *what* to change (a lightbar colour, a trigger
-// effect, a rumble) and sends a line of named fields; this mode owns the
-// packet: it fills OutputBody, sets the report id and tag, signs the CRC over
-// the schema struct and writes it to the controller's hidraw node. The byte
-// layout therefore has one definition (padwave_schemas.hh), and no Elixir code
-// has to know where a field lives.
-//
-//   fields valid_flag1=lightbar;lightbar_red=255;lightbar_blue=0
-//   raw 360091...          (already-built report, for the audio lab test)
-//   quit
-//
-// Replies "ok <n>" or "err <reason>" per line.
-#include <errno.h>
-#include <fcntl.h>
+// Names are the OutputBody members; a flag word's value is a comma list of
+// ValidFlag0/1/2 enumerator names; the two trigger parameter blocks are hex.
+// Kept out of padwave_output.cc so the single player process can build both
+// the 0x36 audio reports and these 0x31 control reports from the same schema.
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "padwave_schemas.hh"
 
-namespace {
+namespace padwave_fields {
+
 
 struct u8_field {
   const char *name;
@@ -40,7 +32,7 @@ struct flag {
   uint8_t bit;
 };
 
-const u8_field kU8Fields[] = {
+inline const u8_field kU8Fields[] = {
     {"valid_flag0", offsetof(padwave::OutputBody, valid_flag0)},
     {"valid_flag1", offsetof(padwave::OutputBody, valid_flag1)},
     {"motor_right", offsetof(padwave::OutputBody, motor_right)},
@@ -64,14 +56,14 @@ const u8_field kU8Fields[] = {
     {"lightbar_blue", offsetof(padwave::OutputBody, lightbar_blue)},
 };
 
-const array_field kArrayFields[] = {
+inline const array_field kArrayFields[] = {
     {"right_trigger_params", offsetof(padwave::OutputBody, right_trigger_params), 10},
     {"left_trigger_params", offsetof(padwave::OutputBody, left_trigger_params), 10},
 };
 
 // The flag names are the ValidFlag0/1/2 enumerators, lowercased, as the Elixir
 // field maps and the UI spell them.
-const flag kFlag0[] = {
+inline const flag kFlag0[] = {
     {"rumble", padwave::OutputBody::Rumble},
     {"haptics", padwave::OutputBody::Haptics},
     {"right_trigger", padwave::OutputBody::RightTrigger},
@@ -81,7 +73,7 @@ const flag kFlag0[] = {
     {"mic_volume", padwave::OutputBody::MicVolume},
     {"audio_routing", padwave::OutputBody::AudioRouting},
 };
-const flag kFlag1[] = {
+inline const flag kFlag1[] = {
     {"mute_led", padwave::OutputBody::MuteLed},
     {"power_save", padwave::OutputBody::PowerSave},
     {"lightbar", padwave::OutputBody::Lightbar},
@@ -91,7 +83,7 @@ const flag kFlag1[] = {
     {"motor_power_level", padwave::OutputBody::MotorPowerLevel},
     {"audio_control2", padwave::OutputBody::AudioControl2},
 };
-const flag kFlag2[] = {
+inline const flag kFlag2[] = {
     {"brightness", padwave::OutputBody::Brightness},
     {"color_fade", padwave::OutputBody::ColorFade},
     {"improved_rumble", padwave::OutputBody::ImprovedRumble},
@@ -126,13 +118,13 @@ bool write_all(int fd, const uint8_t *data, size_t len) {
   return true;
 }
 
-const flag *find_flag(const flag *table, size_t count, const char *name) {
+inline const flag *find_flag(const flag *table, size_t count, const char *name) {
   for (size_t i = 0; i < count; i++)
     if (strcmp(table[i].name, name) == 0) return &table[i];
   return nullptr;
 }
 
-void set_flag_word(padwave::OutputBody *body, const u8_field *field, const char *value) {
+inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, const char *value) {
   const flag *table = nullptr;
   size_t count = 0;
   if (field->offset == offsetof(padwave::OutputBody, valid_flag0)) {
@@ -157,7 +149,7 @@ void set_flag_word(padwave::OutputBody *body, const u8_field *field, const char 
   *(uint8_t *)((char *)body + field->offset) = bits;
 }
 
-bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
+inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
   if (strlen(hex) != len * 2) return false;
   for (size_t i = 0; i < len; i++) {
     unsigned value = 0;
@@ -168,7 +160,7 @@ bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
 }
 
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
-bool apply_fields(padwave::OutputBody *body, const char *text) {
+inline bool apply_fields(padwave::OutputBody *body, const char *text) {
   char copy[4096];
   snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;
@@ -214,64 +206,4 @@ bool apply_fields(padwave::OutputBody *body, const char *text) {
   return true;
 }
 
-} // namespace
-
-int output_main(int argc, char **argv) {
-  int fd = argc > 1 ? open(argv[1], O_WRONLY | O_CREAT | O_CLOEXEC, 0644) : find_dualsense();
-  if (fd < 0) fprintf(stderr, "padwave output: no DualSense hidraw node\n");
-
-  padwave::OutputReport report;
-  memset(&report, 0, sizeof(report));
-  report.report_id = padwave::OutputReport::ReportId;
-  report.tag = 0x10;
-  uint8_t seq = 0;
-
-  char line[4096];
-  while (fgets(line, sizeof(line), stdin)) {
-    line[strcspn(line, "\n")] = 0;
-    if (strncmp(line, "quit", 4) == 0) break;
-
-    if (strncmp(line, "raw ", 4) == 0) {
-      uint8_t bytes[512];
-      size_t len = (strlen(line + 4)) / 2;
-      if (len > sizeof(bytes) || !hex_to_bytes(line + 4, bytes, len)) {
-        printf("err raw\n");
-        fflush(stdout);
-        continue;
-      }
-      if (fd < 0) fd = find_dualsense();
-      bool ok = fd >= 0 && write_all(fd, bytes, len);
-      printf(ok ? "ok 0\n" : "err write\n");
-      fflush(stdout);
-      continue;
-    }
-
-    if (strncmp(line, "fields ", 7) != 0) {
-      printf("err unknown\n");
-      fflush(stdout);
-      continue;
-    }
-
-    memset(&report.body, 0, sizeof(report.body));
-    report.seq_tag = (uint8_t)((seq & 0x0F) << 4);
-    if (!apply_fields(&report.body, line + 7)) {
-      printf("err field\n");
-      fflush(stdout);
-      continue;
-    }
-    report.sign();
-
-    if (fd < 0) fd = find_dualsense();
-    bool ok = fd >= 0 && write_all(fd, (const uint8_t *)&report, sizeof(report));
-    if (!ok) {
-      if (fd >= 0) close(fd);
-      fd = -1;
-    }
-    if (ok) seq = (uint8_t)((seq + 1) & 0x0F);
-    printf(ok ? "ok 1\n" : "err write\n");
-    fflush(stdout);
-  }
-
-  if (fd >= 0) close(fd);
-  return 0;
-}
+} // namespace padwave_fields

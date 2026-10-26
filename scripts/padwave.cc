@@ -10,6 +10,5 @@
 
 int main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "opusdec") == 0) return opusdec_main(argc - 1, argv + 1);
-  if (argc > 1 && strcmp(argv[1], "output") == 0) return output_main(argc - 1, argv + 1);
   return native_main(argc - 1, argv + 1);
 }

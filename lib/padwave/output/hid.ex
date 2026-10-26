@@ -64,8 +64,7 @@ defmodule Padwave.Output.Hid do
   def init(_opts) do
     Bus.subscribe()
 
-    {:ok,
-     %{port: nil, writes: 0, errors: 0, recent: [], power_save: nil, player_leds: nil}}
+    {:ok, %{writes: 0, errors: 0, recent: [], power_save: nil, player_leds: nil}}
   end
 
   @impl true
@@ -109,20 +108,6 @@ defmodule Padwave.Output.Hid do
     do: {:reply, Map.take(state, [:writes, :errors, :recent, :power_save, :player_leds]), state}
 
   @impl true
-  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    if String.starts_with?(line, "err"), do: {:noreply, %{state | errors: state.errors + 1}}, else: {:noreply, state}
-  end
-
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.warning("[hid] output writer exited: #{status}")
-    {:noreply, %{state | port: nil}}
-  end
-
-  def handle_info({:padwave, {:device, :down, _info}}, state) do
-    if state.port, do: Port.close(state.port)
-    {:noreply, %{state | port: nil}}
-  end
-
   def handle_info(_other, state), do: {:noreply, state}
 
   # Every report carries the persistent claims (currently power_save) on top of
@@ -145,34 +130,10 @@ defmodule Padwave.Output.Hid do
   defp claim(flags, name) when is_list(flags), do: [name | flags]
   defp claim(flags, _name) when is_integer(flags), do: flags
 
-  defp send_line(%{port: nil} = state, line) do
-    case open_port() do
-      {:ok, port} -> do_send(%{state | port: port}, line)
-      :error -> {:noreply, %{state | errors: state.errors + 1}}
-    end
-  end
-
-  defp send_line(state, line), do: do_send(state, line)
-
-  defp do_send(state, line) do
-    Port.command(state.port, line <> "\n")
+  defp send_line(state, line) do
+    Padwave.Player.Native.command(line)
     recent = [%{seq: state.writes, hex: line} | state.recent] |> Enum.take(4)
     {:noreply, %{state | writes: state.writes + 1, recent: recent}}
-  end
-
-  defp open_port do
-    path = System.find_executable("padwave") || Path.expand("~/.local/bin/padwave")
-
-    case Port.open({:spawn_executable, path}, [
-           :binary,
-           :exit_status,
-           {:line, 2048},
-           {:args, ["output"]}
-         ]) do
-      port -> {:ok, port}
-    end
-  rescue
-    _ -> :error
   end
 
   defp serialize(fields) do

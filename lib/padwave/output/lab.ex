@@ -52,6 +52,12 @@ defmodule Padwave.Output.Lab do
 
   defp pad_params(bytes), do: bytes <> :binary.copy(<<0>>, max(10 - byte_size(bytes), 0))
 
+  def apply(%{"kind" => "mic_monitor"} = params) do
+    enabled = params["enabled"] == true
+    :ok = Padwave.Mic.set_monitor(enabled)
+    {:ok, "input level #{if enabled, do: "on", else: "off"}"}
+  end
+
   def apply(%{"kind" => "lightbar", "rgb" => [r, g, b]}) do
     Lightbar.set_rgb(clamp(r), clamp(g), clamp(b))
     {:ok, "lightbar overridden"}

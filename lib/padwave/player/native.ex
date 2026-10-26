@@ -35,6 +35,13 @@ defmodule Padwave.Player.Native do
   def crossfade_seek(seconds, opts \\ []) when is_number(seconds),
     do: GenServer.cast(__MODULE__, {:crossfade_seek, seconds, Keyword.get(opts, :fade, 600)})
   def stop(opts \\ []), do: GenServer.cast(__MODULE__, {:stop, opts})
+
+  @doc """
+  Sends a line to the player process on its stdin. This is how the output
+  writer lives in the same server: `fields ...` builds a 0x31 report, `raw
+  <hex>` writes an already-built one.
+  """
+  def command(line) when is_binary(line), do: GenServer.cast(__MODULE__, {:command, line})
   @doc "Appends paths to the player's gapless queue."
   def enqueue(paths) when is_list(paths), do: GenServer.cast(__MODULE__, {:enqueue, paths})
 
@@ -123,6 +130,17 @@ defmodule Padwave.Player.Native do
     {:noreply, state}
   end
 
+  def handle_cast({:command, line}, state) do
+    case ensure_port(state) do
+      {:ok, state} ->
+        send_line(state, line <> "\n")
+        {:noreply, state}
+
+      {:error, state} ->
+        {:noreply, %{state | errors: state.errors + 1}}
+    end
+  end
+
   def handle_cast({:stop, _opts}, state) do
     send_line(state, "quit\n")
     if state.port, do: Port.close(state.port)
@@ -171,6 +189,7 @@ defmodule Padwave.Player.Native do
       volume: 80,
       sent: 0,
       underruns: 0,
+      errors: 0,
       eof: false
     }
   end
@@ -215,6 +234,9 @@ defmodule Padwave.Player.Native do
   defp play_line(path, start), do: "play #{round(start * 1000)} #{path}\n"
 
   # -- status -----------------------------------------------------------------
+
+  defp parse_line("err" <> _, state), do: %{state | errors: state.errors + 1}
+  defp parse_line("ok" <> _, state), do: state
 
   defp parse_line("pos " <> value, state) do
     case Integer.parse(value) do

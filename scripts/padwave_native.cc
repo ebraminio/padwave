@@ -60,6 +60,7 @@ extern "C" {
 
 #include <opus/opus.h>
 
+#include "padwave_fields.hh"
 #include "padwave_schemas.hh"
 
 #define RATE 48000
@@ -117,6 +118,16 @@ struct player {
    * position and the tick blends into it, same as a station change. */
   bool seek_fade;
 
+  /* The 0x31 control writer shares this process (and this hidraw fd) with the
+   * 0x36 stream: one server for everything. */
+  padwave::OutputReport out;
+  uint8_t out_seq;
+
+  /* Experimental: the microphone is off in the 0x36 enable mask unless the UI
+   * asks for the input level. The controller only sends 0xD4 mic frames while
+   * this is on. */
+  bool mic;
+
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS];
   int head, tail; /* head = write, tail = read */
   float acc[IN_FRAMES][CHANNELS];
@@ -173,7 +184,8 @@ static int find_dualsense(void) {
 static void send_report(struct player *pl, const uint8_t *opus, int len) {
   padwave::AudioReport report;
 
-  report.init(pl->speaker ? padwave::AudioReport::Speaker : padwave::AudioReport::Jack);
+  report.init(pl->speaker ? padwave::AudioReport::Speaker : padwave::AudioReport::Jack,
+              pl->mic ? padwave::AudioReport::SpeakerAndMic : padwave::AudioReport::SpeakerOnly);
   report.state.body.init(pl->speaker ? padwave::OutputBody::Speaker
                                      : padwave::OutputBody::Headphones);
 
@@ -524,6 +536,17 @@ static void tick(struct player *pl) {
   send_report(pl, opus, n);
 }
 
+static bool write_all(int fd, const void *buf, size_t len) {
+  const uint8_t *data = (const uint8_t *)buf;
+  size_t put = 0;
+  while (put < len) {
+    ssize_t n = write(fd, data + put, len - put);
+    if (n <= 0) return false;
+    put += (size_t)n;
+  }
+  return true;
+}
+
 /* ---- commands ----------------------------------------------------------- */
 
 static void handle_line(struct player *pl, char *line) {
@@ -588,6 +611,45 @@ static void handle_line(struct player *pl, char *line) {
       pl->next_warmed = false;
       warm_file(path);
     }
+    return;
+  }
+
+  if (strncmp(line, "fields ", 7) == 0) {
+    memset(&pl->out, 0, sizeof(pl->out));
+    pl->out.report_id = padwave::OutputReport::ReportId;
+    pl->out.tag = 0x10;
+    pl->out.seq_tag = (uint8_t)((pl->out_seq & 0x0F) << 4);
+    if (!padwave_fields::apply_fields(&pl->out.body, line + 7)) {
+      printf("err field\n");
+      fflush(stdout);
+      return;
+    }
+    pl->out.sign();
+    if (pl->hidraw < 0) pl->hidraw = find_dualsense();
+    bool ok = pl->hidraw >= 0 && write_all(pl->hidraw, &pl->out, sizeof(pl->out));
+    if (ok) pl->out_seq = (uint8_t)((pl->out_seq + 1) & 0x0F);
+    printf(ok ? "ok 1\n" : "err write\n");
+    fflush(stdout);
+    return;
+  }
+
+  if (strncmp(line, "raw ", 4) == 0) {
+    uint8_t bytes[512];
+    size_t len = strlen(line + 4) / 2;
+    if (len == 0 || len > sizeof(bytes) || !padwave_fields::hex_to_bytes(line + 4, bytes, len)) {
+      printf("err raw\n");
+      fflush(stdout);
+      return;
+    }
+    if (pl->hidraw < 0) pl->hidraw = find_dualsense();
+    bool ok = pl->hidraw >= 0 && write_all(pl->hidraw, bytes, len);
+    printf(ok ? "ok 0\n" : "err write\n");
+    fflush(stdout);
+    return;
+  }
+
+  if (sscanf(line, "mic %ld", &value) == 1) {
+    pl->mic = value != 0;
     return;
   }
 
