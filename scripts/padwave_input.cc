@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +94,7 @@ void print_buttons(uint32_t buttons) {
  * the actions; the UI's bindings map is documentation, not logic. */
 int64_t now_ms();
 void emit_action(const char *line);
+void emit_event(const char *line);
 
 struct actions_state {
   uint32_t prev_buttons = 0;
@@ -163,6 +165,109 @@ void track_triggers(int l2, int r2) {
   }
 }
 
+/* -- sensors and the remaining controller events -------------------------
+ * Activity/wake (with the analog cap), shake, the 250 ms jack debounce and the
+ * trigger actuator's pressed/released edges. The radio still executes the
+ * actions; these are announcements, not decisions. */
+struct sensors_state {
+  bool has_prev = false;
+  uint32_t prev_buttons = 0;
+  uint8_t prev_dpad = 0;
+  int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
+  bool prev_jack = false;
+  int64_t last_activity = 0;
+  int analog_resets = 0;
+  int64_t last_shake = 0;
+  int stable_jack = -1;
+  int pending_jack = -1;
+  int64_t jack_since = 0;
+  bool l2_down = false, r2_down = false;
+};
+
+sensors_state g_sensors;
+
+void track_sensors(const padwave::InputBody &b) {
+  int64_t now = now_ms();
+  bool jack = (b.status1.get() & padwave::InputBody::Headset) != 0;
+  int l2 = b.l2.get(), r2 = b.r2.get();
+  int lx = b.lx.get(), ly = b.ly.get(), rx = b.rx.get(), ry = b.ry.get();
+  uint32_t buttons = b.buttons;
+  uint8_t dpad = (uint8_t)(buttons & 0x0F);
+  bool first = !g_sensors.has_prev;
+
+  bool real = false, analog = false;
+  if (!first) {
+    real = buttons != g_sensors.prev_buttons || dpad != g_sensors.prev_dpad ||
+           jack != g_sensors.prev_jack || abs(l2 - g_sensors.prev_l2) > 10 ||
+           abs(r2 - g_sensors.prev_r2) > 10;
+    analog = abs(lx - g_sensors.prev_lx) > 24 || abs(ly - g_sensors.prev_ly) > 24 ||
+             abs(rx - g_sensors.prev_rx) > 24 || abs(ry - g_sensors.prev_ry) > 24;
+  }
+
+  double g = sqrt((double)b.accel_x.get() * b.accel_x.get() +
+                  (double)b.accel_y.get() * b.accel_y.get() +
+                  (double)b.accel_z.get() * b.accel_z.get()) /
+             8192.0;
+  if (g >= 2.25 && now - g_sensors.last_shake > 1500) {
+    emit_event("shake");
+    g_sensors.last_shake = now;
+    real = true;
+  }
+
+  if (real || analog) {
+    bool capped = analog && !real && g_sensors.analog_resets >= 6;
+    if (!capped && now - g_sensors.last_activity > 900) {
+      emit_event("activity");
+      g_sensors.last_activity = now;
+      if (analog) g_sensors.analog_resets++;
+      else g_sensors.analog_resets = 0;
+    } else if (real) {
+      g_sensors.analog_resets = 0;
+    }
+  }
+
+  if (first) {
+    g_sensors.stable_jack = jack ? 1 : 0;
+  } else if (jack == (g_sensors.stable_jack != 0)) {
+    g_sensors.pending_jack = -1;
+    g_sensors.jack_since = 0;
+  } else if (g_sensors.pending_jack != (jack ? 1 : 0) || g_sensors.jack_since == 0) {
+    g_sensors.pending_jack = jack ? 1 : 0;
+    g_sensors.jack_since = now;
+  } else if (now - g_sensors.jack_since >= 250) {
+    emit_action(jack ? "jack_plugged" : "jack_unplugged");
+    g_sensors.stable_jack = jack ? 1 : 0;
+    g_sensors.pending_jack = -1;
+    g_sensors.jack_since = 0;
+  }
+
+  if (!g_sensors.l2_down && l2 >= 30) {
+    emit_event("trigger l pressed");
+    g_sensors.l2_down = true;
+  } else if (g_sensors.l2_down && l2 < 15) {
+    emit_event("trigger l released");
+    g_sensors.l2_down = false;
+  }
+  if (!g_sensors.r2_down && r2 >= 30) {
+    emit_event("trigger r pressed");
+    g_sensors.r2_down = true;
+  } else if (g_sensors.r2_down && r2 < 15) {
+    emit_event("trigger r released");
+    g_sensors.r2_down = false;
+  }
+
+  g_sensors.has_prev = true;
+  g_sensors.prev_buttons = buttons;
+  g_sensors.prev_dpad = dpad;
+  g_sensors.prev_lx = lx;
+  g_sensors.prev_ly = ly;
+  g_sensors.prev_rx = rx;
+  g_sensors.prev_ry = ry;
+  g_sensors.prev_l2 = l2;
+  g_sensors.prev_r2 = r2;
+  g_sensors.prev_jack = jack;
+}
+
 struct dpad_state {
   uint8_t prev = 0xFF;
   int hold_dir = 0;
@@ -180,6 +285,11 @@ int64_t now_ms() {
 
 void emit_action(const char *line) {
   printf("action %s\n", line);
+  fflush(stdout);
+}
+
+void emit_event(const char *line) {
+  printf("event %s\n", line);
   fflush(stdout);
 }
 
@@ -228,7 +338,7 @@ void track_dpad(uint32_t buttons) {
   g_dpad.hold_at = now + intervals[index];
 }
 
-void print_frame(const padwave::InputBody &b) {
+void print_frame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
   uint32_t buttons = b.buttons;
   int battery = (b.status0 & 0x0F) * 10 + 5;
   if (battery > 100) battery = 100;
@@ -243,6 +353,8 @@ void print_frame(const padwave::InputBody &b) {
          b.accel_x.get(), b.accel_y.get(), b.accel_z.get());
   printf(" tfl=%u tfr=%u", (unsigned)b.trigger_feedback_l.get(),
          (unsigned)b.trigger_feedback_r.get());
+  printf(" raw=");
+  for (size_t i = 0; i < len; i++) printf("%02x", raw[i]);
   printf(" t1=%02x%02x%02x%02x t2=%02x%02x%02x%02x\n", (unsigned)b.touch1[0].get(),
          (unsigned)b.touch1[1].get(), (unsigned)b.touch1[2].get(), (unsigned)b.touch1[3].get(),
          (unsigned)b.touch2[0].get(), (unsigned)b.touch2[1].get(), (unsigned)b.touch2[2].get(),
@@ -252,6 +364,7 @@ void print_frame(const padwave::InputBody &b) {
   track_dpad(b.buttons);
   track_buttons(b.buttons);
   track_triggers(b.l2, b.r2);
+  track_sensors(b);
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.
@@ -269,12 +382,12 @@ void handle_report(const uint8_t *buf, size_t len) {
   if (buf[0] == padwave::PacketStateBluetooth && len >= padwave::InputReport::Size) {
     const padwave::InputReport *r = (const padwave::InputReport *)buf;
     if (!r->valid()) return;
-    print_frame(r->body);
+    print_frame(r->body, buf, padwave::InputReport::Size);
     return;
   }
 
   if (buf[0] == padwave::PacketInputUsb && len >= padwave::InputReport::UsbSize)
-    print_frame(*(const padwave::InputBody *)(buf + 1));
+    print_frame(*(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
 }
 
 bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {

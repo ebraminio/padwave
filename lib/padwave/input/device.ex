@@ -101,6 +101,20 @@ defmodule Padwave.Input.Device do
     {:noreply, state}
   end
 
+  def handle_info({port, {:data, {:eol, "event " <> event}}}, %{port: port} = state) do
+    case String.split(event, " ", trim: true) do
+      ["activity"] -> Padwave.Bus.broadcast({:input, :activity})
+      ["shake"] -> Padwave.Bus.broadcast({:input, :shake})
+      ["trigger", side, edge] ->
+        Padwave.Bus.broadcast(
+          {:input, {:trigger, if(side == "l", do: :left, else: :right), String.to_existing_atom(edge)}}
+        )
+      _ -> :ok
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info({port, {:data, {:eol, "mic " <> hex}}}, %{port: port} = state) do
     case Base.decode16(hex, case: :mixed) do
       {:ok, payload} -> Padwave.Mic.ingest(payload)

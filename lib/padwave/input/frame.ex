@@ -106,7 +106,7 @@ defmodule Padwave.Input.Frame do
       temperature: int(f["temp"]),
       g_force: g_force(fields),
       touches: [touch_hex(f["t1"]), touch_hex(f["t2"])],
-      raw: nil,
+      raw: decode_hex(f["raw"]),
       fields: fields
     }
   end
@@ -120,6 +120,15 @@ defmodule Padwave.Input.Frame do
   defp charging_nibble(1), do: :charging
   defp charging_nibble(2), do: :full
   defp charging_nibble(_), do: :unknown
+
+  defp decode_hex(nil), do: <<>>
+
+  defp decode_hex(hex) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, bin} -> bin
+      _ -> <<>>
+    end
+  end
 
   defp touch_hex(nil), do: touch(<<0, 0, 0, 0>>)
 
