@@ -34,10 +34,6 @@
 // engines directly from its epoll loop; the *_main wrappers keep the debug
 // modes working.
 
-int native_main(int argc, char **argv);
-int opusdec_main(int argc, char **argv);
-int server_main(int argc, char **argv);
-
 void *player_create(const char *node, bool speaker);
 struct player_status {
   long pos_ms;
