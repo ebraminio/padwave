@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `00bd0f9`
+- HEAD: latest `main`; the behavior described here landed through `72590a3`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -26,7 +26,7 @@
   lightbar + charging player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
   presets + unified trigger lab, host-driven lightbar pulse, persisted volume,
-  mic/playback exclusion.
+  mic/playback exclusion + mute precedence.
 
 ## Pi Bluetooth tuning
 
@@ -72,7 +72,9 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   `playerStart` carry this model.
 - Mic monitoring and playback are mutually exclusive. Enabling the mic pauses
   and sets `paused_by_mic`; disabling resumes only if the mic caused the pause.
-  Every playback start/resume calls `stopMicForPlayback()` first.
+  Every playback start/resume calls `stopMicForPlayback()` first. Touchpad/
+  mute supersedes a mic pause: it turns the mic off and records the pause as
+  volume-caused, so the next unmute resumes.
 - Power-off is a BlueZ disconnect after idle (`bluetoothctl disconnect
   <HID_UNIQ>`, `timeout 5`), not a 0x31 bit. The pad sleeps; press PS to wake.
   The player reopens its hidraw on write failure/missing node.
