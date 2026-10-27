@@ -56,6 +56,15 @@ updates coexist with the audio service's stream. The main grip motors are
 dualsense-tester both set the pair, and bit 0 alone is ignored. Padwave's lab
 claims both for the start and the zero stop.
 
+`lightbar_setup` (+0x29) is gated by `valid_flag2` bit 1, not by the
+`valid_flag1` lightbar bit. The kernel uses value `0x02` in
+`dualsense_reset_leds()` and calls it "fade light out": it is a one-shot
+handoff that blanks the bar, not a blink or fade pattern. While the 0x36 audio
+stream runs, its state snapshot also claims the lightbar RGB every 10.667 ms and
+would relight the bar immediately; padwave sends `state_clear_lightbar` to the
+player for that command. A smooth pulse has to be driven as repeated RGB
+updates (the lab's 1 Hz raised cosine).
+
 Trigger parameters are the 10 bytes after the mode. For the official zone
 effects (`0x21` feedback, `0x26` vibration), bytes 0-1 are the active-zone mask
 (low/high), bytes 2-5 pack a 3-bit strength for each zone from the start zone to

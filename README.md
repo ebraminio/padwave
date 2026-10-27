@@ -146,6 +146,12 @@ position/amplitude/frequency are also used by the "on volume" buzz and both
 test buttons. Config and the playhead persist to `~/.config/padwave/config`;
 the app resumes the saved station and offset.
 
+The lightbar row has the normal colour/brightness controls, a one-shot
+**light out**, and a host-driven **pulse**. `lightbar_setup` is gated by
+`valid_flag2` bit 1 and value `0x02` merely releases/blank the bar; the
+controller has no programmable blink. Smooth pulsing is repeated RGB updates
+from the host.
+
 Idle fades the volume over the configured grace and suspends playback; any
 controller action, event, command or config edit restores the volume and
 resumes. After `poweroff_when_idle_ms` the app persists and asks BlueZ to
@@ -172,7 +178,7 @@ roughly 0.9 % of a core even while paused; that is the input engine, not audio.
 
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
-confirmation of the lightbar and jack paths (rumble and trigger effects are
+confirmation of the jack path (lightbar, rumble and trigger effects are
 confirmed).
 
 ## Protocol
