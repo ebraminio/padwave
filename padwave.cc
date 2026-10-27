@@ -2165,9 +2165,9 @@ void read_client(server *s, conn *c) {
   }
 
   if (s->standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 && strcmp(path, "/api/front/events") != 0) {
-    static const char body[] = "{\"ok\":false,\"error\":\"not implemented\"}";
+    static const char body[] = "ok=false\nerror=not implemented\n";
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
                                      sizeof(body) - 1);
     mod_fd(s, c->fd, EPOLLOUT);
     return;
@@ -2195,8 +2195,8 @@ void read_client(server *s, conn *c) {
 
   c->static_reply = true;
   if (strcmp(path, "/health") == 0) {
-    static const char body[] = "{\"ok\":true}\n";
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,
+    static const char body[] = "ok=true\n";
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
                                      sizeof(body) - 1);
   } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
     if (s->index_len <= sizeof(c->out)) {
