@@ -3,8 +3,8 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `bf7c15b implement playhead resume, idle fade/suspend, jack pause
-  and mic level`.
+- HEAD: `10fc5a0 power the controller off after idle via BlueZ, and reopen
+  the player hidraw`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -48,6 +48,9 @@ Passes already landed:
 - `bf7c15b` — playhead save/resume; idle warning/fade/suspend/wake; jack pause;
   Opus mic decode (level/RMS/peak) and the monitor switch opening the 0x36 mic
   path; dynamic session status.
+- `10fc5a0` — idle power-off via `bluetoothctl disconnect <HID_UNIQ>` after
+  `poweroff_when_idle_ms`; persisted first; session.powered_off/poweroff_in and
+  controller.mac; player hidraw reopens after the controller sleeps.
 
 ## Preferences / constraints
 
@@ -77,9 +80,12 @@ Passes already landed:
 
 ## What is genuinely missing
 
-1. Controller power-off after idle is not implemented. `session.shutdown_in`
-   is the time to the idle *suspend*; there is no controller power-off or
-   shutdown step and no `poweroff_when_idle_ms` in the saved config.
+1. Controller power-off is implemented as a BlueZ disconnect after idle
+   suspend: `poweroff_when_idle_ms` (default 60000, 0 disables), persist, then
+   `timeout 5 bluetoothctl disconnect <HID_UNIQ>`. There is still no 0x31
+   power-off bit (none is documented), and if `bluetoothctl`/BlueZ is missing
+   the app logs the failure and leaves `powered_off=false`. The pad sleeps;
+   press PS to wake it.
 2. `audio.present`, `audio.sink` and `audio.state` are still static
    (`false`/empty/null): the player does not report the ALSA sink, so the panel
    always says "no sink".
@@ -87,9 +93,9 @@ Passes already landed:
    configurable. The mic monitor is level capture only (no speaker monitoring)
    and its on/off state is not persisted across restarts.
 4. Playhead is saved 1 s after changes and every 30 s while playing; a hard
-   crash can lose up to 30 s. Shutdown saves exactly. Jack pause and the lab
-   effects have only been verified through the API/decoder, not by physically
-   unplugging or watching the controller.
+   crash can lose up to 30 s. Shutdown and power-off save exactly. Jack pause
+   and the lab effects have only been verified through the API/decoder, not by
+   physically unplugging or watching the controller.
 5. `/api/reload` is a deliberate no-op (`reloaded=0`): there are no modules to
    reload in a single binary.
 6. `/api/mic/reset` frees the Opus decoder; the next monitored frame recreates
@@ -147,34 +153,21 @@ debounce). The panel can be checked headlessly with Chrome's DevTools protocol
 (remember `--no-proxy-server` for the LAN URL); status/config/library/schema,
 the lab kinds and a pause click were verified that way.
 
-## Controller power-off (for the next session)
+## Controller power-off (implemented)
 
-The old Elixir "power off" was **not** a hardware power-off. `Radio.suspend/2`
-(at `3791444^:lib/padwave/radio.ex`) did:
+The old Elixir "power off" was not a hardware power-off: `Radio.suspend/2` just
+stopped the player, saved the position and set suspended/resume_pending. No
+0x31 power-off bit is documented (the lab's `power_save_control` bits are
+guesses).
 
-- `Player.stop(fade: 300)`, save the position to the store, set
-  `suspended/resume_pending` and broadcast; it never closed the hidraw or sent a
-  power command. The README's "power the controller off" was aspirational.
+The app now implements the reliable host-side option: after idle suspend and
+`poweroff_when_idle_ms`, it saves config/playhead and runs
+`timeout 5 bluetoothctl disconnect <MAC>`, where `<MAC>` comes from the hidraw
+uevent's `HID_UNIQ`. The pad goes to sleep; pressing PS wakes it. Closing the
+hidraw alone would not turn it off.
 
-What is documented in the 0x31 output report:
-
-- `power_save_control` (+0x09), claimed by `valid_flag1` bit 1 (`PowerSave`).
-- Bit 4 = microphone mute (0x10), bit 6 = audio mute (0x40). Bits 0–3, 5, 7 are
-  **guesses**; the old lab exposed them as eight toggles precisely to probe them.
-  No confirmed power-off bit in any reference.
-
-A real power-off, in order of reliability:
-
-1. **PS button held ~10 s** (hardware).
-2. **Host-side Bluetooth disconnect**:
-   `bluetoothctl disconnect 4C:B9:9B:3A:46:C6` (BlueZ/D-Bus); the pad then goes
-   to sleep. Closing the hidraw alone only drops the reports; it does not turn
-   the pad off.
-3. If a probed `power_save_control` bit ever does turn it off, send it through
-   the player's fields line:
-   `fields valid_flag1=power_save;power_save_control=0x??`
-   (`player_command` handles the line; the app has no output endpoint yet).
-
-So for the next session: implement "power off" as fade/stop → persist (still
-missing) → `bluetoothctl disconnect <MAC>` (or a probed fields bit), and do not
-promise a 0x31 power-off.
+The player also reopens its hidraw after a write failure / missing node (about
+once a second), so audio comes back when the controller does instead of staying
+on a stale fd. If BlueZ is unavailable the disconnect logs an error and leaves
+`session.powered_off=false`; playback stays suspended and a command/controller
+input wakes it.

@@ -119,13 +119,15 @@ rumble/trigger release. Config and the playhead persist to
 
 Idle fades the volume over the configured grace and suspends playback; any
 controller action, event, command or config edit restores the volume and
-resumes. Unplugging the headset pauses and plugging it back resumes only if the
-jack caused the pause. The monitor switch opens the 0x36 mic path, and the
-status stream carries a live Opus-decoded level (frames, RMS, peak).
+resumes. After `poweroff_when_idle_ms` the app persists and asks BlueZ to
+disconnect the pad, which puts it to sleep; press PS to wake it. Unplugging the
+headset pauses and plugging it back resumes only if the jack caused the pause.
+The monitor switch opens the 0x36 mic path, and the status stream carries a live
+Opus-decoded level (frames, RMS, peak).
 
-Not yet done: controller power-off after idle, real audio-sink/state reporting
-(the panel still says no sink), and physical confirmation of the lightbar,
-rumble, trigger and jack paths.
+Not yet done: real audio-sink/state reporting (the panel still says no sink),
+configurable idle fade floor, persisted mic-monitor state, and physical
+confirmation of the lightbar, rumble, trigger and jack paths.
 
 ## Protocol
 
