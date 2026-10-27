@@ -40,8 +40,8 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        the engines and main: wire include, player, input decoder,
-                  opusdec, main
+padwave.cc        the player and main
+padwave_input.hh  struct Input: hidraw, callbacks, decoder and the input CLI
 padwave_app.hh    struct App: library, playback, controller snapshot, config
                   and lab output (inline methods, private fields)
 padwave_server.hh struct Server: epoll, HTTP routes, SSE, embedded UI

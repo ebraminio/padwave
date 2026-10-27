@@ -3,14 +3,16 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `01f685c`
+- HEAD: latest `main`; the behavior described here landed through `f00b9d2`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
 - Service: `padwave.service`, one process / one thread, port 8787, ~2 % CPU,
-  controller connected, UI at `http://192.168.1.175:8787`.
+  UI at `http://192.168.1.175:8787`. The idle power-off can leave the pad
+  asleep until PS is pressed.
 - Layout:
-  - `padwave.cc` — engines (player, input, opusdec) + main
+  - `padwave.cc` — player + main
+  - `padwave_input.hh` — `struct Input` (hidraw, callbacks, decoder, CLI)
   - `padwave_app.hh` — `struct App` (private fields, inline camelCase methods)
   - `padwave_server.hh` — `struct Server` (epoll, routes, SSE, embedded UI)
   - `padwave_wire.hh` — the only wire description
@@ -18,7 +20,7 @@
   - `.clang-format`, `test_wire.cc`, `build.sh`, `install.sh`, `deploy.sh`
 - Config lives in `~/.config/padwave/config`: idle timeout/grace, poweroff
   delay, trigger effect values, `play_path`/`play_pos_ms`.
-- Recent work: server/lab text routes, App/Server class split, idle
+- Recent work: server/lab text routes, App/Input/Server class split, idle
   fade/suspend/wake, BlueZ power-off + hidraw reopen, playhead persistence,
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + charging player LEDs.
@@ -28,12 +30,13 @@
 - One translation unit at the root. No STL, RTTI, inheritance, or C++
   `new`/`delete`. The App is a stack object in `server_main`; the Server table
   is a function-local static.
-- `struct App` / `struct Server`: private fields, public surface, inline
-  camelCase methods. App-only helpers are private static members; Server
-  constants and its bindings text are private. The only remaining free
-  interface is the shared engine API (player/input/main/find_dualsense), which
-  genuinely belongs to padwave.cc. Free functions and wire names stay
-  snake_case.
+- `struct Input` / `struct App` / `struct Server`: private fields, public
+  surface, inline camelCase methods. Input owns its fd/callbacks/edge state and
+  exposes only open/close/fd/node/setSink/feed/cli; App embeds one and uses it
+  directly. App-only helpers are private static members; Server constants and
+  its bindings text are private. The only remaining free interfaces are
+  `input_main` and the player/main/find_dualsense engine API that belongs to
+  padwave.cc. Free functions and wire names stay snake_case.
 - Run `clang-format -i padwave.cc padwave_app.hh padwave_server.hh
   padwave_wire.hh test_wire.cc` before committing.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
