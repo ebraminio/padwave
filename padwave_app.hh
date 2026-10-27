@@ -1236,8 +1236,13 @@ private:
     playerSend(line);
 
     if (v == 0) {
+      // Touchpad/mute is a playback control: it supersedes a mic-caused pause.
+      // Turn the mic off and remember volume as the pause cause so unmuting
+      // resumes playback.
+      bool mic_paused = this->paused_by_mic;
+      stopMicForPlayback();
       this->paused_by_disconnect = false;
-      if (this->playing && !this->paused) {
+      if (this->playing && (!this->paused || mic_paused)) {
         this->paused = true;
         this->paused_by_volume = true;
         playerSend("pause 1\n");
