@@ -8,6 +8,7 @@
 #pragma once
 
 #include <dirent.h>
+#include <math.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -21,6 +22,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <opus/opus.h>
 
 // DualSense discovery is implemented in padwave.cc; the app only needs the
 // node name.
@@ -289,8 +292,23 @@ private:
   char last_action[64] = "";
   char raw[400] = "";
 
+  // Where the last session left off.
+  char resume_path[kMaxPath] = "";
+  long resume_pos_ms = 0;
+  bool resume_pending = false;
+  bool playhead_dirty = false;
+  long playhead_saved_at = 0;
+
   int reconnect_at = 0;
   long idle_since = 0;
+  long last_activity_ms = 0;
+  bool idle_warning = false;
+  bool suspended = false;
+  bool paused_by_idle = false;
+  bool paused_by_jack = false;
+  bool idle_volume_saved = false;
+  int idle_volume = 0;
+  int idle_fade_volume = -1;
 
   // Config that the panel edits; persisted as ~/.config/padwave/config.
   int idle_timeout_ms = 900000;
@@ -304,6 +322,16 @@ private:
   long rumble_until = 0;
   int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
+
+  OpusDecoder *mic_decoder = nullptr;
+  unsigned long mic_packets = 0;
+  unsigned long mic_frames = 0;
+  unsigned long mic_samples = 0;
+  int mic_rms = 0;
+  int mic_peak = 0;
+  int mic_level = 0;
+  long mic_last_ms = 0;
+  bool mic_monitor = false;
 
 public:
   bool init() {
@@ -332,11 +360,22 @@ public:
     this->input = nullptr;
     this->player_timer_fd = this->input_fd = -1;
     configLoad();
+    if (this->resume_path[0]) {
+      int idx = findStation(this->resume_path);
+      if (idx >= 0) {
+        this->current = idx;
+        this->pos_ms = this->resume_pos_ms;
+        this->resume_pending = true;
+      }
+    }
+    this->playhead_saved_at = now_ms();
+    this->last_activity_ms = this->playhead_saved_at;
     setVolume(70);
     return true;
   }
 
   void shutdown() {
+    configSave();
     if (this->player) {
       playerSend("quit\n");
       ::player_destroy(this->player);
@@ -344,22 +383,39 @@ public:
     }
     this->player_timer_fd = -1;
     inputStop();
+    micReset();
   }
 
   void tick() {
     serviceOutput();
+    updateIdle();
     if (this->eof) {
       this->eof = false;
       next();
     }
     if (!this->player) {
       playerStart();
-      if (this->player && this->current < 0 && this->count > 0) {
-        int start = rand() % this->count;
-        play(start, 0);
+      if (this->player) {
+        if (this->resume_pending && this->current >= 0) {
+          this->resume_pending = false;
+          play(this->current, this->pos_ms);
+        } else if (this->current < 0 && this->count > 0) {
+          int start = rand() % this->count;
+          play(start, 0);
+        }
       }
     }
     if (!this->input && (int)now_ms() >= this->reconnect_at) inputStart();
+
+    long now = now_ms();
+    if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
+      this->playhead_dirty = false;
+      this->playhead_saved_at = now;
+      configSave();
+    } else if (this->current >= 0 && now - this->playhead_saved_at >= 30000) {
+      this->playhead_saved_at = now;
+      configSave();
+    }
   }
 
   int fds(int *fds, int max) {
@@ -392,13 +448,48 @@ public:
     if (cap) buf[0] = 0;
     const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
 
+    long now = now_ms();
+    long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
+    if (!this->playing || (this->paused && !this->suspended)) idle_ms = 0;
+    long timeout = this->idle_timeout_ms;
+    long grace = this->idle_warn_grace_ms;
+    const char *phase = "active";
+    long warning_in = (timeout + 999) / 1000;
+    long shutdown_in = 0;
+    int fade_percent = 100;
+
+    if (this->suspended) {
+      phase = "suspended";
+      warning_in = 0;
+      fade_percent = 10;
+    } else if (this->idle_warning && idle_ms >= timeout) {
+      phase = "warning";
+      long over = idle_ms - timeout;
+      int progress = grace > 0 ? (int)(over * 100 / grace) : 100;
+      if (progress < 0) progress = 0;
+      if (progress > 100) progress = 100;
+      fade_percent = 100 - progress * 90 / 100;
+      warning_in = 0;
+      long left = timeout + grace - idle_ms;
+      shutdown_in = left > 0 ? (left + 999) / 1000 : 0;
+    } else {
+      long left = timeout - idle_ms;
+      warning_in = left > 0 ? (left + 999) / 1000 : 0;
+    }
+
     kv_add(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
     kv_add(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
     kv_add(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
     kv_add(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
     kv_add(buf, cap, &o, "radio.volume", "%d", this->volume);
     kv_add(buf, cap, &o, "radio.muted", "%s", this->muted ? "true" : "false");
-    kv_add(buf, cap, &o, "radio.fade_percent", "%d", 100);
+    kv_add(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
+    kv_add(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
+    if (this->idle_warning || this->suspended)
+      kv_add(buf, cap, &o, "radio.applied_volume", "%d",
+             this->idle_fade_volume >= 0 ? this->idle_fade_volume : 0);
+    else
+      kv_add(buf, cap, &o, "radio.applied_volume", "%d", this->volume);
     if (s) {
       kv_text(buf, cap, &o, "radio.current.id", s->id);
       kv_text(buf, cap, &o, "radio.current.title", s->title);
@@ -407,9 +498,13 @@ public:
       kv_text(buf, cap, &o, "radio.current.ext", s->ext);
     }
 
-    kv_text(buf, cap, &o, "session.phase", "active");
-    kv_add(buf, cap, &o, "session.warning_in", "%d", 900);
-    kv_add(buf, cap, &o, "session.shutdown_in", "%d", 0);
+    kv_text(buf, cap, &o, "session.phase", phase);
+    kv_add(buf, cap, &o, "session.idle_seconds", "%ld", idle_ms / 1000);
+    kv_add(buf, cap, &o, "session.warning_in", "%ld", warning_in);
+    kv_add(buf, cap, &o, "session.shutdown_in", "%ld", shutdown_in);
+    kv_add(buf, cap, &o, "session.suspended", "%s", this->suspended ? "true" : "false");
+    kv_text(buf, cap, &o, "session.suspended_by",
+            this->paused_by_idle ? "idle" : (this->paused_by_jack ? "jack" : "null"));
 
     kv_add(buf, cap, &o, "audio.present", "%s", "false");
     kv_text(buf, cap, &o, "audio.sink", "");
@@ -418,13 +513,16 @@ public:
     kv_text(buf, cap, &o, "hid.power_save", "null");
     kv_text(buf, cap, &o, "hid.player_leds", "null");
 
-    kv_add(buf, cap, &o, "mic.level", "%d", 0);
-    kv_add(buf, cap, &o, "mic.active", "%s", "false");
-    kv_add(buf, cap, &o, "mic.frames", "%d", 0);
-    kv_add(buf, cap, &o, "mic.rms", "%d", 0);
-    kv_add(buf, cap, &o, "mic.peak", "%d", 0);
-    kv_add(buf, cap, &o, "mic.running", "%s", "false");
-    kv_add(buf, cap, &o, "mic.monitor", "%s", "false");
+    bool mic_active = this->mic_last_ms > 0 && now - this->mic_last_ms < 500;
+    kv_add(buf, cap, &o, "mic.level", "%d", this->mic_level);
+    kv_add(buf, cap, &o, "mic.active", "%s", mic_active ? "true" : "false");
+    kv_add(buf, cap, &o, "mic.frames", "%lu", this->mic_frames);
+    kv_add(buf, cap, &o, "mic.packets", "%lu", this->mic_packets);
+    kv_add(buf, cap, &o, "mic.samples", "%lu", this->mic_samples);
+    kv_add(buf, cap, &o, "mic.rms", "%d", this->mic_rms);
+    kv_add(buf, cap, &o, "mic.peak", "%d", this->mic_peak);
+    kv_add(buf, cap, &o, "mic.running", "%s", this->mic_decoder ? "true" : "false");
+    kv_add(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
 
     kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
     kv_text(buf, cap, &o, "controller.bus", "bluetooth");
@@ -514,7 +612,22 @@ public:
     return (int)o;
   }
 
+  void micReset() {
+    if (this->mic_decoder) {
+      opus_decoder_destroy(this->mic_decoder);
+      this->mic_decoder = nullptr;
+    }
+    this->mic_packets = 0;
+    this->mic_frames = 0;
+    this->mic_samples = 0;
+    this->mic_rms = 0;
+    this->mic_peak = 0;
+    this->mic_level = 0;
+    this->mic_last_ms = 0;
+  }
+
   void configSet(const char *body) {
+    noteActivity();
     char value[64];
 
     if (kv_get(body, "idle_timeout_ms", value, sizeof(value))) {
@@ -683,8 +796,15 @@ public:
       return snprintf(out, out_cap, "ok=true\nnote=fields\n");
     }
 
-    if (strcmp(kind, "mic_monitor") == 0)
-      return snprintf(out, out_cap, "ok=false\nerror=mic monitor is not implemented\n");
+    if (strcmp(kind, "mic_monitor") == 0) {
+      char value[16] = "false";
+      kv_get(body, "enabled", value, sizeof(value));
+      this->mic_monitor = strcmp(value, "true") == 0 || atoi(value) != 0;
+      playerSend(this->mic_monitor ? "mic 1\n" : "mic 0\n");
+      if (!this->mic_monitor) micReset();
+      return snprintf(out, out_cap, "ok=true\nnote=mic monitor %s\n",
+                      this->mic_monitor ? "on" : "off");
+    }
 
     return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
   }
@@ -819,6 +939,7 @@ private:
     a->current = idx;
     a->paused = false;
     a->playing = true;
+    a->playhead_dirty = true;
   }
 
   void play(int index, long start_ms) {
@@ -837,6 +958,7 @@ private:
     this->pos_ms = start_ms;
     this->dur_ms = 0;
     this->idle_since = now_ms();
+    this->playhead_dirty = true;
 
     // Gapless: queue a different station for the junction.
     if (this->count > 1) {
@@ -883,7 +1005,9 @@ private:
       return;
     }
     this->paused = !this->paused;
+    if (!this->paused) this->paused_by_jack = false;
     playerSend(this->paused ? "pause 1\n" : "pause 0\n");
+    this->playhead_dirty = true;
   }
 
   void setVolume(int v) {
@@ -903,6 +1027,7 @@ private:
     snprintf(line, sizeof(line), "seek %ld\n", ms);
     playerSend(line);
     this->pos_ms = ms;
+    this->playhead_dirty = true;
   }
 
   static void inputFrameCb(const struct input_frame *f, void *ud) {
@@ -951,16 +1076,61 @@ private:
 
   static void inputEventCb(const char *name, void *ud) {
     (void)name;
-    (void)ud;
+    App *a = (App *)ud;
+    a->noteActivity();
+  }
+
+  void micDecode(const uint8_t *data, size_t len) {
+    if (!this->mic_decoder) {
+      int err = 0;
+      this->mic_decoder = opus_decoder_create(48000, 1, &err);
+      if (!this->mic_decoder || err != OPUS_OK) {
+        this->mic_decoder = nullptr;
+        return;
+      }
+    }
+
+    opus_int16 pcm[480];
+    int n = opus_decode(this->mic_decoder, data, (opus_int32)len, pcm, 480, 0);
+    if (n <= 0) return;
+
+    long long sum = 0;
+    int peak = 0;
+    for (int i = 0; i < n; i++) {
+      int v = pcm[i];
+      sum += (long long)v * v;
+      int a = v < 0 ? -v : v;
+      if (a > peak) peak = a;
+    }
+    int rms = (int)sqrt((double)sum / n);
+    double db = rms > 0 ? 20.0 * log10((double)rms / 32768.0) : -90.0;
+    int level = (int)((db + 60.0) * 100.0 / 60.0);
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+
+    this->mic_rms = rms;
+    this->mic_peak = peak;
+    this->mic_level = (this->mic_level * 2 + level) / 3;
+    this->mic_packets++;
+    this->mic_frames++;
+    this->mic_samples += (unsigned long)n;
+    this->mic_last_ms = now_ms();
   }
 
   static void inputMicCb(const uint8_t *data, size_t len, void *ud) {
-    (void)data;
-    (void)len;
-    (void)ud;
+    App *a = (App *)ud;
+    if (!a->mic_monitor) return;
+    a->micDecode(data, len);
   }
 
   void handleAction(const char *name, int value) {
+    bool was_suspended = this->suspended;
+    noteActivity();
+    if (was_suspended && (strcmp(name, "toggle_pause") == 0 || strcmp(name, "play") == 0)) {
+      snprintf(this->last_action, sizeof(this->last_action), "%s", name);
+      return;
+    }
+
     if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0)
       next();
     else if (strcmp(name, "previous") == 0)
@@ -981,6 +1151,22 @@ private:
       this->playing = false;
       this->paused = true;
       playerSend("pause 1\n");
+    } else if (strcmp(name, "jack_unplugged") == 0) {
+      if (this->playing && !this->paused) {
+        this->paused = true;
+        this->paused_by_jack = true;
+        playerSend("pause 1\n");
+        this->playhead_dirty = true;
+      }
+    } else if (strcmp(name, "jack_plugged") == 0) {
+      if (this->paused_by_jack) {
+        this->paused_by_jack = false;
+        if (this->paused) {
+          this->paused = false;
+          playerSend("pause 0\n");
+          this->playhead_dirty = true;
+        }
+      }
     }
     snprintf(this->last_action, sizeof(this->last_action), "%s", name);
   }
@@ -991,7 +1177,7 @@ private:
     FILE *f = fopen(path, "r");
     if (!f) return;
 
-    char line[256];
+    char line[kMaxPath + 64];
     while (fgets(line, sizeof(line), f)) {
       char *eq = strchr(line, '=');
       if (!eq) continue;
@@ -1017,6 +1203,10 @@ private:
         this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
       } else if (strcmp(line, "trigger_effects") == 0) {
         this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+      } else if (strcmp(line, "play_path") == 0) {
+        snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
+      } else if (strcmp(line, "play_pos_ms") == 0) {
+        this->resume_pos_ms = atol(value);
       }
     }
     fclose(f);
@@ -1042,7 +1232,83 @@ private:
     fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
     fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
     fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
+    const char *play_path = this->current >= 0 ? this->stations[this->current].path : "";
+    fputs("play_path=", f);
+    for (const char *p = play_path; *p; p++) fputc((*p == '\n' || *p == '\r') ? ' ' : *p, f);
+    fputc('\n', f);
+    fprintf(f, "play_pos_ms=%ld\n", this->pos_ms);
     fclose(f);
+    this->playhead_saved_at = now_ms();
+  }
+
+  void noteActivity() {
+    this->last_activity_ms = now_ms();
+    this->idle_since = this->last_activity_ms;
+    if (this->idle_warning || this->suspended) endIdle();
+  }
+
+  void endIdle() {
+    if (this->idle_volume_saved) {
+      char line[32];
+      snprintf(line, sizeof(line), "volume %d\n", this->idle_volume);
+      playerSend(line);
+      this->idle_volume_saved = false;
+    }
+    if (this->paused_by_idle) {
+      this->paused_by_idle = false;
+      if (this->paused) {
+        this->paused = false;
+        playerSend("pause 0\n");
+        this->playhead_dirty = true;
+      }
+    }
+    this->idle_warning = false;
+    this->suspended = false;
+    this->idle_fade_volume = -1;
+  }
+
+  void updateIdle() {
+    if (!this->playing || this->paused) return;
+
+    long now = now_ms();
+    long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
+    long timeout = this->idle_timeout_ms;
+    long grace = this->idle_warn_grace_ms;
+
+    if (!this->idle_warning && !this->suspended && idle_ms >= timeout) {
+      this->idle_warning = true;
+      this->idle_volume = this->volume;
+      this->idle_volume_saved = true;
+      this->idle_fade_volume = this->volume;
+    }
+
+    if (!this->idle_warning) return;
+
+    long over = idle_ms - timeout;
+    int progress = grace > 0 ? (int)(over * 100 / grace) : 100;
+    if (progress < 0) progress = 0;
+    if (progress > 100) progress = 100;
+
+    int floor = this->idle_volume * 10 / 100;
+    if (floor < 1 && this->idle_volume > 0) floor = 1;
+    int target = this->idle_volume - (this->idle_volume - floor) * progress / 100;
+    if (target != this->idle_fade_volume) {
+      this->idle_fade_volume = target;
+      char line[32];
+      snprintf(line, sizeof(line), "volume %d\n", target);
+      playerSend(line);
+    }
+
+    if (over >= grace) {
+      this->idle_warning = false;
+      this->suspended = true;
+      this->paused_by_idle = true;
+      this->paused = true;
+      this->idle_fade_volume = 0;
+      playerSend("volume 0\n");
+      playerSend("pause 1\n");
+      this->playhead_dirty = true;
+    }
   }
 
   void outputFields(const char *fields) {
@@ -1074,6 +1340,13 @@ private:
 
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
     (void)body_len;
+
+    bool was_suspended = this->suspended;
+    noteActivity();
+    if (was_suspended && strcmp(action, "pause") == 0) {
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
 
     if (strcmp(action, "next") == 0)
       next();

@@ -443,6 +443,7 @@ private:
     }
 
     if (standalone && strcmp(path, "/api/mic/reset") == 0) {
+      app->micReset();
       static const char body[] = "ok=true\n";
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,

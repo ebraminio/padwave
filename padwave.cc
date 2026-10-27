@@ -888,6 +888,18 @@ static void handle_line(struct player *pl, char *line) {
     return;
   }
 
+  if (sscanf(line, "mic %ld", &value) == 1) {
+    pl->mic = value != 0;
+    pl->state.valid_flag1 |= padwave::OutputBody::PowerSave;
+    if (pl->mic) {
+      pl->state.power_save_control &= (uint8_t)~0x10;
+      pl->state.mic_volume = 0x40;
+    } else {
+      pl->state.power_save_control |= 0x10;
+    }
+    return;
+  }
+
   if (sscanf(line, "volume %ld", &value) == 1) {
     pl->volume = (int)(value < 0 ? 0 : (value > 100 ? 100 : value));
     return;

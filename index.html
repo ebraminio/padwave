@@ -601,7 +601,9 @@ function render(s) {
   const fade = r.fade_percent ?? 100;
   $("#idleChip").innerHTML = sess.phase === "warning"
     ? `fading <b>${fade}%</b> · ${sess.shutdown_in ?? 0}s`
-    : `idle <b>${fmt(idle)}</b>`;
+    : sess.phase === "suspended"
+      ? "suspended · input to wake"
+      : `idle <b>${fmt(idle)}</b>`;
   $("#warnbar").classList.toggle("show", sess.phase === "warning");
   if (sess.phase === "warning") $("#warnLeft").textContent = sess.shutdown_in ?? 0;
 
