@@ -320,7 +320,24 @@ void player_command(void *handle, const char *line);
 void player_destroy(void *handle);
 
 void *input_create(const char *node);
-void input_set_sink(void *handle, void (*sink)(const char *, void *), void *ud);
+struct input_frame {
+  unsigned seq;
+  unsigned lx, ly, rx, ry, l2, r2;
+  char dpad[16];
+  char buttons[256];
+  int battery;
+  unsigned charging;
+  int jack;
+  int mic;
+  unsigned temp;
+  int gx, gy, gz;
+  int ax, ay, az;
+  unsigned tfl, tfr;
+  char raw[512];
+};
+typedef void (*input_frame_fn)(const struct input_frame *, void *);
+
+void input_set_sink(void *handle, input_frame_fn frame, void (*text)(const char *, void *), void *ud);
 int input_fd(void *handle);
 int input_feed(void *handle, const uint8_t *buf, size_t len);
 void input_destroy(void *handle);
@@ -1301,7 +1318,7 @@ const char *dpad_name(uint8_t value) {
   }
 }
 
-void print_buttons(uint32_t buttons) {
+void buttons_to_string(uint32_t buttons, char *out, size_t cap) {
   struct {
     uint32_t bit;
     const char *name;
@@ -1317,11 +1334,13 @@ void print_buttons(uint32_t buttons) {
       {padwave::InputBody::Fn2, "fn2"},             {padwave::InputBody::LeftPaddle, "left_paddle"},
       {padwave::InputBody::RightPaddle, "right_paddle"},
   };
-  bool first = true;
+  size_t o = 0;
+  out[0] = 0;
   for (auto &n : names) {
     if (!(buttons & n.bit)) continue;
-    printf("%s%s", first ? "" : ",", n.name);
-    first = false;
+    int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
+    if (w <= 0 || (size_t)w >= cap - o) break;
+    o += (size_t)w;
   }
 }
 
@@ -1578,39 +1597,47 @@ void track_dpad(uint32_t buttons) {
   g_dpad.hold_at = now + intervals[index];
 }
 
-void print_frame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
+void emit_frame(input_frame_fn fn, void *ud, const padwave::InputBody &b, const uint8_t *raw,
+                size_t len) {
+  struct input_frame f;
+  memset(&f, 0, sizeof(f));
   uint32_t buttons = b.buttons;
-  int battery = (b.status0 & 0x0F) * 10 + 5;
-  if (battery > 100) battery = 100;
-  printf("frame seq=%u lx=%u ly=%u rx=%u ry=%u l2=%u r2=%u dpad=%s buttons=", (unsigned)b.seq.get(),
-         (unsigned)b.lx.get(), (unsigned)b.ly.get(), (unsigned)b.rx.get(), (unsigned)b.ry.get(),
-         (unsigned)b.l2.get(), (unsigned)b.r2.get(), dpad_name(buttons & 0x0F));
-  print_buttons(buttons);
-  printf(" battery=%d charging=%u jack=%d mic=%d temp=%u", battery, (unsigned)(b.status0.get() >> 4),
-         (b.status1.get() & padwave::InputBody::Headset) ? 1 : 0,
-         (b.status1.get() & padwave::InputBody::Microphone) ? 1 : 0, (unsigned)b.temperature.get());
-  printf(" gx=%d gy=%d gz=%d ax=%d ay=%d az=%d", b.gyro_x.get(), b.gyro_y.get(), b.gyro_z.get(),
-         b.accel_x.get(), b.accel_y.get(), b.accel_z.get());
-  printf(" tfl=%u tfr=%u", (unsigned)b.trigger_feedback_l.get(),
-         (unsigned)b.trigger_feedback_r.get());
-  printf(" raw=");
-  for (size_t i = 0; i < len; i++) printf("%02x", raw[i]);
-  printf(" t1=%02x%02x%02x%02x t2=%02x%02x%02x%02x\n", (unsigned)b.touch1[0].get(),
-         (unsigned)b.touch1[1].get(), (unsigned)b.touch1[2].get(), (unsigned)b.touch1[3].get(),
-         (unsigned)b.touch2[0].get(), (unsigned)b.touch2[1].get(), (unsigned)b.touch2[2].get(),
-         (unsigned)b.touch2[3].get());
-  fflush(stdout);
+  f.seq = b.seq.get();
+  f.lx = b.lx.get();
+  f.ly = b.ly.get();
+  f.rx = b.rx.get();
+  f.ry = b.ry.get();
+  f.l2 = b.l2.get();
+  f.r2 = b.r2.get();
+  snprintf(f.dpad, sizeof(f.dpad), "%s", dpad_name(buttons & 0x0F));
+  buttons_to_string(buttons, f.buttons, sizeof(f.buttons));
+  f.battery = (b.status0 & 0x0F) * 10 + 5;
+  if (f.battery > 100) f.battery = 100;
+  f.charging = b.status0.get() >> 4;
+  f.jack = (b.status1.get() & padwave::InputBody::Headset) ? 1 : 0;
+  f.mic = (b.status1.get() & padwave::InputBody::Microphone) ? 1 : 0;
+  f.temp = b.temperature.get();
+  f.gx = b.gyro_x.get();
+  f.gy = b.gyro_y.get();
+  f.gz = b.gyro_z.get();
+  f.ax = b.accel_x.get();
+  f.ay = b.accel_y.get();
+  f.az = b.accel_z.get();
+  f.tfl = b.trigger_feedback_l.get();
+  f.tfr = b.trigger_feedback_r.get();
+  size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
+  for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
+
+  if (fn) fn(&f, ud);
 
   track_dpad(b.buttons);
   track_buttons(b.buttons);
   track_triggers(b.l2, b.r2);
   track_sensors(b);
-
-
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.
-void handle_report(const uint8_t *buf, size_t len) {
+void handle_report(input_frame_fn fn, void *ud, const uint8_t *buf, size_t len) {
   if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
     size_t payload_len = 0;
     const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
@@ -1624,12 +1651,12 @@ void handle_report(const uint8_t *buf, size_t len) {
   if (buf[0] == padwave::PacketStateBluetooth && len >= padwave::InputReport::Size) {
     const padwave::InputReport *r = (const padwave::InputReport *)buf;
     if (!r->valid()) return;
-    print_frame(r->body, buf, padwave::InputReport::Size);
+    emit_frame(fn, ud, r->body, buf, padwave::InputReport::Size);
     return;
   }
 
   if (buf[0] == padwave::PacketInputUsb && len >= padwave::InputReport::UsbSize)
-    print_frame(*(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
+    emit_frame(fn, ud, *(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
 }
 
 bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
@@ -1650,12 +1677,19 @@ bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
 
 struct input_handle {
   int fd;
+  input_frame_fn frame_fn;
+  void *ud;
 };
 
-void input_set_sink(void *handle, void (*sink)(const char *, void *), void *ud) {
-  (void)handle;
-  g_input_sink = sink;
+void input_set_sink(void *handle, input_frame_fn frame, void (*text)(const char *, void *),
+                    void *ud) {
+  input_handle *h = (input_handle *)handle;
+  g_input_sink = text;
   g_input_sink_ud = ud;
+  if (h) {
+    h->frame_fn = frame;
+    h->ud = ud;
+  }
 }
 
 void *input_create(const char *node) {
@@ -1683,8 +1717,9 @@ void *input_create(const char *node) {
 int input_fd(void *handle) { return handle ? ((input_handle *)handle)->fd : -1; }
 
 int input_feed(void *handle, const uint8_t *buf, size_t len) {
-  if (!handle) return -1;
-  handle_report(buf, len);
+  input_handle *h = (input_handle *)handle;
+  if (!h) return -1;
+  handle_report(h->frame_fn, h->ud, buf, len);
   return 0;
 }
 
@@ -1705,7 +1740,7 @@ int input_main(int argc, char **argv) {
       memmove(buf, buf + 1, len - 1);
       len--;
     }
-    handle_report(buf, len);
+    handle_report(nullptr, nullptr, buf, len);
     return 0;
   }
 
@@ -1715,7 +1750,7 @@ int input_main(int argc, char **argv) {
     for (;;) {
       ssize_t n = read(fd, buf, sizeof(buf));
       if (n <= 0) break;
-      handle_report(buf, (size_t)n);
+      handle_report(nullptr, nullptr, buf, (size_t)n);
     }
     close(fd);
     return 0;
@@ -1995,7 +2030,7 @@ struct app {
   void toggle_pause();
   void set_volume(int v);
   void seek(long ms);
-  void controller_from_frame(const char *line);
+  static void input_frame_cb(const struct input_frame *f, void *ud);
   void handle_action(const char *action);
   void input_line(const char *line);
   void status_radio(char *buf, size_t cap);
@@ -2147,7 +2182,7 @@ void app::input_start() {
     this->reconnect_at = (int)(now_ms() + 1500);
     return;
   }
-  ::input_set_sink(this->input, input_sink, this);
+  ::input_set_sink(this->input, input_frame_cb, input_sink, this);
   this->input_fd = ::input_fd(this->input);
 }
 
@@ -2264,52 +2299,29 @@ void app::seek(long ms) {
   this->pos_ms = ms;
 }
 
-void app::controller_from_frame(const char *line) {
-  // frame seq=.. lx=.. ... dpad=.. buttons=.. battery=.. charging=.. jack=..
-  this->controller = true;
-  char buttons[256] = "";
-  char dpad[16] = "none";
-  const char *p = line;
-  while ((p = strchr(p, ' ')) != nullptr) {
-    p++;
-    if (strncmp(p, "lx=", 3) == 0) this->lx = atoi(p + 3);
-    else if (strncmp(p, "ly=", 3) == 0) this->ly = atoi(p + 3);
-    else if (strncmp(p, "rx=", 3) == 0) this->rx = atoi(p + 3);
-    else if (strncmp(p, "ry=", 3) == 0) this->ry = atoi(p + 3);
-    else if (strncmp(p, "l2=", 3) == 0) this->l2 = atoi(p + 3);
-    else if (strncmp(p, "r2=", 3) == 0) this->r2 = atoi(p + 3);
-    else if (strncmp(p, "battery=", 8) == 0) this->battery = atoi(p + 8);
-    else if (strncmp(p, "charging=", 9) == 0) {
-      int c = atoi(p + 9);
-      snprintf(this->charging, sizeof(this->charging), "%s",
-               c == 1 ? "charging" : c == 2 ? "full" : "discharging");
-    } else if (strncmp(p, "jack=", 5) == 0) this->jack = atoi(p + 5) != 0;
-    else if (strncmp(p, "temp=", 5) == 0) this->temp = atoi(p + 5);
-    else if (strncmp(p, "ax=", 3) == 0) this->ax = atoi(p + 3);
-    else if (strncmp(p, "ay=", 3) == 0) this->ay = atoi(p + 3);
-    else if (strncmp(p, "az=", 3) == 0) this->az = atoi(p + 3);
-    else if (strncmp(p, "gx=", 3) == 0) this->gx = atoi(p + 3);
-    else if (strncmp(p, "gy=", 3) == 0) this->gy = atoi(p + 3);
-    else if (strncmp(p, "gz=", 3) == 0) this->gz = atoi(p + 3);
-    else if (strncmp(p, "dpad=", 5) == 0) {
-      size_t n = strcspn(p + 5, " ");
-      if (n >= sizeof(dpad)) n = sizeof(dpad) - 1;
-      memcpy(dpad, p + 5, n);
-      dpad[n] = 0;
-    } else if (strncmp(p, "buttons=", 8) == 0) {
-      size_t n = strcspn(p + 8, " ");
-      if (n >= sizeof(buttons)) n = sizeof(buttons) - 1;
-      memcpy(buttons, p + 8, n);
-      buttons[n] = 0;
-    } else if (strncmp(p, "raw=", 4) == 0) {
-      size_t n = strcspn(p + 4, " ");
-      if (n >= sizeof(this->raw)) n = sizeof(this->raw) - 1;
-      memcpy(this->raw, p + 4, n);
-      this->raw[n] = 0;
-    }
-  }
-  snprintf(this->dpad, sizeof(this->dpad), "%s", dpad);
-  snprintf(this->buttons, sizeof(this->buttons), "%s", buttons);
+void app::input_frame_cb(const struct input_frame *f, void *ud) {
+  app *a = (app *)ud;
+  a->controller = true;
+  a->lx = (int)f->lx;
+  a->ly = (int)f->ly;
+  a->rx = (int)f->rx;
+  a->ry = (int)f->ry;
+  a->l2 = (int)f->l2;
+  a->r2 = (int)f->r2;
+  a->battery = f->battery;
+  a->jack = f->jack != 0;
+  a->temp = (int)f->temp;
+  snprintf(a->dpad, sizeof(a->dpad), "%s", f->dpad);
+  snprintf(a->buttons, sizeof(a->buttons), "%s", f->buttons);
+  snprintf(a->raw, sizeof(a->raw), "%.*s", (int)sizeof(a->raw) - 1, f->raw);
+  snprintf(a->charging, sizeof(a->charging), "%s",
+           f->charging == 1 ? "charging" : f->charging == 2 ? "full" : "discharging");
+  a->gx = f->gx;
+  a->gy = f->gy;
+  a->gz = f->gz;
+  a->ax = f->ax;
+  a->ay = f->ay;
+  a->az = f->az;
 }
 
 void app::handle_action(const char *action) {
@@ -2327,9 +2339,7 @@ void app::handle_action(const char *action) {
 }
 
 void app::input_line(const char *line) {
-  if (strncmp(line, "frame ", 6) == 0) {
-    controller_from_frame(line);
-  } else if (strncmp(line, "action ", 7) == 0) {
+  if (strncmp(line, "action ", 7) == 0) {
     char action[64];
     snprintf(action, sizeof(action), "%s", line + 7);
     char *space = strchr(action, ' ');
