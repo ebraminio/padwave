@@ -851,14 +851,11 @@ $("#saveCfg").onclick = async () => {
   const warn = Number($("#warnSec").value);
   const res = await fetch("/api/config", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      idle_timeout_ms: Math.round(minutes * 60000),
-      idle_warn_grace_ms: Math.round(warn * 1000)
-    })
+    headers: { "content-type": "text/plain" },
+    body: `idle_timeout_ms=${Math.round(minutes * 60000)}\nidle_warn_grace_ms=${Math.round(warn * 1000)}`
   });
-  const data = await res.json();
-  $("#cfgMsg").textContent = data.ok ? "saved" : ("failed: " + data.error);
+  const data = parseKV(await res.text());
+  $("#cfgMsg").textContent = data.ok === true ? "saved" : ("failed: " + data.error);
   setTimeout(() => { $("#cfgMsg").textContent = ""; }, 2500);
 };
 
@@ -1016,10 +1013,11 @@ $("#labRawSend").onclick = async () => {
 function pushTriggerConfig(values) {
   clearTimeout(triggerCfgTimer);
   triggerCfgTimer = setTimeout(() => {
+    const body = Object.entries(values).map(([key, value]) => `${key}=${value}`).join("\n");
     fetch("/api/config", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(values)
+      headers: { "content-type": "text/plain" },
+      body
     });
   }, 250);
 }

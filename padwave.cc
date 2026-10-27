@@ -320,6 +320,11 @@ void player_command(void *handle, const char *line);
 void player_destroy(void *handle);
 
 void *input_create(const char *node);
+struct input_touch {
+  unsigned active;
+  unsigned id;
+  unsigned x, y;
+};
 struct input_frame {
   unsigned seq;
   unsigned lx, ly, rx, ry, l2, r2;
@@ -333,6 +338,7 @@ struct input_frame {
   int gx, gy, gz;
   int ax, ay, az;
   unsigned tfl, tfr;
+  struct input_touch touches[2];
   char raw[512];
 };
 typedef void (*input_frame_fn)(const struct input_frame *, void *);
@@ -346,9 +352,8 @@ int input_fd(void *handle);
 int input_feed(void *handle, const uint8_t *buf, size_t len);
 void input_destroy(void *handle);
 
-// Opaque handle to the standalone app. The state and methods live in
-// padwave_app.cc; the server owns one instance and passes it to the callbacks
-// as userdata.
+// The standalone app. The server owns one instance (a stack object in
+// server_main) and passes it to the callbacks as userdata.
 
 struct app;
 
@@ -358,7 +363,6 @@ void app_handle_fd(struct app *a, int fd);
 int app_status_text(struct app *a, char *buf, size_t cap);
 int app_front_text(struct app *a, char *buf, size_t cap, unsigned long requests, long uptime);
 int app_library_json(struct app *a, char *buf, size_t cap);
-int app_config_json(char *buf, size_t cap);
 int app_bindings_json(char *buf, size_t cap);
 int app_command(struct app *a, const char *action, const char *body, size_t body_len,
                 char *out, size_t out_cap);
@@ -1613,6 +1617,15 @@ void emit_frame(input_handle *h, const padwave::InputBody &b, const uint8_t *raw
   f.az = b.accel_z.get();
   f.tfl = b.trigger_feedback_l.get();
   f.tfr = b.trigger_feedback_r.get();
+  for (int t = 0; t < 2; t++) {
+    const PWUINT8 *touch = t == 0 ? b.touch1 : b.touch2;
+    unsigned contact = touch[0].get();
+    unsigned middle = touch[2].get();
+    f.touches[t].active = (contact & 0x80) ? 0 : 1;
+    f.touches[t].id = contact & 0x7F;
+    f.touches[t].x = touch[1].get() | ((middle & 0x0F) << 8);
+    f.touches[t].y = (middle >> 4) | (touch[3].get() << 4);
+  }
   size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
   for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
 
@@ -1990,14 +2003,28 @@ struct app {
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
   char dpad[16] = "none";
   char buttons[256] = "";
-  unsigned button_mask = 0;
   int temp = 0;
   int ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+  unsigned seq = 0;
+  int rate = 0;
+  unsigned tfl = 0, tfr = 0;
+  struct input_touch touch[2] = {};
+  long rate_at = 0;
+  unsigned rate_frames = 0;
+  char input_node[64] = "";
   char last_action[64] = "";
   char raw[400] = "";
 
   int reconnect_at = 0;
   long idle_since = 0;
+
+  // Config that the panel edits; persisted as ~/.config/padwave/config.
+  int idle_timeout_ms = 900000;
+  int idle_warn_grace_ms = 10000;
+  int trigger_effect_amplitude = 6;
+  int trigger_effect_position = 2;
+  int trigger_effect_frequency = 25;
+  bool trigger_effects = true;
 
   void add_station(const char *path, const char *game);
   void scan_dir(const char *dir, const char *game);
@@ -2024,6 +2051,10 @@ struct app {
   void handle_action(const char *name, int value);
   int status_text(char *buf, size_t cap);
   int front_text(char *buf, size_t cap, unsigned long requests, long uptime);
+  int config_text(char *buf, size_t cap);
+  void config_set(const char *body);
+  void config_load();
+  void config_save();
   int library_json(char *buf, size_t cap);
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap);
   int handle_command(const char *body, size_t len, char *out, size_t cap);
@@ -2167,6 +2198,7 @@ void app::input_start() {
     this->reconnect_at = (int)(now_ms() + 1500);
     return;
   }
+  snprintf(this->input_node, sizeof(this->input_node), "%s", node);
   ::input_set_sink(this->input, input_frame_cb, input_action_cb, input_event_cb, input_mic_cb,
                    this);
   this->input_fd = ::input_fd(this->input);
@@ -2179,6 +2211,10 @@ void app::input_stop() {
   }
   this->input_fd = -1;
   this->controller = false;
+  this->input_node[0] = 0;
+  this->rate = 0;
+  this->rate_at = 0;
+  this->rate_frames = 0;
 }
 
 void app::player_status_cb(const struct player_status *st, void *ud) {
@@ -2308,6 +2344,19 @@ void app::input_frame_cb(const struct input_frame *f, void *ud) {
   a->ax = f->ax;
   a->ay = f->ay;
   a->az = f->az;
+  a->seq = f->seq;
+  a->tfl = f->tfl;
+  a->tfr = f->tfr;
+  for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
+
+  long now = now_ms();
+  if (a->rate_at == 0) a->rate_at = now;
+  a->rate_frames++;
+  if (now - a->rate_at >= 1000) {
+    a->rate = (int)((a->rate_frames * 1000) / (now - a->rate_at));
+    a->rate_frames = 0;
+    a->rate_at = now;
+  }
 }
 
 void app::input_action_cb(const char *name, int value, void *ud) {
@@ -2429,20 +2478,33 @@ int app::status_text(char *buf, size_t cap) {
   kv_add(buf, cap, &o, "mic.running", "%s", "false");
   kv_add(buf, cap, &o, "mic.monitor", "%s", "false");
 
-  char node[64] = "";
-  int idx = find_dualsense(node, sizeof(node));
   kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
   kv_text(buf, cap, &o, "controller.bus", "bluetooth");
   kv_text(buf, cap, &o, "controller.name", "DualSense");
   kv_text(buf, cap, &o, "controller.mac", "");
   kv_text(buf, cap, &o, "controller.model", "dualsense");
-  kv_text(buf, cap, &o, "controller.node", idx >= 0 ? node : "");
+  kv_text(buf, cap, &o, "controller.node", this->input_node);
   if (this->battery >= 0) kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
   else kv_text(buf, cap, &o, "controller.battery", "null");
   kv_text(buf, cap, &o, "controller.charging", this->charging);
   kv_add(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
   kv_text(buf, cap, &o, "controller.buttons", this->buttons);
   kv_text(buf, cap, &o, "controller.dpad", this->dpad);
+  kv_add(buf, cap, &o, "controller.rate", "%d", this->rate);
+  kv_add(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
+  kv_add(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
+  kv_add(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
+  for (int t = 0; t < 2; t++) {
+    char key[48];
+    snprintf(key, sizeof(key), "controller.touches.%d.active", t);
+    kv_add(buf, cap, &o, key, "%s", this->touch[t].active ? "true" : "false");
+    snprintf(key, sizeof(key), "controller.touches.%d.id", t);
+    kv_add(buf, cap, &o, key, "%u", this->touch[t].id);
+    snprintf(key, sizeof(key), "controller.touches.%d.x", t);
+    kv_add(buf, cap, &o, key, "%u", this->touch[t].x);
+    snprintf(key, sizeof(key), "controller.touches.%d.y", t);
+    kv_add(buf, cap, &o, key, "%u", this->touch[t].y);
+  }
   kv_add(buf, cap, &o, "controller.l2", "%d", this->l2);
   kv_add(buf, cap, &o, "controller.r2", "%d", this->r2);
   kv_add(buf, cap, &o, "controller.lx", "%d", this->lx);
@@ -2454,6 +2516,13 @@ int app::status_text(char *buf, size_t cap) {
   kv_add(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
   kv_text(buf, cap, &o, "controller.raw", this->raw);
   kv_text(buf, cap, &o, "controller.last_action", this->last_action);
+
+  kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+  kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+  kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+  kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+  kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+  kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
   return (int)o;
 }
 
@@ -2499,16 +2568,114 @@ int app::library_json(char *buf, size_t cap) {
   return n;
 }
 
-int app_config_json(char *buf, size_t cap) {
-  return snprintf(buf, cap,
-                  "{\"crossfade_ms\":1500,\"idle_timeout_ms\":900000,\"idle_warn_grace_ms\":10000,"
-                  "\"poweroff_when_idle_ms\":60000,\"idle_fade_floor\":10,\"idle_fade_ms\":10000,"
-                  "\"analog_wake_cap\":6,\"analog_wake_delta\":24,\"charging_leds\":true,"
-                  "\"charging_leds_ms\":3000,\"trigger_deadzone\":30,\"trigger_effects\":true,"
-                  "\"trigger_effect_position\":2,\"trigger_effect_amplitude\":6,"
-                  "\"trigger_effect_frequency\":25,\"seek_crossfade_threshold\":20,"
-                  "\"seek_crossfade_ms\":600,\"fade_in_ms\":900,\"fade_out_ms\":450,"
-                  "\"volume_fade_ms\":180,\"lightbar_enabled\":true,\"shake_g_force\":2.25}");
+bool kv_get(const char *body, const char *key, char *out, size_t cap);
+
+static bool config_path(char *buf, size_t cap) {
+  const char *home = getenv("HOME");
+  if (!home || !*home) return false;
+  snprintf(buf, cap, "%s/.config/padwave/config", home);
+  return true;
+}
+
+int app::config_text(char *buf, size_t cap) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+  kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+  kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+  kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+  kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+  kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+  return (int)o;
+}
+
+void app::config_load() {
+  char path[512];
+  if (!config_path(path, sizeof(path))) return;
+  FILE *f = fopen(path, "r");
+  if (!f) return;
+
+  char line[256];
+  while (fgets(line, sizeof(line), f)) {
+    char *eq = strchr(line, '=');
+    if (!eq) continue;
+    *eq = 0;
+    char *value = eq + 1;
+    char *nl = strchr(value, '\n');
+    if (nl) *nl = 0;
+
+    if (strcmp(line, "idle_timeout_ms") == 0) {
+      long v = atol(value);
+      this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+    } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
+      long v = atol(value);
+      this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+    } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
+    } else if (strcmp(line, "trigger_effect_position") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
+    } else if (strcmp(line, "trigger_effect_frequency") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+    } else if (strcmp(line, "trigger_effects") == 0) {
+      this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+    }
+  }
+  fclose(f);
+}
+
+void app::config_save() {
+  char path[512];
+  if (!config_path(path, sizeof(path))) return;
+
+  char dir[512];
+  snprintf(dir, sizeof(dir), "%s", path);
+  char *slash = strrchr(dir, '/');
+  if (slash) {
+    *slash = 0;
+    mkdir(dir, 0755);
+  }
+
+  FILE *f = fopen(path, "w");
+  if (!f) return;
+  fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
+  fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
+  fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
+  fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
+  fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
+  fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
+  fclose(f);
+}
+
+void app::config_set(const char *body) {
+  char value[64];
+
+  if (kv_get(body, "idle_timeout_ms", value, sizeof(value))) {
+    long v = atol(value);
+    this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+  }
+  if (kv_get(body, "idle_warn_grace_ms", value, sizeof(value))) {
+    long v = atol(value);
+    this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+  }
+  if (kv_get(body, "trigger_effect_amplitude", value, sizeof(value))) {
+    int v = atoi(value);
+    this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
+  }
+  if (kv_get(body, "trigger_effect_position", value, sizeof(value))) {
+    int v = atoi(value);
+    this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
+  }
+  if (kv_get(body, "trigger_effect_frequency", value, sizeof(value))) {
+    int v = atoi(value);
+    this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+  }
+  if (kv_get(body, "trigger_effects", value, sizeof(value)))
+    this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+
+  config_save();
 }
 
 int app_bindings_json(char *buf, size_t cap) {
@@ -2617,6 +2784,7 @@ bool app::init() {
   this->player = nullptr;
   this->input = nullptr;
   this->player_timer_fd = this->input_fd = -1;
+  config_load();
   set_volume(70);
   return true;
 }
@@ -2874,16 +3042,19 @@ void read_client(server *s, conn *c) {
 
   if (s->standalone && strcmp(path, "/api/config") == 0) {
     if (strcmp(method, "POST") == 0) {
-      static const char ok[] = "{\"ok\":true}";
+      s->a->config_set(c->in + head_len);
+      static const char ok[] = "ok=true\n";
       c->static_reply = true;
-      c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", ok, sizeof(ok) - 1);
+      c->out_len =
+          (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok, sizeof(ok) - 1);
       mod_fd(s, c->fd, EPOLLOUT);
       return;
     }
     char body[1024];
-    int len = app_config_json(body, sizeof(body));
+    int len = s->a->config_text(body, sizeof(body));
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
     mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
