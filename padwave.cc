@@ -887,7 +887,13 @@ static void handle_line(struct player *pl, char *line) {
     if (pl->hidraw < 0) pl->hidraw = find_dualsense();
     bool ok = pl->hidraw >= 0 && write_all(pl->hidraw, &pl->out, sizeof(pl->out));
     if (ok) pl->out_seq = (uint8_t)((pl->out_seq + 1) & 0x0F);
-    if (ok) padwave_fields::apply_fields(&pl->state, line + 7, true);
+    if (ok) {
+      padwave_fields::apply_fields(&pl->state, line + 7, true);
+      // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
+      // snapshot re-trigger them forever.
+      pl->state.valid_flag1 &= (uint8_t)~padwave::OutputBody::ResetLights;
+      pl->state.valid_flag2 &= (uint8_t)~padwave::OutputBody::ColorFade;
+    }
     printf(ok ? "ok 1\n" : "err write\n");
     fflush(stdout);
     return;

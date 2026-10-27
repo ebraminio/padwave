@@ -1068,6 +1068,7 @@ private:
   void setVolume(int v) {
     if (v < 0) v = 0;
     if (v > 100) v = 100;
+    if (v != this->volume) fprintf(stderr, "padwave: volume %d%s\n", v, v == 0 ? " (muted)" : "");
     this->volume = v;
     this->muted = v == 0;
     char line[32];
