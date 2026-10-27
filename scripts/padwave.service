@@ -12,7 +12,7 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=ELIXIR_ERL_OPTIONS=+fnu
 # Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
 EnvironmentFile=-%h/.config/padwave/env
-ExecStart=/usr/bin/mix run --no-halt
+ExecStart=%h/padwave/scripts/padwave-boot.sh
 Restart=on-failure
 RestartSec=3
 # Kill the player child along with the BEAM.
