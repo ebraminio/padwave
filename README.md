@@ -176,8 +176,10 @@ quiet, and immediately on shutdown or `/api/config`. The player's volume and
 pause state are applied on every player start.
 
 The lightbar follows playback: cyan playing, amber paused, purple muted,
-pulsing red for the idle warning, and black when suspended/off. A lab custom
-colour overrides it until the next state change. The five player LEDs are a
+pulsing red for the idle warning, and black when suspended/off. While charging
+it is solid amber (255,110,0), and solid white (255,255,255) when full; that
+charging state overrides playback and custom colours. A lab custom colour
+otherwise overrides it until the next state change. The five player LEDs are a
 left-to-right battery bar (45 % → 11100, full → 11111); at 15 % or below the
 first LED blinks 10000/00000 every 3 s while discharging. Charging is always
 the solid bar with no animation, including 11111 at full. A lab manual mask

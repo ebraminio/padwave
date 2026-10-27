@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `40ff618`
+- HEAD: latest `main`; the behavior described here landed through `00e81b3`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -25,7 +25,7 @@
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + battery-bar player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
-  presets + unified trigger lab, host-driven lightbar pulse, persisted volume,
+  presets + unified trigger lab, host-driven lightbar pulse, charging lightbar, persisted volume,
   mic/playback exclusion + pause-auto-mic + mute-button LED.
 
 ## Pi Bluetooth tuning
@@ -182,6 +182,8 @@ with no audio the same `fields` line produces a 0x31 report.
   state until the next playback/session state change, survives device-down/up,
   and device-up forces one repaint. Reset drops the custom colour and repaints
   the state colour.
+- Lightbar charging: amber `255,110,0` while charging, white `255,255,255`
+  when full; overrides playback/custom/pulse. `led.mode` is charging/full.
 - Player LEDs: left-to-right battery bar, 1-5 segments (`45%` → `0b00111`,
   `100%` → `0b11111`). At `<=15%` while discharging, blink `0b00001`/`0b00000`
   at 3 s. Charging is always the solid bar with no animation, including
