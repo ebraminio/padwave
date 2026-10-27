@@ -25,11 +25,6 @@
 
 #include <opus/opus.h>
 
-// DualSense discovery is implemented in padwave.cc; the app only needs the
-// node name.
-static inline int find_dualsense(char *node, size_t len);
-static inline int find_dualsense();
-
 #include "padwave_input.hh"
 
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
@@ -235,9 +230,8 @@ private:
   int history_len = 0;
 
   void *player = nullptr;
-  void *input = nullptr;
+  Input input;
   int player_timer_fd = -1;
-  int input_fd = -1;
 
   static constexpr int kDefaultVolume = 15;
 
@@ -251,7 +245,6 @@ private:
   bool paused_by_volume = false;
   int volume = kDefaultVolume;
   int last_nonzero_volume = kDefaultVolume;
-  long start_ms = 0;
 
   bool controller = false;
   bool jack = false;
@@ -358,8 +351,7 @@ public:
     qsort(this->stations, (size_t)this->count, sizeof(Station), compareStations);
     srand((unsigned)time(nullptr) ^ (unsigned)getpid());
     this->player = nullptr;
-    this->input = nullptr;
-    this->player_timer_fd = this->input_fd = -1;
+    this->player_timer_fd = -1;
     configLoad();
     if (this->resume_path[0]) {
       int idx = findStation(this->resume_path);
@@ -411,7 +403,7 @@ public:
         }
       }
     }
-    if (!this->input && (int)nowMs() >= this->reconnect_at) inputStart();
+    if (this->input.fd() < 0 && (int)nowMs() >= this->reconnect_at) inputStart();
 
     long now = nowMs();
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
@@ -427,7 +419,7 @@ public:
   int fds(int *fds, int max) {
     int n = 0;
     if (this->player_timer_fd >= 0 && n < max) fds[n++] = this->player_timer_fd;
-    if (this->input_fd >= 0 && n < max) fds[n++] = this->input_fd;
+    if (this->input.fd() >= 0 && n < max) fds[n++] = this->input.fd();
     return n;
   }
 
@@ -438,11 +430,11 @@ public:
       serviceLeds();
       return;
     }
-    if (this->input && fd == this->input_fd) {
+    if (this->input.fd() >= 0 && fd == this->input.fd()) {
       uint8_t buf[512];
       ssize_t n = read(fd, buf, sizeof(buf));
       if (n > 0) {
-        input_feed(this->input, buf, (size_t)n);
+        this->input.feed(buf, (size_t)n);
       } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
         inputStop();
         this->reconnect_at = (int)(nowMs() + 1500);
@@ -610,7 +602,7 @@ public:
     kvAdd(buf, cap, &o, "player.sent", "%ld", this->sent);
     kvAdd(buf, cap, &o, "player.underruns", "%ld", this->underruns);
     kvAdd(buf, cap, &o, "player.paused", "%s", this->paused ? "true" : "false");
-    kvAdd(buf, cap, &o, "input.valid", "%s", this->input ? "true" : "false");
+    kvAdd(buf, cap, &o, "input.valid", "%s", this->input.fd() >= 0 ? "true" : "false");
     kvAdd(buf, cap, &o, "input.lx", "%d", this->lx);
     kvAdd(buf, cap, &o, "input.ly", "%d", this->ly);
     kvAdd(buf, cap, &o, "input.rx", "%d", this->rx);
@@ -860,7 +852,7 @@ public:
     return command(action, body, len, out, cap);
   }
 
-  bool ownsFd(int fd) { return fd >= 0 && (fd == this->player_timer_fd || fd == this->input_fd); }
+  bool ownsFd(int fd) { return fd >= 0 && (fd == this->player_timer_fd || fd == this->input.fd()); }
 
 private:
   void addStation(const char *path, const char *game) {
@@ -940,23 +932,19 @@ private:
   }
 
   void inputStart() {
-    if (this->input) return;
-
+    if (this->input.fd() >= 0) return;
     char node[64];
     if (find_dualsense(node, sizeof(node)) < 0) {
       this->reconnect_at = (int)(nowMs() + 1500);
       return;
     }
-
-    this->input = ::input_create(node);
-    if (!this->input) {
+    if (!this->input.open(node)) {
       this->reconnect_at = (int)(nowMs() + 1500);
       return;
     }
-    snprintf(this->input_node, sizeof(this->input_node), "%s", node);
+    snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
     dualsenseMac(this->controller_mac, sizeof(this->controller_mac));
-    ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
-    this->input_fd = ::input_fd(this->input);
+    this->input.setSink(inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
     ensureAudibleVolume();
@@ -965,11 +953,7 @@ private:
   }
 
   void inputStop() {
-    if (this->input) {
-      ::input_destroy(this->input);
-      this->input = nullptr;
-    }
-    this->input_fd = -1;
+    this->input.close();
     this->controller = false;
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;

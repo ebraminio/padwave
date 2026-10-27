@@ -32,7 +32,7 @@ static const unsigned char kIndexHtml[] = {
 #embed "index.html"
 };
 static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
-}
+} // namespace padwave_ui
 
 struct Server {
 private:
