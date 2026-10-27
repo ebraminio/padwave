@@ -40,12 +40,13 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-include/    headers: schemas, number types, fields, app and mode entry points
-src/        padwave.cc (dispatch), native, input, opusdec, server, app
-ui/         index.html, embedded into the binary at build time
-tests/      test_wire.sh / test_wire.cc (wire layout and CRC)
-scripts/    install.sh, padwave-boot.sh, padwave.service, padwave-ctl, gen_ui.py
-Makefile    one target: bin/padwave
+src/padwave.cc            the whole implementation (one translation unit):
+                          wire include, player, input decoder, app, server, main
+include/padwave_wire.hh   the wire formats (number types + DualSense schemas)
+ui/                       index.html, embedded into the binary at build time
+tests/                    test_wire.sh / test_wire.cc (wire layout and CRC)
+scripts/                  install.sh, padwave-boot.sh, padwave.service, ctl, gen_ui.py
+Makefile                  one object, one binary: bin/padwave
 ```
 
 GCC 12 has no `#embed`, so the build generates `build/padwave_ui.hh` from
@@ -101,5 +102,5 @@ are intentionally static until they move.
 ## Protocol
 
 The wire formats are described, with their bit positions, in
-`include/padwave_schemas.hh`; `docs/protocol.md` has the longer notes. No other
+`include/padwave_wire.hh`; `docs/protocol.md` has the longer notes. No other
 file describes the packets.

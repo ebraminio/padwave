@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "padwave_number.hh"
-#include "padwave_schemas.hh"
+#include "padwave_wire.hh"
+
 
 int main() {
   // The byte order belongs to the type, not the host.
