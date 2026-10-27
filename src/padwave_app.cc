@@ -128,11 +128,11 @@ void add_station(const char *path, const char *game) {
   snprintf(s->path, sizeof(s->path), "%s", path);
 
   const char *base = strrchr(path, '/');
-  snprintf(s->title, sizeof(s->title), "%s", base ? base + 1 : path);
+  snprintf(s->title, sizeof(s->title), "%.*s", (int)sizeof(s->title) - 1, base ? base + 1 : path);
   char *dot = strrchr(s->title, '.');
   if (dot) *dot = 0;
 
-  snprintf(s->game, sizeof(s->game), "%s", game);
+  snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
   const char *d = strrchr(path, '.');
   snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
   make_id(path, s->id);

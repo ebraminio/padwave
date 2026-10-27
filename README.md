@@ -8,10 +8,15 @@ rips, long mixes, albums, podcast feeds you have already downloaded. Online
 feeds and live streams are the next step, not today's.
 
 ```
-DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ Radio ──▶ padwave native ──▶ 0x36
+DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ radio ──▶ player ──▶ 0x36
    ▲                                                              │
    └──────────── lightbar, rumble, triggers (0x31) ◀──────────────┘
 ```
+
+One binary. `padwave serve` is the app: it scans the station folders, owns the
+radio and the panel, and spawns **itself** as `padwave native` (decode,
+crossfade, gapless) and `padwave input` (the 0x31 decoder). `padwave opusdec`
+is the codec helper. There are no other executables and no Mix/Elixir.
 
 ## Controls
 
@@ -31,101 +36,69 @@ DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ 
 Analogue sticks are deliberately unbound: ours are worn and jitter, so they do
 the one thing they are good for — being ignored.
 
-## Idle
-
-Fifteen minutes without real input fades the volume to 10 % over the last ten
-seconds, then saves the playhead and disconnects the controller. Any button,
-trigger or a shake above 2.25 g cancels the shutdown and restores the volume.
-Sticks do not count as activity. A session that was paused comes back paused.
-
-## Install
-
-```bash
-git clone <this repo> ~/padwave
-cd ~/padwave
-./scripts/install.sh          # builds, installs a systemd user unit, starts it
-sudo loginctl enable-linger $USER   # once, so it starts at boot
-```
-
-Audio folders come from `PADWAVE_ROOTS` (colon-separated, default `~/Music`),
-set in `~/.config/padwave/env`:
-
-```bash
-PADWAVE_ROOTS=/srv/audio:/media/usb/podcasts
-```
-
-Needs Elixir ≥ 1.14, a C++ compiler, `pkg-config`, and the development packages
-for libavformat/libavcodec/libswresample/libavutil and libopus — the installer
-builds `padwave` from `scripts/`. No external player and no PipeWire sink.
-
-## Web UI
-
-`http://<pi>:8787` — transport, seek bar, volume, stations, the live decoded
-packet, the bindings, and a controller lab for trying output-report fields by
-hand.
-
-| Endpoint | |
-|---|---|
-| `GET /api/status` | radio, session, controller, bindings, audio |
-| `GET /api/events` | the same as SSE, ~200 ms |
-| `GET /api/library` | stations |
-| `GET /api/schema` | decoded packet layouts as data |
-| `POST /api/command` | `{"action":"pause"}`, `{"action":"volume","value":40}` |
-| `POST /api/config` | runtime settings (JSON, form or query) |
-| `POST /api/reload` | hot-swap changed modules |
-| `POST /api/debug/frame` | inject a press, e.g. `{"buttons":["triangle"]}` |
-| `POST /api/output` | lightbar, player LEDs, trigger effects, raw fields |
-
-## Configuration
-
-`config/config.exs` holds the music roots, crossfade, idle timeouts, web port and
-trigger-effect defaults. Volume, idle minutes, warning seconds and trigger feel
-are also settable at runtime from the UI.
-
-## From the Mac
-
-The controller can only be paired to one host, so the Pi keeps it and everything
-else talks to the Pi:
-
-```bash
-scripts/padwave-ctl status
-scripts/padwave-ctl vol -5
-scripts/padwave-ctl next
-```
-
 ## Layout
 
 ```
-lib/padwave/
-  wire.ex                 the packet DSL (bits, enums, splices, CRC framing)
-  schemas/                the protocol, as source: input, output, audio, feature
-  input/                  device discovery, decode, mapper, simulator
-  output/                 the 0x31 writer through the player, lightbar, triggers, lab
-  player/                 the native engine (C++ player via a port)
-  radio.ex                stations, shuffle bag, queue, checkpoints
-  session.ex              idle timer and shutdown
-  web/                    router and SSE
-priv/ui/                  the web UI
-docs/protocol.md          every report id we know about, and what is a guess
+include/    headers: schemas, number types, fields, app and mode entry points
+src/        padwave.cc (dispatch), native, input, opusdec, server, app
+ui/         index.html, embedded into the binary at build time
+tests/      test_wire.sh / test_wire.cc (wire layout and CRC)
+scripts/    install.sh, padwave-boot.sh, padwave.service, padwave-ctl, gen_ui.py
+Makefile    one target: bin/padwave
 ```
+
+GCC 12 has no `#embed`, so the build generates `build/padwave_ui.hh` from
+`ui/index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
+
+## Build and run
+
+Needs a C++ compiler, `pkg-config`, the FFmpeg development packages
+(`libavformat`, `libavcodec`, `libswresample`, `libavutil`), `libopus`, `zlib`
+and `python3` for the UI header.
+
+```sh
+make
+PADWAVE_ROOTS=/path/to/audio PADWAVE_STANDALONE=1 bin/padwave serve
+# panel: http://<pi>:8787
+```
+
+`PADWAVE_STANDALONE=1` turns on the app's own `/api/*` routes; the unit sets it.
+`PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the app
+uses `~/Music`.
+
+## Install
+
+On the Pi, from the project root:
+
+```sh
+./scripts/install.sh
+```
+
+It builds, installs `~/.local/bin/padwave`, installs the systemd user unit and
+restarts it. The panel is on port 8787, LAN-reachable, no auth (keep it on a
+trusted network).
+
+## HTTP
+
+`GET /api/status`, `GET /api/events` (SSE, 5 Hz), `GET /api/library`,
+`GET /api/config`, `GET /api/schema`, `POST /api/command`
+(`next`, `previous`, `pause`, `mute`, `shuffle_game`, `disconnect`, `volume`,
+`seek`, `seek_to`, `play_track`). `GET /api/front` and `/api/front/events` are
+the server's own state stream.
+
+## Status
+
+Working in the single binary: station scan and shuffle, history, play/pause,
+next/previous, shuffle-game, seek, volume/mute, gapless and crossfade in the
+player, the panel with controller state and SSE, and the LAN API.
+
+Not yet ported from the old Elixir app: the idle fade/suspend and controller
+power-off, persisted playhead/config, mic level decoding, and the
+lightbar/charging/trigger/output lab endpoints. Those blocks in `/api/status`
+are intentionally static until they move.
 
 ## Protocol
 
-The packet descriptions are the documentation: every field carries its offset
-and a comment, and `GET /api/schema` returns the same layout as data. The
-catalogue of report ids — including what is still unknown — is in
-[docs/protocol.md](docs/protocol.md).
-
-## Tests
-
-```bash
-mix test
-```
-
-Covers packet decoding against captured reports, the output encoder against a
-captured kernel packet, CRC, the shuffle bag, the idle timer, and end-to-end
-button mapping through the report simulator.
-
----
-
-*built for a DualSense whose ✕ gave up.*
+The wire formats are described, with their bit positions, in
+`include/padwave_schemas.hh`; `docs/protocol.md` has the longer notes. No other
+file describes the packets.

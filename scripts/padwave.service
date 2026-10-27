@@ -1,21 +1,20 @@
 [Unit]
 Description=padwave — DualSense radio
-After=pipewire.service wireplumber.service bluetooth.target network-online.target
-Wants=pipewire.service
+After=bluetooth.target network-online.target
+Wants=bluetooth.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/padwave
-Environment=MIX_ENV=prod
 Environment=HOME=%h
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-Environment=ELIXIR_ERL_OPTIONS=+fnu
+Environment=PADWAVE_STANDALONE=1
 # Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
 EnvironmentFile=-%h/.config/padwave/env
 ExecStart=%h/padwave/scripts/padwave-boot.sh
 Restart=on-failure
 RestartSec=3
-# Kill the player child along with the BEAM.
+# Kill the player/input children with the app.
 KillMode=control-group
 TimeoutStopSec=10
 StandardOutput=journal

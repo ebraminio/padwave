@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 
 echo "==> syncing to $HOST:~/$TARGET"
 rsync -az --delete \
-  --exclude '_build' --exclude 'deps' --exclude '.git' --exclude 'var' \
+  --exclude 'build' --exclude 'bin' --exclude '.git' --exclude 'var' \
   ./ "$HOST:~/$TARGET/"
 
 echo "==> installing remotely"

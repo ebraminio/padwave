@@ -3,8 +3,9 @@
 set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+root=$(dirname "$here")
 
-cc -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$here" \
+cc -std=c++23 -fno-exceptions -fno-rtti -O2 -I "$root/include" \
    -o /tmp/padwave_test_wire "$here/test_wire.cc" -lz
 
 exec /tmp/padwave_test_wire

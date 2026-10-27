@@ -2,7 +2,7 @@
 
 What is known about the controller's report ids, what padwave does with each,
 and where the knowledge comes from. The descriptions themselves live in
-`lib/padwave/schemas/` and are served as data at `GET /api/schema`.
+`include/padwave_schemas.hh` and summarised at `GET /api/schema`.
 
 ## Framing
 

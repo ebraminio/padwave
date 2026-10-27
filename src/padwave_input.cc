@@ -3,7 +3,7 @@
 // A separate process from the player on purpose: reading input is independent
 // of whether audio is playing, and the player should not own the input fd just
 // because it happens to be the process that also writes 0x36. This CLI is the
-// seam for moving the input path out of Elixir: it parses 0x31 (Bluetooth) and
+// input mode: it parses 0x31 (Bluetooth) and
 // 0x01 (USB) with InputReport/InputBody from padwave_schemas.hh and prints one
 // line per state report, plus "mic <hex>" for the Opus frames that share 0x31.
 //
@@ -119,7 +119,7 @@ void print_buttons(uint32_t buttons) {
 /* -- d-pad steering -------------------------------------------------------
  * The d-pad's timing lives here now: a tap seeks 6 s, a hold ramps through
  * 10/20/40/60 s at 420 ms, then repeats the last step at 130 ms. The actions
- * are printed as lines and the Elixir side only executes them. */
+ * are printed as lines and the app only executes them. */
 /* -- buttons and triggers -------------------------------------------------
  * The static bindings table moves here with the d-pad. The radio only executes
  * the actions; the UI's bindings map is documentation, not logic. */

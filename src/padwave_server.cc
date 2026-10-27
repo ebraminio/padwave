@@ -1,8 +1,8 @@
 // padwave serve — the C++ web front.
 //
 // A single epoll loop serving the panel from the binary and proxying /api/* to
-// the backend (the Elixir app) so the UI can be served from here while the
-// state still lives there. The proxy is streaming, so /api/events (SSE) works:
+// the standalone radio; while PADWAVE_STANDALONE is unset it can still
+// proxy to a legacy backend. The proxy is streaming, so /api/events (SSE) works:
 // bytes are relayed as they arrive, with a 64 KiB per-connection buffer and
 // backpressure when the client cannot keep up.
 //
@@ -31,9 +31,9 @@
 #include "padwave_status.hh"
 
 #if defined(__has_embed)
-#if __has_embed("../priv/ui/index.html")
+#if __has_embed("../ui/index.html")
 static const unsigned char kIndexHtml[] = {
-#embed "../priv/ui/index.html"
+#embed "../ui/index.html"
 };
 static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
 #else
@@ -337,7 +337,7 @@ void read_client(conn *c) {
     app_bindings_json(bindings, sizeof(bindings));
     char body[1024];
     int len = snprintf(body, sizeof(body),
-                       "{\"note\":\"wire formats live in scripts/padwave_schemas.hh\","
+                       "{\"note\":\"wire formats live in include/padwave_schemas.hh\","
                        "\"bindings\":%s}",
                        bindings);
     c->static_reply = true;

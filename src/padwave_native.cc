@@ -712,7 +712,7 @@ int native_main(int argc, char **argv) {
   clock_gettime(CLOCK_MONOTONIC, &now);
 
   // A local control bus with the same line protocol as stdin. stdin stays the
-  // Elixir engine's path; this is for the web front and for tests.
+  // app's path when it owns the player; this is for the web front and tests.
   int cmd_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
   if (cmd_fd >= 0) {
     struct sockaddr_un cmd_addr;

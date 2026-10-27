@@ -5,7 +5,7 @@
 //   padwave serve [port]      the bootstrap web server (epoll, embedded UI)
 //   padwave opusdec [-e|-s]   the codec helper
 //
-// All of them include scripts/padwave_schemas.hh, so the protocol is described
+// All of them include include/padwave_schemas.hh, so the protocol is described
 // once and no mode redefines a packet.
 #include <string.h>
 
