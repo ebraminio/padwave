@@ -164,7 +164,8 @@ mutually exclusive: pausing with triangle, the touchpad/mute, the pause command
 or zero volume turns the mic on; resuming turns it off. Enabling the mic
 directly pauses playback, and switching it off resumes only when the mic caused
 that pause. Touchpad mute records the pause as volume-caused, so its next click
-unmutes and resumes.
+unmutes and resumes. While the monitor is on, padwave claims the controller's
+mute-button LED (`valid_flag1=mute_led`), and clears it when monitoring stops.
 
 Volume zero *is* the paused state: reaching 0 pauses, raising it again or
 pressing play/mute restores the last nonzero volume, and a new controller
