@@ -7,7 +7,6 @@
 
 #include "padwave_wire.hh"
 
-
 int main() {
   // The byte order belongs to the type, not the host.
   PWUINT16 u16;
@@ -40,15 +39,15 @@ int main() {
 
   const unsigned char *b = (const unsigned char *)&report;
   assert(sizeof(report) == 398);
-  assert(b[0] == 0x36);           // report id
-  assert(b[1] == 0x00);           // seq tag
+  assert(b[0] == 0x36);              // report id
+  assert(b[1] == 0x00);              // seq tag
   assert(b[2] == 0x91 && b[3] == 7); // config sub-packet
-  assert(b[4] == 0xFE);           // speaker only, mic shut
-  assert(b[5] == 64 && b[9] == 64); // haptic lengths
-  assert(b[10] == 0);             // counter
+  assert(b[4] == 0xFE);              // speaker only, mic shut
+  assert(b[5] == 64 && b[9] == 64);  // haptic lengths
+  assert(b[10] == 0);                // counter
   assert(b[11] == 0x90 && b[12] == 63);
-  assert(b[13] == 0xF0 && b[14] == 0x80); // valid_flag0/1 of the snapshot
-  assert(b[17] == 0x7F && b[18] == 0x64); // headphone/speaker volume (state +0x04/+0x05)
+  assert(b[13] == 0xF0 && b[14] == 0x80);           // valid_flag0/1 of the snapshot
+  assert(b[17] == 0x7F && b[18] == 0x64);           // headphone/speaker volume (state +0x04/+0x05)
   assert(b[142] == (0x16 | 0x80) && b[143] == 200); // jack + Opus block
   assert(report.valid());
 

@@ -46,9 +46,9 @@ inline constexpr size_t kBufferMax = 65536;
 inline constexpr int kMaxFds = 1024;
 
 struct Server {
- private:
+private:
   struct Conn {
-    int fd = -1;  // client
+    int fd = -1; // client
     char in[kRequestMax];
     size_t in_len = 0;
     char out[kBufferMax];
@@ -71,9 +71,9 @@ struct Server {
   size_t index_len = 0;
   App *app = nullptr;
 
- public:
+public:
   int run(int port) {
-    App a{};  // the app stays on the stack; the connection table is static in server_main
+    App a{}; // the app stays on the stack; the connection table is static in server_main
 
     int n = snprintf(nullptr, 0,
                      "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
@@ -125,8 +125,10 @@ struct Server {
 
     standalone = getenv("PADWAVE_STANDALONE") != nullptr;
     if (standalone) {
-      if (a.init()) app = &a;
-      else standalone = false;
+      if (a.init())
+        app = &a;
+      else
+        standalone = false;
     }
     start_ms = monotonicMs();
 
@@ -237,14 +239,15 @@ struct Server {
     return 0;
   }
 
- private:
+private:
   static int64_t monotonicMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   }
 
-  static int makeStatic(char *dst, size_t cap, const char *type, const char *body, size_t body_len) {
+  static int makeStatic(char *dst, size_t cap, const char *type, const char *body,
+                        size_t body_len) {
     int n = snprintf(dst, cap,
                      "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
                      "Connection: close\r\nCache-Control: no-cache\r\n\r\n",
@@ -313,7 +316,7 @@ struct Server {
       closeConn(c);
       return;
     }
-    if (c->in_len < head_len + body_len) return;  // body still arriving
+    if (c->in_len < head_len + body_len) return; // body still arriving
 
     char method[8] = {0}, path[1024] = {0};
     if (sscanf(c->in, "%7s %1023s", method, path) != 2) {
@@ -327,8 +330,8 @@ struct Server {
       static char body[8192];
       int len = app->statusText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -348,7 +351,7 @@ struct Server {
       int len = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
-                                       body ? body : "", body ? (size_t)len : 0);
+                                      body ? body : "", body ? (size_t)len : 0);
       free(body);
       modFd(c->fd, EPOLLOUT);
       return;
@@ -359,16 +362,16 @@ struct Server {
         app->configSet(c->in + head_len);
         static const char ok[] = "ok=true\n";
         c->static_reply = true;
-        c->out_len =
-            (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok, sizeof(ok) - 1);
+        c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok,
+                                        sizeof(ok) - 1);
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char body[1024];
       int len = app->configText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -377,8 +380,8 @@ struct Server {
       char body[1024];
       int len = bindings_text(body, sizeof(body));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -395,8 +398,8 @@ struct Server {
       char result[512];
       int len = app->handleCommand(c->in + head_len, body_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -413,8 +416,8 @@ struct Server {
       char result[256];
       int len = app->output(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -433,8 +436,8 @@ struct Server {
       char result[256];
       int len = app->output(request, result, sizeof(result));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -442,8 +445,8 @@ struct Server {
     if (standalone && strcmp(path, "/api/mic/reset") == 0) {
       static const char body[] = "ok=true\n";
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      sizeof(body) - 1);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -451,17 +454,18 @@ struct Server {
     if (standalone && strcmp(path, "/api/reload") == 0) {
       static const char body[] = "ok=true\nreloaded=0\n";
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      sizeof(body) - 1);
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
-    if (standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 && strcmp(path, "/api/front/events") != 0) {
+    if (standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 &&
+        strcmp(path, "/api/front/events") != 0) {
       static const char body[] = "ok=false\nerror=not implemented\n";
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                       sizeof(body) - 1);
+                                      sizeof(body) - 1);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -480,8 +484,8 @@ struct Server {
       char body[1024];
       int len = frontText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len =
-          (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
+                                      (size_t)len);
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -490,7 +494,7 @@ struct Server {
     if (strcmp(path, "/health") == 0) {
       static const char body[] = "ok=true\n";
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                       sizeof(body) - 1);
+                                      sizeof(body) - 1);
     } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
       if (index_len <= sizeof(c->out)) {
         memcpy(c->out, index_response, index_len);
@@ -535,8 +539,7 @@ struct Server {
   }
 
   int frontText(char *buf, size_t cap) {
-    return app->frontText(buf, cap, requests,
-                          (long)((monotonicMs() - start_ms) / 1000));
+    return app->frontText(buf, cap, requests, (long)((monotonicMs() - start_ms) / 1000));
   }
 
   void appendSse(Conn *c, const char *body, size_t n) {
@@ -549,7 +552,7 @@ struct Server {
 
     // Every key=value line needs its own data: field; a line without one is
     // dropped by the event source. Count the exact payload, then write it.
-    size_t payload = 1;  // the blank line that ends the event
+    size_t payload = 1; // the blank line that ends the event
     for (size_t pos = 0; pos < n;) {
       size_t end = pos;
       while (end < n && body[end] != '\n') end++;
@@ -597,6 +600,4 @@ struct Server {
     int n = frontText(body, sizeof(body));
     if (n > 0) appendSse(c, body, (size_t)n);
   }
-
-
 };

@@ -1,0 +1,34 @@
+# padwave's C++ style: LLVM, but 100 columns and the project's compact
+# one-line guards. Keep includes in their hand-written order (the FFmpeg block
+# must stay inside extern "C"). Run: clang-format -i padwave.cc *.hh test_wire.cc
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+ColumnLimit: 100
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+AccessModifierOffset: -2
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+BreakBeforeBraces: Attach
+BreakTemplateDeclarations: Yes
+PointerAlignment: Right
+DerivePointerAlignment: false
+SortIncludes: false
+IncludeBlocks: Preserve
+FixNamespaceComments: true
+NamespaceIndentation: None
+IndentCaseLabels: false
+BinPackArguments: true
+BinPackParameters: true
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+BreakBeforeBinaryOperators: None
+Cpp11BracedListStyle: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+SpaceAfterCStyleCast: false
+SpacesBeforeTrailingComments: 1

@@ -45,7 +45,6 @@ extern "C" {
 // Shared helpers for the native modes: finding the controller's hidraw node
 // and writing a whole buffer to it.
 
-
 // The sysfs uevent carries HID_ID=0005:0000054C:00000CE6 for the DualSense and
 // ...0DF2 for the Edge. Scan a bounded range; each node's uevent is small.
 static const char *const kDualsenseIds[] = {"054C:00000CE6", "054C:00000DF2"};
@@ -102,9 +101,7 @@ static inline bool write_all(int fd, const void *buf, size_t len) {
 // Kept out of padwave_output.cc so the single player process can build both
 // the 0x36 audio reports and these 0x31 control reports from the same schema.
 
-
 namespace padwave_fields {
-
 
 struct u8_field {
   const char *name;
@@ -290,8 +287,6 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 //   player <pos_ms> <dur_ms> <sent> <underruns> <paused>
 //   input  <lx> <ly> <rx> <ry> <l2> <r2> <buttons> <battery> <jack>
 
-
-
 // padwave_native — the whole playback path in one C program.
 //
 // One thread, no async I/O framework: poll() on stdin and a timerfd is enough
@@ -330,19 +325,15 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 // FFmpeg's public headers are C-only (no extern "C" guards), so a C++ caller
 // has to provide the linkage wrapper itself.
 
-
-
-
-
 #define RATE 48000
 #define CHANNELS 2
 #define IN_FRAMES 512   /* 512 samples per input block, 93.75 blocks/s */
 #define OPUS_FRAMES 480 /* what the controller's decoder consumes */
 #define OPUS_BYTES 200  /* CBR 160 kbps at 10 ms */
 #define REPORT_SIZE 398
-#define RING_BLOCKS 192 /* about two seconds: enough for a 1.5 s crossfade */
-#define RING_HIGH 160   /* stop decoding above this many buffered blocks */
-#define RING_PRIME 24  /* start sending once this many are buffered */
+#define RING_BLOCKS 192    /* about two seconds: enough for a 1.5 s crossfade */
+#define RING_HIGH 160      /* stop decoding above this many buffered blocks */
+#define RING_PRIME 24      /* start sending once this many are buffered */
 #define DECODE_BUDGET_MS 3 /* but never spend longer than this per iteration */
 
 struct file {
@@ -423,8 +414,8 @@ struct player {
 
   bool playing, paused, eof, primed;
   int volume;
-  int64_t base_ms;   /* source time at the start of the ring */
-  int64_t consumed;  /* input frames taken out of the ring */
+  int64_t base_ms;  /* source time at the start of the ring */
+  int64_t consumed; /* input frames taken out of the ring */
   int64_t sent, underruns, pushed;
 };
 
@@ -566,8 +557,7 @@ static bool open_file(struct player *pl, const char *path) {
  * iteration can sit inside libav for long. It serves the current station and
  * the prefetched one equally. */
 static void fill_into(struct player *pl, struct file *f, block_t *ring, int *head, int *tail,
-                      float acc[IN_FRAMES][CHANNELS], int *acc_frames, int high,
-                      int64_t *pushed) {
+                      float acc[IN_FRAMES][CHANNELS], int *acc_frames, int high, int64_t *pushed) {
   if (!f->fmt || pl->paused) return;
 
   struct timespec start, now;
@@ -630,8 +620,8 @@ static void fill(struct player *pl) {
 }
 
 static void fill_next(struct player *pl) {
-  fill_into(pl, &pl->nxt, pl->nring, &pl->nhead, &pl->ntail, pl->nacc, &pl->nacc_frames,
-            RING_HIGH, &pl->npushed);
+  fill_into(pl, &pl->nxt, pl->nring, &pl->nhead, &pl->ntail, pl->nacc, &pl->nacc_frames, RING_HIGH,
+            &pl->npushed);
 }
 
 /* The current station is exhausted; the prefetched one becomes current without
@@ -1110,8 +1100,8 @@ void player_destroy(void *handle) {
 }
 
 static void mode_status(const struct player_status *st, void *) {
-  printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\npaused %d\neof %d\n",
-         st->pos_ms, st->dur_ms, st->sent, st->underruns, st->pushed, st->paused, st->eof);
+  printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\npaused %d\neof %d\n", st->pos_ms,
+         st->dur_ms, st->sent, st->underruns, st->pushed, st->paused, st->eof);
 }
 
 static void mode_track(const char *path, void *) { printf("track %s\n", path); }
@@ -1120,8 +1110,8 @@ int native_main(int argc, char **argv) {
   signal(SIGINT, on_signal);
   signal(SIGTERM, on_signal);
 
-  void *h = player_create(argc > 1 ? argv[1] : nullptr,
-                          argc > 2 && strcmp(argv[2], "speaker") == 0);
+  void *h =
+      player_create(argc > 1 ? argv[1] : nullptr, argc > 2 && strcmp(argv[2], "speaker") == 0);
   if (!h) return 1;
   player_set_sink(h, mode_status, mode_track, nullptr);
 
@@ -1189,7 +1179,6 @@ int native_main(int argc, char **argv) {
 //   padwave input --hex 31c1...        one captured report, decode and exit
 //   padwave input --file /path         a file of raw reports (testing)
 
-
 // The decoder's state belongs to the handle, not the file: one handle per
 // controller, carrying the callbacks and what the edge detectors remember.
 namespace {
@@ -1252,15 +1241,15 @@ void input_on_signal(int) { input_running = 0; }
  * hidraw fd. Returns >0 bytes, 0 for a timeout/EAGAIN, -1 to stop. */
 const char *dpad_name(uint8_t value) {
   switch (value) {
-    case padwave::InputBody::Up: return "up";
-    case padwave::InputBody::UpRight: return "up_right";
-    case padwave::InputBody::Right: return "right";
-    case padwave::InputBody::DownRight: return "down_right";
-    case padwave::InputBody::Down: return "down";
-    case padwave::InputBody::DownLeft: return "down_left";
-    case padwave::InputBody::Left: return "left";
-    case padwave::InputBody::UpLeft: return "up_left";
-    default: return "none";
+  case padwave::InputBody::Up: return "up";
+  case padwave::InputBody::UpRight: return "up_right";
+  case padwave::InputBody::Right: return "right";
+  case padwave::InputBody::DownRight: return "down_right";
+  case padwave::InputBody::Down: return "down";
+  case padwave::InputBody::DownLeft: return "down_left";
+  case padwave::InputBody::Left: return "left";
+  case padwave::InputBody::UpLeft: return "up_left";
+  default: return "none";
   }
 }
 
@@ -1269,15 +1258,24 @@ void buttons_to_string(uint32_t buttons, char *out, size_t cap) {
     uint32_t bit;
     const char *name;
   } names[] = {
-      {padwave::InputBody::ButtonSquare, "square"}, {padwave::InputBody::ButtonCross, "cross"},
-      {padwave::InputBody::ButtonCircle, "circle"}, {padwave::InputBody::ButtonTriangle, "triangle"},
-      {padwave::InputBody::L1, "l1"},               {padwave::InputBody::R1, "r1"},
-      {padwave::InputBody::L2, "l2"},               {padwave::InputBody::R2, "r2"},
-      {padwave::InputBody::Create, "create"},       {padwave::InputBody::Options, "options"},
-      {padwave::InputBody::L3, "l3"},               {padwave::InputBody::R3, "r3"},
-      {padwave::InputBody::Ps, "ps"},               {padwave::InputBody::Touchpad, "touchpad"},
-      {padwave::InputBody::Mute, "mute"},           {padwave::InputBody::Fn1, "fn1"},
-      {padwave::InputBody::Fn2, "fn2"},             {padwave::InputBody::LeftPaddle, "left_paddle"},
+      {padwave::InputBody::ButtonSquare, "square"},
+      {padwave::InputBody::ButtonCross, "cross"},
+      {padwave::InputBody::ButtonCircle, "circle"},
+      {padwave::InputBody::ButtonTriangle, "triangle"},
+      {padwave::InputBody::L1, "l1"},
+      {padwave::InputBody::R1, "r1"},
+      {padwave::InputBody::L2, "l2"},
+      {padwave::InputBody::R2, "r2"},
+      {padwave::InputBody::Create, "create"},
+      {padwave::InputBody::Options, "options"},
+      {padwave::InputBody::L3, "l3"},
+      {padwave::InputBody::R3, "r3"},
+      {padwave::InputBody::Ps, "ps"},
+      {padwave::InputBody::Touchpad, "touchpad"},
+      {padwave::InputBody::Mute, "mute"},
+      {padwave::InputBody::Fn1, "fn1"},
+      {padwave::InputBody::Fn2, "fn2"},
+      {padwave::InputBody::LeftPaddle, "left_paddle"},
       {padwave::InputBody::RightPaddle, "right_paddle"},
   };
   size_t o = 0;
@@ -1380,10 +1378,10 @@ void track_sensors(input_handle *h, const padwave::InputBody &b) {
              abs(rx - h->sensors.prev_rx) > 24 || abs(ry - h->sensors.prev_ry) > 24;
   }
 
-  double g = sqrt((double)b.accel_x.get() * b.accel_x.get() +
-                  (double)b.accel_y.get() * b.accel_y.get() +
-                  (double)b.accel_z.get() * b.accel_z.get()) /
-             8192.0;
+  double g =
+      sqrt((double)b.accel_x.get() * b.accel_x.get() + (double)b.accel_y.get() * b.accel_y.get() +
+           (double)b.accel_z.get() * b.accel_z.get()) /
+      8192.0;
   if (g >= 2.25 && now - h->sensors.last_shake > 1500) {
     emit_event(h, "shake");
     h->sensors.last_shake = now;
@@ -1395,8 +1393,10 @@ void track_sensors(input_handle *h, const padwave::InputBody &b) {
     if (!capped && now - h->sensors.last_activity > 900) {
       emit_event(h, "activity");
       h->sensors.last_activity = now;
-      if (analog) h->sensors.analog_resets++;
-      else h->sensors.analog_resets = 0;
+      if (analog)
+        h->sensors.analog_resets++;
+      else
+        h->sensors.analog_resets = 0;
     } else if (real) {
       h->sensors.analog_resets = 0;
     }
@@ -1456,8 +1456,10 @@ void emit_action(input_handle *h, const char *name, int value) {
     h->action_fn(name, value, h->ud);
     return;
   }
-  if (value) printf("action %s %d\n", name, value);
-  else printf("action %s\n", name);
+  if (value)
+    printf("action %s %d\n", name, value);
+  else
+    printf("action %s\n", name);
   fflush(stdout);
 }
 
@@ -1482,26 +1484,21 @@ void track_dpad(input_handle *h, uint32_t buttons) {
     h->dpad.hold_dir = 0;
 
     switch (dpad) {
-      case padwave::InputBody::Left:
-        emit_action(h, "seek", -6);
-        h->dpad.hold_dir = -1;
-        h->dpad.hold_step = 0;
-        h->dpad.hold_at = now + 420;
-        break;
-      case padwave::InputBody::Right:
-        emit_action(h, "seek", 6);
-        h->dpad.hold_dir = 1;
-        h->dpad.hold_step = 0;
-        h->dpad.hold_at = now + 420;
-        break;
-      case padwave::InputBody::Up:
-        emit_action(h, "next_random", 0);
-        break;
-      case padwave::InputBody::Down:
-        emit_action(h, "previous", 0);
-        break;
-      default:
-        break;
+    case padwave::InputBody::Left:
+      emit_action(h, "seek", -6);
+      h->dpad.hold_dir = -1;
+      h->dpad.hold_step = 0;
+      h->dpad.hold_at = now + 420;
+      break;
+    case padwave::InputBody::Right:
+      emit_action(h, "seek", 6);
+      h->dpad.hold_dir = 1;
+      h->dpad.hold_step = 0;
+      h->dpad.hold_at = now + 420;
+      break;
+    case padwave::InputBody::Up: emit_action(h, "next_random", 0); break;
+    case padwave::InputBody::Down: emit_action(h, "previous", 0); break;
+    default: break;
     }
     return;
   }
@@ -1741,9 +1738,7 @@ int input_main(int argc, char **argv) {
 // The sizes are not repeated here: they come from padwave_schemas.hh, the one
 // description of the protocol.
 
-extern "C" {
-}
-
+extern "C" {}
 
 namespace {
 
@@ -1879,7 +1874,7 @@ int opusdec_main(int argc, char **argv) {
 }
 
 int server_main(int argc, char **argv) {
-  static Server server{};  // connection table in BSS; the App stays on the stack
+  static Server server{}; // connection table in BSS; the App stays on the stack
   int port = argc > 1 ? atoi(argv[1]) : 8787;
   return server.run(port);
 }
@@ -1893,7 +1888,6 @@ int server_main(int argc, char **argv) {
 //
 // All of them include padwave_wire.hh, so the protocol is described
 // once and no mode redefines a packet.
-
 
 int main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "opusdec") == 0) return opusdec_main(argc - 1, argv + 1);

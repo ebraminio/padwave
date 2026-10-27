@@ -142,7 +142,8 @@ static inline int cmp_station(const void *a, const void *b) {
   return c ? c : strcasecmp(x->title, y->title);
 }
 
-static inline void kv_add(char *buf, size_t cap, size_t *len, const char *key, const char *fmt, ...) {
+static inline void kv_add(char *buf, size_t cap, size_t *len, const char *key, const char *fmt,
+                          ...) {
   size_t start = *len;
   if (start + 2 > cap) return;
   int n = snprintf(buf + start, cap - start, "%s=", key);
@@ -246,7 +247,7 @@ static inline int bindings_text(char *buf, size_t cap) {
 // ---------------------------------------------------------------------------
 
 struct App {
- private:
+private:
   station stations[kMaxStations];
   int count = 0;
   int current = -1;
@@ -301,10 +302,10 @@ struct App {
 
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
-  int trigger_side = 0;  // 1 left, 2 right; 0 idle
+  int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
 
- public:
+public:
   bool init() {
     signal(SIGPIPE, SIG_IGN);
 
@@ -431,8 +432,10 @@ struct App {
     kv_text(buf, cap, &o, "controller.mac", "");
     kv_text(buf, cap, &o, "controller.model", "dualsense");
     kv_text(buf, cap, &o, "controller.node", this->input_node);
-    if (this->battery >= 0) kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
-    else kv_text(buf, cap, &o, "controller.battery", "null");
+    if (this->battery >= 0)
+      kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
+    else
+      kv_text(buf, cap, &o, "controller.battery", "null");
     kv_text(buf, cap, &o, "controller.charging", this->charging);
     kv_add(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
     kv_text(buf, cap, &o, "controller.buttons", this->buttons);
@@ -627,7 +630,8 @@ struct App {
       long ms = kv_number(body, "ms", 0);
       left = left < 0 ? 0 : (left > 255 ? 255 : left);
       right = right < 0 ? 0 : (right > 255 ? 255 : right);
-      snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left, right);
+      snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left,
+               right);
       outputFields(fields);
       this->rumble_left = left;
       this->rumble_right = right;
@@ -646,8 +650,10 @@ struct App {
       long ms = kv_number(body, "ms", 0);
 
       int mode = 0x26;
-      if (strcmp(effect, "off") == 0) mode = 0x05;
-      else if (strcmp(effect, "feedback") == 0) mode = 0x21;
+      if (strcmp(effect, "off") == 0)
+        mode = 0x05;
+      else if (strcmp(effect, "feedback") == 0)
+        mode = 0x21;
 
       int params[10] = {0};
       if (mode != 0x05) {
@@ -659,10 +665,11 @@ struct App {
       bool left = strcmp(side, "left") == 0;
       const char *flag = left ? "left_trigger" : "right_trigger";
       const char *prefix = left ? "left" : "right";
-      snprintf(fields, sizeof(fields),
-               "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-               flag, prefix, mode, prefix, params[0], params[1], params[2], params[3], params[4],
-               params[5], params[6], params[7], params[8], params[9]);
+      snprintf(
+          fields, sizeof(fields),
+          "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+          flag, prefix, mode, prefix, params[0], params[1], params[2], params[3], params[4],
+          params[5], params[6], params[7], params[8], params[9]);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? now_ms() + ms : 0;
@@ -689,409 +696,416 @@ struct App {
     return command(action, body, len, out, cap);
   }
 
-  bool ownsFd(int fd) {
-    return fd >= 0 && (fd == this->player_timer_fd || fd == this->input_fd);
-  }
+  bool ownsFd(int fd) { return fd >= 0 && (fd == this->player_timer_fd || fd == this->input_fd); }
 
- private:
+private:
   void addStation(const char *path, const char *game) {
-  if (this->count >= kMaxStations) return;
-  station *s = &this->stations[this->count];
-  snprintf(s->path, sizeof(s->path), "%s", path);
+    if (this->count >= kMaxStations) return;
+    station *s = &this->stations[this->count];
+    snprintf(s->path, sizeof(s->path), "%s", path);
 
-  const char *base = strrchr(path, '/');
-  snprintf(s->title, sizeof(s->title), "%.*s", (int)sizeof(s->title) - 1, base ? base + 1 : path);
-  char *dot = strrchr(s->title, '.');
-  if (dot) *dot = 0;
+    const char *base = strrchr(path, '/');
+    snprintf(s->title, sizeof(s->title), "%.*s", (int)sizeof(s->title) - 1, base ? base + 1 : path);
+    char *dot = strrchr(s->title, '.');
+    if (dot) *dot = 0;
 
-  snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
-  const char *d = strrchr(path, '.');
-  snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
-  make_id(path, s->id);
-  this->count++;
+    snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
+    const char *d = strrchr(path, '.');
+    snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
+    make_id(path, s->id);
+    this->count++;
   }
 
   void scanDir(const char *dir, const char *game) {
-  DIR *d = opendir(dir);
-  if (!d) return;
-  struct dirent *e;
-  while ((e = readdir(d))) {
-    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-    char path[kMaxPath];
-    snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
-    struct stat st;
-    if (lstat(path, &st) != 0) continue;
-    if (S_ISDIR(st.st_mode)) {
-      scanDir(path, e->d_name);
-    } else if (S_ISREG(st.st_mode) && audio_ext(e->d_name)) {
-      addStation(path, game);
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+      if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+      char path[kMaxPath];
+      snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+      struct stat st;
+      if (lstat(path, &st) != 0) continue;
+      if (S_ISDIR(st.st_mode)) {
+        scanDir(path, e->d_name);
+      } else if (S_ISREG(st.st_mode) && audio_ext(e->d_name)) {
+        addStation(path, game);
+      }
     }
-  }
-  closedir(d);
+    closedir(d);
   }
 
   int findStation(const char *path) {
-  for (int i = 0; i < this->count; i++)
-    if (strcmp(this->stations[i].path, path) == 0) return i;
-  return -1;
+    for (int i = 0; i < this->count; i++)
+      if (strcmp(this->stations[i].path, path) == 0) return i;
+    return -1;
   }
 
   int findId(const char *id) {
-  for (int i = 0; i < this->count; i++)
-    if (strcmp(this->stations[i].id, id) == 0) return i;
-  return -1;
+    for (int i = 0; i < this->count; i++)
+      if (strcmp(this->stations[i].id, id) == 0) return i;
+    return -1;
   }
 
   void pushHistory(int index) {
-  if (index < 0) return;
-  if (this->history_len < kMaxHistory) {
-    this->history[this->history_len++] = index;
-  } else {
-    memmove(this->history, this->history + 1, sizeof(int) * (kMaxHistory - 1));
-    this->history[kMaxHistory - 1] = index;
-  }
+    if (index < 0) return;
+    if (this->history_len < kMaxHistory) {
+      this->history[this->history_len++] = index;
+    } else {
+      memmove(this->history, this->history + 1, sizeof(int) * (kMaxHistory - 1));
+      this->history[kMaxHistory - 1] = index;
+    }
   }
 
   void playerSend(const char *line) {
-  if (this->player) ::player_command(this->player, line);
+    if (this->player) ::player_command(this->player, line);
   }
 
   void playerStart() {
-  if (this->player) return;
-  this->player = ::player_create(nullptr, false);
-  if (!this->player) return;
-  ::player_set_sink(this->player, playerStatusCb, playerTrackCb, this);
-  this->player_timer_fd = ::player_timer_fd(this->player);
+    if (this->player) return;
+    this->player = ::player_create(nullptr, false);
+    if (!this->player) return;
+    ::player_set_sink(this->player, playerStatusCb, playerTrackCb, this);
+    this->player_timer_fd = ::player_timer_fd(this->player);
   }
 
   void inputStart() {
-  if (this->input) return;
+    if (this->input) return;
 
-  char node[64];
-  if (find_dualsense(node, sizeof(node)) < 0) {
-    this->reconnect_at = (int)(now_ms() + 1500);
-    return;
-  }
+    char node[64];
+    if (find_dualsense(node, sizeof(node)) < 0) {
+      this->reconnect_at = (int)(now_ms() + 1500);
+      return;
+    }
 
-  this->input = ::input_create(node);
-  if (!this->input) {
-    this->reconnect_at = (int)(now_ms() + 1500);
-    return;
-  }
-  snprintf(this->input_node, sizeof(this->input_node), "%s", node);
-  ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb,
-                   this);
-  this->input_fd = ::input_fd(this->input);
+    this->input = ::input_create(node);
+    if (!this->input) {
+      this->reconnect_at = (int)(now_ms() + 1500);
+      return;
+    }
+    snprintf(this->input_node, sizeof(this->input_node), "%s", node);
+    ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
+    this->input_fd = ::input_fd(this->input);
   }
 
   void inputStop() {
-  if (this->input) {
-    ::input_destroy(this->input);
-    this->input = nullptr;
-  }
-  this->input_fd = -1;
-  this->controller = false;
-  this->input_node[0] = 0;
-  this->rate = 0;
-  this->rate_at = 0;
-  this->rate_frames = 0;
+    if (this->input) {
+      ::input_destroy(this->input);
+      this->input = nullptr;
+    }
+    this->input_fd = -1;
+    this->controller = false;
+    this->input_node[0] = 0;
+    this->rate = 0;
+    this->rate_at = 0;
+    this->rate_frames = 0;
   }
 
   static void playerStatusCb(const struct player_status *st, void *ud) {
-  App *a = (App *)ud;
-  a->pos_ms = st->pos_ms;
-  a->dur_ms = st->dur_ms;
-  a->sent = st->sent;
-  a->underruns = st->underruns;
-  a->paused = st->paused != 0;
-  a->eof = st->eof != 0;
+    App *a = (App *)ud;
+    a->pos_ms = st->pos_ms;
+    a->dur_ms = st->dur_ms;
+    a->sent = st->sent;
+    a->underruns = st->underruns;
+    a->paused = st->paused != 0;
+    a->eof = st->eof != 0;
   }
 
   static void playerTrackCb(const char *path, void *ud) {
-  App *a = (App *)ud;
-  int idx = a->findStation(path);
-  if (idx < 0) return;
-  if (a->current >= 0 && a->current != idx) a->pushHistory(a->current);
-  a->current = idx;
-  a->paused = false;
-  a->playing = true;
+    App *a = (App *)ud;
+    int idx = a->findStation(path);
+    if (idx < 0) return;
+    if (a->current >= 0 && a->current != idx) a->pushHistory(a->current);
+    a->current = idx;
+    a->paused = false;
+    a->playing = true;
   }
 
   void play(int index, long start_ms) {
-  if (index < 0 || index >= this->count) return;
-  playerStart();
-  char line[kMaxPath + 64];
-  snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
-  playerSend(line);
+    if (index < 0 || index >= this->count) return;
+    playerStart();
+    char line[kMaxPath + 64];
+    snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
+    playerSend(line);
 
-  if (this->current >= 0 && this->current != index && this->history_len == 0) pushHistory(this->current);
-  this->current = index;
-  this->playing = true;
-  this->paused = false;
-  this->eof = false;
-  this->pos_ms = start_ms;
-  this->dur_ms = 0;
-  this->idle_since = now_ms();
+    if (this->current >= 0 && this->current != index && this->history_len == 0)
+      pushHistory(this->current);
+    this->current = index;
+    this->playing = true;
+    this->paused = false;
+    this->eof = false;
+    this->pos_ms = start_ms;
+    this->dur_ms = 0;
+    this->idle_since = now_ms();
 
-  // Gapless: queue a different station for the junction.
-  if (this->count > 1) {
-    int next = rand() % this->count;
-    if (next == index) next = (next + 1) % this->count;
-    char q[kMaxPath + 16];
-    snprintf(q, sizeof(q), "queue %s\n", this->stations[next].path);
-    playerSend(q);
-  }
+    // Gapless: queue a different station for the junction.
+    if (this->count > 1) {
+      int next = rand() % this->count;
+      if (next == index) next = (next + 1) % this->count;
+      char q[kMaxPath + 16];
+      snprintf(q, sizeof(q), "queue %s\n", this->stations[next].path);
+      playerSend(q);
+    }
   }
 
   void next() {
-  if (this->count == 0) return;
-  int next = rand() % this->count;
-  if (this->count > 1 && next == this->current) next = (next + 1) % this->count;
-  play(next, 0);
+    if (this->count == 0) return;
+    int next = rand() % this->count;
+    if (this->count > 1 && next == this->current) next = (next + 1) % this->count;
+    play(next, 0);
   }
 
   void previous() {
-  if (this->history_len > 0) {
-    int prev = this->history[--this->history_len];
-    play(prev, 0);
-  } else if (this->current > 0) {
-    play(this->current - 1, 0);
-  }
+    if (this->history_len > 0) {
+      int prev = this->history[--this->history_len];
+      play(prev, 0);
+    } else if (this->current > 0) {
+      play(this->current - 1, 0);
+    }
   }
 
   void shuffleGame() {
-  if (this->count == 0) return;
-  const char *game = this->current >= 0 ? this->stations[this->current].game : "";
-  for (int tries = 0; tries < 100; tries++) {
-    int i = rand() % this->count;
-    if (strcmp(this->stations[i].game, game) != 0) {
-      play(i, 0);
-      return;
+    if (this->count == 0) return;
+    const char *game = this->current >= 0 ? this->stations[this->current].game : "";
+    for (int tries = 0; tries < 100; tries++) {
+      int i = rand() % this->count;
+      if (strcmp(this->stations[i].game, game) != 0) {
+        play(i, 0);
+        return;
+      }
     }
-  }
-  next();
+    next();
   }
 
   void togglePause() {
-  if (!this->playing) {
-    if (this->current >= 0)
-      play(this->current, this->pos_ms);
-    return;
-  }
-  this->paused = !this->paused;
-  playerSend(this->paused ? "pause 1\n" : "pause 0\n");
+    if (!this->playing) {
+      if (this->current >= 0) play(this->current, this->pos_ms);
+      return;
+    }
+    this->paused = !this->paused;
+    playerSend(this->paused ? "pause 1\n" : "pause 0\n");
   }
 
   void setVolume(int v) {
-  if (v < 0) v = 0;
-  if (v > 100) v = 100;
-  this->volume = v;
-  this->muted = v == 0;
-  char line[32];
-  snprintf(line, sizeof(line), "volume %d\n", v);
-  playerSend(line);
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    this->volume = v;
+    this->muted = v == 0;
+    char line[32];
+    snprintf(line, sizeof(line), "volume %d\n", v);
+    playerSend(line);
   }
 
   void seek(long ms) {
-  if (ms < 0) ms = 0;
-  if (this->dur_ms > 0 && ms > this->dur_ms) ms = this->dur_ms;
-  char line[32];
-  snprintf(line, sizeof(line), "seek %ld\n", ms);
-  playerSend(line);
-  this->pos_ms = ms;
+    if (ms < 0) ms = 0;
+    if (this->dur_ms > 0 && ms > this->dur_ms) ms = this->dur_ms;
+    char line[32];
+    snprintf(line, sizeof(line), "seek %ld\n", ms);
+    playerSend(line);
+    this->pos_ms = ms;
   }
 
   static void inputFrameCb(const struct input_frame *f, void *ud) {
-  App *a = (App *)ud;
-  a->controller = true;
-  a->lx = (int)f->lx;
-  a->ly = (int)f->ly;
-  a->rx = (int)f->rx;
-  a->ry = (int)f->ry;
-  a->l2 = (int)f->l2;
-  a->r2 = (int)f->r2;
-  a->battery = f->battery;
-  a->jack = f->jack != 0;
-  a->temp = (int)f->temp;
-  snprintf(a->dpad, sizeof(a->dpad), "%s", f->dpad);
-  snprintf(a->buttons, sizeof(a->buttons), "%s", f->buttons);
-  snprintf(a->raw, sizeof(a->raw), "%.*s", (int)sizeof(a->raw) - 1, f->raw);
-  snprintf(a->charging, sizeof(a->charging), "%s",
-           f->charging == 1 ? "charging" : f->charging == 2 ? "full" : "discharging");
-  a->gx = f->gx;
-  a->gy = f->gy;
-  a->gz = f->gz;
-  a->ax = f->ax;
-  a->ay = f->ay;
-  a->az = f->az;
-  a->seq = f->seq;
-  a->tfl = f->tfl;
-  a->tfr = f->tfr;
-  for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
+    App *a = (App *)ud;
+    a->controller = true;
+    a->lx = (int)f->lx;
+    a->ly = (int)f->ly;
+    a->rx = (int)f->rx;
+    a->ry = (int)f->ry;
+    a->l2 = (int)f->l2;
+    a->r2 = (int)f->r2;
+    a->battery = f->battery;
+    a->jack = f->jack != 0;
+    a->temp = (int)f->temp;
+    snprintf(a->dpad, sizeof(a->dpad), "%s", f->dpad);
+    snprintf(a->buttons, sizeof(a->buttons), "%s", f->buttons);
+    snprintf(a->raw, sizeof(a->raw), "%.*s", (int)sizeof(a->raw) - 1, f->raw);
+    snprintf(a->charging, sizeof(a->charging), "%s",
+             f->charging == 1   ? "charging"
+             : f->charging == 2 ? "full"
+                                : "discharging");
+    a->gx = f->gx;
+    a->gy = f->gy;
+    a->gz = f->gz;
+    a->ax = f->ax;
+    a->ay = f->ay;
+    a->az = f->az;
+    a->seq = f->seq;
+    a->tfl = f->tfl;
+    a->tfr = f->tfr;
+    for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
 
-  long now = now_ms();
-  if (a->rate_at == 0) a->rate_at = now;
-  a->rate_frames++;
-  if (now - a->rate_at >= 1000) {
-    a->rate = (int)((a->rate_frames * 1000) / (now - a->rate_at));
-    a->rate_frames = 0;
-    a->rate_at = now;
-  }
+    long now = now_ms();
+    if (a->rate_at == 0) a->rate_at = now;
+    a->rate_frames++;
+    if (now - a->rate_at >= 1000) {
+      a->rate = (int)((a->rate_frames * 1000) / (now - a->rate_at));
+      a->rate_frames = 0;
+      a->rate_at = now;
+    }
   }
 
   static void inputActionCb(const char *name, int value, void *ud) {
-  ((App *)ud)->handleAction(name, value);
+    ((App *)ud)->handleAction(name, value);
   }
 
   static void inputEventCb(const char *name, void *ud) {
-  (void)name;
-  (void)ud;
+    (void)name;
+    (void)ud;
   }
 
   static void inputMicCb(const uint8_t *data, size_t len, void *ud) {
-  (void)data;
-  (void)len;
-  (void)ud;
+    (void)data;
+    (void)len;
+    (void)ud;
   }
 
   void handleAction(const char *name, int value) {
-  if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0) next();
-  else if (strcmp(name, "previous") == 0) previous();
-  else if (strcmp(name, "shuffle_game") == 0) shuffleGame();
-  else if (strcmp(name, "pause") == 0 || strcmp(name, "toggle_pause") == 0) togglePause();
-  else if (strcmp(name, "play") == 0) {
-    if (!this->playing || this->paused) togglePause();
-  } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
-    setVolume(this->muted ? this->volume : 0);
-  } else if (strcmp(name, "volume") == 0) {
-    setVolume(this->volume + value);
-  } else if (strcmp(name, "seek") == 0) {
-    seek(this->pos_ms + (long)value * 1000);
-  } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
-    this->playing = false;
-    this->paused = true;
-    playerSend("pause 1\n");
-  }
-  snprintf(this->last_action, sizeof(this->last_action), "%s", name);
+    if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0)
+      next();
+    else if (strcmp(name, "previous") == 0)
+      previous();
+    else if (strcmp(name, "shuffle_game") == 0)
+      shuffleGame();
+    else if (strcmp(name, "pause") == 0 || strcmp(name, "toggle_pause") == 0)
+      togglePause();
+    else if (strcmp(name, "play") == 0) {
+      if (!this->playing || this->paused) togglePause();
+    } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
+      setVolume(this->muted ? this->volume : 0);
+    } else if (strcmp(name, "volume") == 0) {
+      setVolume(this->volume + value);
+    } else if (strcmp(name, "seek") == 0) {
+      seek(this->pos_ms + (long)value * 1000);
+    } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
+      this->playing = false;
+      this->paused = true;
+      playerSend("pause 1\n");
+    }
+    snprintf(this->last_action, sizeof(this->last_action), "%s", name);
   }
 
   void configLoad() {
-  char path[512];
-  if (!config_path(path, sizeof(path))) return;
-  FILE *f = fopen(path, "r");
-  if (!f) return;
+    char path[512];
+    if (!config_path(path, sizeof(path))) return;
+    FILE *f = fopen(path, "r");
+    if (!f) return;
 
-  char line[256];
-  while (fgets(line, sizeof(line), f)) {
-    char *eq = strchr(line, '=');
-    if (!eq) continue;
-    *eq = 0;
-    char *value = eq + 1;
-    char *nl = strchr(value, '\n');
-    if (nl) *nl = 0;
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+      char *eq = strchr(line, '=');
+      if (!eq) continue;
+      *eq = 0;
+      char *value = eq + 1;
+      char *nl = strchr(value, '\n');
+      if (nl) *nl = 0;
 
-    if (strcmp(line, "idle_timeout_ms") == 0) {
-      long v = atol(value);
-      this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
-    } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
-      long v = atol(value);
-      this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
-    } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
-      int v = atoi(value);
-      this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
-    } else if (strcmp(line, "trigger_effect_position") == 0) {
-      int v = atoi(value);
-      this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
-    } else if (strcmp(line, "trigger_effect_frequency") == 0) {
-      int v = atoi(value);
-      this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
-    } else if (strcmp(line, "trigger_effects") == 0) {
-      this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+      if (strcmp(line, "idle_timeout_ms") == 0) {
+        long v = atol(value);
+        this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+      } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
+        long v = atol(value);
+        this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+      } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
+      } else if (strcmp(line, "trigger_effect_position") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
+      } else if (strcmp(line, "trigger_effect_frequency") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+      } else if (strcmp(line, "trigger_effects") == 0) {
+        this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+      }
     }
-  }
-  fclose(f);
+    fclose(f);
   }
 
   void configSave() {
-  char path[512];
-  if (!config_path(path, sizeof(path))) return;
+    char path[512];
+    if (!config_path(path, sizeof(path))) return;
 
-  char dir[512];
-  snprintf(dir, sizeof(dir), "%s", path);
-  char *slash = strrchr(dir, '/');
-  if (slash) {
-    *slash = 0;
-    mkdir(dir, 0755);
-  }
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) {
+      *slash = 0;
+      mkdir(dir, 0755);
+    }
 
-  FILE *f = fopen(path, "w");
-  if (!f) return;
-  fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
-  fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
-  fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
-  fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
-  fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
-  fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
-  fclose(f);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
+    fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
+    fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
+    fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
+    fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
+    fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
+    fclose(f);
   }
 
   void outputFields(const char *fields) {
-  if (!this->player) return;
-  char line[1200];
-  snprintf(line, sizeof(line), "fields %s\n", fields);
-  playerSend(line);
+    if (!this->player) return;
+    char line[1200];
+    snprintf(line, sizeof(line), "fields %s\n", fields);
+    playerSend(line);
   }
 
   void serviceOutput() {
-  if (!this->player) return;
-  long now = now_ms();
-  if (this->rumble_until && now >= this->rumble_until) {
-    outputFields("valid_flag0=rumble;motor_left=0;motor_right=0");
-    this->rumble_until = 0;
-  }
-  if (this->trigger_until && now >= this->trigger_until) {
-    const char *flag = this->trigger_side == 1 ? "left_trigger" : "right_trigger";
-    const char *prefix = this->trigger_side == 1 ? "left" : "right";
-    char fields[192];
-    snprintf(fields, sizeof(fields),
-             "valid_flag0=%s;%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0", flag,
-             prefix, prefix);
-    outputFields(fields);
-    this->trigger_until = 0;
-    this->trigger_side = 0;
-  }
+    if (!this->player) return;
+    long now = now_ms();
+    if (this->rumble_until && now >= this->rumble_until) {
+      outputFields("valid_flag0=rumble;motor_left=0;motor_right=0");
+      this->rumble_until = 0;
+    }
+    if (this->trigger_until && now >= this->trigger_until) {
+      const char *flag = this->trigger_side == 1 ? "left_trigger" : "right_trigger";
+      const char *prefix = this->trigger_side == 1 ? "left" : "right";
+      char fields[192];
+      snprintf(fields, sizeof(fields),
+               "valid_flag0=%s;%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0", flag,
+               prefix, prefix);
+      outputFields(fields);
+      this->trigger_until = 0;
+      this->trigger_side = 0;
+    }
   }
 
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
-  (void)body_len;
+    (void)body_len;
 
-  if (strcmp(action, "next") == 0) next();
-  else if (strcmp(action, "previous") == 0) previous();
-  else if (strcmp(action, "shuffle_game") == 0) shuffleGame();
-  else if (strcmp(action, "pause") == 0) togglePause();
-  else if (strcmp(action, "mute") == 0) setVolume(this->muted ? this->volume : 0);
-  else if (strcmp(action, "disconnect") == 0) {
-    this->playing = false;
-    this->paused = true;
-    playerSend("pause 1\n");
-  } else if (strcmp(action, "volume") == 0) {
-    setVolume((int)kv_number(body, "value", this->volume));
-  } else if (strcmp(action, "seek") == 0) {
-    seek(this->pos_ms + kv_number(body, "delta", 0) * 1000);
-  } else if (strcmp(action, "seek_to") == 0) {
-    seek(kv_number(body, "position", this->pos_ms / 1000) * 1000);
-  } else if (strcmp(action, "play_track") == 0) {
-    char id[64];
-    if (kv_get(body, "id", id, sizeof(id))) {
-      int idx = findId(id);
-      if (idx >= 0) play(idx, 0);
+    if (strcmp(action, "next") == 0)
+      next();
+    else if (strcmp(action, "previous") == 0)
+      previous();
+    else if (strcmp(action, "shuffle_game") == 0)
+      shuffleGame();
+    else if (strcmp(action, "pause") == 0)
+      togglePause();
+    else if (strcmp(action, "mute") == 0)
+      setVolume(this->muted ? this->volume : 0);
+    else if (strcmp(action, "disconnect") == 0) {
+      this->playing = false;
+      this->paused = true;
+      playerSend("pause 1\n");
+    } else if (strcmp(action, "volume") == 0) {
+      setVolume((int)kv_number(body, "value", this->volume));
+    } else if (strcmp(action, "seek") == 0) {
+      seek(this->pos_ms + kv_number(body, "delta", 0) * 1000);
+    } else if (strcmp(action, "seek_to") == 0) {
+      seek(kv_number(body, "position", this->pos_ms / 1000) * 1000);
+    } else if (strcmp(action, "play_track") == 0) {
+      char id[64];
+      if (kv_get(body, "id", id, sizeof(id))) {
+        int idx = findId(id);
+        if (idx >= 0) play(idx, 0);
+      }
+    } else {
+      return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
     }
-  } else {
-    return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
-  }
 
-  snprintf(this->last_action, sizeof(this->last_action), "%s", action);
-  return snprintf(out, out_cap, "ok=true\n");
+    snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+    return snprintf(out, out_cap, "ok=true\n");
   }
-
 };

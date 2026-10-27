@@ -296,15 +296,14 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
-  PWUINT8 report_id;     // 0x00  PacketOutputUsb
-  OutputBody body;       // 0x01..0x2f
-  PWUINT8 reserved[15];  // 0x30..0x3e
+  PWUINT8 report_id;    // 0x00  PacketOutputUsb
+  OutputBody body;      // 0x01..0x2f
+  PWUINT8 reserved[15]; // 0x30..0x3e
 
   enum : uint8_t { ReportId = PacketOutputUsb, Size = 63 };
 };
 
-static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size,
-              "0x02 must stay 63 bytes");
+static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
