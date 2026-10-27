@@ -456,6 +456,7 @@ struct InputReport {
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
+  void sign() { crc = crc_of(*this); }
   bool valid() const { return crc == crc_of(*this); }
 };
 

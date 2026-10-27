@@ -1,2 +1,4 @@
 /padwave
 /var/
+/fuzz/fuzz_input
+/crash-*

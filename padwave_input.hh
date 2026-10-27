@@ -406,6 +406,8 @@ private:
   }
 
   void handleReport(const uint8_t *buf, size_t len) {
+    if (!buf || len == 0) return;
+
     if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
@@ -497,6 +499,12 @@ public:
 
   int feed(const uint8_t *buf, size_t len) {
     if (fd_ < 0) return -1;
+    handleReport(buf, len);
+    return 0;
+  }
+
+  // Pure parser for tests and fuzzing: no fd required, no callbacks needed.
+  int parse(const uint8_t *buf, size_t len) {
     handleReport(buf, len);
     return 0;
   }
