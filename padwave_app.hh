@@ -1030,6 +1030,7 @@ private:
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
+    applyMicLed(this->mic_monitor);
     if (this->paused) playerSend("pause 1\n");
     this->led_force = true;
     serviceLeds();
@@ -1183,18 +1184,27 @@ private:
     }
   }
 
+  void applyMicLed(bool on) {
+    if (!this->player) return;
+    char fields[96];
+    snprintf(fields, sizeof(fields), "valid_flag1=mute_led;mute_button_led=%d", on ? 1 : 0);
+    outputFields(fields);
+  }
+
   void stopMicForPlayback() {
     if (!this->mic_monitor) return;
     this->mic_monitor = false;
     this->paused_by_mic = false;
     playerSend("mic 0\n");
     micReset();
+    applyMicLed(false);
   }
 
   void setMicMonitor(bool on) {
     if (on == this->mic_monitor) return;
     this->mic_monitor = on;
     playerSend(on ? "mic 1\n" : "mic 0\n");
+    applyMicLed(on);
     if (on) {
       // The microphone and playback are mutually exclusive. Only claim the
       // pause if playback was actually running.
@@ -1208,6 +1218,7 @@ private:
       }
     } else {
       micReset();
+      applyMicLed(false);
       if (this->paused_by_mic) {
         this->paused_by_mic = false;
         ensureAudibleVolume();
