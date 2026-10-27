@@ -602,7 +602,7 @@ function render(s) {
   $("#idleChip").innerHTML = sess.phase === "warning"
     ? `fading <b>${fade}%</b> · ${sess.shutdown_in ?? 0}s`
     : sess.phase === "suspended"
-      ? "suspended · input to wake"
+      ? (sess.powered_off ? "controller asleep · press PS" : "suspended · input to wake")
       : `idle <b>${fmt(idle)}</b>`;
   $("#warnbar").classList.toggle("show", sess.phase === "warning");
   if (sess.phase === "warning") $("#warnLeft").textContent = sess.shutdown_in ?? 0;

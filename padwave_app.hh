@@ -30,6 +30,44 @@
 static inline int find_dualsense(char *node, size_t len);
 static inline int find_dualsense();
 
+// The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
+// the kernel both spell it lower-case with colons.
+static inline bool dualsense_mac(char *out, size_t cap) {
+  for (int i = 0; i < 16; i++) {
+    char path[128];
+    snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
+    FILE *f = fopen(path, "r");
+    if (!f) continue;
+
+    bool dualsense = false;
+    char uniq[64] = "";
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+      if (strstr(line, "HID_NAME=") && strstr(line, "DualSense")) dualsense = true;
+      if (strncmp(line, "HID_UNIQ=", 9) == 0) {
+        snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
+        char *nl = strchr(uniq, '\n');
+        if (nl) *nl = 0;
+      }
+    }
+    fclose(f);
+
+    if (!dualsense || strlen(uniq) != 17) continue;
+    bool valid = true;
+    for (const char *p = uniq; *p; p++)
+      if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F') ||
+            *p == ':')) {
+        valid = false;
+        break;
+      }
+    if (!valid) continue;
+    snprintf(out, cap, "%s", uniq);
+    return true;
+  }
+  out[0] = 0;
+  return false;
+}
+
 // Entry points and in-process engines. The service calls the player/input
 // engines directly from its epoll loop; the *_main wrappers keep the debug
 // modes working.
@@ -289,6 +327,7 @@ private:
   long rate_at = 0;
   unsigned rate_frames = 0;
   char input_node[64] = "";
+  char controller_mac[32] = "";
   char last_action[64] = "";
   char raw[400] = "";
 
@@ -309,10 +348,13 @@ private:
   bool idle_volume_saved = false;
   int idle_volume = 0;
   int idle_fade_volume = -1;
+  long poweroff_at = 0;
+  bool powered_off = false;
 
   // Config that the panel edits; persisted as ~/.config/padwave/config.
   int idle_timeout_ms = 900000;
   int idle_warn_grace_ms = 10000;
+  int poweroff_when_idle_ms = 60000;
   int trigger_effect_amplitude = 6;
   int trigger_effect_position = 2;
   int trigger_effect_frequency = 25;
@@ -505,6 +547,11 @@ public:
     kv_add(buf, cap, &o, "session.suspended", "%s", this->suspended ? "true" : "false");
     kv_text(buf, cap, &o, "session.suspended_by",
             this->paused_by_idle ? "idle" : (this->paused_by_jack ? "jack" : "null"));
+    kv_add(buf, cap, &o, "session.powered_off", "%s", this->powered_off ? "true" : "false");
+    long poweroff_in = 0;
+    if (this->suspended && this->poweroff_at > now)
+      poweroff_in = (this->poweroff_at - now + 999) / 1000;
+    kv_add(buf, cap, &o, "session.poweroff_in", "%ld", poweroff_in);
 
     kv_add(buf, cap, &o, "audio.present", "%s", "false");
     kv_text(buf, cap, &o, "audio.sink", "");
@@ -527,7 +574,7 @@ public:
     kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
     kv_text(buf, cap, &o, "controller.bus", "bluetooth");
     kv_text(buf, cap, &o, "controller.name", "DualSense");
-    kv_text(buf, cap, &o, "controller.mac", "");
+    kv_text(buf, cap, &o, "controller.mac", this->controller_mac);
     kv_text(buf, cap, &o, "controller.model", "dualsense");
     kv_text(buf, cap, &o, "controller.node", this->input_node);
     if (this->battery >= 0)
@@ -567,6 +614,7 @@ public:
 
     kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
     kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kv_add(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
     kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
@@ -605,6 +653,7 @@ public:
     if (cap) buf[0] = 0;
     kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
     kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kv_add(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
     kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
@@ -637,6 +686,10 @@ public:
     if (kv_get(body, "idle_warn_grace_ms", value, sizeof(value))) {
       long v = atol(value);
       this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+    }
+    if (kv_get(body, "poweroff_when_idle_ms", value, sizeof(value))) {
+      long v = atol(value);
+      this->poweroff_when_idle_ms = (int)(v < 0 ? 0 : (v > 86400000 ? 86400000 : v));
     }
     if (kv_get(body, "trigger_effect_amplitude", value, sizeof(value))) {
       int v = atoi(value);
@@ -904,6 +957,7 @@ private:
       return;
     }
     snprintf(this->input_node, sizeof(this->input_node), "%s", node);
+    dualsense_mac(this->controller_mac, sizeof(this->controller_mac));
     ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
     this->input_fd = ::input_fd(this->input);
   }
@@ -916,6 +970,7 @@ private:
     this->input_fd = -1;
     this->controller = false;
     this->input_node[0] = 0;
+    this->controller_mac[0] = 0;
     this->rate = 0;
     this->rate_at = 0;
     this->rate_frames = 0;
@@ -1192,6 +1247,9 @@ private:
       } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
         long v = atol(value);
         this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+      } else if (strcmp(line, "poweroff_when_idle_ms") == 0) {
+        long v = atol(value);
+        this->poweroff_when_idle_ms = (int)(v < 0 ? 0 : (v > 86400000 ? 86400000 : v));
       } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
         int v = atoi(value);
         this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
@@ -1228,6 +1286,7 @@ private:
     if (!f) return;
     fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
     fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
+    fprintf(f, "poweroff_when_idle_ms=%d\n", this->poweroff_when_idle_ms);
     fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
     fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
     fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
@@ -1265,12 +1324,20 @@ private:
     this->idle_warning = false;
     this->suspended = false;
     this->idle_fade_volume = -1;
+    this->poweroff_at = 0;
+    this->powered_off = false;
   }
 
   void updateIdle() {
+    long now = now_ms();
+    if (this->suspended && this->poweroff_at && now >= this->poweroff_at) {
+      this->poweroff_at = 0;
+      configSave();
+      this->powered_off = powerOffController();
+    }
+
     if (!this->playing || this->paused) return;
 
-    long now = now_ms();
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     long timeout = this->idle_timeout_ms;
     long grace = this->idle_warn_grace_ms;
@@ -1308,7 +1375,26 @@ private:
       playerSend("volume 0\n");
       playerSend("pause 1\n");
       this->playhead_dirty = true;
+      if (this->poweroff_when_idle_ms > 0) this->poweroff_at = now + this->poweroff_when_idle_ms;
     }
+  }
+
+  bool powerOffController() {
+    char mac[32] = "";
+    if (this->controller_mac[0])
+      snprintf(mac, sizeof(mac), "%s", this->controller_mac);
+    else if (!dualsense_mac(mac, sizeof(mac)))
+      return false;
+
+    char command[160];
+    snprintf(command, sizeof(command), "timeout 5 bluetoothctl disconnect %s >/dev/null 2>&1", mac);
+    int rc = system(command);
+    if (rc != 0) {
+      fprintf(stderr, "padwave: bluetoothctl disconnect %s failed (%d)\n", mac, rc);
+      return false;
+    }
+    fprintf(stderr, "padwave: powered off controller %s after idle\n", mac);
+    return true;
   }
 
   void outputFields(const char *fields) {

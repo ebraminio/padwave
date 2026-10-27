@@ -349,6 +349,7 @@ typedef float block_t[IN_FRAMES][CHANNELS];
 
 struct player {
   int hidraw;
+  int hidraw_retry;
   bool speaker; /* 0x13 tag instead of 0x16 */
   player_status_fn status_fn;
   player_track_fn track_fn;
@@ -454,9 +455,23 @@ static void send_report(struct player *pl, const uint8_t *opus, int len) {
 
   report.sign();
 
+  // The controller can sleep (idle power-off) and come back on a new hidraw
+  // node. Retry about once a second, and drop a stale fd on a failed write.
+  if (pl->hidraw < 0) {
+    if (pl->hidraw_retry > 0)
+      pl->hidraw_retry--;
+    else {
+      pl->hidraw = find_dualsense();
+      if (pl->hidraw < 0) pl->hidraw_retry = 100;
+    }
+  }
   if (pl->hidraw >= 0) {
     ssize_t n = write(pl->hidraw, &report, sizeof(report));
-    (void)n;
+    if (n != (ssize_t)sizeof(report)) {
+      close(pl->hidraw);
+      pl->hidraw = -1;
+      pl->hidraw_retry = 100;
+    }
   }
 
   pl->seq = (uint8_t)((pl->seq + 1) & 0x0F);
