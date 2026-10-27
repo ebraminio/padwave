@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `322cc00`
+- HEAD: latest `main`; the behavior described here landed through `01f685c`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -29,7 +29,11 @@
   `new`/`delete`. The App is a stack object in `server_main`; the Server table
   is a function-local static.
 - `struct App` / `struct Server`: private fields, public surface, inline
-  camelCase methods. Free functions and wire names stay snake_case.
+  camelCase methods. App-only helpers are private static members; Server
+  constants and its bindings text are private. The only remaining free
+  interface is the shared engine API (player/input/main/find_dualsense), which
+  genuinely belongs to padwave.cc. Free functions and wire names stay
+  snake_case.
 - Run `clang-format -i padwave.cc padwave_app.hh padwave_server.hh
   padwave_wire.hh test_wire.cc` before committing.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
