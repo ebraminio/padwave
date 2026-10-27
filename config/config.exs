@@ -62,7 +62,9 @@ config :padwave,
 
   # --- web -----------------------------------------------------------------
   web_enabled: true,
-  web_port: 8787,
+  web_port: 8788,
+  # The public C++ front; it serves the panel and proxies /api to web_port.
+  front_port: 8787,
 
   # --- controller / output -------------------------------------------------
   # Lightbar and trigger effects are written as 0x31 output reports, which the

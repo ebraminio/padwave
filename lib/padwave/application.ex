@@ -24,6 +24,7 @@ defmodule Padwave.Application do
       Padwave.Input.Device,
       Padwave.Mic,
       Padwave.Web.Server,
+      Padwave.Web.Front,
       Padwave.HotSwap
     ]
 
