@@ -21,7 +21,6 @@
 #include "padwave_modes.hh"
 #include "padwave_status.hh"
 
-namespace {
 
 constexpr int kMaxStations = 4096;
 constexpr int kMaxPath = 1024;
@@ -37,7 +36,7 @@ struct station {
   char id[17];
 };
 
-struct app_state {
+struct app {
   station stations[kMaxStations];
   int count = 0;
   int current = -1;
@@ -76,9 +75,41 @@ struct app_state {
 
   int reconnect_at = 0;
   long idle_since = 0;
+
+  void add_station(const char *path, const char *game);
+  void scan_dir(const char *dir, const char *game);
+  int find_station(const char *path);
+  int find_id(const char *id);
+  void push_history(int index);
+  void player_send(const char *line);
+  void player_start();
+  void input_start();
+  void input_stop();
+  void player_line(const char *line);
+  void play(int index, long start_ms);
+  void next();
+  void previous();
+  void shuffle_game();
+  void toggle_pause();
+  void set_volume(int v);
+  void seek(long ms);
+  void controller_from_frame(const char *line);
+  void handle_action(const char *action);
+  void input_line(const char *line);
+  void status_radio(char *buf, size_t cap);
+  void status_controller(char *buf, size_t cap);
+  int status_json(char *buf, size_t cap);
+  int library_json(char *buf, size_t cap);
+  int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap);
+  int handle_command(const char *body, size_t len, char *out, size_t cap);
+  bool owns_fd(int fd);
+  bool init();
+  void shutdown();
+  void tick();
+  int fds(int *fds, int max);
+  void handle_fd(int fd);
 };
 
-app_state g;
 
 long now_ms() {
   struct timespec ts;
@@ -120,9 +151,9 @@ bool audio_ext(const char *name) {
   return false;
 }
 
-void add_station(const char *path, const char *game) {
-  if (g.count >= kMaxStations) return;
-  station *s = &g.stations[g.count];
+void app::add_station(const char *path, const char *game) {
+  if (this->count >= kMaxStations) return;
+  station *s = &this->stations[this->count];
   snprintf(s->path, sizeof(s->path), "%s", path);
 
   const char *base = strrchr(path, '/');
@@ -134,10 +165,10 @@ void add_station(const char *path, const char *game) {
   const char *d = strrchr(path, '.');
   snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
   make_id(path, s->id);
-  g.count++;
+  this->count++;
 }
 
-void scan_dir(const char *dir, const char *game) {
+void app::scan_dir(const char *dir, const char *game) {
   DIR *d = opendir(dir);
   if (!d) return;
   struct dirent *e;
@@ -163,208 +194,205 @@ int cmp_station(const void *a, const void *b) {
   return c ? c : strcasecmp(x->title, y->title);
 }
 
-int find_station(const char *path) {
-  for (int i = 0; i < g.count; i++)
-    if (strcmp(g.stations[i].path, path) == 0) return i;
+int app::find_station(const char *path) {
+  for (int i = 0; i < this->count; i++)
+    if (strcmp(this->stations[i].path, path) == 0) return i;
   return -1;
 }
 
-int find_id(const char *id) {
-  for (int i = 0; i < g.count; i++)
-    if (strcmp(g.stations[i].id, id) == 0) return i;
+int app::find_id(const char *id) {
+  for (int i = 0; i < this->count; i++)
+    if (strcmp(this->stations[i].id, id) == 0) return i;
   return -1;
 }
 
-void push_history(int index) {
+void app::push_history(int index) {
   if (index < 0) return;
-  if (g.history_len < kMaxHistory) {
-    g.history[g.history_len++] = index;
+  if (this->history_len < kMaxHistory) {
+    this->history[this->history_len++] = index;
   } else {
-    memmove(g.history, g.history + 1, sizeof(int) * (kMaxHistory - 1));
-    g.history[kMaxHistory - 1] = index;
+    memmove(this->history, this->history + 1, sizeof(int) * (kMaxHistory - 1));
+    this->history[kMaxHistory - 1] = index;
   }
 }
 
-void player_line(const char *line);
-void input_line(const char *line);
+void player_sink(const char *line, void *ud) { ((app *)ud)->player_line(line); }
+void input_sink(const char *line, void *ud) { ((app *)ud)->input_line(line); }
 
-void player_sink(const char *line, void *) { player_line(line); }
-void input_sink(const char *line, void *) { input_line(line); }
-
-void player_send(const char *line) {
-  if (g.player) player_command(g.player, line);
+void app::player_send(const char *line) {
+  if (this->player) ::player_command(this->player, line);
 }
 
-void player_start() {
-  if (g.player) return;
-  g.player = player_create(nullptr, false);
-  if (!g.player) return;
-  player_set_sink(g.player, player_sink, nullptr);
-  g.player_timer_fd = player_timer_fd(g.player);
-  g.player_bus_fd = player_bus_fd(g.player);
+void app::player_start() {
+  if (this->player) return;
+  this->player = ::player_create(nullptr, false);
+  if (!this->player) return;
+  ::player_set_sink(this->player, player_sink, this);
+  this->player_timer_fd = ::player_timer_fd(this->player);
+  this->player_bus_fd = ::player_bus_fd(this->player);
 }
 
-void input_start() {
-  if (g.input) return;
+void app::input_start() {
+  if (this->input) return;
 
   char node[64];
   if (find_dualsense(node, sizeof(node)) < 0) {
-    g.reconnect_at = (int)(now_ms() + 1500);
+    this->reconnect_at = (int)(now_ms() + 1500);
     return;
   }
 
-  g.input = input_create(node);
-  if (!g.input) {
-    g.reconnect_at = (int)(now_ms() + 1500);
+  this->input = ::input_create(node);
+  if (!this->input) {
+    this->reconnect_at = (int)(now_ms() + 1500);
     return;
   }
-  input_set_sink(g.input, input_sink, nullptr);
-  g.input_fd = input_fd(g.input);
+  ::input_set_sink(this->input, input_sink, this);
+  this->input_fd = ::input_fd(this->input);
 }
 
-void input_stop() {
-  if (g.input) {
-    input_destroy(g.input);
-    g.input = nullptr;
+void app::input_stop() {
+  if (this->input) {
+    ::input_destroy(this->input);
+    this->input = nullptr;
   }
-  g.input_fd = -1;
-  g.controller = false;
+  this->input_fd = -1;
+  this->controller = false;
 }
 
-void player_line(const char *line) {
+void app::player_line(const char *line) {
   if (strncmp(line, "pos ", 4) == 0) {
-    g.pos_ms = atol(line + 4);
+    this->pos_ms = atol(line + 4);
   } else if (strncmp(line, "dur ", 4) == 0) {
-    g.dur_ms = atol(line + 4);
+    this->dur_ms = atol(line + 4);
   } else if (strncmp(line, "sent ", 5) == 0) {
-    g.sent = atol(line + 5);
+    this->sent = atol(line + 5);
   } else if (strncmp(line, "underruns ", 10) == 0) {
-    g.underruns = atol(line + 10);
+    this->underruns = atol(line + 10);
   } else if (strncmp(line, "track ", 6) == 0) {
     int idx = find_station(line + 6);
     if (idx >= 0) {
-      if (g.current >= 0 && g.current != idx) push_history(g.current);
-      g.current = idx;
-      g.paused = false;
-      g.playing = true;
+      if (this->current >= 0 && this->current != idx) push_history(this->current);
+      this->current = idx;
+      this->paused = false;
+      this->playing = true;
     }
   } else if (strcmp(line, "eof") == 0) {
-    g.eof = true;
-    g.playing = false;
+    this->eof = true;
+    this->playing = false;
   }
 }
 
-void app_play(int index, long start_ms) {
-  if (index < 0 || index >= g.count) return;
+void app::play(int index, long start_ms) {
+  if (index < 0 || index >= this->count) return;
   player_start();
   char line[kMaxPath + 64];
-  snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, g.stations[index].path);
+  snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
   player_send(line);
 
-  if (g.current >= 0 && g.current != index && g.history_len == 0) push_history(g.current);
-  g.current = index;
-  g.playing = true;
-  g.paused = false;
-  g.eof = false;
-  g.pos_ms = start_ms;
-  g.dur_ms = 0;
-  g.idle_since = now_ms();
+  if (this->current >= 0 && this->current != index && this->history_len == 0) push_history(this->current);
+  this->current = index;
+  this->playing = true;
+  this->paused = false;
+  this->eof = false;
+  this->pos_ms = start_ms;
+  this->dur_ms = 0;
+  this->idle_since = now_ms();
 
   // Gapless: queue a different station for the junction.
-  if (g.count > 1) {
-    int next = rand() % g.count;
-    if (next == index) next = (next + 1) % g.count;
+  if (this->count > 1) {
+    int next = rand() % this->count;
+    if (next == index) next = (next + 1) % this->count;
     char q[kMaxPath + 16];
-    snprintf(q, sizeof(q), "queue %s\n", g.stations[next].path);
+    snprintf(q, sizeof(q), "queue %s\n", this->stations[next].path);
     player_send(q);
   }
 }
 
-void app_next() {
-  if (g.count == 0) return;
-  int next = rand() % g.count;
-  if (g.count > 1 && next == g.current) next = (next + 1) % g.count;
-  app_play(next, 0);
+void app::next() {
+  if (this->count == 0) return;
+  int next = rand() % this->count;
+  if (this->count > 1 && next == this->current) next = (next + 1) % this->count;
+  play(next, 0);
 }
 
-void app_previous() {
-  if (g.history_len > 0) {
-    int prev = g.history[--g.history_len];
-    app_play(prev, 0);
-  } else if (g.current > 0) {
-    app_play(g.current - 1, 0);
+void app::previous() {
+  if (this->history_len > 0) {
+    int prev = this->history[--this->history_len];
+    play(prev, 0);
+  } else if (this->current > 0) {
+    play(this->current - 1, 0);
   }
 }
 
-void app_shuffle_game() {
-  if (g.count == 0) return;
-  const char *game = g.current >= 0 ? g.stations[g.current].game : "";
+void app::shuffle_game() {
+  if (this->count == 0) return;
+  const char *game = this->current >= 0 ? this->stations[this->current].game : "";
   for (int tries = 0; tries < 100; tries++) {
-    int i = rand() % g.count;
-    if (strcmp(g.stations[i].game, game) != 0) {
-      app_play(i, 0);
+    int i = rand() % this->count;
+    if (strcmp(this->stations[i].game, game) != 0) {
+      play(i, 0);
       return;
     }
   }
-  app_next();
+  next();
 }
 
-void app_toggle_pause() {
-  if (!g.playing) {
-    if (g.current >= 0)
-      app_play(g.current, g.pos_ms);
+void app::toggle_pause() {
+  if (!this->playing) {
+    if (this->current >= 0)
+      play(this->current, this->pos_ms);
     return;
   }
-  g.paused = !g.paused;
-  player_send(g.paused ? "pause 1\n" : "pause 0\n");
+  this->paused = !this->paused;
+  player_send(this->paused ? "pause 1\n" : "pause 0\n");
 }
 
-void app_set_volume(int v) {
+void app::set_volume(int v) {
   if (v < 0) v = 0;
   if (v > 100) v = 100;
-  g.volume = v;
-  g.muted = v == 0;
+  this->volume = v;
+  this->muted = v == 0;
   char line[32];
   snprintf(line, sizeof(line), "volume %d\n", v);
   player_send(line);
 }
 
-void app_seek(long ms) {
+void app::seek(long ms) {
   if (ms < 0) ms = 0;
-  if (g.dur_ms > 0 && ms > g.dur_ms) ms = g.dur_ms;
+  if (this->dur_ms > 0 && ms > this->dur_ms) ms = this->dur_ms;
   char line[32];
   snprintf(line, sizeof(line), "seek %ld\n", ms);
   player_send(line);
-  g.pos_ms = ms;
+  this->pos_ms = ms;
 }
 
-void controller_from_frame(const char *line) {
+void app::controller_from_frame(const char *line) {
   // frame seq=.. lx=.. ... dpad=.. buttons=.. battery=.. charging=.. jack=..
-  g.controller = true;
+  this->controller = true;
   char buttons[256] = "";
   char dpad[16] = "none";
   const char *p = line;
   while ((p = strchr(p, ' ')) != nullptr) {
     p++;
-    if (strncmp(p, "lx=", 3) == 0) g.lx = atoi(p + 3);
-    else if (strncmp(p, "ly=", 3) == 0) g.ly = atoi(p + 3);
-    else if (strncmp(p, "rx=", 3) == 0) g.rx = atoi(p + 3);
-    else if (strncmp(p, "ry=", 3) == 0) g.ry = atoi(p + 3);
-    else if (strncmp(p, "l2=", 3) == 0) g.l2 = atoi(p + 3);
-    else if (strncmp(p, "r2=", 3) == 0) g.r2 = atoi(p + 3);
-    else if (strncmp(p, "battery=", 8) == 0) g.battery = atoi(p + 8);
+    if (strncmp(p, "lx=", 3) == 0) this->lx = atoi(p + 3);
+    else if (strncmp(p, "ly=", 3) == 0) this->ly = atoi(p + 3);
+    else if (strncmp(p, "rx=", 3) == 0) this->rx = atoi(p + 3);
+    else if (strncmp(p, "ry=", 3) == 0) this->ry = atoi(p + 3);
+    else if (strncmp(p, "l2=", 3) == 0) this->l2 = atoi(p + 3);
+    else if (strncmp(p, "r2=", 3) == 0) this->r2 = atoi(p + 3);
+    else if (strncmp(p, "battery=", 8) == 0) this->battery = atoi(p + 8);
     else if (strncmp(p, "charging=", 9) == 0) {
       int c = atoi(p + 9);
-      snprintf(g.charging, sizeof(g.charging), "%s",
+      snprintf(this->charging, sizeof(this->charging), "%s",
                c == 1 ? "charging" : c == 2 ? "full" : "discharging");
-    } else if (strncmp(p, "jack=", 5) == 0) g.jack = atoi(p + 5) != 0;
-    else if (strncmp(p, "temp=", 5) == 0) g.temp = atoi(p + 5);
-    else if (strncmp(p, "ax=", 3) == 0) g.ax = atoi(p + 3);
-    else if (strncmp(p, "ay=", 3) == 0) g.ay = atoi(p + 3);
-    else if (strncmp(p, "az=", 3) == 0) g.az = atoi(p + 3);
-    else if (strncmp(p, "gx=", 3) == 0) g.gx = atoi(p + 3);
-    else if (strncmp(p, "gy=", 3) == 0) g.gy = atoi(p + 3);
-    else if (strncmp(p, "gz=", 3) == 0) g.gz = atoi(p + 3);
+    } else if (strncmp(p, "jack=", 5) == 0) this->jack = atoi(p + 5) != 0;
+    else if (strncmp(p, "temp=", 5) == 0) this->temp = atoi(p + 5);
+    else if (strncmp(p, "ax=", 3) == 0) this->ax = atoi(p + 3);
+    else if (strncmp(p, "ay=", 3) == 0) this->ay = atoi(p + 3);
+    else if (strncmp(p, "az=", 3) == 0) this->az = atoi(p + 3);
+    else if (strncmp(p, "gx=", 3) == 0) this->gx = atoi(p + 3);
+    else if (strncmp(p, "gy=", 3) == 0) this->gy = atoi(p + 3);
+    else if (strncmp(p, "gz=", 3) == 0) this->gz = atoi(p + 3);
     else if (strncmp(p, "dpad=", 5) == 0) {
       size_t n = strcspn(p + 5, " ");
       if (n >= sizeof(dpad)) n = sizeof(dpad) - 1;
@@ -377,30 +405,30 @@ void controller_from_frame(const char *line) {
       buttons[n] = 0;
     } else if (strncmp(p, "raw=", 4) == 0) {
       size_t n = strcspn(p + 4, " ");
-      if (n >= sizeof(g.raw)) n = sizeof(g.raw) - 1;
-      memcpy(g.raw, p + 4, n);
-      g.raw[n] = 0;
+      if (n >= sizeof(this->raw)) n = sizeof(this->raw) - 1;
+      memcpy(this->raw, p + 4, n);
+      this->raw[n] = 0;
     }
   }
-  snprintf(g.dpad, sizeof(g.dpad), "%s", dpad);
-  snprintf(g.buttons, sizeof(g.buttons), "%s", buttons);
+  snprintf(this->dpad, sizeof(this->dpad), "%s", dpad);
+  snprintf(this->buttons, sizeof(this->buttons), "%s", buttons);
 }
 
-void app_action(const char *action) {
-  if (strcmp(action, "next") == 0) app_next();
-  else if (strcmp(action, "previous") == 0) app_previous();
-  else if (strcmp(action, "shuffle_game") == 0) app_shuffle_game();
-  else if (strcmp(action, "pause") == 0) app_toggle_pause();
-  else if (strcmp(action, "mute") == 0) app_set_volume(g.muted ? g.volume : 0);
+void app::handle_action(const char *action) {
+  if (strcmp(action, "next") == 0) next();
+  else if (strcmp(action, "previous") == 0) previous();
+  else if (strcmp(action, "shuffle_game") == 0) shuffle_game();
+  else if (strcmp(action, "pause") == 0) toggle_pause();
+  else if (strcmp(action, "mute") == 0) set_volume(this->muted ? this->volume : 0);
   else if (strcmp(action, "disconnect") == 0) {
-    g.playing = false;
-    g.paused = true;
+    this->playing = false;
+    this->paused = true;
     player_send("pause 1\n");
   }
-  snprintf(g.last_action, sizeof(g.last_action), "%s", action);
+  snprintf(this->last_action, sizeof(this->last_action), "%s", action);
 }
 
-void input_line(const char *line) {
+void app::input_line(const char *line) {
   if (strncmp(line, "frame ", 6) == 0) {
     controller_from_frame(line);
   } else if (strncmp(line, "action ", 7) == 0) {
@@ -409,23 +437,23 @@ void input_line(const char *line) {
     char *space = strchr(action, ' ');
     if (space && strncmp(action, "volume ", 7) == 0) {
       int delta = atoi(space + 1);
-      app_set_volume(g.volume + delta);
-      snprintf(g.last_action, sizeof(g.last_action), "volume");
+      set_volume(this->volume + delta);
+      snprintf(this->last_action, sizeof(this->last_action), "volume");
     } else if (space && strncmp(action, "seek ", 5) == 0) {
-      app_seek(g.pos_ms + atol(space + 1) * 1000);
-      snprintf(g.last_action, sizeof(g.last_action), "seek");
+      seek(this->pos_ms + atol(space + 1) * 1000);
+      snprintf(this->last_action, sizeof(this->last_action), "seek");
     } else {
       if (space) *space = 0;
-      app_action(action);
+      handle_action(action);
     }
   } else if (strncmp(line, "down", 4) == 0) {
     input_stop();
-    g.reconnect_at = (int)(now_ms() + 1500);
+    this->reconnect_at = (int)(now_ms() + 1500);
   }
 }
 
-void status_radio(char *buf, size_t cap) {
-  const station *s = g.current >= 0 ? &g.stations[g.current] : nullptr;
+void app::status_radio(char *buf, size_t cap) {
+  const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
   char title[2 * kMaxTitle], game[2 * kMaxGame], path[2 * kMaxPath];
   json_escape(s ? s->title : "", title, sizeof(title));
   json_escape(s ? s->game : "", game, sizeof(game));
@@ -442,13 +470,13 @@ void status_radio(char *buf, size_t cap) {
            "\"volume\":%d,\"muted\":%d,\"idle_warning\":0,\"suspended\":0,"
            "\"suspended_by\":null,\"resume_pending\":0,\"paused_by_jack\":0,"
            "\"applied_volume\":%d,\"fade_percent\":100,\"current\":%s,\"history\":[]}",
-           g.playing ? 1 : 0, g.paused ? 1 : 0, g.pos_ms / 1000.0, g.dur_ms / 1000.0, g.volume,
-           g.muted ? 1 : 0, g.volume, cur);
+           this->playing ? 1 : 0, this->paused ? 1 : 0, this->pos_ms / 1000.0, this->dur_ms / 1000.0, this->volume,
+           this->muted ? 1 : 0, this->volume, cur);
 }
 
-void status_controller(char *buf, size_t cap) {
+void app::status_controller(char *buf, size_t cap) {
   char buttons[512];
-  json_escape(g.buttons, buttons, sizeof(buttons));
+  json_escape(this->buttons, buttons, sizeof(buttons));
   char arr[600];
   size_t o = 0;
   o += (size_t)snprintf(arr + o, sizeof(arr) - o, "[");
@@ -464,7 +492,7 @@ void status_controller(char *buf, size_t cap) {
   char node[64] = "";
   int idx = find_dualsense(node, sizeof(node));
   char raw[420];
-  json_escape(g.raw, raw, sizeof(raw));
+  json_escape(this->raw, raw, sizeof(raw));
 
   snprintf(buf, cap,
            "{\"connected\":%d,\"bus\":\"bluetooth\",\"name\":\"DualSense\",\"mac\":\"\","
@@ -473,14 +501,13 @@ void status_controller(char *buf, size_t cap) {
            "\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,\"temperature\":%d,"
            "\"accel\":[%d,%d,%d],\"gyro\":[%d,%d,%d],\"raw\":\"%s\","
            "\"last_action\":\"%s\",\"fields\":{},\"touches\":[]}",
-           g.controller ? 1 : 0, idx >= 0 ? node : "", g.battery >= 0 ? g.battery : 0, g.charging, g.jack ? 1 : 0, arr, g.dpad,
-           g.l2, g.r2, g.lx, g.ly, g.rx, g.ry, g.temp, g.ax, g.ay, g.az, g.gx, g.gy, g.gz, raw,
-           g.last_action);
+           this->controller ? 1 : 0, idx >= 0 ? node : "", this->battery >= 0 ? this->battery : 0, this->charging, this->jack ? 1 : 0, arr, this->dpad,
+           this->l2, this->r2, this->lx, this->ly, this->rx, this->ry, this->temp, this->ax, this->ay, this->az, this->gx, this->gy, this->gz, raw,
+           this->last_action);
 }
 
-} // namespace
 
-int app_status_json(char *buf, size_t cap) {
+int app::status_json(char *buf, size_t cap) {
   char radio[4096], controller[4096];
   status_radio(radio, sizeof(radio));
   status_controller(controller, sizeof(controller));
@@ -498,15 +525,15 @@ int app_status_json(char *buf, size_t cap) {
                   "\"player\":{\"port\":%d,\"path\":\"\",\"position\":%.1f,\"duration\":%.1f,"
                   "\"paused\":%d,\"volume\":%d,\"sent\":%ld,\"underruns\":%ld,\"errors\":0,"
                   "\"eof\":%d},\"controller\":%s,\"bindings\":{},\"config\":{},\"now\":%ld}",
-                  radio, g.player ? 1 : 0, g.pos_ms / 1000.0, g.dur_ms / 1000.0,
-                  g.paused ? 1 : 0, g.volume, g.sent, g.underruns, g.eof ? 1 : 0, controller,
+                  radio, this->player ? 1 : 0, this->pos_ms / 1000.0, this->dur_ms / 1000.0,
+                  this->paused ? 1 : 0, this->volume, this->sent, this->underruns, this->eof ? 1 : 0, controller,
                   (long)(time(nullptr)));
 }
 
-int app_library_json(char *buf, size_t cap) {
+int app::library_json(char *buf, size_t cap) {
   int n = snprintf(buf, cap, "{\"tracks\":[");
-  for (int i = 0; i < g.count && n > 0 && (size_t)n < cap; i++) {
-    const station *s = &g.stations[i];
+  for (int i = 0; i < this->count && n > 0 && (size_t)n < cap; i++) {
+    const station *s = &this->stations[i];
     char title[2 * kMaxTitle], game[2 * kMaxGame], path[2 * kMaxPath];
     json_escape(s->title, title, sizeof(title));
     json_escape(s->game, game, sizeof(game));
@@ -572,50 +599,50 @@ bool json_string(const char *body, const char *key, char *out, size_t cap) {
   return true;
 }
 
-int app_command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
+int app::command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
   (void)body_len;
 
-  if (strcmp(action, "next") == 0) app_next();
-  else if (strcmp(action, "previous") == 0) app_previous();
-  else if (strcmp(action, "shuffle_game") == 0) app_shuffle_game();
-  else if (strcmp(action, "pause") == 0) app_toggle_pause();
-  else if (strcmp(action, "mute") == 0) app_set_volume(g.muted ? g.volume : 0);
+  if (strcmp(action, "next") == 0) next();
+  else if (strcmp(action, "previous") == 0) previous();
+  else if (strcmp(action, "shuffle_game") == 0) shuffle_game();
+  else if (strcmp(action, "pause") == 0) toggle_pause();
+  else if (strcmp(action, "mute") == 0) set_volume(this->muted ? this->volume : 0);
   else if (strcmp(action, "disconnect") == 0) {
-    g.playing = false;
-    g.paused = true;
+    this->playing = false;
+    this->paused = true;
     player_send("pause 1\n");
   } else if (strcmp(action, "volume") == 0) {
-    app_set_volume((int)json_number(body, "value", g.volume));
+    set_volume((int)json_number(body, "value", this->volume));
   } else if (strcmp(action, "seek") == 0) {
-    app_seek(g.pos_ms + json_number(body, "delta", 0) * 1000);
+    seek(this->pos_ms + json_number(body, "delta", 0) * 1000);
   } else if (strcmp(action, "seek_to") == 0) {
-    app_seek(json_number(body, "position", g.pos_ms / 1000) * 1000);
+    seek(json_number(body, "position", this->pos_ms / 1000) * 1000);
   } else if (strcmp(action, "play_track") == 0) {
     char id[64];
     if (json_string(body, "id", id, sizeof(id))) {
       int idx = find_id(id);
-      if (idx >= 0) app_play(idx, 0);
+      if (idx >= 0) play(idx, 0);
     }
   } else {
     return snprintf(out, out_cap, "{\"ok\":false,\"error\":\"unknown action\"}");
   }
 
-  snprintf(g.last_action, sizeof(g.last_action), "%s", action);
+  snprintf(this->last_action, sizeof(this->last_action), "%s", action);
   return snprintf(out, out_cap, "{\"ok\":true}");
 }
 
-int app_handle_command(const char *body, size_t len, char *out, size_t cap) {
+int app::handle_command(const char *body, size_t len, char *out, size_t cap) {
   char action[64];
   if (!json_string(body, "action", action, sizeof(action)))
     return snprintf(out, cap, "{\"ok\":false,\"error\":\"missing action\"}");
-  return app_command(action, body, len, out, cap);
+  return command(action, body, len, out, cap);
 }
 
-bool app_owns_fd(int fd) {
-  return fd >= 0 && (fd == g.player_timer_fd || fd == g.player_bus_fd || fd == g.input_fd);
+bool app::owns_fd(int fd) {
+  return fd >= 0 && (fd == this->player_timer_fd || fd == this->player_bus_fd || fd == this->input_fd);
 }
 
-bool app_init() {
+bool app::init() {
   signal(SIGPIPE, SIG_IGN);
 
   const char *roots = getenv("PADWAVE_ROOTS");
@@ -635,65 +662,95 @@ bool app_init() {
     }
   }
 
-  qsort(g.stations, (size_t)g.count, sizeof(station), cmp_station);
+  qsort(this->stations, (size_t)this->count, sizeof(station), cmp_station);
   srand((unsigned)time(nullptr) ^ (unsigned)getpid());
-  g.player = nullptr;
-  g.input = nullptr;
-  g.player_timer_fd = g.player_bus_fd = g.input_fd = -1;
-  app_set_volume(70);
+  this->player = nullptr;
+  this->input = nullptr;
+  this->player_timer_fd = this->player_bus_fd = this->input_fd = -1;
+  set_volume(70);
   return true;
 }
 
-void app_shutdown() {
-  if (g.player) {
+void app::shutdown() {
+  if (this->player) {
     player_send("quit\n");
-    player_destroy(g.player);
-    g.player = nullptr;
+    ::player_destroy(this->player);
+    this->player = nullptr;
   }
-  g.player_timer_fd = g.player_bus_fd = -1;
+  this->player_timer_fd = this->player_bus_fd = -1;
   input_stop();
 }
 
-void app_tick() {
-  if (g.eof) {
-    g.eof = false;
-    app_next();
+void app::tick() {
+  if (this->eof) {
+    this->eof = false;
+    next();
   }
-  if (!g.player) {
+  if (!this->player) {
     player_start();
-    if (g.player && g.current < 0 && g.count > 0) {
-      int start = rand() % g.count;
-      app_play(start, 0);
+    if (this->player && this->current < 0 && this->count > 0) {
+      int start = rand() % this->count;
+      play(start, 0);
     }
   }
-  if (!g.input && (int)now_ms() >= g.reconnect_at) input_start();
+  if (!this->input && (int)now_ms() >= this->reconnect_at) input_start();
 }
 
-int app_fds(int *fds, int max) {
+int app::fds(int *fds, int max) {
   int n = 0;
-  if (g.player_timer_fd >= 0 && n < max) fds[n++] = g.player_timer_fd;
-  if (g.player_bus_fd >= 0 && n < max) fds[n++] = g.player_bus_fd;
-  if (g.input_fd >= 0 && n < max) fds[n++] = g.input_fd;
+  if (this->player_timer_fd >= 0 && n < max) fds[n++] = this->player_timer_fd;
+  if (this->player_bus_fd >= 0 && n < max) fds[n++] = this->player_bus_fd;
+  if (this->input_fd >= 0 && n < max) fds[n++] = this->input_fd;
   return n;
 }
 
-void app_handle_fd(int fd) {
-  if (g.player && fd == g.player_timer_fd) {
-    player_step(g.player);
+void app::handle_fd(int fd) {
+  if (this->player && fd == this->player_timer_fd) {
+    player_step(this->player);
     return;
   }
-  if (g.player && fd == g.player_bus_fd) {
-    player_on_bus(g.player);
+  if (this->player && fd == this->player_bus_fd) {
+    player_on_bus(this->player);
     return;
   }
-  if (g.input && fd == g.input_fd) {
+  if (this->input && fd == this->input_fd) {
     uint8_t buf[512];
     ssize_t n = read(fd, buf, sizeof(buf));
     if (n > 0) {
-      input_feed(g.input, buf, (size_t)n);
+      input_feed(this->input, buf, (size_t)n);
     } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
       input_stop();
-      g.reconnect_at = (int)(now_ms() + 1500);
+      this->reconnect_at = (int)(now_ms() + 1500);
     }
   }
 }
+
+/* ---- opaque API used by the server --------------------------------------- */
+
+app *app_create() {
+  app *a = new app();
+  if (!a->init()) {
+    delete a;
+    return nullptr;
+  }
+  return a;
+}
+
+void app_destroy(app *a) {
+  if (!a) return;
+  a->shutdown();
+  delete a;
+}
+
+void app_tick(app *a) { a->tick(); }
+int app_fds(app *a, int *fds, int max) { return a->fds(fds, max); }
+void app_handle_fd(app *a, int fd) { a->handle_fd(fd); }
+int app_status_json(app *a, char *buf, size_t cap) { return a->status_json(buf, cap); }
+int app_library_json(app *a, char *buf, size_t cap) { return a->library_json(buf, cap); }
+int app_command(app *a, const char *action, const char *body, size_t len, char *out, size_t cap) {
+  return a->command(action, body, len, out, cap);
+}
+int app_handle_command(app *a, const char *body, size_t len, char *out, size_t cap) {
+  return a->handle_command(body, len, out, cap);
+}
+bool app_owns_fd(app *a, int fd) { return a->owns_fd(fd); }

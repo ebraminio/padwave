@@ -241,7 +241,7 @@ void start_proxy(conn *c, const char *headers_end, size_t body_len) {
   add_fd(up, EPOLLOUT, c);
 }
 
-void read_client(conn *c) {
+void read_client(app *a, conn *c) {
   if (c->in_len >= kRequestMax - 1) {
     close_conn(c);
     return;
@@ -285,7 +285,7 @@ void read_client(conn *c) {
 
   if (g_standalone && strcmp(path, "/api/status") == 0) {
     static char body[8192];
-    int len = app_status_json(body, sizeof(body));
+    int len = app_status_json(a, body, sizeof(body));
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
     mod_fd(c->fd, EPOLLOUT);
@@ -304,7 +304,7 @@ void read_client(conn *c) {
 
   if (g_standalone && strcmp(path, "/api/library") == 0) {
     char *body = (char *)malloc(65536);
-    int len = body ? app_library_json(body, 65536) : 0;
+    int len = body ? app_library_json(a, body, 65536) : 0;
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body ? body : "{}",
                                      body ? (size_t)len : 2);
@@ -353,7 +353,7 @@ void read_client(conn *c) {
       return;
     }
     char result[512];
-    int len = app_handle_command(c->in + head_len, body_len, result, sizeof(result));
+    int len = app_handle_command(a, c->in + head_len, body_len, result, sizeof(result));
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", result, (size_t)len);
     mod_fd(c->fd, EPOLLOUT);
@@ -520,14 +520,14 @@ int front_json(char *buf, size_t cap) {
                   g_input.jack);
 }
 
-void append_status_event(conn *c) {
+void append_status_event(app *a, conn *c) {
   if (c->out_off > 0) {
     if (c->out_off < c->out_len) memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
     c->out_len -= c->out_off;
     c->out_off = 0;
   }
   char body[8192];
-  int n = app_status_json(body, sizeof(body));
+  int n = app_status_json(a, body, sizeof(body));
   if (n <= 0) return;
   char *chunk = (char *)malloc((size_t)n + 64);
   if (!chunk) return;
@@ -627,7 +627,8 @@ int server_main(int argc, char **argv) {
   int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
   g_standalone = getenv("PADWAVE_STANDALONE") != nullptr;
-  if (g_standalone) app_init();
+  app *a = nullptr;
+  if (g_standalone) a = app_create();
 
   g_start_ms = monotonic_ms();
 
@@ -664,7 +665,7 @@ int server_main(int argc, char **argv) {
   if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
   if (g_standalone) {
     int fds[4];
-    int n = app_fds(fds, 4);
+    int n = app_fds(a, fds, 4);
     for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
   }
 
@@ -707,15 +708,15 @@ int server_main(int argc, char **argv) {
         uint64_t expirations = 0;
         if (read(g_timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
           if (g_standalone) {
-            app_tick();
+            app_tick(a);
             int fds[4];
-            int n = app_fds(fds, 4);
+            int n = app_fds(a, fds, 4);
             for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
           }
           for (int j = 0; j < kMaxConns; j++) {
             if (g_conns[j].fd < 0) continue;
             if (g_conns[j].front_sse) append_front_event(&g_conns[j]);
-            if (g_conns[j].status_sse) append_status_event(&g_conns[j]);
+            if (g_conns[j].status_sse) append_status_event(a, &g_conns[j]);
           }
         }
         continue;
@@ -735,8 +736,8 @@ int server_main(int argc, char **argv) {
         continue;
       }
 
-      if (g_standalone && app_owns_fd(fd)) {
-        app_handle_fd(fd);
+      if (g_standalone && app_owns_fd(a, fd)) {
+        app_handle_fd(a, fd);
         continue;
       }
 
@@ -748,7 +749,7 @@ int server_main(int argc, char **argv) {
           close_conn(c);
           continue;
         }
-        if (events[i].events & EPOLLIN) read_client(c);
+        if (events[i].events & EPOLLIN) read_client(a, c);
         if (c->fd >= 0 && (events[i].events & EPOLLOUT)) flush_client(c);
       } else if (fd == c->up) {
         if (events[i].events & (EPOLLERR | EPOLLHUP)) {
@@ -767,7 +768,7 @@ int server_main(int argc, char **argv) {
     unlink(padwave_status::kPath);
   }
   if (g_timer_fd >= 0) close(g_timer_fd);
-  if (g_standalone) app_shutdown();
+  if (a) app_destroy(a);
   close(g_epoll);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);
