@@ -63,6 +63,7 @@ struct conn {
   bool up_sent = false;
   bool static_reply = false;
   bool front_sse = false;
+  bool internal = false;
   bool client_blocked = false;
 };
 
@@ -72,6 +73,8 @@ conn *g_owner[kMaxFds];
 int g_epoll = -1;
 int g_backend_port = 8787;
 int g_status_fd = -1;
+int g_internal_listen = -1;
+int g_player_send = -1;
 int g_timer_fd = -1;
 int64_t g_start_ms = 0;
 unsigned long g_requests = 0;
@@ -299,6 +302,56 @@ void read_client(conn *c) {
     return;
   }
 
+  if (strncmp(path, "/internal/", 10) == 0) {
+    if (!c->internal) {
+      static const char body[] = "not found\n";
+      c->static_reply = true;
+      c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                    "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+                                    "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+                                    sizeof(body) - 1, body);
+      mod_fd(c->fd, EPOLLOUT);
+      return;
+    }
+
+    if (strcmp(path, "/internal/player") == 0 && strcmp(method, "POST") == 0) {
+      int sent = -1;
+      if (body_len > 0 && g_player_send >= 0) {
+        fprintf(stderr, "internal player: %.*s\n", (int)body_len, c->in + head_len);
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", padwave_status::kPlayerPath);
+        sent = (int)sendto(g_player_send, c->in + head_len, body_len, 0,
+                           (struct sockaddr *)&addr, sizeof(addr));
+      }
+
+      static const char ok_body[] = "{\"ok\":true}\n";
+      c->static_reply = true;
+      if (sent >= 0) {
+        c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", ok_body,
+                                         sizeof(ok_body) - 1);
+      } else {
+        static const char err_body[] = "player not reachable\n";
+        c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                      "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n"
+                                      "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+                                      sizeof(err_body) - 1, err_body);
+      }
+      mod_fd(c->fd, EPOLLOUT);
+      return;
+    }
+
+    static const char body[] = "not found\n";
+    c->static_reply = true;
+    c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                  "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+                                  "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+                                  sizeof(body) - 1, body);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
   if (strncmp(path, "/api/", 5) == 0) {
     if (strcmp(method, "GET") != 0 && strcmp(method, "POST") != 0 &&
         strcmp(method, "PUT") != 0 && strcmp(method, "DELETE") != 0) {
@@ -461,6 +514,7 @@ void append_front_event(conn *c) {
 int server_main(int argc, char **argv) {
   int port = argc > 1 ? atoi(argv[1]) : 8787;
   g_backend_port = argc > 2 ? atoi(argv[2]) : 8787;
+  int internal_port = argc > 3 ? atoi(argv[3]) : 8890;
 
   int n = snprintf(nullptr, 0,
                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
@@ -503,6 +557,26 @@ int server_main(int argc, char **argv) {
     return 1;
   }
 
+  g_internal_listen = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (g_internal_listen >= 0) {
+    setsockopt(g_internal_listen, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    int iflags = fcntl(g_internal_listen, F_GETFL, 0);
+    fcntl(g_internal_listen, F_SETFL, iflags | O_NONBLOCK);
+
+    struct sockaddr_in iaddr;
+    memset(&iaddr, 0, sizeof(iaddr));
+    iaddr.sin_family = AF_INET;
+    iaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    iaddr.sin_port = htons((uint16_t)internal_port);
+    if (bind(g_internal_listen, (struct sockaddr *)&iaddr, sizeof(iaddr)) != 0 ||
+        listen(g_internal_listen, 16) != 0) {
+      close(g_internal_listen);
+      g_internal_listen = -1;
+    }
+  }
+
+  g_player_send = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
@@ -540,12 +614,14 @@ int server_main(int argc, char **argv) {
     return 1;
   }
   add_fd(listen_fd, EPOLLIN, nullptr);
+  if (g_internal_listen >= 0) add_fd(g_internal_listen, EPOLLIN, nullptr);
   if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
   if (g_status_fd >= 0) add_fd(g_status_fd, EPOLLIN, nullptr);
   if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
 
-  fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI, /api -> 127.0.0.1:%d)\n",
-          port, kIndexHtmlSize, g_backend_port);
+  fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI, /api -> 127.0.0.1:%d, "
+                  "internal 127.0.0.1:%d)\n",
+          port, kIndexHtmlSize, g_backend_port, internal_port);
 
   struct epoll_event events[64];
   bool running = true;
@@ -559,9 +635,10 @@ int server_main(int argc, char **argv) {
 
     for (int i = 0; i < ready; i++) {
       int fd = events[i].data.fd;
-      if (fd == listen_fd) {
+      if (fd == listen_fd || fd == g_internal_listen) {
+        int listener = fd;
         for (;;) {
-          int client = accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
+          int client = accept4(listener, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
           if (client < 0) break;
           conn *slot = nullptr;
           for (int j = 0; j < kMaxConns; j++)
@@ -575,6 +652,7 @@ int server_main(int argc, char **argv) {
           }
           *slot = conn{};
           slot->fd = client;
+          slot->internal = (listener == g_internal_listen);
           add_fd(client, EPOLLIN, slot);
         }
         continue;
@@ -631,5 +709,7 @@ int server_main(int argc, char **argv) {
   close(g_epoll);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);
+  if (g_internal_listen >= 0) close(g_internal_listen);
+  if (g_player_send >= 0) close(g_player_send);
   return 0;
 }

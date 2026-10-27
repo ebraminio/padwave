@@ -226,8 +226,34 @@ defmodule Padwave.Player.Native do
       end
   end
 
+  # Commands go through the web front's loopback-only listener so the front can
+  # own the player path next; the port's stdin stays the fallback for the
+  # startup window before the front is listening.
   defp send_line(%{port: nil}, _line), do: :ok
-  defp send_line(%{port: port}, line), do: Port.command(port, line)
+
+  defp send_line(%{port: port}, line) do
+    case front_command(line) do
+      :ok -> :ok
+      :error -> Port.command(port, line)
+    end
+  end
+
+  defp front_command(line) do
+    internal = Padwave.Config.get(:internal_port, 8890)
+    url = ~c"http://127.0.0.1:#{internal}/internal/player"
+
+    case :httpc.request(
+           :post,
+           {url, [], ~c"application/octet-stream", line},
+           [timeout: 800, connect_timeout: 300],
+           []
+         ) do
+      {:ok, {{_, 200, _}, _, _}} -> :ok
+      _ -> :error
+    end
+  rescue
+    _ -> :error
+  end
 
   # The start time comes first: the path may contain spaces, and the player's
   # parser must not have to guess where one ends.

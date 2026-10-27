@@ -65,6 +65,8 @@ config :padwave,
   web_port: 8788,
   # The public C++ front; it serves the panel and proxies /api to web_port.
   front_port: 8787,
+  # Loopback-only listener for engine -> front commands.
+  internal_port: 8890,
 
   # --- controller / output -------------------------------------------------
   # Lightbar and trigger effects are written as 0x31 output reports, which the

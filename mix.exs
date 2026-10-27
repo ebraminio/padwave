@@ -14,7 +14,7 @@ defmodule Padwave.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :crypto],
+      extra_applications: [:logger, :crypto, :inets],
       mod: {Padwave.Application, []}
     ]
   end

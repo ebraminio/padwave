@@ -30,13 +30,14 @@ defmodule Padwave.Web.Front do
       path ->
         front = Padwave.Config.get(:front_port, 8787)
         backend = Padwave.Config.get(:web_port, 8788)
+        internal = Padwave.Config.get(:internal_port, 8890)
 
         port =
           Port.open({:spawn_executable, path}, [
             :binary,
             :exit_status,
             {:line, 1024},
-            {:args, ["serve", to_string(front), to_string(backend)]}
+            {:args, ["serve", to_string(front), to_string(backend), to_string(internal)]}
           ])
 
         Logger.info("[front] padwave serve #{front} -> 127.0.0.1:#{backend}")
