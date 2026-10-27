@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `9bf7a8f`
+- HEAD: latest `main`; the behavior described here landed through `d6aa733`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -118,7 +118,9 @@ For idle, set `idle_timeout_ms=3000`, `idle_warn_grace_ms=3000` via
 testing. A service restart should resume the saved track/position.
 
 With no controller, playback should report `paused_by_disconnect=true`,
-`led.mode=off`, and near-zero CPU. Sample it with:
+`led.mode=off`, and near-zero CPU (0.00 % measured over 8 s). With the
+controller connected, paused still processes ~500 input reports/s and costs
+~0.9 % of a core; that is input, not decoding. Sample it with:
 
 ```sh
 pid=$(pgrep -x padwave); a=$(awk '{print $14+$15}' /proc/$pid/stat); sleep 8; \
