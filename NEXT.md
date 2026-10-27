@@ -150,3 +150,30 @@ with no audio the same `fields` line produces a 0x31 report.
   still one-shot lab commands. The app no longer merges `reset_lights` or
   `color_fade` into the 0x36 state.
 - Physical LED appearance is not verified; status reflects what was written.
+
+## Input module (the next structural step)
+
+`input_handle` should be its own module, and this is also the cleanest way to
+finish the input pass (state + action/event/mic callbacks):
+
+- `padwave_input.hh`: `input_frame`, `input_frame_fn`, `input_action_fn`,
+  `input_event_fn`, `input_mic_fn`, and the opaque `struct input_handle` with
+  the public methods (`open`, `set_sink`, `fd`, `feed`, `close`) or the current
+  free wrappers.
+- `padwave_input.cc`: the handle with the decoder state as members (`dpad`,
+  `actions`, jack/shake/trigger state, last activity), and methods for
+  `feed`/`handle_report`/`track_dpad`/`track_buttons`/`track_triggers`/
+  `track_sensors`/`emit_action`/`emit_event`/`mic`; the callbacks and `ud` are
+  members, no file-scope sink.
+- `padwave_device.hh`: `find_dualsense` (and `write_all` if it moves) shared by
+  the player and the input, so the input file does not depend on padwave.cc.
+- `padwave.cc`: include the header, drop the input section, keep `input_main`
+  declared; the app keeps an `input_handle *` (renamed from `void *` if
+  convenient).
+- `build.sh`: compile `padwave.cc padwave_input.cc` into one binary.
+- Then convert the remaining action/event strings to the callbacks
+  (`emit_action(name, value)`, `emit_event(name)`, mic bytes) and delete
+  `input_line`/`input_sink` from the app.
+
+This keeps the player/app/server TU as it is, and the input becomes the small,
+self-contained module the last passes have been fighting for.
