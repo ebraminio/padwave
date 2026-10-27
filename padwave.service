@@ -11,7 +11,7 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PADWAVE_STANDALONE=1
 # Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
 EnvironmentFile=-%h/.config/padwave/env
-ExecStart=%h/padwave/scripts/padwave-boot.sh
+ExecStart=%h/padwave/padwave-boot.sh
 Restart=on-failure
 RestartSec=3
 # One process, one thread.

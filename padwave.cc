@@ -1,5 +1,5 @@
 // padwave — one translation unit: the player, the input decoder, the app and
-// the web server. The wire formats live in include/padwave_wire.hh.
+// the web server. The wire formats live in padwave_wire.hh.
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -2745,9 +2745,9 @@ bool app_owns_fd(app *a, int fd) { return a->owns_fd(fd); }// padwave serve — 
 
 
 #if defined(__has_embed)
-#if __has_embed("../ui/index.html")
+#if __has_embed("index.html")
 static const unsigned char kIndexHtml[] = {
-#embed "../ui/index.html"
+#embed "index.html"
 };
 static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
 #else
@@ -3048,7 +3048,7 @@ void read_client(app *a, conn *c) {
     app_bindings_json(bindings, sizeof(bindings));
     char body[1024];
     int len = snprintf(body, sizeof(body),
-                       "{\"note\":\"wire formats live in include/padwave_schemas.hh\","
+                       "{\"note\":\"wire formats live in padwave_wire.hh\","
                        "\"bindings\":%s}",
                        bindings);
     c->static_reply = true;
@@ -3494,7 +3494,7 @@ int server_main(int argc, char **argv) {
 //   padwave serve [port]      the bootstrap web server (epoll, embedded UI)
 //   padwave opusdec [-e|-s]   the codec helper
 //
-// All of them include include/padwave_schemas.hh, so the protocol is described
+// All of them include padwave_wire.hh, so the protocol is described
 // once and no mode redefines a packet.
 
 

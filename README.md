@@ -40,17 +40,18 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-src/padwave.cc            the whole implementation (one translation unit):
-                          wire include, player, input decoder, app, server, main
-include/padwave_wire.hh   the wire formats (number types + DualSense schemas)
-ui/                       index.html, embedded into the binary at build time
-tests/                    test_wire.sh / test_wire.cc (wire layout and CRC)
-scripts/                  install.sh, padwave-boot.sh, padwave.service, ctl, gen_ui.py
-Makefile                  one object, one binary: bin/padwave
+padwave.cc        the whole implementation: wire include, player, input decoder,
+                  app class, server, main
+padwave_wire.hh   the wire formats (number types + DualSense schemas)
+index.html        the panel, embedded into the binary at build time
+test_wire.cc      wire layout and CRC (compiled and run on every build)
+build.sh          the build: ui header, wire test, then the binary
+install.sh        build + install + systemd unit
+padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
 ```
 
 GCC 12 has no `#embed`, so the build generates `build/padwave_ui.hh` from
-`ui/index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
+`index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
 
 ## Build and run
 
@@ -59,8 +60,8 @@ Needs a C++ compiler, `pkg-config`, the FFmpeg development packages
 and `python3` for the UI header.
 
 ```sh
-make
-PADWAVE_ROOTS=/path/to/audio PADWAVE_STANDALONE=1 bin/padwave serve
+./build.sh
+PADWAVE_ROOTS=/path/to/audio PADWAVE_STANDALONE=1 ./padwave serve
 # panel: http://<pi>:8787
 ```
 
@@ -73,7 +74,7 @@ uses `~/Music`.
 On the Pi, from the project root:
 
 ```sh
-./scripts/install.sh
+./install.sh
 ```
 
 It builds, installs `~/.local/bin/padwave`, installs the systemd user unit and
@@ -102,5 +103,5 @@ are intentionally static until they move.
 ## Protocol
 
 The wire formats are described, with their bit positions, in
-`include/padwave_wire.hh`; `docs/protocol.md` has the longer notes. No other
+`padwave_wire.hh`; `docs/protocol.md` has the longer notes. No other
 file describes the packets.

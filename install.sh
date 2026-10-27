@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Build and install padwave on the Pi, then restart the user unit.
-# One binary: build/bin/padwave. No Mix, no Hex, no Elixir.
+# One binary: ./padwave. No Mix, no Hex, no Elixir.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 ROOT="$(pwd)"
 
 echo "==> build"
-make -C "$ROOT" -j"$(nproc)"
+"$ROOT/build.sh"
 
 echo "==> install"
-install -Dm755 "$ROOT/bin/padwave" "$HOME/.local/bin/padwave"
+install -Dm755 "$ROOT/padwave" "$HOME/.local/bin/padwave"
 rm -f "$HOME/.local/bin/padwave_native" "$HOME/.local/bin/padwave_opusdec"
-chmod +x "$ROOT/scripts/padwave-boot.sh"
+chmod +x "$ROOT/padwave-boot.sh"
 
 echo "==> audio folders"
 mkdir -p "$HOME/.config/padwave"
@@ -27,7 +27,7 @@ fi
 
 echo "==> systemd user unit"
 mkdir -p "$HOME/.config/systemd/user"
-install -m 0644 "$ROOT/scripts/padwave.service" "$HOME/.config/systemd/user/padwave.service"
+install -m 0644 "$ROOT/padwave.service" "$HOME/.config/systemd/user/padwave.service"
 systemctl --user daemon-reload
 systemctl --user enable padwave >/dev/null
 systemctl --user restart padwave
