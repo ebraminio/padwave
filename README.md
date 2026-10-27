@@ -90,6 +90,14 @@ It builds, installs `~/.local/bin/padwave`, installs the systemd user unit and
 restarts it. The panel is on port 8787, LAN-reachable, no auth (keep it on a
 trusted network).
 
+## Pi Bluetooth
+
+If `bluetoothd` sits at a few percent CPU while the controller is idle, it is
+probably relaying HID in userspace. BlueZ 5.82 defaults to `UserspaceHID=true`;
+set `UserspaceHID=false` in `/etc/bluetooth/input.conf`, load the `hidp` module,
+and restart `bluetooth.service`. Kernel HIDP keeps the 500 Hz report path out of
+bluetoothd (measured ~3 % → ~0.1 %).
+
 ## Deploy
 
 From the Mac, sync the source tree (not the Mac binary) and rebuild/install on

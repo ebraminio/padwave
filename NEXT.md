@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `d6aa733`
+- HEAD: latest `main`; the behavior described here landed through `9bf7a8f`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -25,6 +25,21 @@
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + charging player LEDs, controller-loss auto-pause + slow paused
   player tick.
+
+## Pi Bluetooth tuning
+
+BlueZ 5.82 defaults to userspace HID (`UserspaceHID=true`), which relays every
+controller report through `/dev/uhid` and costs bluetoothd ~3 % CPU. This Pi is
+set to kernel HIDP:
+
+- `/etc/bluetooth/input.conf`: `UserspaceHID=false`
+  (backup: `/etc/bluetooth/input.conf.bak`)
+- `/etc/modules-load.d/padwave-hidp.conf`: `hidp`
+
+With that, bluetoothd is ~0.1 %, there is no `/dev/uhid` relay, and padwave
+sees the normal hidraw node. A distro upgrade may reset the input.conf default;
+re-check it if bluetoothd climbs again. Restoring the backup and restarting
+`bluetooth.service` reverts to userspace HID.
 
 ## Constraints
 
