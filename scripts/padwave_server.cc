@@ -22,6 +22,7 @@
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
+#include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -61,6 +62,7 @@ struct conn {
   size_t out_off = 0;
   bool up_sent = false;
   bool static_reply = false;
+  bool front_sse = false;
   bool client_blocked = false;
 };
 
@@ -70,6 +72,7 @@ conn *g_owner[kMaxFds];
 int g_epoll = -1;
 int g_backend_port = 8787;
 int g_status_fd = -1;
+int g_timer_fd = -1;
 int64_t g_start_ms = 0;
 unsigned long g_requests = 0;
 
@@ -129,6 +132,8 @@ int make_static(char *dst, size_t cap, const char *type, const char *body, size_
   memcpy(dst + n, body, body_len);
   return n + (int)body_len;
 }
+
+int front_json(char *buf, size_t cap);
 
 void close_conn(conn *c) {
   if (c->fd >= 0) {
@@ -274,22 +279,19 @@ void read_client(conn *c) {
 
   g_requests++;
 
+  if (strcmp(path, "/api/front/events") == 0) {
+    c->front_sse = true;
+    c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                  "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                                  "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
+                                  "Connection: keep-alive\r\n\r\n");
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
   if (strcmp(path, "/api/front") == 0) {
-    char node[64];
-    int controller = find_dualsense(node, sizeof(node)) >= 0 ? 1 : 0;
     char body[768];
-    int len = snprintf(body, sizeof(body),
-                       "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
-                       "\"controller\":%d,"
-                       "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
-                       "\"underruns\":%ld},"
-                       "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
-                       "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
-                       (long)((monotonic_ms() - g_start_ms) / 1000), g_requests, controller,
-                       g_player.valid ? 1 : 0, g_player.pos, g_player.dur, g_player.sent,
-                       g_player.underruns, g_input.valid ? 1 : 0, g_input.lx, g_input.ly,
-                       g_input.rx, g_input.ry, g_input.l2, g_input.r2, g_input.buttons,
-                       g_input.battery, g_input.jack);
+    int len = front_json(body, sizeof(body));
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
     mod_fd(c->fd, EPOLLOUT);
@@ -345,6 +347,8 @@ void flush_client(conn *c) {
   }
   c->out_off = c->out_len = 0;
   c->client_blocked = false;
+
+  if (c->front_sse) return;
 
   if (c->static_reply) {
     close_conn(c);
@@ -404,6 +408,51 @@ void read_upstream(conn *c) {
   }
   c->out_len += (size_t)n;
   flush_client(c);
+}
+
+int front_json(char *buf, size_t cap) {
+  char node[64];
+  int controller = find_dualsense(node, sizeof(node)) >= 0 ? 1 : 0;
+  return snprintf(buf, cap,
+                  "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
+                  "\"controller\":%d,"
+                  "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
+                  "\"underruns\":%ld},"
+                  "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
+                  "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
+                  (long)((monotonic_ms() - g_start_ms) / 1000), g_requests, controller,
+                  g_player.valid ? 1 : 0, g_player.pos, g_player.dur, g_player.sent,
+                  g_player.underruns, g_input.valid ? 1 : 0, g_input.lx, g_input.ly, g_input.rx,
+                  g_input.ry, g_input.l2, g_input.r2, g_input.buttons, g_input.battery,
+                  g_input.jack);
+}
+
+void append_front_event(conn *c) {
+  if (c->out_off > 0) {
+    if (c->out_off < c->out_len)
+      memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
+    c->out_len -= c->out_off;
+    c->out_off = 0;
+  }
+
+  char body[768];
+  int n = front_json(body, sizeof(body));
+  if (n <= 0) return;
+  char event[800];
+  int e = snprintf(event, sizeof(event), "data: %s\n\n", body);
+  if (e <= 0) return;
+  char chunk[832];
+  int m = snprintf(chunk, sizeof(chunk), "%x\r\n", e);
+  if (m <= 0 || (size_t)m + (size_t)e + 2 > sizeof(chunk)) return;
+  memcpy(chunk + m, event, (size_t)e);
+  m += e;
+  memcpy(chunk + m, "\r\n", 2);
+  m += 2;
+
+  if (c->out_len + (size_t)m > sizeof(c->out)) return;
+  memcpy(c->out + c->out_len, chunk, (size_t)m);
+  c->out_len += (size_t)m;
+  mod_fd(c->fd, EPOLLOUT);
 }
 
 } // namespace
@@ -475,6 +524,15 @@ int server_main(int argc, char **argv) {
     }
   }
 
+  g_timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+  if (g_timer_fd >= 0) {
+    struct itimerspec its;
+    memset(&its, 0, sizeof(its));
+    its.it_interval.tv_nsec = 500000000;
+    its.it_value = its.it_interval;
+    timerfd_settime(g_timer_fd, 0, &its, nullptr);
+  }
+
   g_epoll = epoll_create1(EPOLL_CLOEXEC);
   if (g_epoll < 0) {
     perror("epoll_create1");
@@ -483,6 +541,7 @@ int server_main(int argc, char **argv) {
   add_fd(listen_fd, EPOLLIN, nullptr);
   if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
   if (g_status_fd >= 0) add_fd(g_status_fd, EPOLLIN, nullptr);
+  if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
 
   fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI, /api -> 127.0.0.1:%d)\n",
           port, kIndexHtmlSize, g_backend_port);
@@ -517,6 +576,13 @@ int server_main(int argc, char **argv) {
           slot->fd = client;
           add_fd(client, EPOLLIN, slot);
         }
+        continue;
+      }
+      if (fd == g_timer_fd) {
+        uint64_t expirations = 0;
+        if (read(g_timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations))
+          for (int j = 0; j < kMaxConns; j++)
+            if (g_conns[j].fd >= 0 && g_conns[j].front_sse) append_front_event(&g_conns[j]);
         continue;
       }
       if (fd == g_status_fd) {
@@ -560,6 +626,7 @@ int server_main(int argc, char **argv) {
     close(g_status_fd);
     unlink(padwave_status::kPath);
   }
+  if (g_timer_fd >= 0) close(g_timer_fd);
   close(g_epoll);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);

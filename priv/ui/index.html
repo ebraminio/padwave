@@ -447,6 +447,7 @@
   <footer>
     <span>padwave · built for a DualSense whose ✕ gave up</span>
     <span id="statusLine">connecting…</span>
+    <span id="frontLine">front …</span>
   </footer>
 </div>
 
@@ -1050,6 +1051,22 @@ async function boot() {
   } catch (e) { /* non-fatal */ }
 
   connectStream();
+  connectFrontStream();
+}
+
+function connectFrontStream() {
+  const source = new EventSource("/api/front/events");
+  source.onmessage = (event) => {
+    try {
+      const f = JSON.parse(event.data);
+      const player = f.player && f.player.valid
+        ? `player ${Math.round(f.player.pos / 1000)}s · sent ${f.player.sent}`
+        : "no player";
+      const input = f.input && f.input.valid ? `batt ${f.input.battery}%` : "no input";
+      const line = document.getElementById("frontLine");
+      if (line) line.textContent = `front ${f.uptime_s}s · ${f.requests} req · ${player} · ${input}`;
+    } catch (e) { /* keep the last value */ }
+  };
 }
 
 function connectStream() {
