@@ -368,6 +368,23 @@ private:
   int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
 
+  // The state-coloured lightbar and the player-LED ownership. The player's
+  // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
+  int led_custom[3] = {0, 0, 0};
+  bool led_custom_set = false;
+  bool led_force = true;
+  int led_last_rgb[3] = {-1, -1, -1};
+  int led_last_player = -2;
+  int led_last_state = -1;
+  bool led_warning_high = true;
+  long led_warning_at = 0;
+  long led_charge_at = 0;
+  int led_charge_phase = 0;
+  bool led_charging = false;
+  bool led_manual_player = false;
+  int led_manual_mask = 4;
+  bool led_painted = false;
+
   OpusDecoder *mic_decoder = nullptr;
   unsigned long mic_packets = 0;
   unsigned long mic_frames = 0;
@@ -420,6 +437,10 @@ public:
   }
 
   void shutdown() {
+    this->playing = false;
+    this->controller = false;
+    this->led_force = true;
+    serviceLeds();
     configSave();
     if (this->player) {
       playerSend("quit\n");
@@ -434,6 +455,7 @@ public:
   void tick() {
     serviceOutput();
     updateIdle();
+    serviceLeds();
     if (this->eof) {
       this->eof = false;
       next();
@@ -474,6 +496,7 @@ public:
     if (this->player && fd == this->player_timer_fd) {
       player_step(this->player);
       serviceOutput();
+      serviceLeds();
       return;
     }
     if (this->input && fd == this->input_fd) {
@@ -561,7 +584,16 @@ public:
     kv_text(buf, cap, &o, "audio.state", "null");
 
     kv_text(buf, cap, &o, "hid.power_save", "null");
-    kv_text(buf, cap, &o, "hid.player_leds", "null");
+    kv_add(buf, cap, &o, "hid.player_leds", "%d",
+           this->led_last_player >= 0 ? this->led_last_player : 4);
+    int state = ledState();
+    const char *mode = state == 0 ? "off" : (this->led_custom_set ? "custom" : ledStateName(state));
+    kv_text(buf, cap, &o, "led.mode", mode);
+    kv_add(buf, cap, &o, "led.red", "%d", this->led_last_rgb[0] >= 0 ? this->led_last_rgb[0] : 0);
+    kv_add(buf, cap, &o, "led.green", "%d", this->led_last_rgb[1] >= 0 ? this->led_last_rgb[1] : 0);
+    kv_add(buf, cap, &o, "led.blue", "%d", this->led_last_rgb[2] >= 0 ? this->led_last_rgb[2] : 0);
+    kv_add(buf, cap, &o, "led.custom", "%s", this->led_custom_set ? "true" : "false");
+    kv_add(buf, cap, &o, "led.painted", "%s", this->led_painted ? "true" : "false");
 
     bool mic_active = this->mic_last_ms > 0 && now - this->mic_last_ms < 500;
     kv_add(buf, cap, &o, "mic.level", "%d", this->mic_level);
@@ -742,14 +774,17 @@ public:
       r = r < 0 ? 0 : (r > 255 ? 255 : r);
       g = g < 0 ? 0 : (g > 255 ? 255 : g);
       b = b < 0 ? 0 : (b > 255 ? 255 : b);
-      snprintf(fields, sizeof(fields),
-               "valid_flag1=lightbar;lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
-      outputFields(fields);
+      this->led_custom[0] = r;
+      this->led_custom[1] = g;
+      this->led_custom[2] = b;
+      this->led_custom_set = true;
+      serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar %d,%d,%d\n", r, g, b);
     }
 
     if (strcmp(kind, "lightbar_reset") == 0) {
-      outputFields("valid_flag1=reset_lights");
+      this->led_custom_set = false;
+      serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
     }
 
@@ -773,10 +808,11 @@ public:
     }
 
     if (strcmp(kind, "player_leds") == 0) {
-      int mask = (int)kv_number(body, "mask", 0);
-      snprintf(fields, sizeof(fields), "valid_flag1=player_leds;player_leds=%d", mask & 0x1F);
-      outputFields(fields);
-      return snprintf(out, out_cap, "ok=true\nnote=player leds %d\n", mask & 0x1F);
+      int mask = (int)kv_number(body, "mask", 0) & 0x1F;
+      this->led_manual_player = true;
+      this->led_manual_mask = mask;
+      serviceLeds();
+      return snprintf(out, out_cap, "ok=true\nnote=player leds %d\n", mask);
     }
 
     if (strcmp(kind, "power_save") == 0) {
@@ -947,6 +983,8 @@ private:
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
     if (this->paused) playerSend("pause 1\n");
+    this->led_force = true;
+    serviceLeds();
   }
 
   void inputStart() {
@@ -970,6 +1008,8 @@ private:
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
     ensureAudibleVolume();
+    this->led_force = true;
+    serviceLeds();
   }
 
   void inputStop() {
@@ -984,6 +1024,8 @@ private:
     this->rate = 0;
     this->rate_at = 0;
     this->rate_frames = 0;
+    this->led_force = true;
+    serviceLeds();
   }
 
   static void playerStatusCb(const struct player_status *st, void *ud) {
@@ -1137,7 +1179,12 @@ private:
 
   static void inputFrameCb(const struct input_frame *f, void *ud) {
     App *a = (App *)ud;
+    bool was_connected = a->controller;
     a->controller = true;
+    if (!was_connected) {
+      a->led_force = true;
+      a->serviceLeds();
+    }
     a->lx = (int)f->lx;
     a->ly = (int)f->ly;
     a->rx = (int)f->rx;
@@ -1453,6 +1500,127 @@ private:
     char line[1200];
     snprintf(line, sizeof(line), "fields %s\n", fields);
     playerSend(line);
+  }
+
+  int ledState() const {
+    if (!this->controller) return 0;
+    if (this->suspended || this->powered_off || !this->playing) return 0;
+    if (this->idle_warning) return 1;
+    if (this->volume == 0) return 2;
+    if (this->paused) return 3;
+    return 4;
+  }
+
+  static const char *ledStateName(int state) {
+    switch (state) {
+    case 1: return "warning";
+    case 2: return "muted";
+    case 3: return "paused";
+    case 4: return "playing";
+    default: return "off";
+    }
+  }
+
+  bool applyLightbar(int r, int g, int b, bool force) {
+    if (!this->player) return false;
+    if (!force && this->led_last_rgb[0] == r && this->led_last_rgb[1] == g &&
+        this->led_last_rgb[2] == b)
+      return true;
+    char fields[160];
+    snprintf(fields, sizeof(fields),
+             "valid_flag1=lightbar;lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+    outputFields(fields);
+    this->led_last_rgb[0] = r;
+    this->led_last_rgb[1] = g;
+    this->led_last_rgb[2] = b;
+    return true;
+  }
+
+  bool applyPlayerLeds(int mask, bool force) {
+    if (!this->player) return false;
+    if (!force && this->led_last_player == mask) return true;
+    char fields[96];
+    snprintf(fields, sizeof(fields), "valid_flag1=player_leds;player_leds=%d", mask);
+    outputFields(fields);
+    this->led_last_player = mask;
+    return true;
+  }
+
+  void serviceLeds() {
+    long now = now_ms();
+    int state = ledState();
+
+    if (state != this->led_last_state) {
+      bool was_off = this->led_last_state == 0;
+      bool is_off = state == 0;
+      // A custom colour survives device-down/up, but a playback/session state
+      // change takes the bar back.
+      if (!was_off && !is_off) this->led_custom_set = false;
+      this->led_last_state = state;
+      if (state == 1) {
+        this->led_warning_high = true;
+        this->led_warning_at = now;
+      }
+    }
+
+    if (state == 1 && !this->led_custom_set && now - this->led_warning_at >= 600) {
+      this->led_warning_high = !this->led_warning_high;
+      this->led_warning_at = now;
+    }
+
+    int r = 0, g = 0, b = 0;
+    if (state == 0) {
+      // Device down / suspended / stopped: dark, even with a custom colour.
+      r = 0;
+      g = 0;
+      b = 0;
+    } else if (this->led_custom_set) {
+      r = this->led_custom[0];
+      g = this->led_custom[1];
+      b = this->led_custom[2];
+    } else if (state == 1) {
+      r = this->led_warning_high ? 255 : 60;
+    } else if (state == 2) {
+      r = 120;
+      g = 60;
+      b = 255;
+    } else if (state == 3) {
+      r = 255;
+      g = 110;
+      b = 0;
+    } else if (state == 4) {
+      r = 0;
+      g = 140;
+      b = 255;
+    }
+
+    bool charging = this->controller && (strcmp(this->charging, "charging") == 0 ||
+                                         strcmp(this->charging, "full") == 0);
+    if (charging && !this->led_charging) {
+      this->led_charging = true;
+      this->led_charge_phase = 0;
+      this->led_charge_at = now;
+    } else if (!charging && this->led_charging) {
+      this->led_charging = false;
+    }
+    if (charging && now - this->led_charge_at >= 3000) {
+      this->led_charge_phase ^= 1;
+      this->led_charge_at = now;
+    }
+
+    int mask = 4;
+    if (!this->controller)
+      mask = 4;
+    else if (charging)
+      mask = this->led_charge_phase ? 21 : 10;
+    else if (this->led_manual_player)
+      mask = this->led_manual_mask;
+
+    bool force = this->led_force;
+    bool rgb_ok = applyLightbar(r, g, b, force);
+    bool mask_ok = applyPlayerLeds(mask, force);
+    if (rgb_ok || mask_ok) this->led_painted = true;
+    if (rgb_ok && mask_ok) this->led_force = false;
   }
 
   void serviceOutput() {
