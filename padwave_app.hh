@@ -330,6 +330,8 @@ private:
   bool led_manual_player = false;
   int led_manual_mask = 4;
   bool led_painted = false;
+  long led_pulse_start = 0;
+  long led_pulse_until = 0;
 
   OpusDecoder *mic_decoder = nullptr;
   unsigned long mic_packets = 0;
@@ -743,20 +745,38 @@ public:
 
     if (strcmp(kind, "lightbar_reset") == 0) {
       this->led_custom_set = false;
+      this->led_pulse_until = 0;
+      this->led_force = true;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
     }
 
     if (strcmp(kind, "lightbar_fade") == 0) {
-      outputFields("valid_flag1=lightbar;valid_flag2=color_fade");
-      return snprintf(out, out_cap, "ok=true\nnote=fade\n");
+      this->led_pulse_until = 0;
+      // hid-playstation: valid_flag2 bit 1 enables the setup byte, and
+      // lightbar_setup 0x02 asks the controller to fade the bar out.
+      outputFields("valid_flag2=color_fade;lightbar_setup=2");
+      playerSend("state_clear_lightbar\n");
+      return snprintf(out, out_cap, "ok=true\nnote=light out\n");
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
       int v = (int)kvNumber(body, "value", 0);
-      snprintf(fields, sizeof(fields), "valid_flag1=lightbar;lightbar_setup=%d", v & 0xFF);
+      this->led_pulse_until = 0;
+      snprintf(fields, sizeof(fields), "valid_flag2=color_fade;lightbar_setup=%d", v & 0xFF);
       outputFields(fields);
+      playerSend("state_clear_lightbar\n");
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
+    }
+
+    if (strcmp(kind, "lightbar_pulse") == 0) {
+      long ms = kvNumber(body, "ms", 3000);
+      ms = ms < 500 ? 500 : (ms > 10000 ? 10000 : ms);
+      this->led_pulse_start = nowMs();
+      this->led_pulse_until = this->led_pulse_start + ms;
+      this->led_force = true;
+      serviceLeds();
+      return snprintf(out, out_cap, "ok=true\nnote=pulse %ldms\n", ms);
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
@@ -1639,6 +1659,19 @@ private:
       mask = this->led_charge_phase ? 21 : 10;
     else if (this->led_manual_player)
       mask = this->led_manual_mask;
+
+    if (this->led_pulse_until) {
+      if (now >= this->led_pulse_until) {
+        this->led_pulse_until = 0;
+      } else if (state != 0) {
+        // Host-driven smooth pulse: 1 Hz raised cosine between 15% and 100%.
+        float phase = (float)(now - this->led_pulse_start) * 0.0062831853f;
+        float level = 0.15f + 0.85f * (0.5f - 0.5f * cosf(phase));
+        r = (int)(r * level);
+        g = (int)(g * level);
+        b = (int)(b * level);
+      }
+    }
 
     bool force = this->led_force;
     bool rgb_ok = applyLightbar(r, g, b, force);

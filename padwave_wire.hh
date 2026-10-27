@@ -170,7 +170,7 @@ struct OutputBody {
   PWUINT8 audio_control2;           // +0x25  speaker preamp gain
   PWUINT8 valid_flag2;              // +0x26  ValidFlag2 bits
   PWUINT8 reserved_39[2];           // +0x27..0x28
-  PWUINT8 lightbar_setup;           // +0x29  fade-out after power-on
+  PWUINT8 lightbar_setup;           // +0x29  valid_flag2 bit 1; 0x02 fades out
   PWUINT8 led_brightness;           // +0x2a
   PWUINT8 player_leds;              // +0x2b  PlayerLeds bits
   PWUINT8 lightbar_red;             // +0x2c
@@ -213,7 +213,7 @@ struct OutputBody {
   // 3-7 are reserved.
   enum ValidFlag2 : uint8_t {
     Brightness = 0x01,     // bit 0
-    ColorFade = 0x02,      // bit 1
+    ColorFade = 0x02,      // bit 1: enables the lightbar_setup fade control
     ImprovedRumble = 0x04, // bit 2
   };
 

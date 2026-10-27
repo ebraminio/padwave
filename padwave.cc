@@ -206,6 +206,16 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
     count = sizeof(kFlag2) / sizeof(kFlag2[0]);
   }
 
+  // Accept a raw byte as well as the comma-separated flag names; the panel's
+  // raw field map uses both spellings.
+  char *end = nullptr;
+  unsigned long raw = strtoul(value, &end, 0);
+  if (end && end != value && *end == 0) {
+    uint8_t *word = (uint8_t *)((char *)body + field->offset);
+    *word = merge ? (uint8_t)(*word | raw) : (uint8_t)raw;
+    return;
+  }
+
   uint8_t bits = 0;
   char copy[512];
   snprintf(copy, sizeof(copy), "%s", value);
@@ -869,6 +879,16 @@ static void handle_line(struct player *pl, char *line) {
       pl->next_warmed = false;
       warm_file(path);
     }
+    return;
+  }
+
+  if (strcmp(line, "state_clear_lightbar") == 0) {
+    pl->state.valid_flag1 &= (uint8_t)~padwave::OutputBody::Lightbar;
+    pl->state.valid_flag2 &= (uint8_t)~padwave::OutputBody::ColorFade;
+    pl->state.lightbar_setup = 0;
+    pl->state.lightbar_red = 0;
+    pl->state.lightbar_green = 0;
+    pl->state.lightbar_blue = 0;
     return;
   }
 
