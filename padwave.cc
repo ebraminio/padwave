@@ -288,25 +288,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 //   player <pos_ms> <dur_ms> <sent> <underruns> <paused>
 //   input  <lx> <ly> <rx> <ry> <l2> <r2> <buttons> <battery> <jack>
 
-namespace padwave_status {
 
-static constexpr const char *kPath = "/tmp/padwave-status.sock";
-static constexpr const char *kPlayerPath = "/tmp/padwave-player.sock";
-
-static inline int sender_open() {
-  return socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-}
-
-static inline void send_line(int fd, const char *line) {
-  if (fd < 0) return;
-  struct sockaddr_un addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", kPath);
-  (void)sendto(fd, line, strlen(line), 0, (struct sockaddr *)&addr, sizeof(addr));
-}
-
-} // namespace padwave_status
 
 // Entry points and in-process engines. The service calls the player/input
 // engines directly from its epoll loop; the *_main wrappers keep the debug
@@ -1624,18 +1606,7 @@ void print_frame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
   track_triggers(b.l2, b.r2);
   track_sensors(b);
 
-  static int64_t last_status = 0;
-  static int status_fd = padwave_status::sender_open();
-  int64_t now = input_now_ms();
-  if (now - last_status >= 100) {
-    char status_line[200];
-    snprintf(status_line, sizeof(status_line), "input %u %u %u %u %u %u %u %u %d", (unsigned)b.lx.get(),
-             (unsigned)b.ly.get(), (unsigned)b.rx.get(), (unsigned)b.ry.get(), (unsigned)b.l2.get(),
-             (unsigned)b.r2.get(), buttons, (unsigned)(b.status0.get() & 0x0F) * 10 + 5,
-             (b.status1.get() & padwave::InputBody::Headset) ? 1 : 0);
-    padwave_status::send_line(status_fd, status_line);
-    last_status = now;
-  }
+
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.
@@ -2749,26 +2720,10 @@ conn *g_owner[kMaxFds];
 
 int g_epoll = -1;
 int g_backend_port = 8787;
-int g_status_fd = -1;
 bool g_standalone = false;
 int g_timer_fd = -1;
 int64_t g_start_ms = 0;
 unsigned long g_requests = 0;
-
-struct player_status {
-  bool valid = false;
-  long pos = 0, dur = 0, sent = 0, underruns = 0;
-  int paused = 0;
-};
-
-struct input_status {
-  bool valid = false;
-  int lx = 0, ly = 0, rx = 0, ry = 0, l2 = 0, r2 = 0, battery = 0, jack = 0;
-  unsigned buttons = 0;
-};
-
-player_status g_player;
-input_status g_input;
 
 int64_t monotonic_ms() {
   struct timespec ts;
@@ -2776,30 +2731,6 @@ int64_t monotonic_ms() {
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-void parse_status(const char *line) {
-  if (strncmp(line, "player ", 7) == 0) {
-    if (sscanf(line + 7, "%ld %ld %ld %ld %d", &g_player.pos, &g_player.dur, &g_player.sent,
-               &g_player.underruns, &g_player.paused) == 5)
-      g_player.valid = true;
-  } else if (strncmp(line, "input ", 6) == 0) {
-    unsigned lx, ly, rx, ry, l2, r2, buttons;
-    int battery, jack;
-    if (sscanf(line + 6, "%u %u %u %u %u %u %u %d %d", &lx, &ly, &rx, &ry, &l2, &r2, &buttons,
-               &battery, &jack) == 9) {
-      g_input = input_status{};
-      g_input.valid = true;
-      g_input.lx = (int)lx;
-      g_input.ly = (int)ly;
-      g_input.rx = (int)rx;
-      g_input.ry = (int)ry;
-      g_input.l2 = (int)l2;
-      g_input.r2 = (int)r2;
-      g_input.buttons = buttons;
-      g_input.battery = battery;
-      g_input.jack = jack;
-    }
-  }
-}
 char g_index_response[70000];
 size_t g_index_len = 0;
 
@@ -3295,19 +3226,6 @@ int server_main(int argc, char **argv) {
 
   g_start_ms = monotonic_ms();
 
-  g_status_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (g_status_fd >= 0) {
-    struct sockaddr_un status_addr;
-    memset(&status_addr, 0, sizeof(status_addr));
-    status_addr.sun_family = AF_UNIX;
-    snprintf(status_addr.sun_path, sizeof(status_addr.sun_path), "%s", padwave_status::kPath);
-    unlink(padwave_status::kPath);
-    if (bind(g_status_fd, (struct sockaddr *)&status_addr, sizeof(status_addr)) != 0) {
-      close(g_status_fd);
-      g_status_fd = -1;
-    }
-  }
-
   g_timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   if (g_timer_fd >= 0) {
     struct itimerspec its;
@@ -3324,7 +3242,6 @@ int server_main(int argc, char **argv) {
   }
   add_fd(listen_fd, EPOLLIN, nullptr);
   if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
-  if (g_status_fd >= 0) add_fd(g_status_fd, EPOLLIN, nullptr);
   if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
   if (g_standalone) {
     int fds[4];
@@ -3384,15 +3301,6 @@ int server_main(int argc, char **argv) {
         }
         continue;
       }
-      if (fd == g_status_fd) {
-        char line[256];
-        ssize_t n = recv(g_status_fd, line, sizeof(line) - 1, 0);
-        if (n > 0) {
-          line[n] = 0;
-          parse_status(line);
-        }
-        continue;
-      }
       if (fd == signal_fd) {
         struct signalfd_siginfo info;
         if (read(signal_fd, &info, sizeof(info)) == sizeof(info)) running = false;
@@ -3426,10 +3334,6 @@ int server_main(int argc, char **argv) {
   }
 
   for (int i = 0; i < kMaxConns; i++) close_conn(&g_conns[i]);
-  if (g_status_fd >= 0) {
-    close(g_status_fd);
-    unlink(padwave_status::kPath);
-  }
   if (g_timer_fd >= 0) close(g_timer_fd);
   if (a) app_destroy(a);
   close(g_epoll);
