@@ -159,7 +159,9 @@ resumes. After `poweroff_when_idle_ms` the app persists and asks BlueZ to
 disconnect the pad, which puts it to sleep; press PS to wake it. Unplugging the
 headset pauses and plugging it back resumes only if the jack caused the pause.
 The monitor switch opens the 0x36 mic path, and the status stream carries a live
-Opus-decoded level (frames, RMS, peak).
+Opus-decoded level (frames, RMS, peak). Microphone monitoring and playback are
+mutually exclusive: enabling the mic pauses playback, disabling it resumes only
+if the mic caused the pause, and starting/resuming playback turns the mic off.
 
 Volume zero *is* the paused state: reaching 0 pauses, raising it again or
 pressing play/mute restores the last nonzero volume, and a new controller
