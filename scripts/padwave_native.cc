@@ -28,10 +28,10 @@
 //   pos <ms>   dur <ms>   sent <n>   underruns <n>   eof
 //
 // Build (no STL, no RTTI, no exceptions):
-//   c++ -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
-//       -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
-//       $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
-//       -lopus -lz -lm
+//   cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
+//      -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
+//      $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
+//      -lopus -lz -lm
 #include <errno.h>
 #include <math.h>
 #include <fcntl.h>
@@ -61,6 +61,7 @@ extern "C" {
 
 #include "padwave_fields.hh"
 #include "padwave_schemas.hh"
+#include "padwave_common.hh"
 
 #define RATE 48000
 #define CHANNELS 2
@@ -158,30 +159,6 @@ static volatile sig_atomic_t running = 1;
 static void on_signal(int sig) {
   (void)sig;
   running = 0;
-}
-
-/* ---- hidraw ------------------------------------------------------------- */
-
-static int find_dualsense(void) {
-  /* /sys/class/hidraw/hidrawN/device/uevent carries HID_ID=0005:0000054C:00000CE6 */
-  for (int n = 0; n < 16; n++) {
-    char path[128], line[256];
-    snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", n);
-    FILE *f = fopen(path, "r");
-    if (!f) continue;
-    bool match = false;
-    while (fgets(line, sizeof(line), f)) {
-      if (strstr(line, "HID_ID=") && (strstr(line, "054C:00000CE6") || strstr(line, "054C:00000DF2")))
-        match = true;
-    }
-    fclose(f);
-    if (match) {
-      char node[32];
-      snprintf(node, sizeof(node), "/dev/hidraw%d", n);
-      return open(node, O_RDWR | O_CLOEXEC);
-    }
-  }
-  return -1;
 }
 
 /* ---- 0x36 report -------------------------------------------------------- */

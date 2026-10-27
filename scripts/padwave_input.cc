@@ -25,27 +25,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "padwave_common.hh"
 #include "padwave_schemas.hh"
 
 namespace {
-
-int find_dualsense(char *node, size_t len) {
-  for (int i = 0; i < 8; i++) {
-    char path[128];
-    snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
-    FILE *f = fopen(path, "r");
-    if (!f) continue;
-    char line[256];
-    bool match = false;
-    while (fgets(line, sizeof(line), f))
-      if (strstr(line, "054C:00000CE6") || strstr(line, "054C:00000DF2")) match = true;
-    fclose(f);
-    if (!match) continue;
-    snprintf(node, len, "/dev/hidraw%d", i);
-    return i;
-  }
-  return -1;
-}
 
 const char *dpad_name(uint8_t value) {
   switch (value) {

@@ -89,25 +89,6 @@ inline const flag kFlag2[] = {
     {"improved_rumble", padwave::OutputBody::ImprovedRumble},
 };
 
-int find_dualsense() {
-  for (int i = 0; i < 8; i++) {
-    char path[128];
-    snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
-    FILE *f = fopen(path, "r");
-    if (!f) continue;
-    char line[256];
-    bool match = false;
-    while (fgets(line, sizeof(line), f))
-      if (strstr(line, "054C:00000CE6") || strstr(line, "054C:00000DF2")) match = true;
-    fclose(f);
-    if (!match) continue;
-    snprintf(path, sizeof(path), "/dev/hidraw%d", i);
-    int fd = open(path, O_WRONLY | O_CLOEXEC);
-    if (fd >= 0) return fd;
-  }
-  return -1;
-}
-
 bool write_all(int fd, const uint8_t *data, size_t len) {
   size_t put = 0;
   while (put < len) {
