@@ -26,14 +26,44 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "padwave_common.hh"
 #include "padwave_schemas.hh"
 #include "padwave_status.hh"
 
-static int g_out_fd = STDOUT_FILENO;
-static int g_stop_fd = -1;
-#define printf(...) dprintf(g_out_fd, __VA_ARGS__)
+static void (*g_input_sink)(const char *, void *) = nullptr;
+static void *g_input_sink_ud = nullptr;
+static char g_input_emit_buf[4096];
+static size_t g_input_emit_len = 0;
+
+static void input_emit(const char *fmt, ...) {
+  char tmp[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(tmp, sizeof(tmp), fmt, ap);
+  va_end(ap);
+
+  size_t n = strlen(tmp);
+  if (g_input_emit_len + n >= sizeof(g_input_emit_buf)) g_input_emit_len = 0;
+  memcpy(g_input_emit_buf + g_input_emit_len, tmp, n);
+  g_input_emit_len += n;
+  g_input_emit_buf[g_input_emit_len] = 0;
+
+  char *start = g_input_emit_buf;
+  char *nl;
+  while ((nl = strchr(start, '\n'))) {
+    *nl = 0;
+    if (g_input_sink) g_input_sink(start, g_input_sink_ud);
+    else puts(start);
+    start = nl + 1;
+  }
+  size_t left = strlen(start);
+  memmove(g_input_emit_buf, start, left + 1);
+  g_input_emit_len = left;
+}
+
+#define printf(...) input_emit(__VA_ARGS__)
 
 namespace {
 
@@ -46,43 +76,6 @@ void on_signal(int) { g_running = 0; }
  * POLLERR/POLLHUP/POLLNVAL. STDIN is polled too: when the parent closes the
  * port the CLI gets EOF there and exits instead of lingering with a stale
  * hidraw fd. Returns >0 bytes, 0 for a timeout/EAGAIN, -1 to stop. */
-int read_report(int fd, uint8_t *buf, size_t len) {
-  struct pollfd p[2];
-  p[0].fd = fd;
-  p[0].events = POLLIN;
-  p[0].revents = 0;
-  p[1].fd = g_stop_fd >= 0 ? g_stop_fd : STDIN_FILENO;
-  p[1].events = POLLIN;
-  p[1].revents = 0;
-
-  int ret = poll(p, 2, 1000);
-  if (ret == 0) return 0;
-  if (ret < 0) {
-    if (errno == EINTR) return 0;
-    return -1;
-  }
-
-  if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
-    if (g_stop_fd >= 0) return -1;
-    char discard;
-    ssize_t n = read(STDIN_FILENO, &discard, 1);
-    if (n <= 0) return -1; /* the parent is gone */
-  }
-
-  if (p[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-    errno = EIO;
-    return -1;
-  }
-  if (!(p[0].revents & POLLIN)) return 0;
-
-  ssize_t n = read(fd, buf, len);
-  if (n < 0) {
-    if (errno == EAGAIN || errno == EINPROGRESS) return 0;
-    return -1;
-  }
-  return (int)n;
-}
-
 const char *dpad_name(uint8_t value) {
   switch (value) {
     case padwave::InputBody::Up: return "up";
@@ -455,12 +448,17 @@ bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
 
 } // namespace
 
-int input_run(const char *node, int out_fd, int stop_fd) {
-  g_out_fd = out_fd;
-  g_stop_fd = stop_fd;
-  g_running = 1;
+struct input_handle {
+  int fd;
+};
 
-  uint8_t buf[512];
+void input_set_sink(void *handle, void (*sink)(const char *, void *), void *ud) {
+  (void)handle;
+  g_input_sink = sink;
+  g_input_sink_ud = ud;
+}
+
+void *input_create(const char *node) {
   int fd = -1;
   if (node) {
     fd = open(node, O_RDONLY | O_CLOEXEC);
@@ -470,21 +468,31 @@ int input_run(const char *node, int out_fd, int stop_fd) {
   }
   if (fd < 0) {
     fprintf(stderr, "padwave input: no DualSense hidraw node\n");
-    return 1;
+    return nullptr;
   }
 
-  printf("ready\n");
-
-  while (g_running) {
-    int n = read_report(fd, buf, sizeof(buf));
-    if (n < 0) {
-      printf("down\n");
-      break;
-    }
-    if (n > 0) handle_report(buf, (size_t)n);
+  input_handle *h = (input_handle *)calloc(1, sizeof(*h));
+  if (!h) {
+    close(fd);
+    return nullptr;
   }
-  close(fd);
+  h->fd = fd;
+  return h;
+}
+
+int input_fd(void *handle) { return handle ? ((input_handle *)handle)->fd : -1; }
+
+int input_feed(void *handle, const uint8_t *buf, size_t len) {
+  if (!handle) return -1;
+  handle_report(buf, len);
   return 0;
+}
+
+void input_destroy(void *handle) {
+  input_handle *h = (input_handle *)handle;
+  if (!h) return;
+  if (h->fd >= 0) close(h->fd);
+  free(h);
 }
 
 int input_main(int argc, char **argv) {
@@ -493,7 +501,6 @@ int input_main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "--hex") == 0 && argc > 2) {
     size_t len = 0;
     if (!hex_decode(argv[2], buf, &len)) return 2;
-    // A btmon line often includes the 0xA2/0xA1 transaction prefix.
     if (len > 1 && (buf[0] == 0xA1 || buf[0] == 0xA2)) {
       memmove(buf, buf + 1, len - 1);
       len--;
@@ -502,12 +509,11 @@ int input_main(int argc, char **argv) {
     return 0;
   }
 
-  int fd = -1;
   if (argc > 1 && strcmp(argv[1], "--file") == 0 && argc > 2) {
-    fd = open(argv[2], O_RDONLY | O_CLOEXEC);
+    int fd = open(argv[2], O_RDONLY | O_CLOEXEC);
     if (fd < 0) return 2;
     for (;;) {
-      ssize_t n = read(fd, buf, 78);
+      ssize_t n = read(fd, buf, sizeof(buf));
       if (n <= 0) break;
       handle_report(buf, (size_t)n);
     }
@@ -517,5 +523,49 @@ int input_main(int argc, char **argv) {
 
   signal(SIGINT, on_signal);
   signal(SIGTERM, on_signal);
-  return input_run(argc > 1 ? argv[1] : nullptr, STDOUT_FILENO, -1);
+
+  void *h = input_create(argc > 1 ? argv[1] : nullptr);
+  if (!h) return 1;
+  printf("ready\n");
+
+  int fd = input_fd(h);
+  while (g_running) {
+    struct pollfd p[2];
+    p[0].fd = fd;
+    p[0].events = POLLIN;
+    p[0].revents = 0;
+    p[1].fd = STDIN_FILENO;
+    p[1].events = POLLIN;
+    p[1].revents = 0;
+
+    int ret = poll(p, 2, 1000);
+    if (ret < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+
+    if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
+      char discard;
+      if (read(STDIN_FILENO, &discard, 1) <= 0) break;
+    }
+
+    if (p[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      printf("down\n");
+      break;
+    }
+    if (p[0].revents & POLLIN) {
+      ssize_t n = read(fd, buf, sizeof(buf));
+      if (n <= 0) {
+        if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
+          printf("down\n");
+          break;
+        }
+        continue;
+      }
+      input_feed(h, buf, (size_t)n);
+    }
+  }
+
+  input_destroy(h);
+  return 0;
 }

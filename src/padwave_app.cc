@@ -14,8 +14,6 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
-#include <pthread.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -46,12 +44,11 @@ struct app_state {
   int history[kMaxHistory];
   int history_len = 0;
 
-  int player_in = -1;
-  int player_out = -1;
-  int player_pid = -1;
-  int input_out = -1;
-  int input_in = -1;
-  int input_pid = -1;
+  void *player = nullptr;
+  void *input = nullptr;
+  int player_timer_fd = -1;
+  int player_bus_fd = -1;
+  int input_fd = -1;
 
   long pos_ms = 0;
   long dur_ms = 0;
@@ -63,7 +60,6 @@ struct app_state {
   int volume = 70;
   bool muted = false;
   long start_ms = 0;
-  bool player_alive = false;
 
   bool controller = false;
   bool jack = false;
@@ -189,87 +185,27 @@ void push_history(int index) {
   }
 }
 
-struct player_args {
-  int in;
-  int out;
-};
+void player_line(const char *line);
+void input_line(const char *line);
 
-struct input_args {
-  char node[64];
-  int out;
-  int stop;
-};
-
-void *player_entry(void *p) {
-  player_args *a = (player_args *)p;
-  native_run(a->in, a->out, nullptr, false);
-  close(a->in);
-  close(a->out);
-  free(a);
-  return nullptr;
-}
-
-void *input_entry(void *p) {
-  input_args *a = (input_args *)p;
-  input_run(a->node, a->out, a->stop);
-  close(a->out);
-  close(a->stop);
-  free(a);
-  return nullptr;
-}
+void player_sink(const char *line, void *) { player_line(line); }
+void input_sink(const char *line, void *) { input_line(line); }
 
 void player_send(const char *line) {
-  if (g.player_in < 0) return;
-  size_t len = strlen(line);
-  size_t put = 0;
-  while (put < len) {
-    ssize_t n = write(g.player_in, line + put, len - put);
-    if (n <= 0) return;
-    put += (size_t)n;
-  }
+  if (g.player) player_command(g.player, line);
 }
 
 void player_start() {
-  if (g.player_alive) return;
-
-  int in[2], out[2];
-  if (pipe2(in, O_CLOEXEC) != 0) return;
-  if (pipe2(out, O_CLOEXEC) != 0) {
-    close(in[0]);
-    close(in[1]);
-    return;
-  }
-  fcntl(out[0], F_SETFL, fcntl(out[0], F_GETFL, 0) | O_NONBLOCK);
-
-  player_args *a = (player_args *)malloc(sizeof(*a));
-  if (!a) {
-    close(in[0]);
-    close(in[1]);
-    close(out[0]);
-    close(out[1]);
-    return;
-  }
-  a->in = in[0];
-  a->out = out[1];
-
-  pthread_t t;
-  if (pthread_create(&t, nullptr, player_entry, a) != 0) {
-    close(in[0]);
-    close(in[1]);
-    close(out[0]);
-    close(out[1]);
-    free(a);
-    return;
-  }
-  pthread_detach(t);
-
-  g.player_in = in[1];
-  g.player_out = out[0];
-  g.player_alive = true;
+  if (g.player) return;
+  g.player = player_create(nullptr, false);
+  if (!g.player) return;
+  player_set_sink(g.player, player_sink, nullptr);
+  g.player_timer_fd = player_timer_fd(g.player);
+  g.player_bus_fd = player_bus_fd(g.player);
 }
 
 void input_start() {
-  if (g.input_out >= 0) return;
+  if (g.input) return;
 
   char node[64];
   if (find_dualsense(node, sizeof(node)) < 0) {
@@ -277,54 +213,23 @@ void input_start() {
     return;
   }
 
-  int out[2], stop[2];
-  if (pipe2(out, O_CLOEXEC) != 0) return;
-  if (pipe2(stop, O_CLOEXEC) != 0) {
-    close(out[0]);
-    close(out[1]);
+  g.input = input_create(node);
+  if (!g.input) {
+    g.reconnect_at = (int)(now_ms() + 1500);
     return;
   }
-  fcntl(out[0], F_SETFL, fcntl(out[0], F_GETFL, 0) | O_NONBLOCK);
-
-  input_args *a = (input_args *)malloc(sizeof(*a));
-  if (!a) {
-    close(out[0]);
-    close(out[1]);
-    close(stop[0]);
-    close(stop[1]);
-    return;
-  }
-  snprintf(a->node, sizeof(a->node), "%s", node);
-  a->out = out[1];
-  a->stop = stop[0];
-
-  pthread_t t;
-  if (pthread_create(&t, nullptr, input_entry, a) != 0) {
-    close(out[0]);
-    close(out[1]);
-    close(stop[0]);
-    close(stop[1]);
-    free(a);
-    return;
-  }
-  pthread_detach(t);
-
-  g.input_out = out[0];
-  g.input_in = stop[1];
+  input_set_sink(g.input, input_sink, nullptr);
+  g.input_fd = input_fd(g.input);
 }
 
 void input_stop() {
-  if (g.input_in >= 0) {
-    ssize_t ignored = write(g.input_in, "x", 1);
-    (void)ignored;
-    close(g.input_in);
+  if (g.input) {
+    input_destroy(g.input);
+    g.input = nullptr;
   }
-  if (g.input_out >= 0) close(g.input_out);
-  g.input_in = g.input_out = -1;
+  g.input_fd = -1;
   g.controller = false;
 }
-
-void input_line(const char *line);
 
 void player_line(const char *line) {
   if (strncmp(line, "pos ", 4) == 0) {
@@ -519,23 +424,6 @@ void input_line(const char *line) {
   }
 }
 
-bool drain_lines(int fd, void (*handler)(const char *)) {
-  char buf[8192];
-  for (;;) {
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    if (n == 0) return false;
-    if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK;
-    buf[n] = 0;
-    char *start = buf;
-    char *nl;
-    while ((nl = strchr(start, '\n')) != nullptr) {
-      *nl = 0;
-      handler(start);
-      start = nl + 1;
-    }
-  }
-}
-
 void status_radio(char *buf, size_t cap) {
   const station *s = g.current >= 0 ? &g.stations[g.current] : nullptr;
   char title[2 * kMaxTitle], game[2 * kMaxGame], path[2 * kMaxPath];
@@ -610,7 +498,7 @@ int app_status_json(char *buf, size_t cap) {
                   "\"player\":{\"port\":%d,\"path\":\"\",\"position\":%.1f,\"duration\":%.1f,"
                   "\"paused\":%d,\"volume\":%d,\"sent\":%ld,\"underruns\":%ld,\"errors\":0,"
                   "\"eof\":%d},\"controller\":%s,\"bindings\":{},\"config\":{},\"now\":%ld}",
-                  radio, g.player_alive ? 1 : 0, g.pos_ms / 1000.0, g.dur_ms / 1000.0,
+                  radio, g.player ? 1 : 0, g.pos_ms / 1000.0, g.dur_ms / 1000.0,
                   g.paused ? 1 : 0, g.volume, g.sent, g.underruns, g.eof ? 1 : 0, controller,
                   (long)(time(nullptr)));
 }
@@ -724,7 +612,7 @@ int app_handle_command(const char *body, size_t len, char *out, size_t cap) {
 }
 
 bool app_owns_fd(int fd) {
-  return (fd >= 0 && (fd == g.player_out || fd == g.input_out));
+  return fd >= 0 && (fd == g.player_timer_fd || fd == g.player_bus_fd || fd == g.input_fd);
 }
 
 bool app_init() {
@@ -749,24 +637,20 @@ bool app_init() {
 
   qsort(g.stations, (size_t)g.count, sizeof(station), cmp_station);
   srand((unsigned)time(nullptr) ^ (unsigned)getpid());
-  g.player_alive = false;
-  g.player_in = g.player_out = -1;
-  g.input_in = g.input_out = -1;
+  g.player = nullptr;
+  g.input = nullptr;
+  g.player_timer_fd = g.player_bus_fd = g.input_fd = -1;
   app_set_volume(70);
   return true;
 }
 
 void app_shutdown() {
-  if (g.player_in >= 0) {
+  if (g.player) {
     player_send("quit\n");
-    close(g.player_in);
-    g.player_in = -1;
+    player_destroy(g.player);
+    g.player = nullptr;
   }
-  if (g.player_out >= 0) {
-    close(g.player_out);
-    g.player_out = -1;
-  }
-  g.player_alive = false;
+  g.player_timer_fd = g.player_bus_fd = -1;
   input_stop();
 }
 
@@ -775,40 +659,41 @@ void app_tick() {
     g.eof = false;
     app_next();
   }
-  if (!g.player_alive) {
+  if (!g.player) {
     player_start();
-    if (g.player_alive && g.current < 0 && g.count > 0) {
+    if (g.player && g.current < 0 && g.count > 0) {
       int start = rand() % g.count;
       app_play(start, 0);
     }
   }
-  if (g.input_out < 0 && (int)now_ms() >= g.reconnect_at) input_start();
+  if (!g.input && (int)now_ms() >= g.reconnect_at) input_start();
 }
 
 int app_fds(int *fds, int max) {
   int n = 0;
-  if (g.player_out >= 0 && n < max) fds[n++] = g.player_out;
-  if (g.input_out >= 0 && n < max) fds[n++] = g.input_out;
+  if (g.player_timer_fd >= 0 && n < max) fds[n++] = g.player_timer_fd;
+  if (g.player_bus_fd >= 0 && n < max) fds[n++] = g.player_bus_fd;
+  if (g.input_fd >= 0 && n < max) fds[n++] = g.input_fd;
   return n;
 }
 
 void app_handle_fd(int fd) {
-  bool alive = true;
-  if (fd == g.player_out) alive = drain_lines(fd, player_line);
-  else if (fd == g.input_out) alive = drain_lines(fd, input_line);
-  if (alive) return;
-
-  if (fd == g.player_out) {
-    close(fd);
-    g.player_out = -1;
-    if (g.player_in >= 0) close(g.player_in);
-    g.player_in = -1;
-    g.player_alive = false;
-  } else if (fd == g.input_out) {
-    close(fd);
-    g.input_out = -1;
-    if (g.input_in >= 0) close(g.input_in);
-    g.input_in = -1;
-    g.reconnect_at = (int)(now_ms() + 1500);
+  if (g.player && fd == g.player_timer_fd) {
+    player_step(g.player);
+    return;
+  }
+  if (g.player && fd == g.player_bus_fd) {
+    player_on_bus(g.player);
+    return;
+  }
+  if (g.input && fd == g.input_fd) {
+    uint8_t buf[512];
+    ssize_t n = read(fd, buf, sizeof(buf));
+    if (n > 0) {
+      input_feed(g.input, buf, (size_t)n);
+    } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
+      input_stop();
+      g.reconnect_at = (int)(now_ms() + 1500);
+    }
   }
 }

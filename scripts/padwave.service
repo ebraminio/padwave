@@ -14,7 +14,7 @@ EnvironmentFile=-%h/.config/padwave/env
 ExecStart=%h/padwave/scripts/padwave-boot.sh
 Restart=on-failure
 RestartSec=3
-# Everything runs in one process now; a stop takes the threads with it.
+# One process, one thread.
 KillMode=control-group
 TimeoutStopSec=10
 StandardOutput=journal

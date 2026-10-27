@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <math.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -62,8 +63,38 @@ extern "C" {
 #include "padwave_fields.hh"
 #include "padwave_status.hh"
 
-static int g_out_fd = STDOUT_FILENO;
-#define printf(...) dprintf(g_out_fd, __VA_ARGS__)
+static void (*g_player_sink)(const char *, void *) = nullptr;
+static void *g_player_sink_ud = nullptr;
+static char g_player_emit_buf[8192];
+static size_t g_player_emit_len = 0;
+
+static void player_emit(const char *fmt, ...) {
+  char tmp[2048];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(tmp, sizeof(tmp), fmt, ap);
+  va_end(ap);
+
+  size_t n = strlen(tmp);
+  if (g_player_emit_len + n >= sizeof(g_player_emit_buf)) g_player_emit_len = 0;
+  memcpy(g_player_emit_buf + g_player_emit_len, tmp, n);
+  g_player_emit_len += n;
+  g_player_emit_buf[g_player_emit_len] = 0;
+
+  char *start = g_player_emit_buf;
+  char *nl;
+  while ((nl = strchr(start, '\n'))) {
+    *nl = 0;
+    if (g_player_sink) g_player_sink(start, g_player_sink_ud);
+    else puts(start);
+    start = nl + 1;
+  }
+  size_t left = strlen(start);
+  memmove(g_player_emit_buf, start, left + 1);
+  g_player_emit_len = left;
+}
+
+#define printf(...) player_emit(__VA_ARGS__)
 #include "padwave_schemas.hh"
 #include "padwave_common.hh"
 
@@ -674,14 +705,28 @@ static void handle_line(struct player *pl, char *line) {
   if (strncmp(line, "quit", 4) == 0) running = 0;
 }
 
-/* ---- main --------------------------------------------------------------- */
+/* ---- engine API --------------------------------------------------------- */
 
-int native_run(int in_fd, int out_fd, const char *node, bool speaker) {
-  g_out_fd = out_fd;
+struct player_handle {
   struct player pl;
-  memset(&pl, 0, sizeof(pl));
-  pl.volume = 80;
+  int tfd;
+  int bus_fd;
+  int status_fd;
+  int64_t last_status;
+};
 
+void player_set_sink(void *handle, void (*sink)(const char *, void *), void *ud) {
+  (void)handle;
+  g_player_sink = sink;
+  g_player_sink_ud = ud;
+}
+
+void *player_create(const char *node, bool speaker) {
+  player_handle *h = (player_handle *)calloc(1, sizeof(*h));
+  if (!h) return nullptr;
+
+  struct player &pl = h->pl;
+  pl.volume = 80;
   pl.hidraw = node ? open(node, O_RDWR | O_CLOEXEC) : find_dualsense();
   if (pl.hidraw < 0) fprintf(stderr, "padwave_native: no DualSense hidraw node\n");
   pl.speaker = speaker;
@@ -691,7 +736,8 @@ int native_run(int in_fd, int out_fd, const char *node, bool speaker) {
   pl.enc = opus_encoder_create(RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &err);
   if (!pl.enc || err != OPUS_OK) {
     fprintf(stderr, "padwave_native: opus encoder: %s\n", opus_strerror(err));
-    return 1;
+    free(h);
+    return nullptr;
   }
   opus_encoder_ctl(pl.enc, OPUS_SET_BITRATE(160000));
   opus_encoder_ctl(pl.enc, OPUS_SET_VBR(0));
@@ -700,177 +746,208 @@ int native_run(int in_fd, int out_fd, const char *node, bool speaker) {
   pl.pkt = av_packet_alloc();
   pl.frame = av_frame_alloc();
 
-  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+  h->tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   struct itimerspec its;
   its.it_interval.tv_sec = 0;
   its.it_interval.tv_nsec = 10667000; /* 10.667 ms: 93.75 blocks/s */
   its.it_value = its.it_interval;
-  timerfd_settime(tfd, 0, &its, NULL);
+  if (h->tfd >= 0) timerfd_settime(h->tfd, 0, &its, NULL);
 
-  int status_fd = padwave_status::sender_open();
-  int64_t last_status = 0;
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
+  h->status_fd = padwave_status::sender_open();
 
-  // A local control bus with the same line protocol as stdin. stdin stays the
-  // app's path when it owns the player; this is for the web front and tests.
-  int bus_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-  if (bus_fd >= 0) {
+  h->bus_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (h->bus_fd >= 0) {
     struct sockaddr_un cmd_addr;
     memset(&cmd_addr, 0, sizeof(cmd_addr));
     cmd_addr.sun_family = AF_UNIX;
     snprintf(cmd_addr.sun_path, sizeof(cmd_addr.sun_path), "%s", padwave_status::kPlayerPath);
     unlink(padwave_status::kPlayerPath);
-    if (bind(bus_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
-      close(bus_fd);
-      bus_fd = -1;
+    if (bind(h->bus_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
+      close(h->bus_fd);
+      h->bus_fd = -1;
     }
   }
 
+  h->last_status = 0;
+  return h;
+}
+
+int player_timer_fd(void *handle) { return handle ? ((player_handle *)handle)->tfd : -1; }
+int player_bus_fd(void *handle) { return handle ? ((player_handle *)handle)->bus_fd : -1; }
+
+void player_command(void *handle, const char *line) {
+  player_handle *h = (player_handle *)handle;
+  if (!h || !line) return;
+
+  char buf[1200];
+  snprintf(buf, sizeof(buf), "%s", line);
+
+  char *p = buf;
+  char *nl;
+  while ((nl = strchr(p, '\n')) != nullptr) {
+    *nl = 0;
+    if (*p) handle_line(&h->pl, p);
+    p = nl + 1;
+  }
+  if (*p) handle_line(&h->pl, p);
+}
+
+void player_on_bus(void *handle) {
+  player_handle *h = (player_handle *)handle;
+  if (!h || h->bus_fd < 0) return;
+
+  char cmd[1200];
+  ssize_t n = recv(h->bus_fd, cmd, sizeof(cmd) - 1, 0);
+  if (n <= 0) return;
+  cmd[n] = 0;
+  player_command(h, cmd);
+}
+
+void player_step(void *handle) {
+  player_handle *h = (player_handle *)handle;
+  if (!h) return;
+  struct player &pl = h->pl;
+
+  if (pl.playing && !pl.paused) fill(&pl);
+
+  // Warm the next file again shortly before it is needed: the queue-time
+  // readahead can be stale by the end of a long track, and the open() at the
+  // prefetch point must not read cold pages while the stream is running.
+  if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt && !pl.next_warmed &&
+      pl.cur.duration_ms > 0) {
+    int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
+    if (pos + 8000 >= pl.cur.duration_ms) {
+      warm_file(pl.next_path);
+      pl.next_warmed = true;
+    }
+  }
+
+  // Gapless: start the next station three seconds before this one ends, keep
+  // its frames in their own ring, and swap when the current one is drained.
+  if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt) {
+    int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
+    if (pl.eof || (pl.cur.duration_ms > 0 && pos + 5000 >= pl.cur.duration_ms)) {
+      warm_file(pl.next_path);
+      if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
+    }
+  }
+
+  if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
+
+  if (pl.manual_pending && pl.manual_fade && next_ring_len(&pl) >= 8) {
+    int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667);
+    pl.manual_pending = false;
+    pl.fading = true;
+    pl.fade_total = fade_blocks > 0 ? fade_blocks : 1;
+    pl.fade_pos = 0;
+  }
+
+  if (!pl.fading && !pl.manual_fade && pl.playing && !pl.paused && pl.fade_ms > 0 && pl.has_next &&
+      pl.nxt.fmt) {
+    int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667);
+    int left = ring_len(&pl);
+    if (pl.eof && left > 0 && left <= fade_blocks && next_ring_len(&pl) >= left) {
+      pl.fading = true;
+      pl.fade_total = left;
+      pl.fade_pos = 0;
+    }
+  }
+
+  if (!pl.fading && !pl.manual_fade && pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0)
+    promote(&pl);
+
+  if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
+
+  uint64_t expirations = 0;
+  if (h->tfd >= 0 && read(h->tfd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+    if (pl.primed && pl.playing && !pl.paused) {
+      for (uint64_t i = 0; i < expirations && i < 4; i++) tick(&pl);
+    }
+  }
+
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  int64_t ms = now.tv_sec * 1000LL + now.tv_nsec / 1000000;
+  if (ms - h->last_status >= 100) {
+    h->last_status = ms;
+    int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
+    printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\n", (long)pos,
+           (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
+
+    char status_line[160];
+    snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld %d", (long)pos,
+             (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns,
+             pl.paused ? 1 : 0);
+    padwave_status::send_line(h->status_fd, status_line);
+    if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
+  }
+}
+
+void player_destroy(void *handle) {
+  player_handle *h = (player_handle *)handle;
+  if (!h) return;
+
+  struct player &pl = h->pl;
+  close_file(&pl);
+  close_next(&pl);
+  if (h->bus_fd >= 0) {
+    close(h->bus_fd);
+    unlink(padwave_status::kPlayerPath);
+  }
+  if (pl.hidraw >= 0) close(pl.hidraw);
+  if (pl.enc) opus_encoder_destroy(pl.enc);
+  if (pl.pkt) av_packet_free(&pl.pkt);
+  if (pl.frame) av_frame_free(&pl.frame);
+  if (h->tfd >= 0) close(h->tfd);
+  if (h->status_fd >= 0) close(h->status_fd);
+  free(h);
+}
+
+int native_main(int argc, char **argv) {
+  signal(SIGINT, on_signal);
+  signal(SIGTERM, on_signal);
+
+  void *h = player_create(argc > 1 ? argv[1] : nullptr,
+                          argc > 2 && strcmp(argv[2], "speaker") == 0);
+  if (!h) return 1;
+
+  int tfd = player_timer_fd(h);
+  int bfd = player_bus_fd(h);
   char line[1200];
   int line_len = 0;
 
   while (running) {
-    int timeout = (pl.playing && !pl.paused && ring_len(&pl) < RING_HIGH) ? 1 : 20;
     struct pollfd fds[3];
-    fds[0].fd = in_fd;
+    fds[0].fd = STDIN_FILENO;
     fds[0].events = POLLIN;
     fds[0].revents = 0;
     fds[1].fd = tfd;
     fds[1].events = POLLIN;
     fds[1].revents = 0;
-    fds[2].fd = bus_fd;
+    fds[2].fd = bfd;
     fds[2].events = POLLIN;
     fds[2].revents = 0;
-    int ready = poll(fds, 3, timeout);
+    int ready = poll(fds, 3, 20);
     if (ready < 0 && errno != EINTR) break;
 
     if (fds[0].revents & POLLIN) {
       char buf[512];
-      ssize_t n = read(in_fd, buf, sizeof(buf));
+      ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
       if (n <= 0) break;
       for (ssize_t i = 0; i < n; i++) {
         if (buf[i] == '\n') {
           line[line_len] = 0;
-          handle_line(&pl, line);
+          player_command(h, line);
           line_len = 0;
         } else if (line_len < (int)sizeof(line) - 1) {
           line[line_len++] = buf[i];
         }
       }
     }
-
-    if (fds[2].revents & POLLIN) {
-      char cmd[1200];
-      ssize_t n = recv(bus_fd, cmd, sizeof(cmd) - 1, 0);
-      if (n > 0) {
-        cmd[n] = 0;
-        char *nl = strchr(cmd, '\n');
-        if (nl) *nl = 0;
-        handle_line(&pl, cmd);
-      }
-    }
-
-    if (pl.playing && !pl.paused) fill(&pl);
-
-    // Warm the next file again shortly before it is needed: the queue-time
-    // readahead can be stale by the end of a long track, and the open() at the
-    // prefetch point must not read cold pages while the stream is running.
-    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt && !pl.next_warmed &&
-        pl.cur.duration_ms > 0) {
-      int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
-      if (pos + 8000 >= pl.cur.duration_ms) {
-        warm_file(pl.next_path);
-        pl.next_warmed = true;
-      }
-    }
-
-    // Gapless: start the next station three seconds before this one ends, keep
-    // its frames in their own ring, and swap when the current one is drained.
-    // Opening here blocks the loop for a few tens of milliseconds (libav reads
-    // from disk); it lands before the junction, never on it.
-    if (pl.playing && !pl.paused && pl.has_next && !pl.nxt.fmt) {
-      int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
-      if (pl.eof || (pl.cur.duration_ms > 0 && pos + 5000 >= pl.cur.duration_ms)) {
-        warm_file(pl.next_path); /* last call before the blocking open */
-        if (!file_open(&pl.nxt, pl.next_path)) pl.has_next = false;
-      }
-    }
-
-    if (pl.playing && !pl.paused && pl.nxt.fmt) fill_next(&pl);
-
-    if (pl.manual_pending && pl.manual_fade && next_ring_len(&pl) >= 8) {
-      int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667);
-      pl.manual_pending = false;
-      pl.fading = true;
-      pl.fade_total = fade_blocks > 0 ? fade_blocks : 1;
-      pl.fade_pos = 0;
-    }
-
-    // Crossfade the last fade_ms of the current station into the next one, once
-    // the current end is in sight and the prefetched ring can cover it.
-    if (!pl.fading && !pl.manual_fade && pl.playing && !pl.paused && pl.fade_ms > 0 && pl.has_next &&
-        pl.nxt.fmt) {
-      int fade_blocks = (int)((long)pl.fade_ms * 1000 / 10667); /* 10.667 ms blocks */
-      int left = ring_len(&pl);
-      if (pl.eof && left > 0 && left <= fade_blocks && next_ring_len(&pl) >= left) {
-        pl.fading = true;
-        pl.fade_total = left;
-        pl.fade_pos = 0;
-      }
-    }
-
-    if (!pl.fading && !pl.manual_fade && pl.eof && ring_len(&pl) == 0 && next_ring_len(&pl) > 0)
-      promote(&pl);
-
-    if (!pl.primed && ring_len(&pl) >= RING_PRIME) pl.primed = true;
-
-    if (fds[1].revents & POLLIN) {
-      uint64_t expirations = 0;
-      if (read(tfd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
-        /* A late loop may have missed a tick or two; send at most a few in a
-         * row so a stall cannot turn into a burst of a hundred packets. */
-        if (pl.primed && pl.playing && !pl.paused) {
-          for (uint64_t i = 0; i < expirations && i < 4; i++) tick(&pl);
-        }
-      }
-    }
-
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    int64_t ms = now.tv_sec * 1000LL + now.tv_nsec / 1000000;
-    if (ms - last_status >= 100) {
-      last_status = ms;
-      int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
-      printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\n", (long)pos,
-             (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
-
-      char status_line[160];
-      snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld %d", (long)pos,
-               (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns,
-               pl.paused ? 1 : 0);
-      padwave_status::send_line(status_fd, status_line);
-      if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
-      fflush(stdout);
-    }
+    if (bfd >= 0 && (fds[2].revents & POLLIN)) player_on_bus(h);
+    if (fds[1].revents & POLLIN) player_step(h);
   }
 
-  close_file(&pl);
-  close_next(&pl);
-  if (bus_fd >= 0) {
-    close(bus_fd);
-    unlink(padwave_status::kPlayerPath);
-  }
-  if (pl.hidraw >= 0) close(pl.hidraw);
-  opus_encoder_destroy(pl.enc);
-  av_packet_free(&pl.pkt);
-  av_frame_free(&pl.frame);
-  close(tfd);
+  player_destroy(h);
   return 0;
-}
-
-int native_main(int argc, char **argv) {
-  signal(SIGINT, on_signal);
-  signal(SIGTERM, on_signal);
-  return native_run(STDIN_FILENO, STDOUT_FILENO, argc > 1 ? argv[1] : nullptr,
-                    argc > 2 && strcmp(argv[2], "speaker") == 0);
 }
