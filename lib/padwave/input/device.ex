@@ -1,16 +1,14 @@
 defmodule Padwave.Input.Device do
   @moduledoc """
-  Finds the DualSense's `hidraw` node, reads input reports from it, and keeps
-  re-scanning so that a controller that is switched off and back on is picked
-  up again without the service restarting.
+  Finds the DualSense's `hidraw` node, runs `padwave input <node>`, and consumes
+  its line protocol: one `frame` line per state report and `mic <hex>` for the
+  Opus frames. The parsing and CRC live in C++ (`padwave_schemas.hh`); this
+  process only watches for the controller appearing and turning those lines
+  into `Frame` values for the mapper and the panel.
 
-  The node is opened read-only, by the reader process itself (Erlang's raw file
-  handles belong to the process that opened them). The reader is killed when
-  the controller goes away, which closes the descriptor.
-
-  LinuxAudio4Dualsense5 owns the write side (speaker audio) and the kernel's
-  `playstation` driver owns rumble/lightbar, so a read-only reader is the
-  friendly neighbour here.
+  The node is opened read-only by the CLI. The reader keeps re-scanning so that
+  a controller that is switched off and back on is picked up without a service
+  restart.
   """
 
   use GenServer
@@ -45,9 +43,7 @@ defmodule Padwave.Input.Device do
      %{
        info: nil,
        pending: nil,
-       reader: nil,
-       ref: nil,
-       spec: :input,
+       port: nil,
        dropped: 0,
        rate: 0,
        frames: 0,
@@ -78,7 +74,7 @@ defmodule Padwave.Input.Device do
         {:noreply, shutdown(state, :not_found)}
 
       %{node: node} = info ->
-        if state.info && state.info.node == node do
+        if state.info && state.info.node == node && state.port do
           {:noreply, %{state | info: info}}
         else
           {:noreply, state |> shutdown(:switched) |> start_reader(info)}
@@ -86,45 +82,32 @@ defmodule Padwave.Input.Device do
     end
   end
 
-  def handle_info({:hid_opened, pid}, %{reader: pid, pending: info} = state) when info != nil do
+  def handle_info({port, {:data, {:eol, "ready" <> _}}}, %{port: port, pending: info} = state)
+      when info != nil do
     Logger.info("[controller] #{info.node} is a #{info.name} (#{info.mac}), reading")
     Bus.broadcast({:device, :up, info})
     {:noreply, %{state | info: info, pending: nil}}
   end
 
-  def handle_info({:hid_opened, _pid}, state), do: {:noreply, state}
-
-  def handle_info({:hid_open_failed, reason}, state) do
-    Logger.warning("[controller] cannot open hidraw: #{inspect(reason)}")
-    {:noreply, %{state | reader: nil, ref: nil, pending: nil, info: nil}}
-  end
-
-  def handle_info({:hid, bin}, state) do
-    case Frame.from_report(bin, state.spec || :input) do
-      {:ok, frame} ->
-        {:noreply, deliver(frame, state)}
-
-      {:error, :bad_crc} ->
-        {:noreply, %{state | dropped: state.dropped + 1}}
-
-      {:error, _reason} ->
-        {:noreply, state}
+  def handle_info({port, {:data, {:eol, "frame " <> _ = line}}}, %{port: port} = state) do
+    case Frame.from_line(line) do
+      nil -> {:noreply, state}
+      frame -> {:noreply, deliver(frame, state)}
     end
   end
 
-  def handle_info({:hid_odd, size}, state) do
-    Logger.warning("[controller] unexpected report size #{size}; expected one whole 0x31 report")
+  def handle_info({port, {:data, {:eol, "mic " <> hex}}}, %{port: port} = state) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, payload} -> Padwave.Mic.ingest(payload)
+      _ -> :ok
+    end
+
     {:noreply, state}
   end
 
-  def handle_info({:hid_closed, reason}, state) do
-    Logger.warning("[controller] hidraw read failed: #{inspect(reason)}")
-    {:noreply, shutdown(state, :read_failed)}
-  end
-
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %{ref: ref} = state) do
-    if state.info, do: Logger.warning("[controller] reader exited: #{inspect(reason)}")
-    {:noreply, shutdown(state, :reader_exit)}
+  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
+    Logger.warning("[controller] input decoder exited (#{status})")
+    {:noreply, shutdown(state, :input_exited)}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -132,88 +115,48 @@ defmodule Padwave.Input.Device do
   # -- internals -------------------------------------------------------------
 
   defp start_reader(state, info) do
-    parent = self()
-    {reader, ref} = spawn_monitor(fn -> reader_main(info.node, info.spec, parent) end)
-    # Mic frames are shorter than the state report (and would be truncated by
-    # its fixed-size read), so they get their own fd and their own buffer.
-    spawn_link(fn -> mic_reader_main(info.node) end)
-    %{state | reader: reader, ref: ref, pending: info, info: nil, spec: info.spec}
+    case find_binary() do
+      nil ->
+        Logger.warning("[controller] padwave binary not found; cannot read input")
+        state
+
+      path ->
+        port =
+          Port.open({:spawn_executable, path}, [
+            :binary,
+            :exit_status,
+            {:line, 4096},
+            {:args, ["input", info.node]}
+          ])
+
+        %{state | port: port, pending: info, info: nil}
+    end
   end
 
-  defp shutdown(%{info: nil, reader: nil} = state, _reason), do: state
+  defp find_binary do
+    System.find_executable("padwave") ||
+      case Path.expand("~/.local/bin/padwave") do
+        path -> if File.exists?(path), do: path, else: nil
+      end
+  end
+
+  defp shutdown(%{info: nil, port: nil} = state, _reason), do: state
 
   defp shutdown(state, reason) do
-    if state.reader, do: Process.exit(state.reader, :kill)
+    if state.port do
+      try do
+        Port.close(state.port)
+      catch
+        _, _ -> :ok
+      end
+    end
 
     if state.info do
       Logger.info("[controller] gone (#{reason})")
       Bus.broadcast({:device, :down, Map.put(state.info, :reason, reason)})
     end
 
-    %{state | info: nil, pending: nil, reader: nil, ref: nil}
-  end
-
-  defp reader_main(node, spec, parent) do
-    # hidraw delivers exactly one report per read(); asking for one report's
-    # worth of bytes keeps Erlang from concatenating several reports into one
-    # buffer (which is what happens if you ask for 512).
-    size = Padwave.Schema.DualSenseInput.spec(spec).size
-
-    case :file.open(node, [:read, :raw, :binary]) do
-      {:ok, fd} ->
-        send(parent, {:hid_opened, self()})
-        read_loop(fd, parent, size)
-
-      {:error, reason} ->
-        send(parent, {:hid_open_failed, reason})
-    end
-  end
-
-  defp read_loop(fd, parent, size) do
-    case :file.read(fd, size) do
-      {:ok, bin} when is_binary(bin) and byte_size(bin) == size ->
-        send(parent, {:hid, bin})
-        read_loop(fd, parent, size)
-
-      {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
-        send(parent, {:hid_odd, byte_size(bin)})
-        read_loop(fd, parent, size)
-
-      {:ok, _empty} ->
-        read_loop(fd, parent, size)
-
-      {:error, reason} ->
-        send(parent, {:hid_closed, reason})
-    end
-  rescue
-    error ->
-      send(parent, {:hid_closed, error})
-  end
-
-  defp mic_reader_main(node) do
-    case :file.open(node, [:read, :raw, :binary]) do
-      {:ok, fd} -> mic_loop(fd)
-      {:error, _reason} -> :ok
-    end
-  end
-
-  defp mic_loop(fd) do
-    case :file.read(fd, 256) do
-      {:ok, bin} when is_binary(bin) and byte_size(bin) > 0 ->
-        if Padwave.Schema.DualSenseMic.frame?(bin) do
-          Padwave.Mic.ingest(Padwave.Schema.DualSenseMic.payload(bin))
-        end
-
-        mic_loop(fd)
-
-      {:ok, _empty} ->
-        mic_loop(fd)
-
-      {:error, _reason} ->
-        :ok
-    end
-  rescue
-    _error -> :ok
+    %{state | info: nil, pending: nil, port: nil}
   end
 
   defp deliver(frame, state) do

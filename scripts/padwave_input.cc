@@ -97,6 +97,8 @@ void print_frame(const padwave::InputBody &b) {
          (b.status1.get() & padwave::InputBody::Microphone) ? 1 : 0, (unsigned)b.temperature.get());
   printf(" gx=%d gy=%d gz=%d ax=%d ay=%d az=%d", b.gyro_x.get(), b.gyro_y.get(), b.gyro_z.get(),
          b.accel_x.get(), b.accel_y.get(), b.accel_z.get());
+  printf(" tfl=%u tfr=%u", (unsigned)b.trigger_feedback_l.get(),
+         (unsigned)b.trigger_feedback_r.get());
   printf(" t1=%02x%02x%02x%02x t2=%02x%02x%02x%02x\n", (unsigned)b.touch1[0].get(),
          (unsigned)b.touch1[1].get(), (unsigned)b.touch1[2].get(), (unsigned)b.touch1[3].get(),
          (unsigned)b.touch2[0].get(), (unsigned)b.touch2[1].get(), (unsigned)b.touch2[2].get(),
@@ -181,6 +183,9 @@ int input_main(int argc, char **argv) {
     fprintf(stderr, "padwave input: no DualSense hidraw node\n");
     return 1;
   }
+
+  printf("ready\n");
+  fflush(stdout);
 
   for (;;) {
     ssize_t n = read(fd, buf, sizeof(buf));
