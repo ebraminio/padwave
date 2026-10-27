@@ -300,6 +300,8 @@ private:
   int player_timer_fd = -1;
   int input_fd = -1;
 
+  static constexpr int kDefaultVolume = 15;
+
   long pos_ms = 0;
   long dur_ms = 0;
   long sent = 0;
@@ -307,8 +309,9 @@ private:
   bool eof = false;
   bool playing = false;
   bool paused = false;
-  int volume = 70;
-  bool muted = false;
+  bool paused_by_volume = false;
+  int volume = kDefaultVolume;
+  int last_nonzero_volume = kDefaultVolume;
   long start_ms = 0;
 
   bool controller = false;
@@ -412,7 +415,7 @@ public:
     }
     this->playhead_saved_at = now_ms();
     this->last_activity_ms = this->playhead_saved_at;
-    setVolume(70);
+    setVolume(kDefaultVolume);
     return true;
   }
 
@@ -524,7 +527,7 @@ public:
     kv_add(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
     kv_add(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
     kv_add(buf, cap, &o, "radio.volume", "%d", this->volume);
-    kv_add(buf, cap, &o, "radio.muted", "%s", this->muted ? "true" : "false");
+    kv_add(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
     kv_add(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
     kv_add(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
     if (this->idle_warning || this->suspended)
@@ -940,6 +943,10 @@ private:
     if (!this->player) return;
     ::player_set_sink(this->player, playerStatusCb, playerTrackCb, this);
     this->player_timer_fd = ::player_timer_fd(this->player);
+    char line[32];
+    snprintf(line, sizeof(line), "volume %d\n", this->volume);
+    playerSend(line);
+    if (this->paused) playerSend("pause 1\n");
   }
 
   void inputStart() {
@@ -960,6 +967,9 @@ private:
     dualsense_mac(this->controller_mac, sizeof(this->controller_mac));
     ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
     this->input_fd = ::input_fd(this->input);
+    // A newly connected controller counts as a resume request: never leave it
+    // connected to a zero-volume paused session.
+    ensureAudibleVolume();
   }
 
   void inputStop() {
@@ -999,6 +1009,7 @@ private:
 
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
+    ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
     snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
@@ -1056,24 +1067,62 @@ private:
 
   void togglePause() {
     if (!this->playing) {
+      ensureAudibleVolume();
       if (this->current >= 0) play(this->current, this->pos_ms);
       return;
     }
-    this->paused = !this->paused;
-    if (!this->paused) this->paused_by_jack = false;
-    playerSend(this->paused ? "pause 1\n" : "pause 0\n");
-    this->playhead_dirty = true;
+    if (this->paused) {
+      ensureAudibleVolume();
+      if (this->paused) {
+        this->paused = false;
+        playerSend("pause 0\n");
+      }
+      this->paused_by_volume = false;
+      this->paused_by_jack = false;
+      this->playhead_dirty = true;
+    } else {
+      this->paused = true;
+      this->paused_by_volume = false;
+      playerSend("pause 1\n");
+      this->playhead_dirty = true;
+    }
+  }
+
+  void ensureAudibleVolume() {
+    if (this->volume == 0)
+      setVolume(this->last_nonzero_volume > 0 ? this->last_nonzero_volume : kDefaultVolume);
   }
 
   void setVolume(int v) {
     if (v < 0) v = 0;
     if (v > 100) v = 100;
+    if (v > 0) this->last_nonzero_volume = v;
     if (v != this->volume) fprintf(stderr, "padwave: volume %d%s\n", v, v == 0 ? " (muted)" : "");
     this->volume = v;
-    this->muted = v == 0;
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", v);
     playerSend(line);
+
+    if (v == 0) {
+      if (this->playing && !this->paused) {
+        this->paused = true;
+        this->paused_by_volume = true;
+        playerSend("pause 1\n");
+        this->playhead_dirty = true;
+      }
+    } else if (this->paused_by_volume && this->playing) {
+      this->paused = false;
+      this->paused_by_volume = false;
+      playerSend("pause 0\n");
+      this->playhead_dirty = true;
+    }
+  }
+
+  void toggleMute() {
+    if (this->volume == 0)
+      setVolume(this->last_nonzero_volume > 0 ? this->last_nonzero_volume : kDefaultVolume);
+    else
+      setVolume(0);
   }
 
   void seek(long ms) {
@@ -1198,7 +1247,7 @@ private:
     else if (strcmp(name, "play") == 0) {
       if (!this->playing || this->paused) togglePause();
     } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
-      setVolume(this->muted ? this->volume : 0);
+      toggleMute();
     } else if (strcmp(name, "volume") == 0) {
       setVolume(this->volume + value);
     } else if (strcmp(name, "seek") == 0) {
@@ -1217,6 +1266,7 @@ private:
     } else if (strcmp(name, "jack_plugged") == 0) {
       if (this->paused_by_jack) {
         this->paused_by_jack = false;
+        ensureAudibleVolume();
         if (this->paused) {
           this->paused = false;
           playerSend("pause 0\n");
@@ -1444,7 +1494,7 @@ private:
     else if (strcmp(action, "pause") == 0)
       togglePause();
     else if (strcmp(action, "mute") == 0)
-      setVolume(this->muted ? this->volume : 0);
+      toggleMute();
     else if (strcmp(action, "disconnect") == 0) {
       this->playing = false;
       this->paused = true;
