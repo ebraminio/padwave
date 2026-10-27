@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `2cda98a`
+- HEAD: latest `main`; the behavior described here landed through `f4de004`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -20,7 +20,8 @@
   delay, trigger effect values, `play_path`/`play_pos_ms`.
 - Recent work: server/lab text routes, App/Server class split, idle
   fade/suspend/wake, BlueZ power-off + hidraw reopen, playhead persistence,
-  jack pause, Opus mic level/monitor, volume-zero == pause.
+  jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
+  lightbar + charging player LEDs.
 
 ## Constraints
 
@@ -61,6 +62,8 @@
    firmware's capture indicator; the app only forces `power_save`/mic volume.
    A stable `MuteLed` claim can be added if needed.
 6. `/api/reload` is a deliberate no-op (`reloaded=0`); there are no modules.
+7. `hid.power_save` is still null; the app does not expose the last
+   `power_save_control` byte even though the mic path claims it.
 
 ## Verify
 
@@ -109,42 +112,30 @@ testing. A service restart should resume the saved track/position.
 - The panel can be driven headlessly with Chrome DevTools Protocol; use
   `--no-proxy-server` for the LAN URL.
 
-## LED / playback status system (reference for the port)
+## LED / playback status system
 
-The old design had **one HID writer** and a **state-coloured lightbar**:
+This is now implemented in `App` (`f4de004`). The player remains the one HID
+writer: `App` sends `fields ...` through `player_command`, the player merges the
+`OutputBody` into its persistent state and embeds it in every 0x36 audio report;
+with no audio the same `fields` line produces a 0x31 report.
 
-- `Output.Hid` owns the 0x31 field map, seq/tag/CRC and the persistent
-  `power_save` claim; every feature (lightbar, player LEDs, triggers, rumble,
-  mute) sends a `fields ...` line through it. The native player owns the same
-  `OutputBody` and embeds that snapshot in **every 0x36 audio report**, so the
-  LEDs/triggers/mute survive while audio flows; a 0x31 report is used when
-  there is no audio.
-- Playback state → lightbar (`Output.Lightbar` subscribes to the Bus):
-  playing `{0,140,255}` cyan; paused `{255,110,0}` amber; muted
-  `{120,60,255}` purple; sleep-timer warning red `{255,0,0}` pulsing every
-  600 ms at scale 255/60; suspended/off `{0,0,0}`. A custom colour overrides
-  until the next state change; device-down goes dark; device-up keeps the
-  custom colour and forces one repaint (`painted: nil`) because the kernel
-  startup animation resets the bar. Unchanged colours are not written
-  (volume events are frequent).
-- Charging (`Output.ChargingLeds`, fed by controller frames): `charging`/`full`
-  sweeps the five player LEDs between `0b01010` and `0b10101` every 3 s
-  (`charging_leds_ms`), and returns to the kernel's player-1 pattern
-  `0b00100` on unplug/device-down.
-- Fields/claims: `valid_flag1` bit 1 `power_save`, bit 2 `lightbar`, bit 3
-  `reset_lights`, bit 4 `player_leds`; `valid_flag2` bit 0 brightness, bit 1
-  colour fade / `lightbar_setup` (`0x02` = fade out); `power_save_control`
-  bits 4/6 mic/audio mute. The old `Report` field maps and the lab's
-  lightbar/player-LED/power-save/trigger/rumble rows used exactly these.
-- Status sources: `Player` (pos/dur/sent/underruns/playing/paused),
-  `Radio` (transport, volume/mute, current, idle_warning, suspended,
-  resume_pending), `Session` (phase, idle_seconds, warning_in, shutdown_in),
-  `Hid.stats` (writes/errors/recent/power_save/player_leds), `Lightbar.status`
-  and the controller frame. They were published on the Bus and in
-  `/api/status`/SSE; the panel's idle chip, warning bar and lab mirrored them.
-- Current C++ state: the player still has `OutputBody` and the `fields`
-  command, but the app does not drive the lightbar/player LEDs/charging/triggers
-  (`/api/output` returns 501, `led`/`hid` in `/api/status` are static). Port
-  the old `lightbar.ex`/`charging_leds.ex` as app methods, call
-  `player_command("fields ...")` and feed the charging state from the input
-  frame.
+- Lightbar state: playing cyan `{0,140,255}`, paused amber `{255,110,0}`,
+  muted purple `{120,60,255}`, idle warning red alternating 255/60 every
+  600 ms, suspended/off/device-down black. A lab custom colour overrides the
+  state until the next playback/session state change, survives device-down/up,
+  and device-up forces one repaint. Reset drops the custom colour and repaints
+  the state colour.
+- Player LEDs: `charging`/`full` sweeps `0b01010`/`0b10101` every 3 s; otherwise
+  the kernel player-1 pattern `0b00100`, or a lab manual mask while not
+  charging. Device-down returns to `0b00100`.
+- Only changed values are written. `serviceLeds()` runs from the 10 ms player
+  timer and the app tick; player start/reconnect/shutdown force a repaint
+  (`now_ms` pulse, charging transitions and state changes compare before send).
+- Status: `led.mode` (`off/playing/paused/muted/warning/custom`),
+  `led.red/green/blue`, `led.custom`, `led.painted`, and the real
+  `hid.player_leds` mask (the panel's five dots follow it).
+- Claims: `valid_flag1` `lightbar`/`player_leds` (and the player's persistent
+  `power_save` claim from the mic path); `valid_flag2` brightness/fade are
+  still one-shot lab commands. The app no longer merges `reset_lights` or
+  `color_fade` into the 0x36 state.
+- Physical LED appearance is not verified; status reflects what was written.

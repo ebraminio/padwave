@@ -130,6 +130,11 @@ pressing play/mute restores the last nonzero volume (15% by default), and a new
 controller connection never leaves a paused zero-volume session. The player's
 volume and pause state are applied on every player start.
 
+The lightbar follows playback: cyan playing, amber paused, purple muted,
+pulsing red for the idle warning, and black when suspended/off. A lab custom
+colour overrides it until the next state change. Charging/full sweeps the five
+player LEDs; otherwise the kernel player-1 pattern is used.
+
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
 confirmation of the lightbar, rumble, trigger and jack paths.
