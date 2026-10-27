@@ -17,6 +17,8 @@
 // Frame.charging/1 semantics (10% steps, nibble 0/1/2).
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdint.h>
 #include <math.h>
 #include <stdio.h>
@@ -30,6 +32,51 @@
 #include "padwave_status.hh"
 
 namespace {
+
+volatile sig_atomic_t g_running = 1;
+
+void on_signal(int) { g_running = 0; }
+
+/* Poll then read, like hidapi's hid_read_timeout: some kernels do not report a
+ * controller disconnect through a non-blocking read(), but poll() does with
+ * POLLERR/POLLHUP/POLLNVAL. STDIN is polled too: when the parent closes the
+ * port the CLI gets EOF there and exits instead of lingering with a stale
+ * hidraw fd. Returns >0 bytes, 0 for a timeout/EAGAIN, -1 to stop. */
+int read_report(int fd, uint8_t *buf, size_t len) {
+  struct pollfd p[2];
+  p[0].fd = fd;
+  p[0].events = POLLIN;
+  p[0].revents = 0;
+  p[1].fd = STDIN_FILENO;
+  p[1].events = POLLIN;
+  p[1].revents = 0;
+
+  int ret = poll(p, 2, 1000);
+  if (ret == 0) return 0;
+  if (ret < 0) {
+    if (errno == EINTR) return 0;
+    return -1;
+  }
+
+  if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
+    char discard;
+    ssize_t n = read(STDIN_FILENO, &discard, 1);
+    if (n <= 0) return -1; /* the parent is gone */
+  }
+
+  if (p[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+    errno = EIO;
+    return -1;
+  }
+  if (!(p[0].revents & POLLIN)) return 0;
+
+  ssize_t n = read(fd, buf, len);
+  if (n < 0) {
+    if (errno == EAGAIN || errno == EINPROGRESS) return 0;
+    return -1;
+  }
+  return (int)n;
+}
 
 const char *dpad_name(uint8_t value) {
   switch (value) {
@@ -445,10 +492,17 @@ int input_main(int argc, char **argv) {
   printf("ready\n");
   fflush(stdout);
 
-  for (;;) {
-    ssize_t n = read(fd, buf, sizeof(buf));
-    if (n <= 0) break;
-    handle_report(buf, (size_t)n);
+  signal(SIGINT, on_signal);
+  signal(SIGTERM, on_signal);
+
+  while (g_running) {
+    int n = read_report(fd, buf, sizeof(buf));
+    if (n < 0) {
+      printf("down\n");
+      fflush(stdout);
+      break;
+    }
+    if (n > 0) handle_report(buf, (size_t)n);
   }
   close(fd);
   return 0;

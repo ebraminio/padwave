@@ -101,6 +101,11 @@ defmodule Padwave.Input.Device do
     {:noreply, state}
   end
 
+  def handle_info({port, {:data, {:eol, "down" <> _}}}, %{port: port} = state) do
+    Logger.warning("[controller] input decoder reported a disconnect")
+    {:noreply, state}
+  end
+
   def handle_info({port, {:data, {:eol, "event " <> event}}}, %{port: port} = state) do
     case String.split(event, " ", trim: true) do
       ["activity"] -> Padwave.Bus.broadcast({:input, :activity})
