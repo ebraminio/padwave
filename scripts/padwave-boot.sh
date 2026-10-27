@@ -5,4 +5,4 @@ set -e
 
 cd "$(dirname "$0")/.." || exit 1
 export PADWAVE_STANDALONE=1
-exec "$HOME/.local/bin/padwave" serve 8787 8788 8890
+exec "$HOME/.local/bin/padwave" serve 8787
