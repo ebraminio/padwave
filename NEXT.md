@@ -68,6 +68,10 @@
 ## Verify
 
 ```sh
+# from this directory: sync + build + install + restart on the Pi
+PADWAVE_HOST=ebrahim@192.168.1.175 ./deploy.sh
+
+# or manually
 rsync -az --delete --exclude '.git' --exclude 'padwave' \
   --exclude 'padwave_ui.hh' --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
 ssh ebrahim@192.168.1.175 'cd ~/padwave && ./build.sh && ./install.sh'

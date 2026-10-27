@@ -93,6 +93,27 @@ It builds, installs `~/.local/bin/padwave`, installs the systemd user unit and
 restarts it. The panel is on port 8787, LAN-reachable, no auth (keep it on a
 trusted network).
 
+## Deploy
+
+From the Mac, sync the source tree (not the Mac binary) and rebuild/install on
+the Pi:
+
+```sh
+PADWAVE_HOST=ebrahim@192.168.1.175 ./deploy.sh
+# override the remote directory with PADWAVE_DIR=... if needed
+```
+
+The manual equivalent:
+
+```sh
+rsync -az --delete --exclude '.git' --exclude 'padwave' \
+  --exclude 'padwave_ui.hh' --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
+ssh ebrahim@192.168.1.175 'cd ~/padwave && ./build.sh && ./install.sh'
+```
+
+`install.sh` installs `~/.local/bin/padwave` and restarts the user unit. To
+deploy an older commit, check it out locally and run the same commands.
+
 ## HTTP
 
 Every route speaks `key=value` lines: dotted keys nest, and
