@@ -29,24 +29,26 @@
 
 #if defined(__has_embed)
 #if __has_embed("index.html")
+namespace padwave_ui {
 static const unsigned char kIndexHtml[] = {
 #embed "index.html"
 };
 static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
+} // namespace padwave_ui
 #else
 #include "padwave_ui.hh"
 #endif
 #else
 #include "padwave_ui.hh"
 #endif
-
-inline constexpr int kMaxConns = 64;
-inline constexpr size_t kRequestMax = 8192;
-inline constexpr size_t kBufferMax = 65536;
-inline constexpr int kMaxFds = 1024;
 
 struct Server {
 private:
+  static constexpr int kMaxConns = 64;
+  static constexpr size_t kRequestMax = 8192;
+  static constexpr size_t kBufferMax = 65536;
+  static constexpr int kMaxFds = 1024;
+
   struct Conn {
     int fd = -1; // client
     char in[kRequestMax];
@@ -78,17 +80,17 @@ public:
     int n = snprintf(nullptr, 0,
                      "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                      "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-                     kIndexHtmlSize);
-    if ((size_t)n + kIndexHtmlSize >= sizeof(index_response)) {
+                     padwave_ui::kIndexHtmlSize);
+    if ((size_t)n + padwave_ui::kIndexHtmlSize >= sizeof(index_response)) {
       fprintf(stderr, "padwave serve: UI too large for the static buffer\n");
       return 1;
     }
     snprintf(index_response, sizeof(index_response),
              "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
              "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-             kIndexHtmlSize);
-    memcpy(index_response + n, kIndexHtml, kIndexHtmlSize);
-    index_len = (size_t)n + kIndexHtmlSize;
+             padwave_ui::kIndexHtmlSize);
+    memcpy(index_response + n, padwave_ui::kIndexHtml, padwave_ui::kIndexHtmlSize);
+    index_len = (size_t)n + padwave_ui::kIndexHtmlSize;
 
     int listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (listen_fd < 0) {
@@ -155,7 +157,8 @@ public:
       for (int i = 0; i < count; i++) addFd(fds[i], EPOLLIN, nullptr);
     }
 
-    fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI)\n", port, kIndexHtmlSize);
+    fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI)\n", port,
+            padwave_ui::kIndexHtmlSize);
 
     struct epoll_event events[64];
     bool running = true;
@@ -240,6 +243,31 @@ public:
   }
 
 private:
+  static int bindingsText(char *buf, size_t cap) {
+    static const char text[] = "bindings.circle=play\n"
+                               "bindings.create=previous\n"
+                               "bindings.fn1=toggle_pause\n"
+                               "bindings.fn2=toggle_mute\n"
+                               "bindings.l1=previous\n"
+                               "bindings.l3=next_random\n"
+                               "bindings.left_paddle=previous\n"
+                               "bindings.mute=toggle_mute\n"
+                               "bindings.options=next_random\n"
+                               "bindings.r1=next_random\n"
+                               "bindings.r3=previous\n"
+                               "bindings.right_paddle=next_random\n"
+                               "bindings.square=shuffle_game\n"
+                               "bindings.touchpad=toggle_mute\n"
+                               "bindings.triangle=toggle_pause\n";
+    size_t n = strlen(text);
+    if (n >= cap) n = cap ? cap - 1 : 0;
+    if (cap) {
+      memcpy(buf, text, n);
+      buf[n] = 0;
+    }
+    return (int)n;
+  }
+
   static int64_t monotonicMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -378,7 +406,7 @@ private:
 
     if (standalone && strcmp(path, "/api/schema") == 0) {
       char body[1024];
-      int len = bindings_text(body, sizeof(body));
+      int len = bindingsText(body, sizeof(body));
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
                                       (size_t)len);
@@ -423,18 +451,8 @@ private:
     }
 
     if (standalone && strcmp(path, "/api/debug/trigger") == 0) {
-      char side[16] = "right";
-      char tmp[16];
-      if (kv_get(c->in + head_len, "side", tmp, sizeof(tmp)))
-        snprintf(side, sizeof(side), "%s", tmp);
-      long ms = kv_number(c->in + head_len, "ms", 700);
-      char request[192];
-      snprintf(request, sizeof(request),
-               "kind=trigger\nside=%s\neffect=vibration\nposition=2\namplitude=6\n"
-               "frequency=25\nms=%ld",
-               side, ms);
       char result[256];
-      int len = app->output(request, result, sizeof(result));
+      int len = app->debugTrigger(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
                                       (size_t)len);

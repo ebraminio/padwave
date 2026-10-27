@@ -14,10 +14,12 @@ python3 - > padwave_ui.hh <<'PY'
 data = open("index.html", "rb").read()
 print("#pragma once")
 print("#include <stddef.h>")
+print("namespace padwave_ui {")
 print("static const unsigned char kIndexHtml[] = {")
 print(",".join(str(b) for b in data))
 print("};")
 print("static const size_t kIndexHtmlSize = sizeof(kIndexHtml);")
+print("} // namespace padwave_ui")
 PY
 
 echo "==> wire test"

@@ -32,41 +32,6 @@ static inline int find_dualsense();
 
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
 // the kernel both spell it lower-case with colons.
-static inline bool dualsense_mac(char *out, size_t cap) {
-  for (int i = 0; i < 16; i++) {
-    char path[128];
-    snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
-    FILE *f = fopen(path, "r");
-    if (!f) continue;
-
-    bool dualsense = false;
-    char uniq[64] = "";
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-      if (strstr(line, "HID_NAME=") && strstr(line, "DualSense")) dualsense = true;
-      if (strncmp(line, "HID_UNIQ=", 9) == 0) {
-        snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
-        char *nl = strchr(uniq, '\n');
-        if (nl) *nl = 0;
-      }
-    }
-    fclose(f);
-
-    if (!dualsense || strlen(uniq) != 17) continue;
-    bool valid = true;
-    for (const char *p = uniq; *p; p++)
-      if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F') ||
-            *p == ':')) {
-        valid = false;
-        break;
-      }
-    if (!valid) continue;
-    snprintf(out, cap, "%s", uniq);
-    return true;
-  }
-  out[0] = 0;
-  return false;
-}
 
 // Entry points and in-process engines. The service calls the player/input
 // engines directly from its epoll loop; the *_main wrappers keep the debug
@@ -130,166 +95,172 @@ int input_fd(void *handle);
 int input_feed(void *handle, const uint8_t *buf, size_t len);
 void input_destroy(void *handle);
 
-// ---------------------------------------------------------------------------
-// Library and tunables
-// ---------------------------------------------------------------------------
-
-constexpr int kMaxStations = 4096;
-constexpr int kMaxPath = 1024;
-constexpr int kMaxTitle = 160;
-constexpr int kMaxGame = 96;
-constexpr int kMaxHistory = 48;
-
-struct station {
-  char path[kMaxPath];
-  char title[kMaxTitle];
-  char game[kMaxGame];
-  char ext[8];
-  char id[17];
-};
-
-// ---------------------------------------------------------------------------
-// Small helpers (one TU, so internal linkage)
-// ---------------------------------------------------------------------------
-
-static inline long now_ms() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ts.tv_sec * 1000L + ts.tv_nsec / 1000000;
-}
-
-static inline void make_id(const char *path, char *out) {
-  uint64_t h = 1469598103934665603ULL;
-  for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
-    h ^= *p;
-    h *= 1099511628211ULL;
-  }
-  snprintf(out, 17, "%016llx", (unsigned long long)h);
-}
-
-static inline bool audio_ext(const char *name) {
-  const char *dot = strrchr(name, '.');
-  if (!dot) return false;
-  static const char *exts[] = {".flac", ".wav", ".mp3", ".ogg", ".opus", ".m4a", ".aac", ".wma"};
-  for (const char *e : exts)
-    if (strcasecmp(dot, e) == 0) return true;
-  return false;
-}
-
-static inline int cmp_station(const void *a, const void *b) {
-  const station *x = (const station *)a;
-  const station *y = (const station *)b;
-  int c = strcasecmp(x->game, y->game);
-  return c ? c : strcasecmp(x->title, y->title);
-}
-
-static inline void kv_add(char *buf, size_t cap, size_t *len, const char *key, const char *fmt,
-                          ...) {
-  size_t start = *len;
-  if (start + 2 > cap) return;
-  int n = snprintf(buf + start, cap - start, "%s=", key);
-  if (n <= 0 || (size_t)n >= cap - start) return;
-  *len = start + (size_t)n;
-
-  va_list ap;
-  va_start(ap, fmt);
-  int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
-  va_end(ap);
-  if (m < 0 || (size_t)m + 2 > cap - *len) {
-    *len = start;
-    buf[start] = 0;
-    return;
-  }
-  *len += (size_t)m;
-
-  buf[(*len)++] = '\n';
-  buf[*len] = 0;
-}
-
-static inline void kv_text(char *buf, size_t cap, size_t *len, const char *key, const char *value) {
-  size_t start = *len;
-  if (start + 2 > cap) return;
-  int n = snprintf(buf + start, cap - start, "%s=", key);
-  if (n <= 0 || (size_t)n >= cap - start) return;
-  *len = start + (size_t)n;
-
-  for (const char *p = value; p && *p; p++) {
-    if (*len + 2 >= cap) break;
-    buf[(*len)++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
-  }
-  buf[(*len)++] = '\n';
-  buf[*len] = 0;
-}
-
-static inline bool kv_get(const char *body, const char *key, char *out, size_t cap) {
-  if (!body || cap == 0) return false;
-  size_t klen = strlen(key);
-  for (const char *p = body; *p;) {
-    const char *eol = strchr(p, '\n');
-    size_t n = eol ? (size_t)(eol - p) : strlen(p);
-    if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
-      const char *v = p + klen + 1;
-      size_t vn = n - klen - 1;
-      if (vn > 0 && v[vn - 1] == '\r') vn--;
-      if (vn >= cap) vn = cap - 1;
-      memcpy(out, v, vn);
-      out[vn] = 0;
-      return true;
-    }
-    if (!eol) break;
-    p = eol + 1;
-  }
-  return false;
-}
-
-static inline long kv_number(const char *body, const char *key, long fallback) {
-  char tmp[32];
-  if (!kv_get(body, key, tmp, sizeof(tmp))) return fallback;
-  return atol(tmp);
-}
-
-static inline bool config_path(char *buf, size_t cap) {
-  const char *home = getenv("HOME");
-  if (!home || !*home) return false;
-  snprintf(buf, cap, "%s/.config/padwave/config", home);
-  return true;
-}
-
-static inline void tsv_field(char *buf, size_t cap, size_t *o, const char *value, char sep) {
-  for (const char *p = value; p && *p && *o + 2 < cap; p++)
-    buf[(*o)++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;
-  if (*o + 1 < cap) buf[(*o)++] = sep;
-  buf[*o] = 0;
-}
-
-static inline int bindings_text(char *buf, size_t cap) {
-  size_t o = 0;
-  if (cap) buf[0] = 0;
-  kv_text(buf, cap, &o, "bindings.circle", "play");
-  kv_text(buf, cap, &o, "bindings.create", "previous");
-  kv_text(buf, cap, &o, "bindings.fn1", "toggle_pause");
-  kv_text(buf, cap, &o, "bindings.fn2", "toggle_mute");
-  kv_text(buf, cap, &o, "bindings.l1", "previous");
-  kv_text(buf, cap, &o, "bindings.l3", "next_random");
-  kv_text(buf, cap, &o, "bindings.left_paddle", "previous");
-  kv_text(buf, cap, &o, "bindings.mute", "toggle_mute");
-  kv_text(buf, cap, &o, "bindings.options", "next_random");
-  kv_text(buf, cap, &o, "bindings.r1", "next_random");
-  kv_text(buf, cap, &o, "bindings.r3", "previous");
-  kv_text(buf, cap, &o, "bindings.right_paddle", "next_random");
-  kv_text(buf, cap, &o, "bindings.square", "shuffle_game");
-  kv_text(buf, cap, &o, "bindings.touchpad", "toggle_mute");
-  kv_text(buf, cap, &o, "bindings.triangle", "toggle_pause");
-  return (int)o;
-}
-
+// The app owns the library, config and text helpers.
 // ---------------------------------------------------------------------------
 // The app
 // ---------------------------------------------------------------------------
 
 struct App {
 private:
-  station stations[kMaxStations];
+  static bool dualsenseMac(char *out, size_t cap) {
+    for (int i = 0; i < 16; i++) {
+      char path[128];
+      snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
+      FILE *f = fopen(path, "r");
+      if (!f) continue;
+
+      bool dualsense = false;
+      char uniq[64] = "";
+      char line[256];
+      while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, "HID_NAME=") && strstr(line, "DualSense")) dualsense = true;
+        if (strncmp(line, "HID_UNIQ=", 9) == 0) {
+          snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
+          char *nl = strchr(uniq, '\n');
+          if (nl) *nl = 0;
+        }
+      }
+      fclose(f);
+
+      if (!dualsense || strlen(uniq) != 17) continue;
+      bool valid = true;
+      for (const char *p = uniq; *p; p++)
+        if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F') ||
+              *p == ':')) {
+          valid = false;
+          break;
+        }
+      if (!valid) continue;
+      snprintf(out, cap, "%s", uniq);
+      return true;
+    }
+    out[0] = 0;
+    return false;
+  }
+
+  static constexpr int kMaxStations = 4096;
+  static constexpr int kMaxPath = 1024;
+  static constexpr int kMaxTitle = 160;
+  static constexpr int kMaxGame = 96;
+  static constexpr int kMaxHistory = 48;
+
+  struct Station {
+    char path[kMaxPath];
+    char title[kMaxTitle];
+    char game[kMaxGame];
+    char ext[8];
+    char id[17];
+  };
+
+  static long nowMs() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000;
+  }
+
+  static void makeId(const char *path, char *out) {
+    uint64_t h = 1469598103934665603ULL;
+    for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+      h ^= *p;
+      h *= 1099511628211ULL;
+    }
+    snprintf(out, 17, "%016llx", (unsigned long long)h);
+  }
+
+  static bool audioExt(const char *name) {
+    const char *dot = strrchr(name, '.');
+    if (!dot) return false;
+    static const char *exts[] = {".flac", ".wav", ".mp3", ".ogg", ".opus", ".m4a", ".aac", ".wma"};
+    for (const char *e : exts)
+      if (strcasecmp(dot, e) == 0) return true;
+    return false;
+  }
+
+  static int compareStations(const void *a, const void *b) {
+    const Station *x = (const Station *)a;
+    const Station *y = (const Station *)b;
+    int c = strcasecmp(x->game, y->game);
+    return c ? c : strcasecmp(x->title, y->title);
+  }
+
+  static void kvAdd(char *buf, size_t cap, size_t *len, const char *key, const char *fmt, ...) {
+    size_t start = *len;
+    if (start + 2 > cap) return;
+    int n = snprintf(buf + start, cap - start, "%s=", key);
+    if (n <= 0 || (size_t)n >= cap - start) return;
+    *len = start + (size_t)n;
+
+    va_list ap;
+    va_start(ap, fmt);
+    int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
+    va_end(ap);
+    if (m < 0 || (size_t)m + 2 > cap - *len) {
+      *len = start;
+      buf[start] = 0;
+      return;
+    }
+    *len += (size_t)m;
+
+    buf[(*len)++] = '\n';
+    buf[*len] = 0;
+  }
+
+  static void kvText(char *buf, size_t cap, size_t *len, const char *key, const char *value) {
+    size_t start = *len;
+    if (start + 2 > cap) return;
+    int n = snprintf(buf + start, cap - start, "%s=", key);
+    if (n <= 0 || (size_t)n >= cap - start) return;
+    *len = start + (size_t)n;
+
+    for (const char *p = value; p && *p; p++) {
+      if (*len + 2 >= cap) break;
+      buf[(*len)++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+    }
+    buf[(*len)++] = '\n';
+    buf[*len] = 0;
+  }
+
+  static bool kvGet(const char *body, const char *key, char *out, size_t cap) {
+    if (!body || cap == 0) return false;
+    size_t klen = strlen(key);
+    for (const char *p = body; *p;) {
+      const char *eol = strchr(p, '\n');
+      size_t n = eol ? (size_t)(eol - p) : strlen(p);
+      if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
+        const char *v = p + klen + 1;
+        size_t vn = n - klen - 1;
+        if (vn > 0 && v[vn - 1] == '\r') vn--;
+        if (vn >= cap) vn = cap - 1;
+        memcpy(out, v, vn);
+        out[vn] = 0;
+        return true;
+      }
+      if (!eol) break;
+      p = eol + 1;
+    }
+    return false;
+  }
+
+  static long kvNumber(const char *body, const char *key, long fallback) {
+    char tmp[32];
+    if (!kvGet(body, key, tmp, sizeof(tmp))) return fallback;
+    return atol(tmp);
+  }
+
+  static bool configPath(char *buf, size_t cap) {
+    const char *home = getenv("HOME");
+    if (!home || !*home) return false;
+    snprintf(buf, cap, "%s/.config/padwave/config", home);
+    return true;
+  }
+
+  static void tsvField(char *buf, size_t cap, size_t *o, const char *value, char sep) {
+    for (const char *p = value; p && *p && *o + 2 < cap; p++)
+      buf[(*o)++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;
+    if (*o + 1 < cap) buf[(*o)++] = sep;
+    buf[*o] = 0;
+  }
+  Station stations[kMaxStations];
   int count = 0;
   int current = -1;
   int history[kMaxHistory];
@@ -416,7 +387,7 @@ public:
       }
     }
 
-    qsort(this->stations, (size_t)this->count, sizeof(station), cmp_station);
+    qsort(this->stations, (size_t)this->count, sizeof(Station), compareStations);
     srand((unsigned)time(nullptr) ^ (unsigned)getpid());
     this->player = nullptr;
     this->input = nullptr;
@@ -430,7 +401,7 @@ public:
         this->resume_pending = true;
       }
     }
-    this->playhead_saved_at = now_ms();
+    this->playhead_saved_at = nowMs();
     this->last_activity_ms = this->playhead_saved_at;
     setVolume(kDefaultVolume);
     return true;
@@ -472,9 +443,9 @@ public:
         }
       }
     }
-    if (!this->input && (int)now_ms() >= this->reconnect_at) inputStart();
+    if (!this->input && (int)nowMs() >= this->reconnect_at) inputStart();
 
-    long now = now_ms();
+    long now = nowMs();
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
       this->playhead_dirty = false;
       this->playhead_saved_at = now;
@@ -506,7 +477,7 @@ public:
         input_feed(this->input, buf, (size_t)n);
       } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
         inputStop();
-        this->reconnect_at = (int)(now_ms() + 1500);
+        this->reconnect_at = (int)(nowMs() + 1500);
       }
     }
   }
@@ -514,9 +485,9 @@ public:
   int statusText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
-    const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
+    const Station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
 
-    long now = now_ms();
+    long now = nowMs();
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     if (!this->playing || (this->paused && !this->suspended)) idle_ms = 0;
     long timeout = this->idle_timeout_ms;
@@ -545,154 +516,154 @@ public:
       warning_in = left > 0 ? (left + 999) / 1000 : 0;
     }
 
-    kv_add(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
-    kv_add(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
-    kv_add(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
-    kv_add(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
-    kv_add(buf, cap, &o, "radio.volume", "%d", this->volume);
-    kv_add(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
-    kv_add(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
-    kv_add(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
+    kvAdd(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
+    kvAdd(buf, cap, &o, "radio.volume", "%d", this->volume);
+    kvAdd(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
+    kvAdd(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
     if (this->idle_warning || this->suspended)
-      kv_add(buf, cap, &o, "radio.applied_volume", "%d",
-             this->idle_fade_volume >= 0 ? this->idle_fade_volume : 0);
+      kvAdd(buf, cap, &o, "radio.applied_volume", "%d",
+            this->idle_fade_volume >= 0 ? this->idle_fade_volume : 0);
     else
-      kv_add(buf, cap, &o, "radio.applied_volume", "%d", this->volume);
+      kvAdd(buf, cap, &o, "radio.applied_volume", "%d", this->volume);
     if (s) {
-      kv_text(buf, cap, &o, "radio.current.id", s->id);
-      kv_text(buf, cap, &o, "radio.current.title", s->title);
-      kv_text(buf, cap, &o, "radio.current.game", s->game);
-      kv_text(buf, cap, &o, "radio.current.path", s->path);
-      kv_text(buf, cap, &o, "radio.current.ext", s->ext);
+      kvText(buf, cap, &o, "radio.current.id", s->id);
+      kvText(buf, cap, &o, "radio.current.title", s->title);
+      kvText(buf, cap, &o, "radio.current.game", s->game);
+      kvText(buf, cap, &o, "radio.current.path", s->path);
+      kvText(buf, cap, &o, "radio.current.ext", s->ext);
     }
 
-    kv_text(buf, cap, &o, "session.phase", phase);
-    kv_add(buf, cap, &o, "session.idle_seconds", "%ld", idle_ms / 1000);
-    kv_add(buf, cap, &o, "session.warning_in", "%ld", warning_in);
-    kv_add(buf, cap, &o, "session.shutdown_in", "%ld", shutdown_in);
-    kv_add(buf, cap, &o, "session.suspended", "%s", this->suspended ? "true" : "false");
-    kv_text(buf, cap, &o, "session.suspended_by",
-            this->paused_by_idle ? "idle" : (this->paused_by_jack ? "jack" : "null"));
-    kv_add(buf, cap, &o, "session.powered_off", "%s", this->powered_off ? "true" : "false");
+    kvText(buf, cap, &o, "session.phase", phase);
+    kvAdd(buf, cap, &o, "session.idle_seconds", "%ld", idle_ms / 1000);
+    kvAdd(buf, cap, &o, "session.warning_in", "%ld", warning_in);
+    kvAdd(buf, cap, &o, "session.shutdown_in", "%ld", shutdown_in);
+    kvAdd(buf, cap, &o, "session.suspended", "%s", this->suspended ? "true" : "false");
+    kvText(buf, cap, &o, "session.suspended_by",
+           this->paused_by_idle ? "idle" : (this->paused_by_jack ? "jack" : "null"));
+    kvAdd(buf, cap, &o, "session.powered_off", "%s", this->powered_off ? "true" : "false");
     long poweroff_in = 0;
     if (this->suspended && this->poweroff_at > now)
       poweroff_in = (this->poweroff_at - now + 999) / 1000;
-    kv_add(buf, cap, &o, "session.poweroff_in", "%ld", poweroff_in);
+    kvAdd(buf, cap, &o, "session.poweroff_in", "%ld", poweroff_in);
 
-    kv_add(buf, cap, &o, "audio.present", "%s", "false");
-    kv_text(buf, cap, &o, "audio.sink", "");
-    kv_text(buf, cap, &o, "audio.state", "null");
+    kvAdd(buf, cap, &o, "audio.present", "%s", "false");
+    kvText(buf, cap, &o, "audio.sink", "");
+    kvText(buf, cap, &o, "audio.state", "null");
 
-    kv_text(buf, cap, &o, "hid.power_save", "null");
-    kv_add(buf, cap, &o, "hid.player_leds", "%d",
-           this->led_last_player >= 0 ? this->led_last_player : 4);
+    kvText(buf, cap, &o, "hid.power_save", "null");
+    kvAdd(buf, cap, &o, "hid.player_leds", "%d",
+          this->led_last_player >= 0 ? this->led_last_player : 4);
     int state = ledState();
     const char *mode = state == 0 ? "off" : (this->led_custom_set ? "custom" : ledStateName(state));
-    kv_text(buf, cap, &o, "led.mode", mode);
-    kv_add(buf, cap, &o, "led.red", "%d", this->led_last_rgb[0] >= 0 ? this->led_last_rgb[0] : 0);
-    kv_add(buf, cap, &o, "led.green", "%d", this->led_last_rgb[1] >= 0 ? this->led_last_rgb[1] : 0);
-    kv_add(buf, cap, &o, "led.blue", "%d", this->led_last_rgb[2] >= 0 ? this->led_last_rgb[2] : 0);
-    kv_add(buf, cap, &o, "led.custom", "%s", this->led_custom_set ? "true" : "false");
-    kv_add(buf, cap, &o, "led.painted", "%s", this->led_painted ? "true" : "false");
+    kvText(buf, cap, &o, "led.mode", mode);
+    kvAdd(buf, cap, &o, "led.red", "%d", this->led_last_rgb[0] >= 0 ? this->led_last_rgb[0] : 0);
+    kvAdd(buf, cap, &o, "led.green", "%d", this->led_last_rgb[1] >= 0 ? this->led_last_rgb[1] : 0);
+    kvAdd(buf, cap, &o, "led.blue", "%d", this->led_last_rgb[2] >= 0 ? this->led_last_rgb[2] : 0);
+    kvAdd(buf, cap, &o, "led.custom", "%s", this->led_custom_set ? "true" : "false");
+    kvAdd(buf, cap, &o, "led.painted", "%s", this->led_painted ? "true" : "false");
 
     bool mic_active = this->mic_last_ms > 0 && now - this->mic_last_ms < 500;
-    kv_add(buf, cap, &o, "mic.level", "%d", this->mic_level);
-    kv_add(buf, cap, &o, "mic.active", "%s", mic_active ? "true" : "false");
-    kv_add(buf, cap, &o, "mic.frames", "%lu", this->mic_frames);
-    kv_add(buf, cap, &o, "mic.packets", "%lu", this->mic_packets);
-    kv_add(buf, cap, &o, "mic.samples", "%lu", this->mic_samples);
-    kv_add(buf, cap, &o, "mic.rms", "%d", this->mic_rms);
-    kv_add(buf, cap, &o, "mic.peak", "%d", this->mic_peak);
-    kv_add(buf, cap, &o, "mic.running", "%s", this->mic_decoder ? "true" : "false");
-    kv_add(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
+    kvAdd(buf, cap, &o, "mic.level", "%d", this->mic_level);
+    kvAdd(buf, cap, &o, "mic.active", "%s", mic_active ? "true" : "false");
+    kvAdd(buf, cap, &o, "mic.frames", "%lu", this->mic_frames);
+    kvAdd(buf, cap, &o, "mic.packets", "%lu", this->mic_packets);
+    kvAdd(buf, cap, &o, "mic.samples", "%lu", this->mic_samples);
+    kvAdd(buf, cap, &o, "mic.rms", "%d", this->mic_rms);
+    kvAdd(buf, cap, &o, "mic.peak", "%d", this->mic_peak);
+    kvAdd(buf, cap, &o, "mic.running", "%s", this->mic_decoder ? "true" : "false");
+    kvAdd(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
 
-    kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
-    kv_text(buf, cap, &o, "controller.bus", "bluetooth");
-    kv_text(buf, cap, &o, "controller.name", "DualSense");
-    kv_text(buf, cap, &o, "controller.mac", this->controller_mac);
-    kv_text(buf, cap, &o, "controller.model", "dualsense");
-    kv_text(buf, cap, &o, "controller.node", this->input_node);
+    kvAdd(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
+    kvText(buf, cap, &o, "controller.bus", "bluetooth");
+    kvText(buf, cap, &o, "controller.name", "DualSense");
+    kvText(buf, cap, &o, "controller.mac", this->controller_mac);
+    kvText(buf, cap, &o, "controller.model", "dualsense");
+    kvText(buf, cap, &o, "controller.node", this->input_node);
     if (this->battery >= 0)
-      kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
+      kvAdd(buf, cap, &o, "controller.battery", "%d", this->battery);
     else
-      kv_text(buf, cap, &o, "controller.battery", "null");
-    kv_text(buf, cap, &o, "controller.charging", this->charging);
-    kv_add(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
-    kv_text(buf, cap, &o, "controller.buttons", this->buttons);
-    kv_text(buf, cap, &o, "controller.dpad", this->dpad);
-    kv_add(buf, cap, &o, "controller.rate", "%d", this->rate);
-    kv_add(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
-    kv_add(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
-    kv_add(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
+      kvText(buf, cap, &o, "controller.battery", "null");
+    kvText(buf, cap, &o, "controller.charging", this->charging);
+    kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
+    kvText(buf, cap, &o, "controller.buttons", this->buttons);
+    kvText(buf, cap, &o, "controller.dpad", this->dpad);
+    kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
+    kvAdd(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
+    kvAdd(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
+    kvAdd(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
     for (int t = 0; t < 2; t++) {
       char key[48];
       snprintf(key, sizeof(key), "controller.touches.%d.active", t);
-      kv_add(buf, cap, &o, key, "%s", this->touch[t].active ? "true" : "false");
+      kvAdd(buf, cap, &o, key, "%s", this->touch[t].active ? "true" : "false");
       snprintf(key, sizeof(key), "controller.touches.%d.id", t);
-      kv_add(buf, cap, &o, key, "%u", this->touch[t].id);
+      kvAdd(buf, cap, &o, key, "%u", this->touch[t].id);
       snprintf(key, sizeof(key), "controller.touches.%d.x", t);
-      kv_add(buf, cap, &o, key, "%u", this->touch[t].x);
+      kvAdd(buf, cap, &o, key, "%u", this->touch[t].x);
       snprintf(key, sizeof(key), "controller.touches.%d.y", t);
-      kv_add(buf, cap, &o, key, "%u", this->touch[t].y);
+      kvAdd(buf, cap, &o, key, "%u", this->touch[t].y);
     }
-    kv_add(buf, cap, &o, "controller.l2", "%d", this->l2);
-    kv_add(buf, cap, &o, "controller.r2", "%d", this->r2);
-    kv_add(buf, cap, &o, "controller.lx", "%d", this->lx);
-    kv_add(buf, cap, &o, "controller.ly", "%d", this->ly);
-    kv_add(buf, cap, &o, "controller.rx", "%d", this->rx);
-    kv_add(buf, cap, &o, "controller.ry", "%d", this->ry);
-    kv_add(buf, cap, &o, "controller.temperature", "%d", this->temp);
-    kv_add(buf, cap, &o, "controller.accel", "%d,%d,%d", this->ax, this->ay, this->az);
-    kv_add(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
-    kv_text(buf, cap, &o, "controller.raw", this->raw);
-    kv_text(buf, cap, &o, "controller.last_action", this->last_action);
+    kvAdd(buf, cap, &o, "controller.l2", "%d", this->l2);
+    kvAdd(buf, cap, &o, "controller.r2", "%d", this->r2);
+    kvAdd(buf, cap, &o, "controller.lx", "%d", this->lx);
+    kvAdd(buf, cap, &o, "controller.ly", "%d", this->ly);
+    kvAdd(buf, cap, &o, "controller.rx", "%d", this->rx);
+    kvAdd(buf, cap, &o, "controller.ry", "%d", this->ry);
+    kvAdd(buf, cap, &o, "controller.temperature", "%d", this->temp);
+    kvAdd(buf, cap, &o, "controller.accel", "%d,%d,%d", this->ax, this->ay, this->az);
+    kvAdd(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
+    kvText(buf, cap, &o, "controller.raw", this->raw);
+    kvText(buf, cap, &o, "controller.last_action", this->last_action);
 
-    kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
-    kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
-    kv_add(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
-    kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
-    kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
-    kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
-    kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+    kvAdd(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kvAdd(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
+    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+    kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+    kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     return (int)o;
   }
 
   int frontText(char *buf, size_t cap, unsigned long requests, long uptime) {
     size_t o = 0;
     if (cap) buf[0] = 0;
-    kv_add(buf, cap, &o, "ok", "%s", "true");
-    kv_add(buf, cap, &o, "front", "%d", 1);
-    kv_add(buf, cap, &o, "uptime_s", "%ld", uptime);
-    kv_add(buf, cap, &o, "requests", "%lu", requests);
-    kv_add(buf, cap, &o, "controller", "%s", this->controller ? "true" : "false");
-    kv_add(buf, cap, &o, "player.valid", "%s", this->player ? "true" : "false");
-    kv_add(buf, cap, &o, "player.pos", "%ld", this->pos_ms);
-    kv_add(buf, cap, &o, "player.dur", "%ld", this->dur_ms);
-    kv_add(buf, cap, &o, "player.sent", "%ld", this->sent);
-    kv_add(buf, cap, &o, "player.underruns", "%ld", this->underruns);
-    kv_add(buf, cap, &o, "player.paused", "%s", this->paused ? "true" : "false");
-    kv_add(buf, cap, &o, "input.valid", "%s", this->input ? "true" : "false");
-    kv_add(buf, cap, &o, "input.lx", "%d", this->lx);
-    kv_add(buf, cap, &o, "input.ly", "%d", this->ly);
-    kv_add(buf, cap, &o, "input.rx", "%d", this->rx);
-    kv_add(buf, cap, &o, "input.ry", "%d", this->ry);
-    kv_add(buf, cap, &o, "input.l2", "%d", this->l2);
-    kv_add(buf, cap, &o, "input.r2", "%d", this->r2);
-    kv_add(buf, cap, &o, "input.battery", "%d", this->battery);
-    kv_add(buf, cap, &o, "input.jack", "%s", this->jack ? "true" : "false");
+    kvAdd(buf, cap, &o, "ok", "%s", "true");
+    kvAdd(buf, cap, &o, "front", "%d", 1);
+    kvAdd(buf, cap, &o, "uptime_s", "%ld", uptime);
+    kvAdd(buf, cap, &o, "requests", "%lu", requests);
+    kvAdd(buf, cap, &o, "controller", "%s", this->controller ? "true" : "false");
+    kvAdd(buf, cap, &o, "player.valid", "%s", this->player ? "true" : "false");
+    kvAdd(buf, cap, &o, "player.pos", "%ld", this->pos_ms);
+    kvAdd(buf, cap, &o, "player.dur", "%ld", this->dur_ms);
+    kvAdd(buf, cap, &o, "player.sent", "%ld", this->sent);
+    kvAdd(buf, cap, &o, "player.underruns", "%ld", this->underruns);
+    kvAdd(buf, cap, &o, "player.paused", "%s", this->paused ? "true" : "false");
+    kvAdd(buf, cap, &o, "input.valid", "%s", this->input ? "true" : "false");
+    kvAdd(buf, cap, &o, "input.lx", "%d", this->lx);
+    kvAdd(buf, cap, &o, "input.ly", "%d", this->ly);
+    kvAdd(buf, cap, &o, "input.rx", "%d", this->rx);
+    kvAdd(buf, cap, &o, "input.ry", "%d", this->ry);
+    kvAdd(buf, cap, &o, "input.l2", "%d", this->l2);
+    kvAdd(buf, cap, &o, "input.r2", "%d", this->r2);
+    kvAdd(buf, cap, &o, "input.battery", "%d", this->battery);
+    kvAdd(buf, cap, &o, "input.jack", "%s", this->jack ? "true" : "false");
     return (int)o;
   }
 
   int configText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
-    kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
-    kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
-    kv_add(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
-    kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
-    kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
-    kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
-    kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+    kvAdd(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kvAdd(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
+    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+    kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+    kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     return (int)o;
   }
 
@@ -714,31 +685,31 @@ public:
     noteActivity();
     char value[64];
 
-    if (kv_get(body, "idle_timeout_ms", value, sizeof(value))) {
+    if (kvGet(body, "idle_timeout_ms", value, sizeof(value))) {
       long v = atol(value);
       this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
     }
-    if (kv_get(body, "idle_warn_grace_ms", value, sizeof(value))) {
+    if (kvGet(body, "idle_warn_grace_ms", value, sizeof(value))) {
       long v = atol(value);
       this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
     }
-    if (kv_get(body, "poweroff_when_idle_ms", value, sizeof(value))) {
+    if (kvGet(body, "poweroff_when_idle_ms", value, sizeof(value))) {
       long v = atol(value);
       this->poweroff_when_idle_ms = (int)(v < 0 ? 0 : (v > 86400000 ? 86400000 : v));
     }
-    if (kv_get(body, "trigger_effect_amplitude", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_amplitude", value, sizeof(value))) {
       int v = atoi(value);
       this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
     }
-    if (kv_get(body, "trigger_effect_position", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_position", value, sizeof(value))) {
       int v = atoi(value);
       this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
     }
-    if (kv_get(body, "trigger_effect_frequency", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_frequency", value, sizeof(value))) {
       int v = atoi(value);
       this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
     }
-    if (kv_get(body, "trigger_effects", value, sizeof(value)))
+    if (kvGet(body, "trigger_effects", value, sizeof(value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
 
     configSave();
@@ -748,19 +719,19 @@ public:
     size_t o = 0;
     if (cap) buf[0] = 0;
     for (int i = 0; i < this->count; i++) {
-      const station *s = &this->stations[i];
-      tsv_field(buf, cap, &o, s->id, '\t');
-      tsv_field(buf, cap, &o, s->title, '\t');
-      tsv_field(buf, cap, &o, s->game, '\t');
-      tsv_field(buf, cap, &o, s->path, '\t');
-      tsv_field(buf, cap, &o, s->ext, '\n');
+      const Station *s = &this->stations[i];
+      tsvField(buf, cap, &o, s->id, '\t');
+      tsvField(buf, cap, &o, s->title, '\t');
+      tsvField(buf, cap, &o, s->game, '\t');
+      tsvField(buf, cap, &o, s->path, '\t');
+      tsvField(buf, cap, &o, s->ext, '\n');
     }
     return (int)o;
   }
 
   int output(const char *body, char *out, size_t out_cap) {
     char kind[32];
-    if (!kv_get(body, "kind", kind, sizeof(kind)))
+    if (!kvGet(body, "kind", kind, sizeof(kind)))
       return snprintf(out, out_cap, "ok=false\nerror=missing kind\n");
     if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
 
@@ -769,7 +740,7 @@ public:
     if (strcmp(kind, "lightbar") == 0) {
       char rgb[64] = "0,0,0";
       int r = 0, g = 0, b = 0;
-      kv_get(body, "rgb", rgb, sizeof(rgb));
+      kvGet(body, "rgb", rgb, sizeof(rgb));
       sscanf(rgb, "%d,%d,%d", &r, &g, &b);
       r = r < 0 ? 0 : (r > 255 ? 255 : r);
       g = g < 0 ? 0 : (g > 255 ? 255 : g);
@@ -794,21 +765,21 @@ public:
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
-      int v = (int)kv_number(body, "value", 0);
+      int v = (int)kvNumber(body, "value", 0);
       snprintf(fields, sizeof(fields), "valid_flag1=lightbar;lightbar_setup=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
-      int v = (int)kv_number(body, "value", 0);
+      int v = (int)kvNumber(body, "value", 0);
       snprintf(fields, sizeof(fields), "valid_flag2=brightness;led_brightness=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
     }
 
     if (strcmp(kind, "player_leds") == 0) {
-      int mask = (int)kv_number(body, "mask", 0) & 0x1F;
+      int mask = (int)kvNumber(body, "mask", 0) & 0x1F;
       this->led_manual_player = true;
       this->led_manual_mask = mask;
       serviceLeds();
@@ -817,7 +788,7 @@ public:
 
     if (strcmp(kind, "power_save") == 0) {
       char bits[64] = "";
-      kv_get(body, "bits", bits, sizeof(bits));
+      kvGet(body, "bits", bits, sizeof(bits));
       int mask = 0;
       char *save = nullptr;
       for (char *tok = strtok_r(bits, ",", &save); tok; tok = strtok_r(nullptr, ",", &save)) {
@@ -830,9 +801,9 @@ public:
     }
 
     if (strcmp(kind, "rumble") == 0) {
-      int left = (int)kv_number(body, "left", 0);
-      int right = (int)kv_number(body, "right", 0);
-      long ms = kv_number(body, "ms", 0);
+      int left = (int)kvNumber(body, "left", 0);
+      int right = (int)kvNumber(body, "right", 0);
+      long ms = kvNumber(body, "ms", 0);
       left = left < 0 ? 0 : (left > 255 ? 255 : left);
       right = right < 0 ? 0 : (right > 255 ? 255 : right);
       snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left,
@@ -840,19 +811,19 @@ public:
       outputFields(fields);
       this->rumble_left = left;
       this->rumble_right = right;
-      this->rumble_until = ms > 0 ? now_ms() + ms : 0;
+      this->rumble_until = ms > 0 ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=rumble %d/%d\n", left, right);
     }
 
     if (strcmp(kind, "trigger") == 0) {
       char side[16] = "right";
       char effect[16] = "vibration";
-      kv_get(body, "side", side, sizeof(side));
-      kv_get(body, "effect", effect, sizeof(effect));
-      int position = (int)kv_number(body, "position", 2);
-      int amplitude = (int)kv_number(body, "amplitude", 6);
-      int frequency = (int)kv_number(body, "frequency", 25);
-      long ms = kv_number(body, "ms", 0);
+      kvGet(body, "side", side, sizeof(side));
+      kvGet(body, "effect", effect, sizeof(effect));
+      int position = (int)kvNumber(body, "position", 2);
+      int amplitude = (int)kvNumber(body, "amplitude", 6);
+      int frequency = (int)kvNumber(body, "frequency", 25);
+      long ms = kvNumber(body, "ms", 0);
 
       int mode = 0x26;
       if (strcmp(effect, "off") == 0)
@@ -877,12 +848,12 @@ public:
           params[5], params[6], params[7], params[8], params[9]);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
-      this->trigger_until = (ms > 0 && mode != 0x05) ? now_ms() + ms : 0;
+      this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x\n", side, mode);
     }
 
     if (strcmp(kind, "fields") == 0) {
-      if (!kv_get(body, "fields", fields, sizeof(fields)))
+      if (!kvGet(body, "fields", fields, sizeof(fields)))
         return snprintf(out, out_cap, "ok=false\nerror=missing fields\n");
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=fields\n");
@@ -890,7 +861,7 @@ public:
 
     if (strcmp(kind, "mic_monitor") == 0) {
       char value[16] = "false";
-      kv_get(body, "enabled", value, sizeof(value));
+      kvGet(body, "enabled", value, sizeof(value));
       this->mic_monitor = strcmp(value, "true") == 0 || atoi(value) != 0;
       playerSend(this->mic_monitor ? "mic 1\n" : "mic 0\n");
       if (!this->mic_monitor) micReset();
@@ -901,9 +872,22 @@ public:
     return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
   }
 
+  int debugTrigger(const char *body, char *out, size_t cap) {
+    char side[16] = "right";
+    char tmp[16];
+    if (kvGet(body, "side", tmp, sizeof(tmp))) snprintf(side, sizeof(side), "%s", tmp);
+    long ms = kvNumber(body, "ms", 700);
+    char request[192];
+    snprintf(request, sizeof(request),
+             "kind=trigger\nside=%s\neffect=vibration\nposition=2\namplitude=6\n"
+             "frequency=25\nms=%ld",
+             side, ms);
+    return output(request, out, cap);
+  }
+
   int handleCommand(const char *body, size_t len, char *out, size_t cap) {
     char action[64];
-    if (!kv_get(body, "action", action, sizeof(action)))
+    if (!kvGet(body, "action", action, sizeof(action)))
       return snprintf(out, cap, "ok=false\nerror=missing action\n");
     return command(action, body, len, out, cap);
   }
@@ -913,7 +897,7 @@ public:
 private:
   void addStation(const char *path, const char *game) {
     if (this->count >= kMaxStations) return;
-    station *s = &this->stations[this->count];
+    Station *s = &this->stations[this->count];
     snprintf(s->path, sizeof(s->path), "%s", path);
 
     const char *base = strrchr(path, '/');
@@ -924,7 +908,7 @@ private:
     snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
     const char *d = strrchr(path, '.');
     snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
-    make_id(path, s->id);
+    makeId(path, s->id);
     this->count++;
   }
 
@@ -940,7 +924,7 @@ private:
       if (lstat(path, &st) != 0) continue;
       if (S_ISDIR(st.st_mode)) {
         scanDir(path, e->d_name);
-      } else if (S_ISREG(st.st_mode) && audio_ext(e->d_name)) {
+      } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
         addStation(path, game);
       }
     }
@@ -992,17 +976,17 @@ private:
 
     char node[64];
     if (find_dualsense(node, sizeof(node)) < 0) {
-      this->reconnect_at = (int)(now_ms() + 1500);
+      this->reconnect_at = (int)(nowMs() + 1500);
       return;
     }
 
     this->input = ::input_create(node);
     if (!this->input) {
-      this->reconnect_at = (int)(now_ms() + 1500);
+      this->reconnect_at = (int)(nowMs() + 1500);
       return;
     }
     snprintf(this->input_node, sizeof(this->input_node), "%s", node);
-    dualsense_mac(this->controller_mac, sizeof(this->controller_mac));
+    dualsenseMac(this->controller_mac, sizeof(this->controller_mac));
     ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
     this->input_fd = ::input_fd(this->input);
     // A newly connected controller counts as a resume request: never leave it
@@ -1065,7 +1049,7 @@ private:
     this->eof = false;
     this->pos_ms = start_ms;
     this->dur_ms = 0;
-    this->idle_since = now_ms();
+    this->idle_since = nowMs();
     this->playhead_dirty = true;
 
     // Gapless: queue a different station for the junction.
@@ -1212,7 +1196,7 @@ private:
     a->tfr = f->tfr;
     for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
 
-    long now = now_ms();
+    long now = nowMs();
     if (a->rate_at == 0) a->rate_at = now;
     a->rate_frames++;
     if (now - a->rate_at >= 1000) {
@@ -1266,7 +1250,7 @@ private:
     this->mic_packets++;
     this->mic_frames++;
     this->mic_samples += (unsigned long)n;
-    this->mic_last_ms = now_ms();
+    this->mic_last_ms = nowMs();
   }
 
   static void inputMicCb(const uint8_t *data, size_t len, void *ud) {
@@ -1326,7 +1310,7 @@ private:
 
   void configLoad() {
     char path[512];
-    if (!config_path(path, sizeof(path))) return;
+    if (!configPath(path, sizeof(path))) return;
     FILE *f = fopen(path, "r");
     if (!f) return;
 
@@ -1370,7 +1354,7 @@ private:
 
   void configSave() {
     char path[512];
-    if (!config_path(path, sizeof(path))) return;
+    if (!configPath(path, sizeof(path))) return;
 
     char dir[512];
     snprintf(dir, sizeof(dir), "%s", path);
@@ -1395,11 +1379,11 @@ private:
     fputc('\n', f);
     fprintf(f, "play_pos_ms=%ld\n", this->pos_ms);
     fclose(f);
-    this->playhead_saved_at = now_ms();
+    this->playhead_saved_at = nowMs();
   }
 
   void noteActivity() {
-    this->last_activity_ms = now_ms();
+    this->last_activity_ms = nowMs();
     this->idle_since = this->last_activity_ms;
     if (this->idle_warning || this->suspended) endIdle();
   }
@@ -1427,7 +1411,7 @@ private:
   }
 
   void updateIdle() {
-    long now = now_ms();
+    long now = nowMs();
     if (this->suspended && this->poweroff_at && now >= this->poweroff_at) {
       this->poweroff_at = 0;
       configSave();
@@ -1481,7 +1465,7 @@ private:
     char mac[32] = "";
     if (this->controller_mac[0])
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);
-    else if (!dualsense_mac(mac, sizeof(mac)))
+    else if (!dualsenseMac(mac, sizeof(mac)))
       return false;
 
     char command[160];
@@ -1547,7 +1531,7 @@ private:
   }
 
   void serviceLeds() {
-    long now = now_ms();
+    long now = nowMs();
     int state = ledState();
 
     if (state != this->led_last_state) {
@@ -1625,7 +1609,7 @@ private:
 
   void serviceOutput() {
     if (!this->player) return;
-    long now = now_ms();
+    long now = nowMs();
     if (this->rumble_until && now >= this->rumble_until) {
       outputFields("valid_flag0=rumble;motor_left=0;motor_right=0");
       this->rumble_until = 0;
@@ -1668,14 +1652,14 @@ private:
       this->paused = true;
       playerSend("pause 1\n");
     } else if (strcmp(action, "volume") == 0) {
-      setVolume((int)kv_number(body, "value", this->volume));
+      setVolume((int)kvNumber(body, "value", this->volume));
     } else if (strcmp(action, "seek") == 0) {
-      seek(this->pos_ms + kv_number(body, "delta", 0) * 1000);
+      seek(this->pos_ms + kvNumber(body, "delta", 0) * 1000);
     } else if (strcmp(action, "seek_to") == 0) {
-      seek(kv_number(body, "position", this->pos_ms / 1000) * 1000);
+      seek(kvNumber(body, "position", this->pos_ms / 1000) * 1000);
     } else if (strcmp(action, "play_track") == 0) {
       char id[64];
-      if (kv_get(body, "id", id, sizeof(id))) {
+      if (kvGet(body, "id", id, sizeof(id))) {
         int idx = findId(id);
         if (idx >= 0) play(idx, 0);
       }
