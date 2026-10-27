@@ -108,3 +108,43 @@ testing. A service restart should resume the saved track/position.
   volume, jack debounce).
 - The panel can be driven headlessly with Chrome DevTools Protocol; use
   `--no-proxy-server` for the LAN URL.
+
+## LED / playback status system (reference for the port)
+
+The old design had **one HID writer** and a **state-coloured lightbar**:
+
+- `Output.Hid` owns the 0x31 field map, seq/tag/CRC and the persistent
+  `power_save` claim; every feature (lightbar, player LEDs, triggers, rumble,
+  mute) sends a `fields ...` line through it. The native player owns the same
+  `OutputBody` and embeds that snapshot in **every 0x36 audio report**, so the
+  LEDs/triggers/mute survive while audio flows; a 0x31 report is used when
+  there is no audio.
+- Playback state → lightbar (`Output.Lightbar` subscribes to the Bus):
+  playing `{0,140,255}` cyan; paused `{255,110,0}` amber; muted
+  `{120,60,255}` purple; sleep-timer warning red `{255,0,0}` pulsing every
+  600 ms at scale 255/60; suspended/off `{0,0,0}`. A custom colour overrides
+  until the next state change; device-down goes dark; device-up keeps the
+  custom colour and forces one repaint (`painted: nil`) because the kernel
+  startup animation resets the bar. Unchanged colours are not written
+  (volume events are frequent).
+- Charging (`Output.ChargingLeds`, fed by controller frames): `charging`/`full`
+  sweeps the five player LEDs between `0b01010` and `0b10101` every 3 s
+  (`charging_leds_ms`), and returns to the kernel's player-1 pattern
+  `0b00100` on unplug/device-down.
+- Fields/claims: `valid_flag1` bit 1 `power_save`, bit 2 `lightbar`, bit 3
+  `reset_lights`, bit 4 `player_leds`; `valid_flag2` bit 0 brightness, bit 1
+  colour fade / `lightbar_setup` (`0x02` = fade out); `power_save_control`
+  bits 4/6 mic/audio mute. The old `Report` field maps and the lab's
+  lightbar/player-LED/power-save/trigger/rumble rows used exactly these.
+- Status sources: `Player` (pos/dur/sent/underruns/playing/paused),
+  `Radio` (transport, volume/mute, current, idle_warning, suspended,
+  resume_pending), `Session` (phase, idle_seconds, warning_in, shutdown_in),
+  `Hid.stats` (writes/errors/recent/power_save/player_leds), `Lightbar.status`
+  and the controller frame. They were published on the Bus and in
+  `/api/status`/SSE; the panel's idle chip, warning bar and lab mirrored them.
+- Current C++ state: the player still has `OutputBody` and the `fields`
+  command, but the app does not drive the lightbar/player LEDs/charging/triggers
+  (`/api/output` returns 501, `led`/`hid` in `/api/status` are static). Port
+  the old `lightbar.ex`/`charging_leds.ex` as app methods, call
+  `player_command("fields ...")` and feed the charging state from the input
+  frame.
