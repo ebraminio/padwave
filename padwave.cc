@@ -1771,8 +1771,6 @@ int input_main(int argc, char **argv) {
 // The sizes are not repeated here: they come from padwave_schemas.hh, the one
 // description of the protocol.
 
-extern "C" {}
-
 namespace {
 
 constexpr int kRate = padwave::MicFrame::SampleRate;
