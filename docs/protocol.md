@@ -56,6 +56,14 @@ updates coexist with the audio service's stream. The main grip motors are
 dualsense-tester both set the pair, and bit 0 alone is ignored. Padwave's lab
 claims both for the start and the zero stop.
 
+Trigger parameters are the 10 bytes after the mode. For the official zone
+effects (`0x21` feedback, `0x26` vibration), bytes 0-1 are the active-zone mask
+(low/high), bytes 2-5 pack a 3-bit strength for each zone from the start zone to
+9, and byte 9 is frequency for `0x26`. `0x25` weapon instead sets the start and
+end zone bits and puts `strength - 1` in byte 2. The panel's presets are the
+DS4Windows Trigger Lab catalog, with percent values converted to those zones /
+strengths / frequencies.
+
 **Audio `0x36`.** Four length-tagged sub-packets; the hard parts are the
 10.667 ms pacing, Opus CBR 160 kbps, and bit 0 of the enable mask (clear it, or
 the controller starts streaming microphone audio back and floods the link).

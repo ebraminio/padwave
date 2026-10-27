@@ -140,8 +140,11 @@ player, the panel with controller state and SSE, and the LAN API.
 
 The controller lab works through the player's `fields` reports (lightbar,
 player LEDs, power save, rumble, trigger effects, raw field maps), with timed
-rumble/trigger release. Config and the playhead persist to
-`~/.config/padwave/config`; the app resumes the saved station and offset.
+rumble/trigger release. Trigger effects use the eight DS4Windows Trigger Lab
+presets or a custom 0x26 vibration; the selected preset and custom
+position/amplitude/frequency are also used by the "on volume" buzz and both
+test buttons. Config and the playhead persist to `~/.config/padwave/config`;
+the app resumes the saved station and offset.
 
 Idle fades the volume over the configured grace and suspends playback; any
 controller action, event, command or config edit restores the volume and
@@ -169,7 +172,8 @@ roughly 0.9 % of a core even while paused; that is the input engine, not audio.
 
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
-confirmation of the lightbar, trigger and jack paths (rumble is confirmed).
+confirmation of the lightbar and jack paths (rumble and trigger effects are
+confirmed).
 
 ## Protocol
 
