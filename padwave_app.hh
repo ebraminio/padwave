@@ -30,6 +30,8 @@
 static inline int find_dualsense(char *node, size_t len);
 static inline int find_dualsense();
 
+#include "padwave_input.hh"
+
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
 // the kernel both spell it lower-case with colons.
 
@@ -38,7 +40,6 @@ static inline int find_dualsense();
 // modes working.
 
 int native_main(int argc, char **argv);
-int input_main(int argc, char **argv);
 int opusdec_main(int argc, char **argv);
 int server_main(int argc, char **argv);
 
@@ -61,39 +62,6 @@ int player_timer_fd(void *handle);
 void player_step(void *handle);
 void player_command(void *handle, const char *line);
 void player_destroy(void *handle);
-
-void *input_create(const char *node);
-struct input_touch {
-  unsigned active;
-  unsigned id;
-  unsigned x, y;
-};
-struct input_frame {
-  unsigned seq;
-  unsigned lx, ly, rx, ry, l2, r2;
-  char dpad[16];
-  char buttons[256];
-  int battery;
-  unsigned charging;
-  int jack;
-  int mic;
-  unsigned temp;
-  int gx, gy, gz;
-  int ax, ay, az;
-  unsigned tfl, tfr;
-  struct input_touch touches[2];
-  char raw[512];
-};
-typedef void (*input_frame_fn)(const struct input_frame *, void *);
-typedef void (*input_action_fn)(const char *name, int value, void *);
-typedef void (*input_event_fn)(const char *name, void *);
-typedef void (*input_mic_fn)(const uint8_t *data, size_t len, void *);
-
-void input_set_sink(void *handle, input_frame_fn frame, input_action_fn action,
-                    input_event_fn event, input_mic_fn mic, void *ud);
-int input_fd(void *handle);
-int input_feed(void *handle, const uint8_t *buf, size_t len);
-void input_destroy(void *handle);
 
 // The app owns the library, config and text helpers.
 // ---------------------------------------------------------------------------
