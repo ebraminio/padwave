@@ -27,6 +27,7 @@
 
 #include "padwave_common.hh"
 #include "padwave_schemas.hh"
+#include "padwave_status.hh"
 
 namespace {
 
@@ -348,6 +349,19 @@ void print_frame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
   track_buttons(b.buttons);
   track_triggers(b.l2, b.r2);
   track_sensors(b);
+
+  static int64_t last_status = 0;
+  static int status_fd = padwave_status::sender_open();
+  int64_t now = now_ms();
+  if (now - last_status >= 100) {
+    char status_line[200];
+    snprintf(status_line, sizeof(status_line), "input %u %u %u %u %u %u %u %u %d", (unsigned)b.lx.get(),
+             (unsigned)b.ly.get(), (unsigned)b.rx.get(), (unsigned)b.ry.get(), (unsigned)b.l2.get(),
+             (unsigned)b.r2.get(), buttons, (unsigned)(b.status0.get() & 0x0F) * 10 + 5,
+             (b.status1.get() & padwave::InputBody::Headset) ? 1 : 0);
+    padwave_status::send_line(status_fd, status_line);
+    last_status = now;
+  }
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.

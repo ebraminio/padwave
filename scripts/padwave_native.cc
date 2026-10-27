@@ -60,6 +60,7 @@ extern "C" {
 #include <opus/opus.h>
 
 #include "padwave_fields.hh"
+#include "padwave_status.hh"
 #include "padwave_schemas.hh"
 #include "padwave_common.hh"
 
@@ -705,6 +706,7 @@ int native_main(int argc, char **argv) {
   its.it_value = its.it_interval;
   timerfd_settime(tfd, 0, &its, NULL);
 
+  int status_fd = padwave_status::sender_open();
   int64_t last_status = 0;
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
@@ -811,6 +813,11 @@ int native_main(int argc, char **argv) {
       int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
       printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\n", (long)pos,
              (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
+
+      char status_line[160];
+      snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld", (long)pos,
+               (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns);
+      padwave_status::send_line(status_fd, status_line);
       if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
       fflush(stdout);
     }

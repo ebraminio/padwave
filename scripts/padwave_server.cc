@@ -22,9 +22,11 @@
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "padwave_common.hh"
+#include "padwave_status.hh"
 
 #if defined(__has_embed)
 #if __has_embed("../priv/ui/index.html")
@@ -67,6 +69,54 @@ conn *g_owner[kMaxFds];
 
 int g_epoll = -1;
 int g_backend_port = 8787;
+int g_status_fd = -1;
+int64_t g_start_ms = 0;
+unsigned long g_requests = 0;
+
+struct player_status {
+  bool valid = false;
+  long pos = 0, dur = 0, sent = 0, underruns = 0;
+};
+
+struct input_status {
+  bool valid = false;
+  int lx = 0, ly = 0, rx = 0, ry = 0, l2 = 0, r2 = 0, battery = 0, jack = 0;
+  unsigned buttons = 0;
+};
+
+player_status g_player;
+input_status g_input;
+
+int64_t monotonic_ms() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void parse_status(const char *line) {
+  if (strncmp(line, "player ", 7) == 0) {
+    if (sscanf(line + 7, "%ld %ld %ld %ld", &g_player.pos, &g_player.dur, &g_player.sent,
+               &g_player.underruns) == 4)
+      g_player.valid = true;
+  } else if (strncmp(line, "input ", 6) == 0) {
+    unsigned lx, ly, rx, ry, l2, r2, buttons;
+    int battery, jack;
+    if (sscanf(line + 6, "%u %u %u %u %u %u %u %d %d", &lx, &ly, &rx, &ry, &l2, &r2, &buttons,
+               &battery, &jack) == 9) {
+      g_input = input_status{};
+      g_input.valid = true;
+      g_input.lx = (int)lx;
+      g_input.ly = (int)ly;
+      g_input.rx = (int)rx;
+      g_input.ry = (int)ry;
+      g_input.l2 = (int)l2;
+      g_input.r2 = (int)r2;
+      g_input.buttons = buttons;
+      g_input.battery = battery;
+      g_input.jack = jack;
+    }
+  }
+}
 char g_index_response[70000];
 size_t g_index_len = 0;
 
@@ -219,6 +269,30 @@ void read_client(conn *c) {
   char method[8] = {0}, path[1024] = {0};
   if (sscanf(c->in, "%7s %1023s", method, path) != 2) {
     close_conn(c);
+    return;
+  }
+
+  g_requests++;
+
+  if (strcmp(path, "/api/front") == 0) {
+    char node[64];
+    int controller = find_dualsense(node, sizeof(node)) >= 0 ? 1 : 0;
+    char body[768];
+    int len = snprintf(body, sizeof(body),
+                       "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
+                       "\"controller\":%d,"
+                       "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
+                       "\"underruns\":%ld},"
+                       "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
+                       "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
+                       (long)((monotonic_ms() - g_start_ms) / 1000), g_requests, controller,
+                       g_player.valid ? 1 : 0, g_player.pos, g_player.dur, g_player.sent,
+                       g_player.underruns, g_input.valid ? 1 : 0, g_input.lx, g_input.ly,
+                       g_input.rx, g_input.ry, g_input.l2, g_input.r2, g_input.buttons,
+                       g_input.battery, g_input.jack);
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    mod_fd(c->fd, EPOLLOUT);
     return;
   }
 
@@ -386,6 +460,21 @@ int server_main(int argc, char **argv) {
   sigprocmask(SIG_BLOCK, &mask, nullptr);
   int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
+  g_start_ms = monotonic_ms();
+
+  g_status_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+  if (g_status_fd >= 0) {
+    struct sockaddr_un status_addr;
+    memset(&status_addr, 0, sizeof(status_addr));
+    status_addr.sun_family = AF_UNIX;
+    snprintf(status_addr.sun_path, sizeof(status_addr.sun_path), "%s", padwave_status::kPath);
+    unlink(padwave_status::kPath);
+    if (bind(g_status_fd, (struct sockaddr *)&status_addr, sizeof(status_addr)) != 0) {
+      close(g_status_fd);
+      g_status_fd = -1;
+    }
+  }
+
   g_epoll = epoll_create1(EPOLL_CLOEXEC);
   if (g_epoll < 0) {
     perror("epoll_create1");
@@ -393,6 +482,7 @@ int server_main(int argc, char **argv) {
   }
   add_fd(listen_fd, EPOLLIN, nullptr);
   if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
+  if (g_status_fd >= 0) add_fd(g_status_fd, EPOLLIN, nullptr);
 
   fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI, /api -> 127.0.0.1:%d)\n",
           port, kIndexHtmlSize, g_backend_port);
@@ -429,6 +519,15 @@ int server_main(int argc, char **argv) {
         }
         continue;
       }
+      if (fd == g_status_fd) {
+        char line[256];
+        ssize_t n = recv(g_status_fd, line, sizeof(line) - 1, 0);
+        if (n > 0) {
+          line[n] = 0;
+          parse_status(line);
+        }
+        continue;
+      }
       if (fd == signal_fd) {
         struct signalfd_siginfo info;
         if (read(signal_fd, &info, sizeof(info)) == sizeof(info)) running = false;
@@ -457,6 +556,10 @@ int server_main(int argc, char **argv) {
   }
 
   for (int i = 0; i < kMaxConns; i++) close_conn(&g_conns[i]);
+  if (g_status_fd >= 0) {
+    close(g_status_fd);
+    unlink(padwave_status::kPath);
+  }
   close(g_epoll);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);
