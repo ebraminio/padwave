@@ -54,7 +54,7 @@ defmodule Padwave.Input.Mapper do
   def init(_opts) do
     Bus.subscribe()
     Bus.subscribe(:frames)
-    {:ok, %{frame: nil, last_action: nil, last_action_at: nil, sim_depth: 0}}
+    {:ok, %{frame: nil, last_action: nil, last_action_at: nil}}
   end
 
   @impl true
@@ -70,20 +70,12 @@ defmodule Padwave.Input.Mapper do
   end
 
   @impl true
-  def handle_info({:frame, _frame}, %{sim_depth: depth} = state) when depth > 0,
-    do: {:noreply, state}
-
   def handle_info({:frame, frame}, state), do: {:noreply, %{state | frame: frame}}
   def handle_info({:padwave, {:frame, frame}}, state), do: {:noreply, %{state | frame: frame}}
 
   def handle_info({:padwave, {:action, action}}, state),
     do: {:noreply, %{state | last_action: action,
                      last_action_at: System.monotonic_time(:millisecond)}}
-
-  def handle_info({:sim_begin}, state), do: {:noreply, %{state | sim_depth: state.sim_depth + 1}}
-
-  def handle_info({:sim_end}, state),
-    do: {:noreply, %{state | sim_depth: max(state.sim_depth - 1, 0)}}
 
   def handle_info({:padwave, {:device, :down, _info}}, state),
     do: {:noreply, %{state | frame: nil}}

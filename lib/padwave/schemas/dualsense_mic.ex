@@ -57,7 +57,6 @@ defmodule Padwave.Schema.DualSenseMic do
     160 kbps of Opus; duplex nearly doubles the Bluetooth traffic.
   """
 
-  alias Padwave.Input.Crc
 
   @report 0x31
   @toc 0xD4
@@ -102,7 +101,6 @@ defmodule Padwave.Schema.DualSenseMic do
   True when the frame is a mic frame *and* its trailing CRC-32 (seed `0xA1`,
   same as any Bluetooth input report) matches.
   """
-  def valid?(report), do: frame?(report) and Crc.valid_input?(report)
 
   @doc "Metadata for `/api/schema`, in the same shape as the packet specs."
   def spec do

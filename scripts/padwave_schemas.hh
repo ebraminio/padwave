@@ -185,6 +185,23 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
 // ===========================================================================
 
+// The 63-byte input payload shared by USB (0x01) and Bluetooth (0x31).
+//
+// `+0x00` in these comments is the offset inside this payload: 0x01 in a USB
+// report, 0x02 in a Bluetooth one. The kernel parses both with a single
+// `struct dualsense_input_report`, pointing at &data[1] (USB) or &data[2]
+// (Bluetooth); this struct is the same body, and the two packet wrappers below
+// splice it in.
+//
+// When microphone duplex is on, not every 0x31 frame is a gamepad report: the
+// controller interleaves audio frames that keep the report id but put the Opus
+// TOC 0xD4 at report byte 3 (payload +0x01, i.e. where ly normally is). Demux
+// on that byte before trusting any of these fields; MicFrame is the schema for
+// those frames.
+//
+// Every byte is named, either with what it does or with an honest reserved/
+// feedback name, and every multi-byte integer is little-endian. Sizes come from
+// hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
   PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
   PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
@@ -206,7 +223,8 @@ struct InputBody {
   PWINT16 accel_z;            // +0x19
   PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
   PWUINT8 temperature;        // +0x1f  controller temperature, degrees C
-  PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low), y high
+  PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low),
+                              //        y high; bit 7 of contact = not touching
   PWUINT8 touch2[4];          // +0x24
   PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
   PWUINT8 trigger_feedback_r; // +0x29
@@ -242,7 +260,12 @@ struct InputBody {
   };
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
-  // are the byte at +0x07, 8..15 at +0x08, and so on.
+  // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
+  //   +0x07  bits 0-3 d-pad hat (Dpad), 4 square, 5 cross, 6 circle, 7 triangle
+  //   +0x08  bits 0 l1, 1 r1, 2 l2, 3 r2, 4 create, 5 options, 6 l3, 7 r3
+  //   +0x09  bits 0 ps, 1 touchpad, 2 mute, 3 reserved, 4 fn1, 5 fn2,
+  //          6 left_paddle, 7 right_paddle
+  //   +0x0a  eight bits the kernel does not read; maybe L5/R5
   enum Buttons : uint32_t {
     // +0x07
     ButtonSquare = 1u << 4,
@@ -262,6 +285,7 @@ struct InputBody {
     Ps = 1u << 16,
     Touchpad = 1u << 17,
     Mute = 1u << 18,
+    // bit 19 reserved
     Fn1 = 1u << 20,         // Edge only
     Fn2 = 1u << 21,         // Edge only
     LeftPaddle = 1u << 22,  // Edge only
@@ -269,8 +293,7 @@ struct InputBody {
     // +0x0a: unread by the kernel; maybe L5/R5
   };
 
-  // +0x35. Bit 7 of a touch contact byte means "not touching", which is why
-  // the touch fields above are left as raw bytes here.
+  // +0x35. Bits 2-7 are reserved; bit 2 happens to be set on this pad.
   enum Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
@@ -281,6 +304,13 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 
 // ===========================================================================
 // Input 0x31 (Bluetooth, 78 bytes) and 0x01 (USB, 64 bytes)
+//
+// The Bluetooth report is the USB one plus a sequence tag in front and a
+// nine-byte tail plus a CRC behind, so every shared field's USB offset is its
+// Bluetooth offset minus one. The tail's first byte is not constant (30
+// distinct values in a 150 s capture), the other eight were; what it carries is
+// unknown. Sizes come from hid-playstation.c (DS_INPUT_REPORT_USB_SIZE 64,
+// DS_INPUT_REPORT_BT_SIZE 78); the CRC covers the report with seed 0xA1.
 // ===========================================================================
 
 struct InputReport {

@@ -22,14 +22,6 @@ defmodule Padwave.MicTest do
     assert DualSenseMic.payload(<<0x31>>) == :error
   end
 
-  test "valid? checks the trailing CRC with the input seed" do
-    report = signed(<<0x31, 0x10, 0x10, 0xD4, 9, 8, 7>>)
-    assert DualSenseMic.valid?(report)
-
-    <<body::binary-size(7), _crc::little-32>> = report
-    refute DualSenseMic.valid?(body <> <<0::little-32>>)
-  end
-
   test "the spec matches the other packet specs" do
     spec = DualSenseMic.spec()
     assert spec.id == 0x31

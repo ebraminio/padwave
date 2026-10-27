@@ -55,8 +55,6 @@ defmodule Padwave.Web.Router do
 
   get "/api/schema" do
     json(conn, %{
-      input: Padwave.Schema.DualSenseInput.spec(:input),
-      input_usb: Padwave.Schema.DualSenseInput.spec(:input_usb),
       output: Padwave.Schema.DualSenseOutput.spec(:output),
       output_usb: Padwave.Schema.DualSenseOutput.spec(:output_usb),
       audio_out: Padwave.Schema.DualSenseAudio.spec(:audio_out),
@@ -99,12 +97,6 @@ defmodule Padwave.Web.Router do
       {:ok, modules} -> json(conn, %{ok: true, reloaded: Enum.map(modules, &inspect/1)})
       {:error, reason} -> json(conn, %{ok: false, error: to_string(reason)})
     end
-  end
-
-  post "/api/debug/frame" do
-    patch = Map.merge(conn.params, conn.body_params)
-    Padwave.Input.Simulator.press(patch, to_int(Map.get(patch, "hold_ms"), 140))
-    json(conn, %{ok: true, patch: patch})
   end
 
   # The playground: lightbar, player LEDs, trigger effects, and a raw field map.
