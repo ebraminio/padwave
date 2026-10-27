@@ -410,6 +410,9 @@ public:
   }
 
   void tick() {
+    // Invariant: playback running means the mic monitor is off, regardless of
+    // which resume path got us here.
+    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     serviceOutput();
     updateIdle();
     serviceLeds();
@@ -1176,6 +1179,7 @@ private:
       this->paused_by_disconnect = false;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
+      if (this->player && this->controller) setMicMonitor(true);
     }
   }
 
@@ -1248,6 +1252,7 @@ private:
         playerSend("pause 1\n");
         this->playhead_dirty = true;
       }
+      if (this->player && this->controller && this->playing) setMicMonitor(true);
     } else if (this->paused_by_volume && this->playing) {
       stopMicForPlayback();
       this->paused = false;
@@ -1433,6 +1438,7 @@ private:
         }
       }
     }
+    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     snprintf(this->last_action, sizeof(this->last_action), "%s", name);
   }
 
@@ -1894,6 +1900,7 @@ private:
       return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
     }
 
+    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     snprintf(this->last_action, sizeof(this->last_action), "%s", action);
     return snprintf(out, out_cap, "ok=true\n");
   }
