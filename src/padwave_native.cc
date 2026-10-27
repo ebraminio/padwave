@@ -61,6 +61,9 @@ extern "C" {
 
 #include "padwave_fields.hh"
 #include "padwave_status.hh"
+
+static int g_out_fd = STDOUT_FILENO;
+#define printf(...) dprintf(g_out_fd, __VA_ARGS__)
 #include "padwave_schemas.hh"
 #include "padwave_common.hh"
 
@@ -673,14 +676,15 @@ static void handle_line(struct player *pl, char *line) {
 
 /* ---- main --------------------------------------------------------------- */
 
-int native_main(int argc, char **argv) {
+int native_run(int in_fd, int out_fd, const char *node, bool speaker) {
+  g_out_fd = out_fd;
   struct player pl;
   memset(&pl, 0, sizeof(pl));
   pl.volume = 80;
 
-  pl.hidraw = argc > 1 ? open(argv[1], O_RDWR | O_CLOEXEC) : find_dualsense();
+  pl.hidraw = node ? open(node, O_RDWR | O_CLOEXEC) : find_dualsense();
   if (pl.hidraw < 0) fprintf(stderr, "padwave_native: no DualSense hidraw node\n");
-  pl.speaker = argc > 2 && strcmp(argv[2], "speaker") == 0;
+  pl.speaker = speaker;
   pl.state.init(pl.speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
 
   int err = 0;
@@ -696,9 +700,6 @@ int native_main(int argc, char **argv) {
   pl.pkt = av_packet_alloc();
   pl.frame = av_frame_alloc();
 
-  signal(SIGINT, on_signal);
-  signal(SIGTERM, on_signal);
-
   int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   struct itimerspec its;
   its.it_interval.tv_sec = 0;
@@ -713,16 +714,16 @@ int native_main(int argc, char **argv) {
 
   // A local control bus with the same line protocol as stdin. stdin stays the
   // app's path when it owns the player; this is for the web front and tests.
-  int cmd_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-  if (cmd_fd >= 0) {
+  int bus_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (bus_fd >= 0) {
     struct sockaddr_un cmd_addr;
     memset(&cmd_addr, 0, sizeof(cmd_addr));
     cmd_addr.sun_family = AF_UNIX;
     snprintf(cmd_addr.sun_path, sizeof(cmd_addr.sun_path), "%s", padwave_status::kPlayerPath);
     unlink(padwave_status::kPlayerPath);
-    if (bind(cmd_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
-      close(cmd_fd);
-      cmd_fd = -1;
+    if (bind(bus_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
+      close(bus_fd);
+      bus_fd = -1;
     }
   }
 
@@ -732,13 +733,13 @@ int native_main(int argc, char **argv) {
   while (running) {
     int timeout = (pl.playing && !pl.paused && ring_len(&pl) < RING_HIGH) ? 1 : 20;
     struct pollfd fds[3];
-    fds[0].fd = STDIN_FILENO;
+    fds[0].fd = in_fd;
     fds[0].events = POLLIN;
     fds[0].revents = 0;
     fds[1].fd = tfd;
     fds[1].events = POLLIN;
     fds[1].revents = 0;
-    fds[2].fd = cmd_fd;
+    fds[2].fd = bus_fd;
     fds[2].events = POLLIN;
     fds[2].revents = 0;
     int ready = poll(fds, 3, timeout);
@@ -746,7 +747,7 @@ int native_main(int argc, char **argv) {
 
     if (fds[0].revents & POLLIN) {
       char buf[512];
-      ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+      ssize_t n = read(in_fd, buf, sizeof(buf));
       if (n <= 0) break;
       for (ssize_t i = 0; i < n; i++) {
         if (buf[i] == '\n') {
@@ -761,7 +762,7 @@ int native_main(int argc, char **argv) {
 
     if (fds[2].revents & POLLIN) {
       char cmd[1200];
-      ssize_t n = recv(cmd_fd, cmd, sizeof(cmd) - 1, 0);
+      ssize_t n = recv(bus_fd, cmd, sizeof(cmd) - 1, 0);
       if (n > 0) {
         cmd[n] = 0;
         char *nl = strchr(cmd, '\n');
@@ -855,8 +856,8 @@ int native_main(int argc, char **argv) {
 
   close_file(&pl);
   close_next(&pl);
-  if (cmd_fd >= 0) {
-    close(cmd_fd);
+  if (bus_fd >= 0) {
+    close(bus_fd);
     unlink(padwave_status::kPlayerPath);
   }
   if (pl.hidraw >= 0) close(pl.hidraw);
@@ -865,4 +866,11 @@ int native_main(int argc, char **argv) {
   av_frame_free(&pl.frame);
   close(tfd);
   return 0;
+}
+
+int native_main(int argc, char **argv) {
+  signal(SIGINT, on_signal);
+  signal(SIGTERM, on_signal);
+  return native_run(STDIN_FILENO, STDOUT_FILENO, argc > 1 ? argv[1] : nullptr,
+                    argc > 2 && strcmp(argv[2], "speaker") == 0);
 }

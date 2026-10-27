@@ -1,9 +1,9 @@
 # padwave — one binary (radio + player + input + panel), one process tree.
 CXX ?= c++
-CXXFLAGS ?= -std=c++23 -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra
+CXXFLAGS ?= -std=c++23 -O2 -pthread -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra
 PKGS := libavformat libavcodec libswresample libavutil
 CPPFLAGS += -Iinclude -Ibuild $(shell pkg-config --cflags $(PKGS))
-LDLIBS += $(shell pkg-config --libs $(PKGS)) -lopus -lz -lm
+LDLIBS += $(shell pkg-config --libs $(PKGS)) -lopus -lz -lm -pthread
 
 SRC := src/padwave.cc src/padwave_native.cc src/padwave_opusdec.cc \
        src/padwave_input.cc src/padwave_server.cc src/padwave_app.cc

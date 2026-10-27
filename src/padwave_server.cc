@@ -363,7 +363,7 @@ void read_client(conn *c) {
     return;
   }
 
-  if (g_standalone && strncmp(path, "/api/", 5) == 0) {
+  if (g_standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 && strcmp(path, "/api/front/events") != 0) {
     static const char body[] = "{\"ok\":false,\"error\":\"not implemented\"}";
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,

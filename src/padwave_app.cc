@@ -14,11 +14,13 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "padwave_common.hh"
+#include "padwave_modes.hh"
 #include "padwave_status.hh"
 
 namespace {
@@ -187,55 +189,33 @@ void push_history(int index) {
   }
 }
 
-bool spawn_child(const char *arg1, const char *arg2, int *in_fd, int *out_fd, int *pid_out) {
-  int to_child[2], from_child[2];
-  if (pipe2(to_child, O_CLOEXEC) != 0) return false;
-  if (pipe2(from_child, O_CLOEXEC) != 0) {
-    close(to_child[0]);
-    close(to_child[1]);
-    return false;
-  }
+struct player_args {
+  int in;
+  int out;
+};
 
-  char self[1024];
-  ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-  if (n <= 0) {
-    close(to_child[0]);
-    close(to_child[1]);
-    close(from_child[0]);
-    close(from_child[1]);
-    return false;
-  }
-  self[n] = 0;
+struct input_args {
+  char node[64];
+  int out;
+  int stop;
+};
 
-  pid_t pid = fork();
-  if (pid < 0) {
-    close(to_child[0]);
-    close(to_child[1]);
-    close(from_child[0]);
-    close(from_child[1]);
-    return false;
-  }
-  if (pid == 0) {
-    dup2(to_child[0], STDIN_FILENO);
-    dup2(from_child[1], STDOUT_FILENO);
-    close(to_child[0]);
-    close(to_child[1]);
-    close(from_child[0]);
-    close(from_child[1]);
-    if (arg2)
-      execl(self, "padwave", arg1, arg2, (char *)nullptr);
-    else
-      execl(self, "padwave", arg1, (char *)nullptr);
-    _exit(127);
-  }
+void *player_entry(void *p) {
+  player_args *a = (player_args *)p;
+  native_run(a->in, a->out, nullptr, false);
+  close(a->in);
+  close(a->out);
+  free(a);
+  return nullptr;
+}
 
-  close(to_child[0]);
-  close(from_child[1]);
-  fcntl(from_child[0], F_SETFL, fcntl(from_child[0], F_GETFL, 0) | O_NONBLOCK);
-  *in_fd = to_child[1];
-  *out_fd = from_child[0];
-  *pid_out = (int)pid;
-  return true;
+void *input_entry(void *p) {
+  input_args *a = (input_args *)p;
+  input_run(a->node, a->out, a->stop);
+  close(a->out);
+  close(a->stop);
+  free(a);
+  return nullptr;
 }
 
 void player_send(const char *line) {
@@ -251,24 +231,96 @@ void player_send(const char *line) {
 
 void player_start() {
   if (g.player_alive) return;
-  if (!spawn_child("native", nullptr, &g.player_in, &g.player_out, &g.player_pid)) return;
+
+  int in[2], out[2];
+  if (pipe2(in, O_CLOEXEC) != 0) return;
+  if (pipe2(out, O_CLOEXEC) != 0) {
+    close(in[0]);
+    close(in[1]);
+    return;
+  }
+  fcntl(out[0], F_SETFL, fcntl(out[0], F_GETFL, 0) | O_NONBLOCK);
+
+  player_args *a = (player_args *)malloc(sizeof(*a));
+  if (!a) {
+    close(in[0]);
+    close(in[1]);
+    close(out[0]);
+    close(out[1]);
+    return;
+  }
+  a->in = in[0];
+  a->out = out[1];
+
+  pthread_t t;
+  if (pthread_create(&t, nullptr, player_entry, a) != 0) {
+    close(in[0]);
+    close(in[1]);
+    close(out[0]);
+    close(out[1]);
+    free(a);
+    return;
+  }
+  pthread_detach(t);
+
+  g.player_in = in[1];
+  g.player_out = out[0];
   g.player_alive = true;
 }
 
 void input_start() {
   if (g.input_out >= 0) return;
+
   char node[64];
   if (find_dualsense(node, sizeof(node)) < 0) {
     g.reconnect_at = (int)(now_ms() + 1500);
     return;
   }
-  if (!spawn_child("input", node, &g.input_in, &g.input_out, &g.input_pid)) return;
+
+  int out[2], stop[2];
+  if (pipe2(out, O_CLOEXEC) != 0) return;
+  if (pipe2(stop, O_CLOEXEC) != 0) {
+    close(out[0]);
+    close(out[1]);
+    return;
+  }
+  fcntl(out[0], F_SETFL, fcntl(out[0], F_GETFL, 0) | O_NONBLOCK);
+
+  input_args *a = (input_args *)malloc(sizeof(*a));
+  if (!a) {
+    close(out[0]);
+    close(out[1]);
+    close(stop[0]);
+    close(stop[1]);
+    return;
+  }
+  snprintf(a->node, sizeof(a->node), "%s", node);
+  a->out = out[1];
+  a->stop = stop[0];
+
+  pthread_t t;
+  if (pthread_create(&t, nullptr, input_entry, a) != 0) {
+    close(out[0]);
+    close(out[1]);
+    close(stop[0]);
+    close(stop[1]);
+    free(a);
+    return;
+  }
+  pthread_detach(t);
+
+  g.input_out = out[0];
+  g.input_in = stop[1];
 }
 
 void input_stop() {
-  if (g.input_in >= 0) close(g.input_in);
+  if (g.input_in >= 0) {
+    ssize_t ignored = write(g.input_in, "x", 1);
+    (void)ignored;
+    close(g.input_in);
+  }
   if (g.input_out >= 0) close(g.input_out);
-  g.input_in = g.input_out = g.input_pid = -1;
+  g.input_in = g.input_out = -1;
   g.controller = false;
 }
 
@@ -467,11 +519,12 @@ void input_line(const char *line) {
   }
 }
 
-void drain_lines(int fd, void (*handler)(const char *)) {
+bool drain_lines(int fd, void (*handler)(const char *)) {
   char buf[8192];
   for (;;) {
     ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    if (n <= 0) return;
+    if (n == 0) return false;
+    if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK;
     buf[n] = 0;
     char *start = buf;
     char *nl;
@@ -675,6 +728,8 @@ bool app_owns_fd(int fd) {
 }
 
 bool app_init() {
+  signal(SIGPIPE, SIG_IGN);
+
   const char *roots = getenv("PADWAVE_ROOTS");
   if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
   char rootbuf[2048];
@@ -705,9 +760,13 @@ void app_shutdown() {
   if (g.player_in >= 0) {
     player_send("quit\n");
     close(g.player_in);
-    close(g.player_out);
-    g.player_in = g.player_out = -1;
+    g.player_in = -1;
   }
+  if (g.player_out >= 0) {
+    close(g.player_out);
+    g.player_out = -1;
+  }
+  g.player_alive = false;
   input_stop();
 }
 
@@ -734,6 +793,22 @@ int app_fds(int *fds, int max) {
 }
 
 void app_handle_fd(int fd) {
-  if (fd == g.player_out) drain_lines(fd, player_line);
-  else if (fd == g.input_out) drain_lines(fd, input_line);
+  bool alive = true;
+  if (fd == g.player_out) alive = drain_lines(fd, player_line);
+  else if (fd == g.input_out) alive = drain_lines(fd, input_line);
+  if (alive) return;
+
+  if (fd == g.player_out) {
+    close(fd);
+    g.player_out = -1;
+    if (g.player_in >= 0) close(g.player_in);
+    g.player_in = -1;
+    g.player_alive = false;
+  } else if (fd == g.input_out) {
+    close(fd);
+    g.input_out = -1;
+    if (g.input_in >= 0) close(g.input_in);
+    g.input_in = -1;
+    g.reconnect_at = (int)(now_ms() + 1500);
+  }
 }

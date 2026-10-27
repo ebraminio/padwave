@@ -13,10 +13,11 @@ DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ 
    └──────────── lightbar, rumble, triggers (0x31) ◀──────────────┘
 ```
 
-One binary. `padwave serve` is the app: it scans the station folders, owns the
-radio and the panel, and spawns **itself** as `padwave native` (decode,
-crossfade, gapless) and `padwave input` (the 0x31 decoder). `padwave opusdec`
-is the codec helper. There are no other executables and no Mix/Elixir.
+One binary, one process. `padwave serve` is the app: it scans the station
+folders, owns the radio and the panel, and runs the player (decode, crossfade,
+gapless) and the input decoder (0x31) as threads. The `native`, `input` and
+`opusdec` modes remain for debugging, but the service is a single PID. There is
+no Mix/Elixir.
 
 ## Controls
 

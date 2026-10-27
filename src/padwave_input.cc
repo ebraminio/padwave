@@ -31,6 +31,10 @@
 #include "padwave_schemas.hh"
 #include "padwave_status.hh"
 
+static int g_out_fd = STDOUT_FILENO;
+static int g_stop_fd = -1;
+#define printf(...) dprintf(g_out_fd, __VA_ARGS__)
+
 namespace {
 
 volatile sig_atomic_t g_running = 1;
@@ -47,7 +51,7 @@ int read_report(int fd, uint8_t *buf, size_t len) {
   p[0].fd = fd;
   p[0].events = POLLIN;
   p[0].revents = 0;
-  p[1].fd = STDIN_FILENO;
+  p[1].fd = g_stop_fd >= 0 ? g_stop_fd : STDIN_FILENO;
   p[1].events = POLLIN;
   p[1].revents = 0;
 
@@ -59,6 +63,7 @@ int read_report(int fd, uint8_t *buf, size_t len) {
   }
 
   if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
+    if (g_stop_fd >= 0) return -1;
     char discard;
     ssize_t n = read(STDIN_FILENO, &discard, 1);
     if (n <= 0) return -1; /* the parent is gone */
@@ -450,6 +455,38 @@ bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
 
 } // namespace
 
+int input_run(const char *node, int out_fd, int stop_fd) {
+  g_out_fd = out_fd;
+  g_stop_fd = stop_fd;
+  g_running = 1;
+
+  uint8_t buf[512];
+  int fd = -1;
+  if (node) {
+    fd = open(node, O_RDONLY | O_CLOEXEC);
+  } else {
+    char found[64];
+    if (find_dualsense(found, sizeof(found)) >= 0) fd = open(found, O_RDONLY | O_CLOEXEC);
+  }
+  if (fd < 0) {
+    fprintf(stderr, "padwave input: no DualSense hidraw node\n");
+    return 1;
+  }
+
+  printf("ready\n");
+
+  while (g_running) {
+    int n = read_report(fd, buf, sizeof(buf));
+    if (n < 0) {
+      printf("down\n");
+      break;
+    }
+    if (n > 0) handle_report(buf, (size_t)n);
+  }
+  close(fd);
+  return 0;
+}
+
 int input_main(int argc, char **argv) {
   uint8_t buf[512];
 
@@ -478,32 +515,7 @@ int input_main(int argc, char **argv) {
     return 0;
   }
 
-  if (argc > 1)
-    fd = open(argv[1], O_RDONLY | O_CLOEXEC);
-  else {
-    char node[64];
-    if (find_dualsense(node, sizeof(node)) >= 0) fd = open(node, O_RDONLY | O_CLOEXEC);
-  }
-  if (fd < 0) {
-    fprintf(stderr, "padwave input: no DualSense hidraw node\n");
-    return 1;
-  }
-
-  printf("ready\n");
-  fflush(stdout);
-
   signal(SIGINT, on_signal);
   signal(SIGTERM, on_signal);
-
-  while (g_running) {
-    int n = read_report(fd, buf, sizeof(buf));
-    if (n < 0) {
-      printf("down\n");
-      fflush(stdout);
-      break;
-    }
-    if (n > 0) handle_report(buf, (size_t)n);
-  }
-  close(fd);
-  return 0;
+  return input_run(argc > 1 ? argv[1] : nullptr, STDOUT_FILENO, -1);
 }

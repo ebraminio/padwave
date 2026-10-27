@@ -14,7 +14,7 @@ EnvironmentFile=-%h/.config/padwave/env
 ExecStart=%h/padwave/scripts/padwave-boot.sh
 Restart=on-failure
 RestartSec=3
-# Kill the player/input children with the app.
+# Everything runs in one process now; a stop takes the threads with it.
 KillMode=control-group
 TimeoutStopSec=10
 StandardOutput=journal
