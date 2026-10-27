@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
 #include <zlib.h>
 
 // Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
@@ -15,9 +16,6 @@
 // struct made of these types is byte-identical to the wire on any machine —
 // big-endian hosts included. get()/set() assemble and split the bytes one at a
 // time; there is no memcpy of an integer and no host byte-order assumption.
-
-#include <stddef.h>
-#include <stdint.h>
 
 namespace padwave_number {
 
@@ -104,12 +102,6 @@ static_assert(sizeof(PWUINT32) == 4, "PWUINT32 is four bytes");
 static_assert(sizeof(PWINT8) == 1, "PWINT8 is one byte");
 static_assert(sizeof(PWINT16) == 2, "PWINT16 is two bytes");
 static_assert(sizeof(PWINT32) == 4, "PWINT32 is four bytes");
-
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
-#include <zlib.h>
 
 namespace padwave {
 
