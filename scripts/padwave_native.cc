@@ -16,9 +16,8 @@
 //        → a complete DualSense 0x36 report (state snapshot + haptics +
 //          speaker + CRC-32 seed 0xA2) → hidraw
 //
-// No mpv, no PipeWire, no audio service: this is what padwave's Elixir ffmpeg
-// engine does, minus the process boundary around ffmpeg and the round trip
-// through the encoder port.
+// No external player and no audio service: decode, encode and the report are
+// one process.
 //
 // Usage:  padwave native [hidraw-node]
 //         (without a node it scans /sys/class/hidraw for a DualSense)
@@ -123,6 +122,12 @@ struct player {
   padwave::OutputReport out;
   uint8_t out_seq;
 
+  /* The 0x31 features the writer has claimed, kept so the 0x36 state snapshot
+   * carries them. The controller applies that snapshot 93 times a second; if it
+   * only said "audio", the rumble and trigger values would be zeroed by the
+   * stream. */
+  padwave::OutputBody state;
+
   /* Experimental: the microphone is off in the 0x36 enable mask unless the UI
    * asks for the input level. The controller only sends 0xD4 mic frames while
    * this is on. */
@@ -186,8 +191,17 @@ static void send_report(struct player *pl, const uint8_t *opus, int len) {
 
   report.init(pl->speaker ? padwave::AudioReport::Speaker : padwave::AudioReport::Jack,
               pl->mic ? padwave::AudioReport::SpeakerAndMic : padwave::AudioReport::SpeakerOnly);
-  report.state.body.init(pl->speaker ? padwave::OutputBody::Speaker
-                                     : padwave::OutputBody::Headphones);
+
+  report.state.body = pl->state;
+  report.state.body.valid_flag0 |=
+      padwave::OutputBody::HeadphoneVolume | padwave::OutputBody::SpeakerVolume |
+      padwave::OutputBody::MicVolume | padwave::OutputBody::AudioRouting;
+  report.state.body.valid_flag1 |= padwave::OutputBody::AudioControl2;
+  report.state.body.headphone_volume = 0x7F;
+  report.state.body.speaker_volume = 0x64;
+  report.state.body.audio_control =
+      pl->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones;
+  report.state.body.audio_control2 = 0x0A;
 
   report.seq_tag = (uint8_t)((pl->seq & 0x0F) << 4);
   report.counter = pl->counter;
@@ -628,28 +642,9 @@ static void handle_line(struct player *pl, char *line) {
     if (pl->hidraw < 0) pl->hidraw = find_dualsense();
     bool ok = pl->hidraw >= 0 && write_all(pl->hidraw, &pl->out, sizeof(pl->out));
     if (ok) pl->out_seq = (uint8_t)((pl->out_seq + 1) & 0x0F);
+    if (ok) padwave_fields::apply_fields(&pl->state, line + 7, true);
     printf(ok ? "ok 1\n" : "err write\n");
     fflush(stdout);
-    return;
-  }
-
-  if (strncmp(line, "raw ", 4) == 0) {
-    uint8_t bytes[512];
-    size_t len = strlen(line + 4) / 2;
-    if (len == 0 || len > sizeof(bytes) || !padwave_fields::hex_to_bytes(line + 4, bytes, len)) {
-      printf("err raw\n");
-      fflush(stdout);
-      return;
-    }
-    if (pl->hidraw < 0) pl->hidraw = find_dualsense();
-    bool ok = pl->hidraw >= 0 && write_all(pl->hidraw, bytes, len);
-    printf(ok ? "ok 0\n" : "err write\n");
-    fflush(stdout);
-    return;
-  }
-
-  if (sscanf(line, "mic %ld", &value) == 1) {
-    pl->mic = value != 0;
     return;
   }
 
@@ -719,6 +714,7 @@ int native_main(int argc, char **argv) {
   pl.hidraw = argc > 1 ? open(argv[1], O_RDWR | O_CLOEXEC) : find_dualsense();
   if (pl.hidraw < 0) fprintf(stderr, "padwave_native: no DualSense hidraw node\n");
   pl.speaker = argc > 2 && strcmp(argv[2], "speaker") == 0;
+  pl.state.init(pl.speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
 
   int err = 0;
   pl.enc = opus_encoder_create(RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &err);

@@ -15,7 +15,7 @@ EnvironmentFile=-%h/.config/padwave/env
 ExecStart=/usr/bin/mix run --no-halt
 Restart=on-failure
 RestartSec=3
-# Kill mpv children along with the BEAM.
+# Kill the player child along with the BEAM.
 KillMode=control-group
 TimeoutStopSec=10
 StandardOutput=journal

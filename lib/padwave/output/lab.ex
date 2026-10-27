@@ -18,7 +18,7 @@ defmodule Padwave.Output.Lab do
 
   import Bitwise, only: [band: 2]
 
-  alias Padwave.Output.{Audio, Hid, Lightbar, TriggerEffects}
+  alias Padwave.Output.{Hid, Lightbar, TriggerEffects}
 
   # High-level effects keep the panel honest: the UI sends "vibration with
   # position/amplitude/frequency", not a mode byte and ten opaque bytes.
@@ -63,18 +63,8 @@ defmodule Padwave.Output.Lab do
     {:ok, "lightbar overridden"}
   end
 
-  # A 0x36 packet built by padwave itself, carrying Opus noise. Only meaningful
-  # while the audio service is stopped: its own 0x36 would overwrite ours.
-  def apply(%{"kind" => "audio_noise"} = params) do
-    ms = params["ms"] |> to_int(500) |> max(10) |> min(10_000)
-    level = params["level"] |> to_int(3_000) |> max(0) |> min(30_000)
-    output = if params["output"] == "speaker", do: :speaker, else: :jack
-    Audio.noise(ms, level: level, output: output)
-  end
-
-  # Drive the selected playback engine directly, bypassing the radio. Used for
-  # the mpv-vs-ffmpeg comparisons: same file, same capture, only the engine
-  # differs.
+  # Drive the player directly, bypassing the radio. Useful for testing a file
+  # without changing stations.
   def apply(%{"kind" => "engine_play", "path" => path}) when is_binary(path) do
     if File.regular?(path) do
       Padwave.Player.Native.play(path, start: 0, fade: 0)
@@ -89,43 +79,6 @@ defmodule Padwave.Output.Lab do
     {:ok, "engine stopped"}
   end
 
-  # The prototype playback path: ffmpeg decodes the current station, our encoder
-  # and 0x36 builder do the rest. Stop the radio and the audio service first.
-  def apply(%{"kind" => "audio_file"} = params) do
-    case Padwave.Radio.status() do
-      %{current: %{path: path}} when is_binary(path) ->
-        ms = params["ms"] |> to_int(5_000) |> max(100) |> min(120_000)
-        output = if params["output"] == "speaker", do: :speaker, else: :jack
-        Audio.play_file(path, limit_ms: ms, output: output)
-
-      _ ->
-        {:error, "no current station"}
-    end
-  end
-
-  # Classic rumble motors, claimed with valid_flag0 bit 0. The kernel drives
-  # these too for a game's force feedback, so our values last until the next FF
-  # event — fine for poking at the hardware, not a persistent setting. A zero
-  # report after `ms` stops them.
-  def apply(%{"kind" => "rumble"} = params) do
-    left = params["left"] |> to_int(0) |> clamp()
-    right = params["right"] |> to_int(0) |> clamp()
-    ms = params["ms"] |> to_int(400) |> max(0) |> min(5_000)
-
-    Hid.send_fields(%{"valid_flag0" => ["rumble"], "motor_left" => left, "motor_right" => right})
-
-    if ms > 0 do
-      Task.start(fn ->
-        Process.sleep(ms)
-        Hid.send_fields(%{"valid_flag0" => ["rumble"], "motor_left" => 0, "motor_right" => 0})
-      end)
-    end
-
-    {:ok, "rumble #{left}/#{right} for #{ms} ms"}
-  end
-
-  # Eight toggles for power_save_control. Only bit 4 (mic mute) and bit 6
-  # (audio mute) are documented; the rest are for finding out.
   def apply(%{"kind" => "power_save"} = params) do
     bits = params["bits"] |> List.wrap() |> Enum.map(&to_int(&1, 0)) |> Enum.map(&band(&1, 7))
     value = Enum.reduce(bits, 0, fn bit, acc -> Bitwise.bor(acc, Bitwise.bsl(1, bit)) end)

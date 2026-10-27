@@ -56,6 +56,19 @@ struct NumType {
     set((Type)(get() - n));
     return *this;
   }
+  NumType &operator|=(Type n) {
+    set((Type)(get() | n));
+    return *this;
+  }
+  NumType &operator&=(Type n) {
+    set((Type)(get() & n));
+    return *this;
+  }
+  NumType &operator^=(Type n) {
+    set((Type)(get() ^ n));
+    return *this;
+  }
+
   NumType &operator++() {
     set((Type)(get() + 1));
     return *this;

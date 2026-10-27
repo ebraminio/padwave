@@ -80,9 +80,6 @@ config :padwave,
   trigger_effect_amplitude: 6,
   trigger_effect_frequency: 25,
 
-  # Kill mpv processes left behind by a BEAM that died abruptly.
-  sweep_stale_players: true,
-
   # --- hot swap ------------------------------------------------------------
   # Watch lib/ and priv/ for edits and reload modules in place.
   hot_swap: true,

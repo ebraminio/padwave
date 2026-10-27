@@ -124,7 +124,8 @@ inline const flag *find_flag(const flag *table, size_t count, const char *name) 
   return nullptr;
 }
 
-inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, const char *value) {
+inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, const char *value,
+                          bool merge) {
   const flag *table = nullptr;
   size_t count = 0;
   if (field->offset == offsetof(padwave::OutputBody, valid_flag0)) {
@@ -146,7 +147,8 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
     const flag *f = find_flag(table, count, name);
     if (f) bits = (uint8_t)(bits | f->bit);
   }
-  *(uint8_t *)((char *)body + field->offset) = bits;
+  uint8_t *word = (uint8_t *)((char *)body + field->offset);
+  *word = merge ? (uint8_t)(*word | bits) : bits;
 }
 
 inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
@@ -160,7 +162,7 @@ inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
 }
 
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
-inline bool apply_fields(padwave::OutputBody *body, const char *text) {
+inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge_flags = false) {
   char copy[4096];
   snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;
@@ -177,7 +179,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text) {
       if (strcmp(kU8Fields[i].name, name) != 0) continue;
       if (strcmp(name, "valid_flag0") == 0 || strcmp(name, "valid_flag1") == 0 ||
           strcmp(name, "valid_flag2") == 0)
-        set_flag_word(body, &kU8Fields[i], value);
+        set_flag_word(body, &kU8Fields[i], value, merge_flags);
       else
         *(uint8_t *)((char *)body + kU8Fields[i].offset) = (uint8_t)strtoul(value, nullptr, 0);
       found = true;

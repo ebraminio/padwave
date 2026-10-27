@@ -114,8 +114,10 @@ defmodule Padwave.Output.Lightbar do
   def handle_info({:padwave, {:device, :down, _info}}, state), do: {:noreply, %{state | mode: :off}}
 
   def handle_info({:padwave, {:device, :up, _info}}, state) do
-    # The controller comes back with the kernel's startup animation; repaint.
-    {:noreply, paint(%{state | mode: :idle, custom: nil})}
+    # The controller comes back with the kernel's startup animation. Keep the
+    # user's custom colour and force one repaint, even if the target colour is
+    # the one we last painted before the disconnect.
+    {:noreply, paint(%{state | painted: nil})}
   end
 
   def handle_info(:pulse, %{mode: :warning} = state) do

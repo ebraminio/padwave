@@ -198,6 +198,12 @@ defmodule Padwave.Radio do
         Process.send_after(self(), :resume, 1200)
         {:noreply, state}
 
+      state.current != nil and not state.playing ->
+        # A fresh controller with a station loaded should start playing by
+        # itself; :resume decides whether the jack actually has a listener.
+        Process.send_after(self(), :resume, 1200)
+        {:noreply, %{state | resume_pending: true, suspended_by: nil}}
+
       true ->
         {:noreply, state}
     end
@@ -597,7 +603,7 @@ defmodule Padwave.Radio do
     end
   end
 
-  # Small steps are a plain seek (cheap, and mpv is gapless on local files).
+  # Small steps are a plain seek (cheap; the native player is gapless).
   # Big jumps crossfade between the old and the new position using the idle
   # slot, exactly like a station change — so hopping from the first hour to the
   # second stays musical instead of cutting.

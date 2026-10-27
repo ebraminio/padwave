@@ -8,10 +8,9 @@ rips, long mixes, albums, podcast feeds you have already downloaded. Online
 feeds and live streams are the next step, not today's.
 
 ```
-DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ Radio ──▶ mpv ×2 ──▶ PipeWire
-   ▲                                                     │                  │
-   └──── lightbar + triggers (0x31) ◀── state ◀── web UI ◀┘                  │
-                                                     ds5_membrane sink ◀─────┘
+DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ Radio ──▶ padwave native ──▶ 0x36
+   ▲                                                              │
+   └──────────── lightbar, rumble, triggers (0x31) ◀──────────────┘
 ```
 
 ## Controls
@@ -55,9 +54,9 @@ set in `~/.config/padwave/env`:
 PADWAVE_ROOTS=/srv/audio:/media/usb/podcasts
 ```
 
-Needs `mpv`, `pipewire` + `pipewire-pulse`, Elixir ≥ 1.14, and
-[LinuxAudio4Dualsense5](https://github.com/GeorgLegato/LinuxAudio4Dualsense5)
-for the `ds5_membrane` sink (or point `audio_device` at any sink).
+Needs Elixir ≥ 1.14, a C++ compiler, `pkg-config`, and the development packages
+for libavformat/libavcodec/libswresample/libavutil and libopus — the installer
+builds `padwave` from `scripts/`. No external player and no PipeWire sink.
 
 ## Web UI
 
@@ -101,8 +100,8 @@ lib/padwave/
   wire.ex                 the packet DSL (bits, enums, splices, CRC framing)
   schemas/                the protocol, as source: input, output, audio, feature
   input/                  device discovery, decode, mapper, simulator
-  output/                 HID writer, lightbar, trigger effects, lab
-  player/                 two mpv slots and their crossfade
+  output/                 the 0x31 writer through the player, lightbar, triggers, lab
+  player/                 the native engine (C++ player via a port)
   radio.ex                stations, shuffle bag, queue, checkpoints
   session.ex              idle timer and shutdown
   web/                    router and SSE

@@ -56,10 +56,6 @@ defmodule Padwave.Output.Hid do
   def trigger(side, mode, params \\ []),
     do: GenServer.cast(__MODULE__, {:trigger, side, mode, params})
 
-  @doc "Writes an already-built report (the audio test builds its own 0x36)."
-  def send_audio(report) when is_binary(report),
-    do: GenServer.cast(__MODULE__, {:audio, report})
-
   @impl true
   def init(_opts) do
     Bus.subscribe()
@@ -90,8 +86,6 @@ defmodule Padwave.Output.Hid do
   def handle_cast({:trigger, side, mode, params}, state),
     do: emit(state, Report.trigger_fields(side, mode, params))
 
-  def handle_cast({:audio, report}, state), do: raw(state, report)
-
   def handle_cast({:fields, fields}, state) do
     emit(state, atomize(fields))
   rescue
@@ -116,8 +110,6 @@ defmodule Padwave.Output.Hid do
   defp emit(state, fields) do
     send_line(state, "fields " <> serialize(merge_persistent(fields, state)))
   end
-
-  defp raw(state, report), do: send_line(state, "raw " <> Base.encode16(report, case: :lower))
 
   defp merge_persistent(fields, %{power_save: nil}), do: fields
 
