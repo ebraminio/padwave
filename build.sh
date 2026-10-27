@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 CXX="${CXX:-c++}"
 PKGS="libavformat libavcodec libswresample libavutil"
 CFLAGS="$(pkg-config --cflags $PKGS)"
-LIBS="$(pkg-config --libs $PKGS) -lopus -lz -lm"
+LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 
 echo "==> ui header"
 python3 - > padwave_ui.hh <<'PY'
@@ -21,7 +21,7 @@ print("static const size_t kIndexHtmlSize = sizeof(kIndexHtml);")
 PY
 
 echo "==> wire test"
-"$CXX" -std=c++23 -O2 -fno-exceptions -fno-rtti -I. -o /tmp/padwave_test_wire test_wire.cc -lz
+"$CXX" -std=c++23 -O2 -fno-exceptions -fno-rtti -I. -o /tmp/padwave_test_wire test_wire.cc
 /tmp/padwave_test_wire
 
 echo "==> padwave"

@@ -6,8 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <zlib.h>
-
 // Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
 // conversion to arithmetic types, but little-endian instead of HarfBuzz's
 // big-endian.
@@ -117,15 +115,27 @@ enum Packet : uint8_t {
   PacketAudio = 0x36,
 };
 
-// The CRC the controller checks: zlib's crc32 seeded with the stream's seed
-// byte (0xA1 input, 0xA2 output, 0xA3 features), over everything before the
-// trailing `crc` member. Every report type carries `crc`, `CrcSeed` and a
-// `report_id`, so one template covers them all.
+// The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
+// polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
+// 0xA2 output, 0xA3 features), over everything before the trailing `crc`
+// member. Every report type carries `crc`, `CrcSeed` and a `report_id`, so one
+// template covers them all. This is the same result as zlib's crc32(), but
+// local so the binary does not need -lz.
+static inline uint32_t crc32_update(uint32_t crc, const void *data, size_t len) {
+  const uint8_t *p = (const uint8_t *)data;
+  crc = ~crc;
+  while (len--) {
+    crc ^= *p++;
+    for (int bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+  }
+  return ~crc;
+}
+
 template <typename Report>
 static inline uint32_t crc_of(const Report &report) {
   uint8_t seed = (uint8_t)Report::CrcSeed;
-  uLong c = crc32(0L, &seed, 1);
-  return (uint32_t)crc32(c, (const Bytef *)&report, offsetof(Report, crc));
+  uint32_t c = crc32_update(0, &seed, 1);
+  return crc32_update(c, &report, offsetof(Report, crc));
 }
 
 // ===========================================================================

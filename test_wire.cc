@@ -29,6 +29,13 @@ int main() {
   assert(u32.get() == 0x01020304);
   assert(s16.get() == -2);
 
+  // Standard CRC-32 check value ("123456789"), and chaining must equal the
+  // checksum of the concatenation.
+  assert(padwave::crc32_update(0, "123456789", 9) == 0xCBF43926u);
+  uint32_t c = padwave::crc32_update(0, "1234", 4);
+  c = padwave::crc32_update(c, "56789", 5);
+  assert(c == 0xCBF43926u);
+
   // A whole report: the header, the audio state snapshot and the CRC.
   padwave::AudioReport report;
   report.init(padwave::AudioReport::Jack, padwave::AudioReport::SpeakerOnly);

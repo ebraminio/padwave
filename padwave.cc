@@ -25,7 +25,6 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <zlib.h>
 
 // FFmpeg's public headers are C-only (no extern "C" guards).
 extern "C" {
@@ -320,7 +319,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 //   cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
 //      -o padwave padwave.cc padwave_native.cc padwave_opusdec.cc
 //      $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil)
-//      -lopus -lz -lm
+//      -lopus -lm
 
 // FFmpeg's public headers are C-only (no extern "C" guards), so a C++ caller
 // has to provide the linkage wrapper itself.

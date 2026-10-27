@@ -68,7 +68,7 @@ clang-format -i padwave.cc padwave_app.hh padwave_server.hh padwave_wire.hh test
 ## Build and run
 
 Needs a C++ compiler, `pkg-config`, the FFmpeg development packages
-(`libavformat`, `libavcodec`, `libswresample`, `libavutil`), `libopus`, `zlib`
+(`libavformat`, `libavcodec`, `libswresample`, `libavutil`) and `libopus`
 and `python3` for the UI header.
 
 ```sh
