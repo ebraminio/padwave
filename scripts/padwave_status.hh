@@ -5,7 +5,7 @@
 // sscanf. Sending is fire-and-forget: when the front is not running the
 // sendto() is dropped and nothing else changes.
 //
-//   player <pos_ms> <dur_ms> <sent> <underruns>
+//   player <pos_ms> <dur_ms> <sent> <underruns> <paused>
 //   input  <lx> <ly> <rx> <ry> <l2> <r2> <buttons> <battery> <jack>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +17,7 @@
 namespace padwave_status {
 
 static constexpr const char *kPath = "/tmp/padwave-status.sock";
+static constexpr const char *kPlayerPath = "/tmp/padwave-player.sock";
 
 static inline int sender_open() {
   return socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);

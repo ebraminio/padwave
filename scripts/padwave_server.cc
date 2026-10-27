@@ -79,6 +79,7 @@ unsigned long g_requests = 0;
 struct player_status {
   bool valid = false;
   long pos = 0, dur = 0, sent = 0, underruns = 0;
+  int paused = 0;
 };
 
 struct input_status {
@@ -98,8 +99,8 @@ int64_t monotonic_ms() {
 
 void parse_status(const char *line) {
   if (strncmp(line, "player ", 7) == 0) {
-    if (sscanf(line + 7, "%ld %ld %ld %ld", &g_player.pos, &g_player.dur, &g_player.sent,
-               &g_player.underruns) == 4)
+    if (sscanf(line + 7, "%ld %ld %ld %ld %d", &g_player.pos, &g_player.dur, &g_player.sent,
+               &g_player.underruns, &g_player.paused) == 5)
       g_player.valid = true;
   } else if (strncmp(line, "input ", 6) == 0) {
     unsigned lx, ly, rx, ry, l2, r2, buttons;
@@ -417,12 +418,12 @@ int front_json(char *buf, size_t cap) {
                   "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
                   "\"controller\":%d,"
                   "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
-                  "\"underruns\":%ld},"
+                  "\"underruns\":%ld,\"paused\":%d},"
                   "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
                   "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
                   (long)((monotonic_ms() - g_start_ms) / 1000), g_requests, controller,
                   g_player.valid ? 1 : 0, g_player.pos, g_player.dur, g_player.sent,
-                  g_player.underruns, g_input.valid ? 1 : 0, g_input.lx, g_input.ly, g_input.rx,
+                  g_player.underruns, g_player.paused, g_input.valid ? 1 : 0, g_input.lx, g_input.ly, g_input.rx,
                   g_input.ry, g_input.l2, g_input.r2, g_input.buttons, g_input.battery,
                   g_input.jack);
 }

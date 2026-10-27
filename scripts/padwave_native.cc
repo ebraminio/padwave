@@ -711,19 +711,37 @@ int native_main(int argc, char **argv) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
 
+  // A local control bus with the same line protocol as stdin. stdin stays the
+  // Elixir engine's path; this is for the web front and for tests.
+  int cmd_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (cmd_fd >= 0) {
+    struct sockaddr_un cmd_addr;
+    memset(&cmd_addr, 0, sizeof(cmd_addr));
+    cmd_addr.sun_family = AF_UNIX;
+    snprintf(cmd_addr.sun_path, sizeof(cmd_addr.sun_path), "%s", padwave_status::kPlayerPath);
+    unlink(padwave_status::kPlayerPath);
+    if (bind(cmd_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
+      close(cmd_fd);
+      cmd_fd = -1;
+    }
+  }
+
   char line[1200];
   int line_len = 0;
 
   while (running) {
     int timeout = (pl.playing && !pl.paused && ring_len(&pl) < RING_HIGH) ? 1 : 20;
-    struct pollfd fds[2];
+    struct pollfd fds[3];
     fds[0].fd = STDIN_FILENO;
     fds[0].events = POLLIN;
     fds[0].revents = 0;
     fds[1].fd = tfd;
     fds[1].events = POLLIN;
     fds[1].revents = 0;
-    int ready = poll(fds, 2, timeout);
+    fds[2].fd = cmd_fd;
+    fds[2].events = POLLIN;
+    fds[2].revents = 0;
+    int ready = poll(fds, 3, timeout);
     if (ready < 0 && errno != EINTR) break;
 
     if (fds[0].revents & POLLIN) {
@@ -738,6 +756,17 @@ int native_main(int argc, char **argv) {
         } else if (line_len < (int)sizeof(line) - 1) {
           line[line_len++] = buf[i];
         }
+      }
+    }
+
+    if (fds[2].revents & POLLIN) {
+      char cmd[1200];
+      ssize_t n = recv(cmd_fd, cmd, sizeof(cmd) - 1, 0);
+      if (n > 0) {
+        cmd[n] = 0;
+        char *nl = strchr(cmd, '\n');
+        if (nl) *nl = 0;
+        handle_line(&pl, cmd);
       }
     }
 
@@ -815,8 +844,9 @@ int native_main(int argc, char **argv) {
              (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
 
       char status_line[160];
-      snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld", (long)pos,
-               (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns);
+      snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld %d", (long)pos,
+               (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns,
+               pl.paused ? 1 : 0);
       padwave_status::send_line(status_fd, status_line);
       if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
       fflush(stdout);
@@ -825,6 +855,10 @@ int native_main(int argc, char **argv) {
 
   close_file(&pl);
   close_next(&pl);
+  if (cmd_fd >= 0) {
+    close(cmd_fd);
+    unlink(padwave_status::kPlayerPath);
+  }
   if (pl.hidraw >= 0) close(pl.hidraw);
   opus_encoder_destroy(pl.enc);
   av_packet_free(&pl.pkt);
