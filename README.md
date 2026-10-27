@@ -83,11 +83,14 @@ trusted network).
 
 ## HTTP
 
-`GET /api/status`, `GET /api/events` (SSE, 5 Hz), `GET /api/library`,
-`GET /api/config`, `GET /api/schema`, `POST /api/command`
-(`next`, `previous`, `pause`, `mute`, `shuffle_game`, `disconnect`, `volume`,
-`seek`, `seek_to`, `play_track`). `GET /api/front` and `/api/front/events` are
-the server's own state stream.
+`GET /api/status`, `GET /api/events` (SSE, 5 Hz), `GET /api/front` and
+`/api/front/events` are the server's own state stream and speak `key=value`
+lines: dotted keys nest, and `true`/`false`/`null` are literals. `POST
+/api/command` takes the same lines (`action=next`, plus `value`, `delta`,
+`position` or `id`) and answers `ok=true` or `ok=false` + `error=...`. The
+commands are `next`, `previous`, `pause`, `mute`, `shuffle_game`, `disconnect`,
+`volume`, `seek`, `seek_to`, `play_track`. `GET /api/library`, `/api/config`
+and `/api/schema` keep their JSON shapes because they are lists/objects.
 
 ## Status
 
@@ -96,9 +99,9 @@ next/previous, shuffle-game, seek, volume/mute, gapless and crossfade in the
 player, the panel with controller state and SSE, and the LAN API.
 
 Not yet ported from the old Elixir app: the idle fade/suspend and controller
-power-off, persisted playhead/config, mic level decoding, and the
-lightbar/charging/trigger/output lab endpoints. Those blocks in `/api/status`
-are intentionally static until they move.
+power-off, persisted playhead/config, and mic level decoding. The
+lightbar/charging/trigger/output lab endpoints are intentionally not
+implemented yet.
 
 ## Protocol
 

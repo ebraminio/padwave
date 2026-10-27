@@ -455,6 +455,40 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
+
+// /api/status, /api/front, /api/command and the two event streams speak
+// key=value lines now. Dotted keys nest, true/false/null are literals, and the
+// known list fields split on commas. render() below keeps reading objects.
+const kvLists = { accel: true, gyro: true, buttons: true };
+function parseKV(text) {
+  const out = {};
+  for (const rawLine of String(text || "").split("\n")) {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (!line) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq);
+    const raw = line.slice(eq + 1);
+    const parts = key.split(".");
+    let node = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node[parts[i]] || typeof node[parts[i]] !== "object") node[parts[i]] = {};
+      node = node[parts[i]];
+    }
+    const leaf = parts[parts.length - 1];
+    let value;
+    if (raw === "true") value = true;
+    else if (raw === "false") value = false;
+    else if (raw === "null") value = null;
+    else if (kvLists[leaf]) value = raw ? raw.split(",") : [];
+    else if (/^-?\d+(\.\d+)?$/.test(raw)) value = Number(raw);
+    else value = raw;
+    if (leaf !== "buttons" && kvLists[leaf]) value = value.map(Number);
+    node[leaf] = value;
+  }
+  return out;
+}
+
 const padButtons = [
   ["triangle","△"],["circle","○"],["square","□"],["cross","✕"],
   ["l1","L1"],["r1","R1"],["l2","L2"],["r2","R2"],
@@ -492,13 +526,15 @@ function toast(msg) {
 
 async function send(action, args = {}) {
   try {
+    const lines = [`action=${action}`];
+    for (const [key, value] of Object.entries(args)) lines.push(`${key}=${value}`);
     const res = await fetch("/api/command", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action, ...args })
+      headers: { "content-type": "text/plain" },
+      body: lines.join("\n")
     });
-    const data = await res.json();
-    if (!data.ok) toast("failed: " + (data.error || "unknown"));
+    const data = parseKV(await res.text());
+    if (data.ok !== true) toast("failed: " + (data.error || "unknown"));
   } catch (e) { toast("network: " + e.message); }
 }
 
@@ -1058,7 +1094,7 @@ function connectFrontStream() {
   const source = new EventSource("/api/front/events");
   source.onmessage = (event) => {
     try {
-      const f = JSON.parse(event.data);
+      const f = parseKV(event.data);
       const player = f.player && f.player.valid
         ? `player ${Math.round(f.player.pos / 1000)}s · sent ${f.player.sent}`
         : "no player";
@@ -1075,12 +1111,12 @@ function connectStream() {
   const source = new EventSource("/api/events");
 
   source.onmessage = (event) => {
-    try { render(JSON.parse(event.data)); } catch (e) { console.error(e); }
+    try { render(parseKV(event.data)); } catch (e) { console.error(e); }
   };
 
   source.addEventListener("mic", (event) => {
     try {
-      const { level } = JSON.parse(event.data);
+      const { level } = parseKV(event.data);
       const fill = document.getElementById("micFill");
       if (fill) fill.style.width = (level ?? 0) + "%";
     } catch (e) { console.error(e); }
@@ -1097,7 +1133,7 @@ function connectStream() {
 function pollFallback() {
   const loop = async () => {
     try {
-      render(await fetch("/api/status").then(r => r.json()));
+      render(parseKV(await fetch("/api/status").then(r => r.text())));
     } catch (e) { /* offline */ }
     setTimeout(loop, 1000);
   };

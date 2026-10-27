@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -351,13 +352,11 @@ void input_destroy(void *handle);
 
 struct app;
 
-struct app *app_create();
-void app_destroy(struct app *a);
 void app_tick(struct app *a);
 int app_fds(struct app *a, int *fds, int max);
 void app_handle_fd(struct app *a, int fd);
-int app_status_json(struct app *a, char *buf, size_t cap);
-int app_front_json(struct app *a, char *buf, size_t cap, unsigned long requests, long uptime);
+int app_status_text(struct app *a, char *buf, size_t cap);
+int app_front_text(struct app *a, char *buf, size_t cap, unsigned long requests, long uptime);
 int app_library_json(struct app *a, char *buf, size_t cap);
 int app_config_json(char *buf, size_t cap);
 int app_bindings_json(char *buf, size_t cap);
@@ -2023,10 +2022,8 @@ struct app {
   static void input_event_cb(const char *name, void *ud);
   static void input_mic_cb(const uint8_t *data, size_t len, void *ud);
   void handle_action(const char *name, int value);
-  void status_radio(char *buf, size_t cap);
-  void status_controller(char *buf, size_t cap);
-  int status_json(char *buf, size_t cap);
-  int front_json(char *buf, size_t cap, unsigned long requests, long uptime);
+  int status_text(char *buf, size_t cap);
+  int front_text(char *buf, size_t cap, unsigned long requests, long uptime);
   int library_json(char *buf, size_t cap);
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap);
   int handle_command(const char *body, size_t len, char *out, size_t cap);
@@ -2352,96 +2349,138 @@ void app::handle_action(const char *name, int value) {
   snprintf(this->last_action, sizeof(this->last_action), "%s", name);
 }
 
-void app::status_radio(char *buf, size_t cap) {
-  const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
-  char title[2 * kMaxTitle], game[2 * kMaxGame], path[2 * kMaxPath];
-  json_escape(s ? s->title : "", title, sizeof(title));
-  json_escape(s ? s->game : "", game, sizeof(game));
-  json_escape(s ? s->path : "", path, sizeof(path));
+// The panel's hot wire: one key=value per line, dotted keys for nesting.
+// Values are plain strings, numbers, true/false or null; index.html parses
+// them back into the objects render() already understands. Library, config
+// and schema keep their JSON shapes because they are structural, not polled.
+void kv_add(char *buf, size_t cap, size_t *len, const char *key, const char *fmt, ...) {
+  size_t start = *len;
+  if (start + 2 > cap) return;
+  int n = snprintf(buf + start, cap - start, "%s=", key);
+  if (n <= 0 || (size_t)n >= cap - start) return;
+  *len = start + (size_t)n;
 
-  char cur[3 * kMaxPath] = "null";
-  if (s)
-    snprintf(cur, sizeof(cur),
-             "{\"id\":\"%s\",\"title\":\"%s\",\"game\":\"%s\",\"path\":\"%s\",\"ext\":\"%s\"}",
-             s->id, title, game, path, s->ext);
+  va_list ap;
+  va_start(ap, fmt);
+  int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
+  va_end(ap);
+  if (m < 0 || (size_t)m + 2 > cap - *len) {
+    *len = start;
+    buf[start] = 0;
+    return;
+  }
+  *len += (size_t)m;
 
-  snprintf(buf, cap,
-           "{\"playing\":%d,\"paused\":%d,\"position\":%.1f,\"duration\":%.1f,"
-           "\"volume\":%d,\"muted\":%d,\"idle_warning\":0,\"suspended\":0,"
-           "\"suspended_by\":null,\"resume_pending\":0,\"paused_by_jack\":0,"
-           "\"applied_volume\":%d,\"fade_percent\":100,\"current\":%s,\"history\":[]}",
-           this->playing ? 1 : 0, this->paused ? 1 : 0, this->pos_ms / 1000.0, this->dur_ms / 1000.0, this->volume,
-           this->muted ? 1 : 0, this->volume, cur);
+  buf[(*len)++] = '\n';
+  buf[*len] = 0;
 }
 
-void app::status_controller(char *buf, size_t cap) {
-  char buttons[512];
-  json_escape(this->buttons, buttons, sizeof(buttons));
-  char arr[600];
-  size_t o = 0;
-  o += (size_t)snprintf(arr + o, sizeof(arr) - o, "[");
-  bool first = true;
-  char *save = nullptr;
-  for (char *tok = strtok_r(buttons, ",", &save); tok && o + 4 < sizeof(arr);
-       tok = strtok_r(nullptr, ",", &save)) {
-    o += (size_t)snprintf(arr + o, sizeof(arr) - o, "%s\"%s\"", first ? "" : ",", tok);
-    first = false;
+void kv_text(char *buf, size_t cap, size_t *len, const char *key, const char *value) {
+  size_t start = *len;
+  if (start + 2 > cap) return;
+  int n = snprintf(buf + start, cap - start, "%s=", key);
+  if (n <= 0 || (size_t)n >= cap - start) return;
+  *len = start + (size_t)n;
+
+  for (const char *p = value; p && *p; p++) {
+    if (*len + 2 >= cap) break;
+    buf[(*len)++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
   }
-  snprintf(arr + o, sizeof(arr) - o, "]");
+  buf[(*len)++] = '\n';
+  buf[*len] = 0;
+}
+
+int app::status_text(char *buf, size_t cap) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
+
+  kv_add(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
+  kv_add(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
+  kv_add(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
+  kv_add(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
+  kv_add(buf, cap, &o, "radio.volume", "%d", this->volume);
+  kv_add(buf, cap, &o, "radio.muted", "%s", this->muted ? "true" : "false");
+  kv_add(buf, cap, &o, "radio.fade_percent", "%d", 100);
+  if (s) {
+    kv_text(buf, cap, &o, "radio.current.id", s->id);
+    kv_text(buf, cap, &o, "radio.current.title", s->title);
+    kv_text(buf, cap, &o, "radio.current.game", s->game);
+    kv_text(buf, cap, &o, "radio.current.path", s->path);
+    kv_text(buf, cap, &o, "radio.current.ext", s->ext);
+  }
+
+  kv_text(buf, cap, &o, "session.phase", "active");
+  kv_add(buf, cap, &o, "session.warning_in", "%d", 900);
+  kv_add(buf, cap, &o, "session.shutdown_in", "%d", 0);
+
+  kv_add(buf, cap, &o, "audio.present", "%s", "false");
+  kv_text(buf, cap, &o, "audio.sink", "");
+  kv_text(buf, cap, &o, "audio.state", "null");
+
+  kv_text(buf, cap, &o, "hid.power_save", "null");
+  kv_text(buf, cap, &o, "hid.player_leds", "null");
+
+  kv_add(buf, cap, &o, "mic.level", "%d", 0);
+  kv_add(buf, cap, &o, "mic.active", "%s", "false");
+  kv_add(buf, cap, &o, "mic.frames", "%d", 0);
+  kv_add(buf, cap, &o, "mic.rms", "%d", 0);
+  kv_add(buf, cap, &o, "mic.peak", "%d", 0);
+  kv_add(buf, cap, &o, "mic.running", "%s", "false");
+  kv_add(buf, cap, &o, "mic.monitor", "%s", "false");
 
   char node[64] = "";
   int idx = find_dualsense(node, sizeof(node));
-  char raw[420];
-  json_escape(this->raw, raw, sizeof(raw));
-
-  snprintf(buf, cap,
-           "{\"connected\":%d,\"bus\":\"bluetooth\",\"name\":\"DualSense\",\"mac\":\"\","
-           "\"model\":\"dualsense\",\"node\":\"%s\",\"battery\":%d,\"charging\":\"%s\","
-           "\"jack\":%d,\"buttons\":%s,\"dpad\":\"%s\",\"l2\":%d,\"r2\":%d,"
-           "\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,\"temperature\":%d,"
-           "\"accel\":[%d,%d,%d],\"gyro\":[%d,%d,%d],\"raw\":\"%s\","
-           "\"last_action\":\"%s\",\"fields\":{},\"touches\":[]}",
-           this->controller ? 1 : 0, idx >= 0 ? node : "", this->battery >= 0 ? this->battery : 0, this->charging, this->jack ? 1 : 0, arr, this->dpad,
-           this->l2, this->r2, this->lx, this->ly, this->rx, this->ry, this->temp, this->ax, this->ay, this->az, this->gx, this->gy, this->gz, raw,
-           this->last_action);
+  kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
+  kv_text(buf, cap, &o, "controller.bus", "bluetooth");
+  kv_text(buf, cap, &o, "controller.name", "DualSense");
+  kv_text(buf, cap, &o, "controller.mac", "");
+  kv_text(buf, cap, &o, "controller.model", "dualsense");
+  kv_text(buf, cap, &o, "controller.node", idx >= 0 ? node : "");
+  if (this->battery >= 0) kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
+  else kv_text(buf, cap, &o, "controller.battery", "null");
+  kv_text(buf, cap, &o, "controller.charging", this->charging);
+  kv_add(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
+  kv_text(buf, cap, &o, "controller.buttons", this->buttons);
+  kv_text(buf, cap, &o, "controller.dpad", this->dpad);
+  kv_add(buf, cap, &o, "controller.l2", "%d", this->l2);
+  kv_add(buf, cap, &o, "controller.r2", "%d", this->r2);
+  kv_add(buf, cap, &o, "controller.lx", "%d", this->lx);
+  kv_add(buf, cap, &o, "controller.ly", "%d", this->ly);
+  kv_add(buf, cap, &o, "controller.rx", "%d", this->rx);
+  kv_add(buf, cap, &o, "controller.ry", "%d", this->ry);
+  kv_add(buf, cap, &o, "controller.temperature", "%d", this->temp);
+  kv_add(buf, cap, &o, "controller.accel", "%d,%d,%d", this->ax, this->ay, this->az);
+  kv_add(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
+  kv_text(buf, cap, &o, "controller.raw", this->raw);
+  kv_text(buf, cap, &o, "controller.last_action", this->last_action);
+  return (int)o;
 }
 
-
-int app::status_json(char *buf, size_t cap) {
-  char radio[4096], controller[4096];
-  status_radio(radio, sizeof(radio));
-  status_controller(controller, sizeof(controller));
-
-  return snprintf(buf, cap,
-                  "{\"radio\":%s,\"session\":{\"phase\":\"active\",\"idle_seconds\":0,"
-                  "\"warning_in\":900,\"shutdown_in\":0},\"audio\":{\"present\":false,"
-                  "\"sink\":\"\",\"state\":null,\"streams\":[]},\"hid\":{\"writes\":0,"
-                  "\"errors\":0,\"recent\":[],\"power_save\":null,\"player_leds\":null},"
-                  "\"led\":{\"mode\":\"idle\",\"custom\":null,\"bright\":false,"
-                  "\"brightness\":null,\"setup\":null,\"painted\":null},"
-                  "\"mic\":{\"decoder\":\"\",\"running\":false,\"active\":false,\"packets\":0,"
-                  "\"frames\":0,\"errors\":0,\"rms\":0,\"peak\":0,\"level\":0,\"samples\":0,"
-                  "\"last_at\":null,\"enabled\":false,\"monitor\":false},"
-                  "\"player\":{\"port\":%d,\"path\":\"\",\"position\":%.1f,\"duration\":%.1f,"
-                  "\"paused\":%d,\"volume\":%d,\"sent\":%ld,\"underruns\":%ld,\"errors\":0,"
-                  "\"eof\":%d},\"controller\":%s,\"bindings\":{},\"config\":{},\"now\":%ld}",
-                  radio, this->player ? 1 : 0, this->pos_ms / 1000.0, this->dur_ms / 1000.0,
-                  this->paused ? 1 : 0, this->volume, this->sent, this->underruns, this->eof ? 1 : 0, controller,
-                  (long)(time(nullptr)));
-}
-
-int app::front_json(char *buf, size_t cap, unsigned long requests, long uptime) {
-  return snprintf(buf, cap,
-                  "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
-                  "\"controller\":%d,"
-                  "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
-                  "\"underruns\":%ld,\"paused\":%d},"
-                  "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
-                  "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
-                  uptime, requests, this->controller ? 1 : 0, this->player ? 1 : 0, this->pos_ms,
-                  this->dur_ms, this->sent, this->underruns, this->paused ? 1 : 0,
-                  this->input ? 1 : 0, this->lx, this->ly, this->rx, this->ry, this->l2, this->r2,
-                  this->button_mask, this->battery, this->jack ? 1 : 0);
+int app::front_text(char *buf, size_t cap, unsigned long requests, long uptime) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  kv_add(buf, cap, &o, "ok", "%s", "true");
+  kv_add(buf, cap, &o, "front", "%d", 1);
+  kv_add(buf, cap, &o, "uptime_s", "%ld", uptime);
+  kv_add(buf, cap, &o, "requests", "%lu", requests);
+  kv_add(buf, cap, &o, "controller", "%s", this->controller ? "true" : "false");
+  kv_add(buf, cap, &o, "player.valid", "%s", this->player ? "true" : "false");
+  kv_add(buf, cap, &o, "player.pos", "%ld", this->pos_ms);
+  kv_add(buf, cap, &o, "player.dur", "%ld", this->dur_ms);
+  kv_add(buf, cap, &o, "player.sent", "%ld", this->sent);
+  kv_add(buf, cap, &o, "player.underruns", "%ld", this->underruns);
+  kv_add(buf, cap, &o, "player.paused", "%s", this->paused ? "true" : "false");
+  kv_add(buf, cap, &o, "input.valid", "%s", this->input ? "true" : "false");
+  kv_add(buf, cap, &o, "input.lx", "%d", this->lx);
+  kv_add(buf, cap, &o, "input.ly", "%d", this->ly);
+  kv_add(buf, cap, &o, "input.rx", "%d", this->rx);
+  kv_add(buf, cap, &o, "input.ry", "%d", this->ry);
+  kv_add(buf, cap, &o, "input.l2", "%d", this->l2);
+  kv_add(buf, cap, &o, "input.r2", "%d", this->r2);
+  kv_add(buf, cap, &o, "input.battery", "%d", this->battery);
+  kv_add(buf, cap, &o, "input.jack", "%s", this->jack ? "true" : "false");
+  return (int)o;
 }
 
 int app::library_json(char *buf, size_t cap) {
@@ -2482,35 +2521,32 @@ int app_bindings_json(char *buf, size_t cap) {
                   "\"triangle\":\"toggle_pause\"}");
 }
 
-long json_number(const char *body, const char *key, long fallback) {
-  if (!body) return fallback;
-  char pattern[64];
-  snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-  const char *p = strstr(body, pattern);
-  if (!p) return fallback;
-  p = strchr(p + strlen(pattern), ':');
-  if (!p) return fallback;
-  return atol(p + 1);
+// Commands arrive as the same key=value lines the panel parses back.
+bool kv_get(const char *body, const char *key, char *out, size_t cap) {
+  if (!body || cap == 0) return false;
+  size_t klen = strlen(key);
+  for (const char *p = body; *p;) {
+    const char *eol = strchr(p, '\n');
+    size_t n = eol ? (size_t)(eol - p) : strlen(p);
+    if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
+      const char *v = p + klen + 1;
+      size_t vn = n - klen - 1;
+      if (vn > 0 && v[vn - 1] == '\r') vn--;
+      if (vn >= cap) vn = cap - 1;
+      memcpy(out, v, vn);
+      out[vn] = 0;
+      return true;
+    }
+    if (!eol) break;
+    p = eol + 1;
+  }
+  return false;
 }
 
-bool json_string(const char *body, const char *key, char *out, size_t cap) {
-  if (!body) return false;
-  char pattern[64];
-  snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-  const char *p = strstr(body, pattern);
-  if (!p) return false;
-  p = strchr(p + strlen(pattern), ':');
-  if (!p) return false;
-  p = strchr(p, '"');
-  if (!p) return false;
-  p++;
-  const char *e = strchr(p, '"');
-  if (!e) return false;
-  size_t n = (size_t)(e - p);
-  if (n >= cap) n = cap - 1;
-  memcpy(out, p, n);
-  out[n] = 0;
-  return true;
+long kv_number(const char *body, const char *key, long fallback) {
+  char tmp[32];
+  if (!kv_get(body, key, tmp, sizeof(tmp))) return fallback;
+  return atol(tmp);
 }
 
 int app::command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
@@ -2526,29 +2562,29 @@ int app::command(const char *action, const char *body, size_t body_len, char *ou
     this->paused = true;
     player_send("pause 1\n");
   } else if (strcmp(action, "volume") == 0) {
-    set_volume((int)json_number(body, "value", this->volume));
+    set_volume((int)kv_number(body, "value", this->volume));
   } else if (strcmp(action, "seek") == 0) {
-    seek(this->pos_ms + json_number(body, "delta", 0) * 1000);
+    seek(this->pos_ms + kv_number(body, "delta", 0) * 1000);
   } else if (strcmp(action, "seek_to") == 0) {
-    seek(json_number(body, "position", this->pos_ms / 1000) * 1000);
+    seek(kv_number(body, "position", this->pos_ms / 1000) * 1000);
   } else if (strcmp(action, "play_track") == 0) {
     char id[64];
-    if (json_string(body, "id", id, sizeof(id))) {
+    if (kv_get(body, "id", id, sizeof(id))) {
       int idx = find_id(id);
       if (idx >= 0) play(idx, 0);
     }
   } else {
-    return snprintf(out, out_cap, "{\"ok\":false,\"error\":\"unknown action\"}");
+    return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
   }
 
   snprintf(this->last_action, sizeof(this->last_action), "%s", action);
-  return snprintf(out, out_cap, "{\"ok\":true}");
+  return snprintf(out, out_cap, "ok=true\n");
 }
 
 int app::handle_command(const char *body, size_t len, char *out, size_t cap) {
   char action[64];
-  if (!json_string(body, "action", action, sizeof(action)))
-    return snprintf(out, cap, "{\"ok\":false,\"error\":\"missing action\"}");
+  if (!kv_get(body, "action", action, sizeof(action)))
+    return snprintf(out, cap, "ok=false\nerror=missing action\n");
   return command(action, body, len, out, cap);
 }
 
@@ -2636,27 +2672,12 @@ void app::handle_fd(int fd) {
 
 /* ---- opaque API used by the server --------------------------------------- */
 
-app *app_create() {
-  app *a = new app();
-  if (!a->init()) {
-    delete a;
-    return nullptr;
-  }
-  return a;
-}
-
-void app_destroy(app *a) {
-  if (!a) return;
-  a->shutdown();
-  delete a;
-}
-
 void app_tick(app *a) { a->tick(); }
 int app_fds(app *a, int *fds, int max) { return a->fds(fds, max); }
 void app_handle_fd(app *a, int fd) { a->handle_fd(fd); }
-int app_status_json(app *a, char *buf, size_t cap) { return a->status_json(buf, cap); }
-int app_front_json(app *a, char *buf, size_t cap, unsigned long requests, long uptime) {
-  return a->front_json(buf, cap, requests, uptime);
+int app_status_text(app *a, char *buf, size_t cap) { return a->status_text(buf, cap); }
+int app_front_text(app *a, char *buf, size_t cap, unsigned long requests, long uptime) {
+  return a->front_text(buf, cap, requests, uptime);
 }
 int app_library_json(app *a, char *buf, size_t cap) { return a->library_json(buf, cap); }
 int app_command(app *a, const char *action, const char *body, size_t len, char *out, size_t cap) {
@@ -2667,13 +2688,18 @@ int app_handle_command(app *a, const char *body, size_t len, char *out, size_t c
 }
 bool app_owns_fd(app *a, int fd) { return a->owns_fd(fd); }// padwave serve — the C++ web front.
 //
-// A single epoll loop serving the panel from the binary and proxying /api/* to
-// the standalone radio; while PADWAVE_STANDALONE is unset it can still
-// proxy to a legacy backend. The proxy is streaming, so /api/events (SSE) works:
-// bytes are relayed as they arrive, with a 64 KiB per-connection buffer and
+// One epoll loop, one `struct server` holding the connection table, the epoll
+// bookkeeping, the request counter and the embedded panel. The app is the only
+// backend: PADWAVE_STANDALONE=1 creates it in-process and the routes read its
+// state. /api/events and /api/front/events are chunked SSE from the same
+// 500 ms timer that ticks the app, with a 64 KiB buffer per connection and
 // backpressure when the client cannot keep up.
 //
-//   padwave serve [port] [backend-port]      default 8787 8787
+//   padwave serve [port]      default 8787
+//
+// The panel's hot routes (/api/status, /api/front, /api/command) speak
+// key=value lines; the structural ones (/api/library, /api/config,
+// /api/schema) stay JSON.
 //
 // The UI is #embed on compilers that have it (Clang); GCC 12 gets a generated
 // padwave_ui.hh from install.sh. Either way the binary needs no files.
@@ -2700,41 +2726,39 @@ constexpr size_t kBufferMax = 65536;
 constexpr int kMaxFds = 1024;
 
 struct conn {
-  int fd = -1;              // client
-  int up = -1;              // backend, when proxying
+  int fd = -1;  // client
   char in[kRequestMax];
   size_t in_len = 0;
-  char up_req[kRequestMax];
-  size_t up_len = 0;
-  size_t up_off = 0;
   char out[kBufferMax];
   size_t out_len = 0;
   size_t out_off = 0;
-  bool up_sent = false;
   bool static_reply = false;
   bool front_sse = false;
   bool status_sse = false;
   bool client_blocked = false;
 };
 
-conn g_conns[kMaxConns];
-conn *g_owner[kMaxFds];
-
-int g_epoll = -1;
-int g_backend_port = 8787;
-bool g_standalone = false;
-int g_timer_fd = -1;
-int64_t g_start_ms = 0;
-unsigned long g_requests = 0;
+// The whole server state: the connection table, the epoll bookkeeping, the
+// app it serves and the counters/static response the routes read. No route
+// needs a file-scope variable; server_main passes this down.
+struct server {
+  conn conns[kMaxConns];
+  conn *owner[kMaxFds];
+  int epoll_fd = -1;
+  bool standalone = false;
+  int timer_fd = -1;
+  int64_t start_ms = 0;
+  unsigned long requests = 0;
+  char index_response[70000];
+  size_t index_len = 0;
+  app *a = nullptr;
+};
 
 int64_t monotonic_ms() {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
-
-char g_index_response[70000];
-size_t g_index_len = 0;
 
 int make_static(char *dst, size_t cap, const char *type, const char *body, size_t body_len) {
   int n = snprintf(dst, cap,
@@ -2746,123 +2770,48 @@ int make_static(char *dst, size_t cap, const char *type, const char *body, size_
   return n + (int)body_len;
 }
 
-int front_json(app *a, char *buf, size_t cap);
+int front_text(server *s, char *buf, size_t cap);
 
-void close_conn(conn *c) {
+void close_conn(server *s, conn *c) {
   if (c->fd >= 0) {
-    epoll_ctl(g_epoll, EPOLL_CTL_DEL, c->fd, nullptr);
-    if (c->fd < kMaxFds) g_owner[c->fd] = nullptr;
+    epoll_ctl(s->epoll_fd, EPOLL_CTL_DEL, c->fd, nullptr);
+    if (c->fd < kMaxFds) s->owner[c->fd] = nullptr;
     close(c->fd);
-  }
-  if (c->up >= 0) {
-    epoll_ctl(g_epoll, EPOLL_CTL_DEL, c->up, nullptr);
-    if (c->up < kMaxFds) g_owner[c->up] = nullptr;
-    close(c->up);
   }
   *c = conn{};
 }
 
-bool add_fd(int fd, uint32_t events, conn *owner) {
+bool add_fd(server *s, int fd, uint32_t events, conn *owner) {
   struct epoll_event ev;
   memset(&ev, 0, sizeof(ev));
   ev.events = events;
   ev.data.fd = fd;
-  if (epoll_ctl(g_epoll, EPOLL_CTL_ADD, fd, &ev) != 0) return false;
-  if (fd < kMaxFds) g_owner[fd] = owner;
+  if (epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, fd, &ev) != 0) return false;
+  if (fd < kMaxFds) s->owner[fd] = owner;
   return true;
 }
 
-bool mod_fd(int fd, uint32_t events) {
+bool mod_fd(server *s, int fd, uint32_t events) {
   struct epoll_event ev;
   memset(&ev, 0, sizeof(ev));
   ev.events = events;
   ev.data.fd = fd;
-  return epoll_ctl(g_epoll, EPOLL_CTL_MOD, fd, &ev) == 0;
+  return epoll_ctl(s->epoll_fd, EPOLL_CTL_MOD, fd, &ev) == 0;
 }
 
-// Copy the request line and all headers except Connection/Keep-Alive, then a
-// Connection: close, so the backend closes after the response (SSE stays open
-// because the client detaches, not the backend).
-size_t build_upstream_request(conn *c, const char *headers_end, size_t body_len) {
-  char *dst = c->up_req;
-  size_t cap = sizeof(c->up_req);
-  size_t used = 0;
-
-  const char *line_end = strstr(c->in, "\r\n");
-  size_t line_len = line_end ? (size_t)(line_end - c->in) + 2 : 0;
-  if (line_len == 0 || line_len > cap) return 0;
-  memcpy(dst, c->in, line_len);
-  used = line_len;
-
-  const char *p = c->in + line_len;
-  while (p < headers_end) {
-    const char *eol = strstr(p, "\r\n");
-    if (!eol || eol == p) break;
-    size_t len = (size_t)(eol - p) + 2;
-    bool drop = strncasecmp(p, "Connection:", 11) == 0 || strncasecmp(p, "Keep-Alive:", 11) == 0 ||
-                strncasecmp(p, "Proxy-Connection:", 17) == 0;
-    if (!drop) {
-      if (used + len > cap) return 0;
-      memcpy(dst + used, p, len);
-      used += len;
-    }
-    p = eol + 2;
-  }
-
-  static const char close_hdr[] = "Connection: close\r\n\r\n";
-  if (used + sizeof(close_hdr) - 1 + body_len > cap) return 0;
-  memcpy(dst + used, close_hdr, sizeof(close_hdr) - 1);
-  used += sizeof(close_hdr) - 1;
-  if (body_len) {
-    memcpy(dst + used, headers_end + 4, body_len);
-    used += body_len;
-  }
-  return used;
-}
-
-void start_proxy(conn *c, const char *headers_end, size_t body_len) {
-  c->up_len = build_upstream_request(c, headers_end, body_len);
-  if (c->up_len == 0) {
-    c->static_reply = true;
-    c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
-                                  "HTTP/1.1 400 Bad Request\r\nContent-Length: 12\r\n"
-                                  "Connection: close\r\n\r\nbad request\n");
-    mod_fd(c->fd, EPOLLOUT);
-    return;
-  }
-
-  int up = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-  if (up < 0) {
-    close_conn(c);
-    return;
-  }
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)g_backend_port);
-  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  if (connect(up, (struct sockaddr *)&addr, sizeof(addr)) < 0 && errno != EINPROGRESS) {
-    close(up);
-    close_conn(c);
-    return;
-  }
-  c->up = up;
-  add_fd(up, EPOLLOUT, c);
-}
-
-void read_client(app *a, conn *c) {
+void read_client(server *s, conn *c) {
   if (c->in_len >= kRequestMax - 1) {
-    close_conn(c);
+    close_conn(s, c);
     return;
   }
   ssize_t n = read(c->fd, c->in + c->in_len, kRequestMax - 1 - c->in_len);
   if (n == 0) {
-    close_conn(c);
+    close_conn(s, c);
     return;
   }
   if (n < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) return;
-    close_conn(c);
+    close_conn(s, c);
     return;
   }
   c->in_len += (size_t)n;
@@ -2870,7 +2819,7 @@ void read_client(app *a, conn *c) {
 
   char *end = strstr(c->in, "\r\n\r\n");
   if (!end) {
-    if (c->in_len >= kRequestMax - 1) close_conn(c);
+    if (c->in_len >= kRequestMax - 1) close_conn(s, c);
     return;
   }
 
@@ -2879,66 +2828,67 @@ void read_client(app *a, conn *c) {
   const char *cl = strcasestr(c->in, "Content-Length:");
   if (cl && cl < end) body_len = (size_t)strtoul(cl + 15, nullptr, 10);
   if (head_len + body_len > kRequestMax) {
-    close_conn(c);
+    close_conn(s, c);
     return;
   }
   if (c->in_len < head_len + body_len) return;  // body still arriving
 
   char method[8] = {0}, path[1024] = {0};
   if (sscanf(c->in, "%7s %1023s", method, path) != 2) {
-    close_conn(c);
+    close_conn(s, c);
     return;
   }
 
-  g_requests++;
+  s->requests++;
 
-  if (g_standalone && strcmp(path, "/api/status") == 0) {
+  if (s->standalone && strcmp(path, "/api/status") == 0) {
     static char body[8192];
-    int len = app_status_json(a, body, sizeof(body));
+    int len = app_status_text(s->a, body, sizeof(body));
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
-    mod_fd(c->fd, EPOLLOUT);
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strcmp(path, "/api/events") == 0) {
+  if (s->standalone && strcmp(path, "/api/events") == 0) {
     c->status_sse = true;
     c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
                                   "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
                                   "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
                                   "Connection: keep-alive\r\n\r\n");
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strcmp(path, "/api/library") == 0) {
+  if (s->standalone && strcmp(path, "/api/library") == 0) {
     char *body = (char *)malloc(65536);
-    int len = body ? app_library_json(a, body, 65536) : 0;
+    int len = body ? app_library_json(s->a, body, 65536) : 0;
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body ? body : "{}",
                                      body ? (size_t)len : 2);
     free(body);
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strcmp(path, "/api/config") == 0) {
+  if (s->standalone && strcmp(path, "/api/config") == 0) {
     if (strcmp(method, "POST") == 0) {
       static const char ok[] = "{\"ok\":true}";
       c->static_reply = true;
       c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", ok, sizeof(ok) - 1);
-      mod_fd(c->fd, EPOLLOUT);
+      mod_fd(s, c->fd, EPOLLOUT);
       return;
     }
     char body[1024];
     int len = app_config_json(body, sizeof(body));
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strcmp(path, "/api/schema") == 0) {
+  if (s->standalone && strcmp(path, "/api/schema") == 0) {
     char bindings[512];
     app_bindings_json(bindings, sizeof(bindings));
     char body[1024];
@@ -2948,33 +2898,34 @@ void read_client(app *a, conn *c) {
                        bindings);
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strcmp(path, "/api/command") == 0) {
+  if (s->standalone && strcmp(path, "/api/command") == 0) {
     if (strcmp(method, "POST") != 0) {
       c->static_reply = true;
       c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
                                     "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
                                     "Connection: close\r\n\r\n");
-      mod_fd(c->fd, EPOLLOUT);
+      mod_fd(s, c->fd, EPOLLOUT);
       return;
     }
     char result[512];
-    int len = app_handle_command(a, c->in + head_len, body_len, result, sizeof(result));
+    int len = app_handle_command(s->a, c->in + head_len, body_len, result, sizeof(result));
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", result, (size_t)len);
-    mod_fd(c->fd, EPOLLOUT);
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
-  if (g_standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 && strcmp(path, "/api/front/events") != 0) {
+  if (s->standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 && strcmp(path, "/api/front/events") != 0) {
     static const char body[] = "{\"ok\":false,\"error\":\"not implemented\"}";
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,
                                      sizeof(body) - 1);
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
@@ -2984,26 +2935,17 @@ void read_client(app *a, conn *c) {
                                   "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
                                   "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
                                   "Connection: keep-alive\r\n\r\n");
-    mod_fd(c->fd, EPOLLOUT);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
   if (strcmp(path, "/api/front") == 0) {
-    char body[768];
-    int len = front_json(a, body, sizeof(body));
+    char body[1024];
+    int len = front_text(s, body, sizeof(body));
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
-    mod_fd(c->fd, EPOLLOUT);
-    return;
-  }
-
-  if (strncmp(path, "/api/", 5) == 0) {
-    if (strcmp(method, "GET") != 0 && strcmp(method, "POST") != 0 &&
-        strcmp(method, "PUT") != 0 && strcmp(method, "DELETE") != 0) {
-      close_conn(c);
-      return;
-    }
-    start_proxy(c, end, body_len);
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
 
@@ -3013,9 +2955,9 @@ void read_client(app *a, conn *c) {
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,
                                      sizeof(body) - 1);
   } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-    if (g_index_len <= sizeof(c->out)) {
-      memcpy(c->out, g_index_response, g_index_len);
-      c->out_len = g_index_len;
+    if (s->index_len <= sizeof(c->out)) {
+      memcpy(c->out, s->index_response, s->index_len);
+      c->out_len = s->index_len;
     } else {
       c->out_len = 0;
     }
@@ -3027,19 +2969,19 @@ void read_client(app *a, conn *c) {
                      sizeof(body) - 1, body);
     c->out_len = (size_t)n;
   }
-  mod_fd(c->fd, EPOLLOUT);
+  mod_fd(s, c->fd, EPOLLOUT);
 }
 
-void flush_client(conn *c) {
+void flush_client(server *s, conn *c) {
   while (c->out_off < c->out_len) {
     ssize_t n = write(c->fd, c->out + c->out_off, c->out_len - c->out_off);
     if (n < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         c->client_blocked = true;
-        mod_fd(c->fd, EPOLLOUT);
+        mod_fd(s, c->fd, EPOLLOUT);
         return;
       }
-      close_conn(c);
+      close_conn(s, c);
       return;
     }
     c->out_off += (size_t)n;
@@ -3048,146 +2990,99 @@ void flush_client(conn *c) {
   c->client_blocked = false;
 
   if (c->front_sse || c->status_sse) {
-    mod_fd(c->fd, 0);
+    mod_fd(s, c->fd, 0);
     return;
   }
 
-  if (c->static_reply) {
-    close_conn(c);
-    return;
-  }
-  // Proxy: let the backend send more.
-  if (c->up >= 0) mod_fd(c->up, EPOLLIN);
+  if (c->static_reply) close_conn(s, c);
 }
 
-void write_upstream(conn *c) {
-  while (c->up_off < c->up_len) {
-    ssize_t n = write(c->up, c->up_req + c->up_off, c->up_len - c->up_off);
-    if (n < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        mod_fd(c->up, EPOLLOUT);
-        return;
-      }
-      close_conn(c);
-      return;
-    }
-    c->up_off += (size_t)n;
-  }
-  c->up_sent = true;
-  mod_fd(c->up, EPOLLIN);
+int front_text(server *s, char *buf, size_t cap) {
+  return app_front_text(s->a, buf, cap, s->requests,
+                        (long)((monotonic_ms() - s->start_ms) / 1000));
 }
 
-void read_upstream(conn *c) {
-  if (c->client_blocked || c->out_len - c->out_off >= kBufferMax - 4096) {
-    mod_fd(c->up, 0);
-    return;
-  }
-  size_t space = kBufferMax - c->out_len;
-  ssize_t n = read(c->up, c->out + c->out_len, space);
-  if (n == 0) {
-    // Backend finished. Flush what is buffered, then close both.
-    c->up_sent = true;
-    int up = c->up;
-    epoll_ctl(g_epoll, EPOLL_CTL_DEL, up, nullptr);
-    if (up < kMaxFds) g_owner[up] = nullptr;
-    close(up);
-    c->up = -1;
-    flush_client(c);
-    if (c->fd >= 0) {
-      while (c->out_off < c->out_len) {
-        ssize_t w = write(c->fd, c->out + c->out_off, c->out_len - c->out_off);
-        if (w <= 0) break;
-        c->out_off += (size_t)w;
-      }
-      close_conn(c);
-    }
-    return;
-  }
-  if (n < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) return;
-    close_conn(c);
-    return;
-  }
-  c->out_len += (size_t)n;
-  flush_client(c);
-}
-
-int front_json(app *a, char *buf, size_t cap) {
-  return app_front_json(a, buf, cap, g_requests, (long)((monotonic_ms() - g_start_ms) / 1000));
-}
-
-void append_status_event(app *a, conn *c) {
+void append_sse(server *s, conn *c, const char *body, size_t n) {
   if (c->out_off > 0) {
     if (c->out_off < c->out_len) memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
     c->out_len -= c->out_off;
     c->out_off = 0;
   }
-  char body[8192];
-  int n = app_status_json(a, body, sizeof(body));
-  if (n <= 0) return;
-  char *chunk = (char *)malloc((size_t)n + 64);
+  if (n == 0) return;
+
+  // Every key=value line needs its own data: field; a line without one is
+  // dropped by the event source. Count the exact payload, then write it.
+  size_t payload = 1;  // the blank line that ends the event
+  for (size_t pos = 0; pos < n;) {
+    size_t end = pos;
+    while (end < n && body[end] != '\n') end++;
+    payload += 6 + (end - pos) + 1;
+    pos = end < n ? end + 1 : end;
+  }
+
+  char *chunk = (char *)malloc(payload + 48);
   if (!chunk) return;
-  int m = snprintf(chunk, (size_t)n + 64, "%x\r\ndata: ", n + 6);
-  memcpy(chunk + m, body, (size_t)n);
-  m += n;
-  memcpy(chunk + m, "\n\n\r\n", 4);
-  m += 4;
-  if (c->out_len + (size_t)m <= sizeof(c->out)) {
-    memcpy(c->out + c->out_len, chunk, (size_t)m);
-    c->out_len += (size_t)m;
-    mod_fd(c->fd, EPOLLOUT);
+
+  size_t pos = 0;
+  int m = snprintf(chunk, 48, "%zx\r\n", payload);
+  size_t o = (m > 0) ? (size_t)m : 0;
+
+  while (pos < n) {
+    size_t end = pos;
+    while (end < n && body[end] != '\n') end++;
+    memcpy(chunk + o, "data: ", 6);
+    o += 6;
+    memcpy(chunk + o, body + pos, end - pos);
+    o += end - pos;
+    chunk[o++] = '\n';
+    pos = end < n ? end + 1 : end;
+  }
+  chunk[o++] = '\n';
+  memcpy(chunk + o, "\r\n", 2);
+  o += 2;
+
+  if (c->out_len + o <= sizeof(c->out)) {
+    memcpy(c->out + c->out_len, chunk, o);
+    c->out_len += o;
+    mod_fd(s, c->fd, EPOLLOUT);
   }
   free(chunk);
 }
 
-void append_front_event(app *a, conn *c) {
-  if (c->out_off > 0) {
-    if (c->out_off < c->out_len)
-      memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
-    c->out_len -= c->out_off;
-    c->out_off = 0;
-  }
+void append_status_event(server *s, conn *c) {
+  char body[8192];
+  int n = app_status_text(s->a, body, sizeof(body));
+  if (n > 0) append_sse(s, c, body, (size_t)n);
+}
 
-  char body[768];
-  int n = front_json(a, body, sizeof(body));
-  if (n <= 0) return;
-  char event[800];
-  int e = snprintf(event, sizeof(event), "data: %s\n\n", body);
-  if (e <= 0) return;
-  char chunk[832];
-  int m = snprintf(chunk, sizeof(chunk), "%x\r\n", e);
-  if (m <= 0 || (size_t)m + (size_t)e + 2 > sizeof(chunk)) return;
-  memcpy(chunk + m, event, (size_t)e);
-  m += e;
-  memcpy(chunk + m, "\r\n", 2);
-  m += 2;
-
-  if (c->out_len + (size_t)m > sizeof(c->out)) return;
-  memcpy(c->out + c->out_len, chunk, (size_t)m);
-  c->out_len += (size_t)m;
-  mod_fd(c->fd, EPOLLOUT);
+void append_front_event(server *s, conn *c) {
+  char body[1024];
+  int n = front_text(s, body, sizeof(body));
+  if (n > 0) append_sse(s, c, body, (size_t)n);
 }
 
 } // namespace
 
 int server_main(int argc, char **argv) {
   int port = argc > 1 ? atoi(argv[1]) : 8787;
-  g_backend_port = argc > 2 ? atoi(argv[2]) : 8787;
+  static server storage{};  // ~5 MB of connection buffers; zero-initialized BSS
+  server *s = &storage;
+  app a{};                  // the app lives on the stack; no heap ownership
 
   int n = snprintf(nullptr, 0,
                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                    "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                    kIndexHtmlSize);
-  if ((size_t)n + kIndexHtmlSize >= sizeof(g_index_response)) {
+  if ((size_t)n + kIndexHtmlSize >= sizeof(s->index_response)) {
     fprintf(stderr, "padwave serve: UI too large for the static buffer\n");
     return 1;
   }
-  snprintf(g_index_response, sizeof(g_index_response),
+  snprintf(s->index_response, sizeof(s->index_response),
            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
            "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
            kIndexHtmlSize);
-  memcpy(g_index_response + n, kIndexHtml, kIndexHtmlSize);
-  g_index_len = (size_t)n + kIndexHtmlSize;
+  memcpy(s->index_response + n, kIndexHtml, kIndexHtmlSize);
+  s->index_len = (size_t)n + kIndexHtmlSize;
 
   int listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (listen_fd < 0) {
@@ -3222,33 +3117,34 @@ int server_main(int argc, char **argv) {
   sigprocmask(SIG_BLOCK, &mask, nullptr);
   int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
-  g_standalone = getenv("PADWAVE_STANDALONE") != nullptr;
-  app *a = nullptr;
-  if (g_standalone) a = app_create();
+  s->standalone = getenv("PADWAVE_STANDALONE") != nullptr;
+  if (s->standalone) {
+    if (a.init()) s->a = &a;
+    else s->standalone = false;
+  }
+  s->start_ms = monotonic_ms();
 
-  g_start_ms = monotonic_ms();
-
-  g_timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-  if (g_timer_fd >= 0) {
+  s->timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+  if (s->timer_fd >= 0) {
     struct itimerspec its;
     memset(&its, 0, sizeof(its));
     its.it_interval.tv_nsec = 500000000;
     its.it_value = its.it_interval;
-    timerfd_settime(g_timer_fd, 0, &its, nullptr);
+    timerfd_settime(s->timer_fd, 0, &its, nullptr);
   }
 
-  g_epoll = epoll_create1(EPOLL_CLOEXEC);
-  if (g_epoll < 0) {
+  s->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+  if (s->epoll_fd < 0) {
     perror("epoll_create1");
     return 1;
   }
-  add_fd(listen_fd, EPOLLIN, nullptr);
-  if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
-  if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
-  if (g_standalone) {
+  add_fd(s, listen_fd, EPOLLIN, nullptr);
+  if (signal_fd >= 0) add_fd(s, signal_fd, EPOLLIN, nullptr);
+  if (s->timer_fd >= 0) add_fd(s, s->timer_fd, EPOLLIN, nullptr);
+  if (s->standalone) {
     int fds[4];
-    int n = app_fds(a, fds, 4);
-    for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
+    int count = app_fds(s->a, fds, 4);
+    for (int i = 0; i < count; i++) add_fd(s, fds[i], EPOLLIN, nullptr);
   }
 
   fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI)\n", port, kIndexHtmlSize);
@@ -3256,7 +3152,7 @@ int server_main(int argc, char **argv) {
   struct epoll_event events[64];
   bool running = true;
   while (running) {
-    int ready = epoll_wait(g_epoll, events, 64, -1);
+    int ready = epoll_wait(s->epoll_fd, events, 64, -1);
     if (ready < 0) {
       if (errno == EINTR) continue;
       perror("epoll_wait");
@@ -3272,8 +3168,8 @@ int server_main(int argc, char **argv) {
           if (client < 0) break;
           conn *slot = nullptr;
           for (int j = 0; j < kMaxConns; j++)
-            if (g_conns[j].fd < 0) {
-              slot = &g_conns[j];
+            if (s->conns[j].fd < 0) {
+              slot = &s->conns[j];
               break;
             }
           if (!slot) {
@@ -3282,23 +3178,23 @@ int server_main(int argc, char **argv) {
           }
           *slot = conn{};
           slot->fd = client;
-          add_fd(client, EPOLLIN, slot);
+          add_fd(s, client, EPOLLIN, slot);
         }
         continue;
       }
-      if (fd == g_timer_fd) {
+      if (fd == s->timer_fd) {
         uint64_t expirations = 0;
-        if (read(g_timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
-          if (g_standalone) {
-            app_tick(a);
+        if (read(s->timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+          if (s->standalone) {
+            app_tick(s->a);
             int fds[4];
-            int n = app_fds(a, fds, 4);
-            for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
+            int count = app_fds(s->a, fds, 4);
+            for (int i = 0; i < count; i++) add_fd(s, fds[i], EPOLLIN, nullptr);
           }
           for (int j = 0; j < kMaxConns; j++) {
-            if (g_conns[j].fd < 0) continue;
-            if (g_conns[j].front_sse) append_front_event(a, &g_conns[j]);
-            if (g_conns[j].status_sse) append_status_event(a, &g_conns[j]);
+            if (s->conns[j].fd < 0) continue;
+            if (s->conns[j].front_sse) append_front_event(s, &s->conns[j]);
+            if (s->conns[j].status_sse) append_status_event(s, &s->conns[j]);
           }
         }
         continue;
@@ -3309,44 +3205,37 @@ int server_main(int argc, char **argv) {
         continue;
       }
 
-      if (g_standalone && app_owns_fd(a, fd)) {
-        app_handle_fd(a, fd);
+      if (s->standalone && app_owns_fd(s->a, fd)) {
+        app_handle_fd(s->a, fd);
         continue;
       }
 
-      conn *c = (fd >= 0 && fd < kMaxFds) ? g_owner[fd] : nullptr;
-      if (!c) continue;
+      conn *c = (fd >= 0 && fd < kMaxFds) ? s->owner[fd] : nullptr;
+      if (!c || fd != c->fd) continue;
 
-      if (fd == c->fd) {
-        if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-          close_conn(c);
-          continue;
-        }
-        if (events[i].events & EPOLLIN) read_client(a, c);
-        if (c->fd >= 0 && (events[i].events & EPOLLOUT)) flush_client(c);
-      } else if (fd == c->up) {
-        if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-          close_conn(c);
-          continue;
-        }
-        if (events[i].events & EPOLLOUT) write_upstream(c);
-        if (c->up >= 0 && (events[i].events & EPOLLIN)) read_upstream(c);
+      if (events[i].events & (EPOLLERR | EPOLLHUP)) {
+        close_conn(s, c);
+        continue;
       }
+      if (events[i].events & EPOLLIN) read_client(s, c);
+      if (c->fd >= 0 && (events[i].events & EPOLLOUT)) flush_client(s, c);
     }
   }
 
-  for (int i = 0; i < kMaxConns; i++) close_conn(&g_conns[i]);
-  if (g_timer_fd >= 0) close(g_timer_fd);
-  if (a) app_destroy(a);
-  close(g_epoll);
+  for (int i = 0; i < kMaxConns; i++) close_conn(s, &s->conns[i]);
+  if (s->timer_fd >= 0) close(s->timer_fd);
+  if (s->a) s->a->shutdown();
+  close(s->epoll_fd);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);
   return 0;
-}// padwave — one binary, the native modes.
+}
+
+// padwave — one binary, the native modes.
 //
 //   padwave native            the player: decode, Opus and 0x36/0x31
-//   padwave input             the input decoder: 0x31 -> state lines
-//   padwave serve [port]      the bootstrap web server (epoll, embedded UI)
+//   padwave input             the input decoder: 0x31 -> frame/action/event/mic
+//   padwave serve [port]      the web server and the app (epoll, embedded UI)
 //   padwave opusdec [-e|-s]   the codec helper
 //
 // All of them include padwave_wire.hh, so the protocol is described
