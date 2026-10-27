@@ -355,6 +355,7 @@ void app_tick(struct app *a);
 int app_fds(struct app *a, int *fds, int max);
 void app_handle_fd(struct app *a, int fd);
 int app_status_json(struct app *a, char *buf, size_t cap);
+int app_front_json(struct app *a, char *buf, size_t cap, unsigned long requests, long uptime);
 int app_library_json(struct app *a, char *buf, size_t cap);
 int app_config_json(char *buf, size_t cap);
 int app_bindings_json(char *buf, size_t cap);
@@ -2029,6 +2030,7 @@ struct app {
   void status_radio(char *buf, size_t cap);
   void status_controller(char *buf, size_t cap);
   int status_json(char *buf, size_t cap);
+  int front_json(char *buf, size_t cap, unsigned long requests, long uptime);
   int library_json(char *buf, size_t cap);
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap);
   int handle_command(const char *body, size_t len, char *out, size_t cap);
@@ -2455,6 +2457,20 @@ int app::status_json(char *buf, size_t cap) {
                   (long)(time(nullptr)));
 }
 
+int app::front_json(char *buf, size_t cap, unsigned long requests, long uptime) {
+  return snprintf(buf, cap,
+                  "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
+                  "\"controller\":%d,"
+                  "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
+                  "\"underruns\":%ld,\"paused\":%d},"
+                  "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
+                  "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
+                  uptime, requests, this->controller ? 1 : 0, this->player ? 1 : 0, this->pos_ms,
+                  this->dur_ms, this->sent, this->underruns, this->paused ? 1 : 0,
+                  this->input ? 1 : 0, this->lx, this->ly, this->rx, this->ry, this->l2, this->r2,
+                  this->button_mask, this->battery, this->jack ? 1 : 0);
+}
+
 int app::library_json(char *buf, size_t cap) {
   int n = snprintf(buf, cap, "{\"tracks\":[");
   for (int i = 0; i < this->count && n > 0 && (size_t)n < cap; i++) {
@@ -2666,6 +2682,9 @@ void app_tick(app *a) { a->tick(); }
 int app_fds(app *a, int *fds, int max) { return a->fds(fds, max); }
 void app_handle_fd(app *a, int fd) { a->handle_fd(fd); }
 int app_status_json(app *a, char *buf, size_t cap) { return a->status_json(buf, cap); }
+int app_front_json(app *a, char *buf, size_t cap, unsigned long requests, long uptime) {
+  return a->front_json(buf, cap, requests, uptime);
+}
 int app_library_json(app *a, char *buf, size_t cap) { return a->library_json(buf, cap); }
 int app_command(app *a, const char *action, const char *body, size_t len, char *out, size_t cap) {
   return a->command(action, body, len, out, cap);
@@ -2794,7 +2813,7 @@ int make_static(char *dst, size_t cap, const char *type, const char *body, size_
   return n + (int)body_len;
 }
 
-int front_json(char *buf, size_t cap);
+int front_json(app *a, char *buf, size_t cap);
 
 void close_conn(conn *c) {
   if (c->fd >= 0) {
@@ -3038,7 +3057,7 @@ void read_client(app *a, conn *c) {
 
   if (strcmp(path, "/api/front") == 0) {
     char body[768];
-    int len = front_json(body, sizeof(body));
+    int len = front_json(a, body, sizeof(body));
     c->static_reply = true;
     c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
     mod_fd(c->fd, EPOLLOUT);
@@ -3160,21 +3179,8 @@ void read_upstream(conn *c) {
   flush_client(c);
 }
 
-int front_json(char *buf, size_t cap) {
-  char node[64];
-  int controller = find_dualsense(node, sizeof(node)) >= 0 ? 1 : 0;
-  return snprintf(buf, cap,
-                  "{\"ok\":true,\"front\":1,\"uptime_s\":%ld,\"requests\":%lu,"
-                  "\"controller\":%d,"
-                  "\"player\":{\"valid\":%d,\"pos\":%ld,\"dur\":%ld,\"sent\":%ld,"
-                  "\"underruns\":%ld,\"paused\":%d},"
-                  "\"input\":{\"valid\":%d,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,"
-                  "\"l2\":%d,\"r2\":%d,\"buttons\":%u,\"battery\":%d,\"jack\":%d}}",
-                  (long)((monotonic_ms() - g_start_ms) / 1000), g_requests, controller,
-                  g_player.valid ? 1 : 0, g_player.pos, g_player.dur, g_player.sent,
-                  g_player.underruns, g_player.paused, g_input.valid ? 1 : 0, g_input.lx, g_input.ly, g_input.rx,
-                  g_input.ry, g_input.l2, g_input.r2, g_input.buttons, g_input.battery,
-                  g_input.jack);
+int front_json(app *a, char *buf, size_t cap) {
+  return app_front_json(a, buf, cap, g_requests, (long)((monotonic_ms() - g_start_ms) / 1000));
 }
 
 void append_status_event(app *a, conn *c) {
@@ -3201,7 +3207,7 @@ void append_status_event(app *a, conn *c) {
   free(chunk);
 }
 
-void append_front_event(conn *c) {
+void append_front_event(app *a, conn *c) {
   if (c->out_off > 0) {
     if (c->out_off < c->out_len)
       memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
@@ -3210,7 +3216,7 @@ void append_front_event(conn *c) {
   }
 
   char body[768];
-  int n = front_json(body, sizeof(body));
+  int n = front_json(a, body, sizeof(body));
   if (n <= 0) return;
   char event[800];
   int e = snprintf(event, sizeof(event), "data: %s\n\n", body);
@@ -3372,7 +3378,7 @@ int server_main(int argc, char **argv) {
           }
           for (int j = 0; j < kMaxConns; j++) {
             if (g_conns[j].fd < 0) continue;
-            if (g_conns[j].front_sse) append_front_event(&g_conns[j]);
+            if (g_conns[j].front_sse) append_front_event(a, &g_conns[j]);
             if (g_conns[j].status_sse) append_status_event(a, &g_conns[j]);
           }
         }
