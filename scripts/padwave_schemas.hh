@@ -35,6 +35,12 @@ static inline uint32_t crc_of(const Report &report) {
 
 // ===========================================================================
 // Output: the 47-byte state body shared by 0x31 (Bluetooth) and 0x02 (USB)
+//
+// +0x00 in these comments is the offset inside this payload: 0x01 in a USB
+// report, 0x03 in a Bluetooth one (after the id, the sequence tag and the 0x10
+// tag byte). Only the fields whose valid_flag* bit is set are applied by the
+// controller — a claim, not a change notification — which is what makes a
+// lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
 struct OutputBody {
@@ -98,24 +104,26 @@ struct OutputBody {
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
-  // changes the LED brightness and bit 1 enables the fade-out control.
+  // changes the LED brightness and bit 1 enables the fade-out control. Bits
+  // 3-7 are reserved.
   enum ValidFlag2 : uint8_t {
     Brightness = 0x01,     // bit 0
     ColorFade = 0x02,      // bit 1
     ImprovedRumble = 0x04, // bit 2
   };
 
-  // +0x09. Only two bits are documented anywhere in the references: bit 4
-  // mutes the microphone and bit 6 mutes audio (hid-playstation.c uses the
-  // first; DS4Windows comments both). The other six are in the panel's power
-  // save row so they can be probed: if one stops the motion sensors, the gyro
-  // and accelerometer in the UI go flat.
+  // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
+  // reserved, bit 6 audio mute, bit 7 reserved. Only the two documented bits
+  // are named (hid-playstation.c uses the first; DS4Windows comments both);
+  // the other six are in the panel's power save row so they can be probed: if
+  // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
   enum PowerSave : uint8_t {
     MicrophoneMute = 0x10, // bit 4  documented
     AudioMute = 0x40,      // bit 6  documented
   };
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
+  // Bits 5-7 are reserved.
   enum PlayerLeds : uint8_t {
     Led1 = 0x01, // bit 0
     Led2 = 0x02, // bit 1
@@ -180,6 +188,20 @@ struct OutputReport {
 };
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
+
+// Output 0x02 (USB, 63 bytes). No CRC — the kernel signs only the Bluetooth
+// transport — and the same 47-byte body; sizes from hid-playstation.c:
+// DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
+struct UsbOutputReport {
+  PWUINT8 report_id;     // 0x00  PacketOutputUsb
+  OutputBody body;       // 0x01..0x2f
+  PWUINT8 reserved[15];  // 0x30..0x3e
+
+  enum : uint8_t { ReportId = PacketOutputUsb, Size = 63 };
+};
+
+static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size,
+              "0x02 must stay 63 bytes");
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -338,6 +360,42 @@ static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
 // ===========================================================================
+//
+// The undocumented Bluetooth speaker path. Sony says the speaker is USB-only;
+// over Bluetooth the controller speaks a proprietary Opus-in-HID protocol that
+// LinuxAudio4Dualsense5 reverse-engineered and streams at 93.75 Hz (one packet
+// every 512/48000 s). Layout, verified against reverse_engineered/
+// ps5bt_membrane.py and the protocol tables:
+//
+//   0x000  report id 0x36
+//   0x001  sequence tag, high nibble (a counter separate from 0x31)
+//   0x002  sub-packet 0x11 | 0x80 — audio configuration, length 7
+//   0x004  enable mask: bit 0 = microphone capture (0xFE shut, 0xFF open)
+//   0x005  5 × haptic block length (64)
+//   0x00a  free-running 8-bit counter
+//   0x00b  sub-packet 0x10 | 0x80 — state snapshot, length 63
+//   0x04c  sub-packet 0x12 | 0x80 — haptics PCM, length 64
+//   0x08e  sub-packet 0x13 | 0x80 — speaker Opus (0x16 = headphone jack), 200
+//   0x158  50 bytes of padding
+//   0x18a  CRC-32, seed 0xA2, little-endian (the same scheme as 0x31)
+//
+// Three details are the whole difficulty: the 10.667 ms frame interval (not
+// 10 ms), Opus CBR 160 kbps, and enable-mask bit 0, which turns on microphone
+// capture and floods the link if left set.
+//
+// The microphone comes back inside the normal 0x31 input report (marker 0xD4,
+// Opus 48 kHz mono, 10 ms) when duplex is enabled; see MicFrame below for the
+// full recipe. That is why the state snapshot must not mute the mic when
+// capture is wanted.
+//
+// The state snapshot is a whole output payload: its first 47 bytes are
+// byte-for-byte OutputBody followed by sixteen bytes of padding, so this
+// stream re-states the controller's output configuration 93 times a second and
+// every field it does not own must have its valid bit clear or it silently
+// overwrites another writer. The cancelled-trigger bug was exactly this: the
+// snapshot claimed both trigger effects (0xFD) with a zeroed block; sending
+// 0xF1 (volumes and routing only) fixed it. The lightbar was never affected
+// because the high byte (0xE3) does not claim the LED colour bit.
 
 struct AudioReport {
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
@@ -434,9 +492,21 @@ static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 byte
 // ids that are not part of the streaming protocol. The kernel uses 0x05, 0x09
 // and 0x20 and the offsets below come from hid-playstation.c; DualSenseClient's
 // descriptor notes corroborate the ids and lengths. Feature reports are signed
-// with CRC-32 seed 0xA3 over Bluetooth. padwave does not read them — the kernel
-// already exposes the results — but they are here so the whole protocol is
+// with CRC-32 seed 0xA3 over Bluetooth (the streams use 0xA1 input, 0xA2
+// output). padwave does not read them — the kernel already exposes the results
+// (MAC, battery, calibration) — but they are here so the whole protocol is
 // visible.
+//
+//   id   length  what
+//   0x05 41      motion-sensor calibration: 17 int16 LE at buf[1..34]
+//   0x09 20      pairing info; MAC at buf[1..6] (some clients read it reversed)
+//   0x20 64      firmware/hardware: hw buf[24], fw buf[28], update buf[44]
+//   0x80 —       factory command write (Edge/vendor tooling)
+//   0x81 64      the matching command response
+//   0x65 64      DualSense Edge factory handshake
+//
+// The Edge also exposes profile reports in the 0x60..0x7B range, beyond what
+// padwave needs.
 
 struct Calibration {
   PWUINT8 report_id; // 0x00  PacketFeatureCalibration
@@ -496,7 +566,7 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 // Microphone frames inside the 0x31 input stream
 // ===========================================================================
 //
-// The DualSense has no audio class over Bluetooth: the microphone is
+// The controller has no audio class over Bluetooth: the microphone is
 // multiplexed into the same HID reports as the gamepad, and its audio is Opus,
 // not PCM. Byte 3 is the constant Opus TOC 0xD4; a state report has the
 // sequence/tag nibbles there instead.
@@ -505,10 +575,18 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 //
 // Opus, 48 kHz, mono, 480 samples (10 ms), about 100 packets per second.
 //
+// Turning capture on takes three writes in the outgoing 0x36:
+//   1. power_save_control (+0x09) bit 4 = 0 AND valid_flag1 bit 1 claims the
+//      byte (without the claim the unmute is inert);
+//   2. enable mask (0x36 byte 4) bit 0 set: 0xFF instead of 0xFE;
+//   3. mic_volume (+0x06) = 0x40, claimed by valid_flag0 bit 6.
+// Step 2 is the tap; step 1 is the one people forget.
+//
 // It disturbs the gamepad input: these frames carry the same report id as the
 // state report, so anything that assumes every 0x31 is 78 bytes reads Opus
 // bytes as sticks and buttons. The kernel ignores them, so there is no ALSA
-// capture device; decoding them is a host-side job.
+// capture device; decoding them is a host-side job. Duplex roughly doubles the
+// link traffic (speaker down and mic up are each ~160 kbps of Opus).
 
 struct MicFrame {
   enum : uint8_t {

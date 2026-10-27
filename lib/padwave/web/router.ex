@@ -55,13 +55,8 @@ defmodule Padwave.Web.Router do
 
   get "/api/schema" do
     json(conn, %{
-      output: Padwave.Schema.DualSenseOutput.spec(:output),
-      output_usb: Padwave.Schema.DualSenseOutput.spec(:output_usb),
-      audio_out: Padwave.Schema.DualSenseAudio.spec(:audio_out),
-      calibration: Padwave.Schema.DualSenseFeature.spec(:calibration),
-      pairing: Padwave.Schema.DualSenseFeature.spec(:pairing),
-      firmware: Padwave.Schema.DualSenseFeature.spec(:firmware),
-      mic_in: Padwave.Schema.DualSenseMic.spec(),
+      note:
+        "The wire formats are described once, in scripts/padwave_schemas.hh; the runtime uses those structs directly.",
       bindings: Input.Mapper.bindings()
     })
   end

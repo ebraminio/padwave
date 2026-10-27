@@ -2,7 +2,8 @@ defmodule Padwave.Mic do
   @moduledoc """
   Decodes the microphone frames that `Padwave.Input.Device` hands over.
 
-  The frames themselves are described in `Padwave.Schema.DualSenseMic`: Opus,
+  The frames themselves are described in `scripts/padwave_schemas.hh`
+  (`MicFrame`): Opus,
   48 kHz mono, 10 ms each, marked by the `0xD4` TOC at byte 3 of an `0x31`
   report. This module is the other half — it keeps a long-lived
   `padwave opusdec` process (libopus through a port, the same library the audio
@@ -19,7 +20,8 @@ defmodule Padwave.Mic do
   The controller only sends these frames if something asked it to: bit 0 of the
   `0x36` audio enable mask (plus the unmute in `power_save_control`, plus
   `mic_volume`). That is the audio service's `0x36` stream — see
-  `Padwave.Schema.DualSenseMic` for the three steps. With capture off this module
+  the `MicFrame` comment in `scripts/padwave_schemas.hh` for the three steps.
+  With capture off this module
   simply sees no frames, which is also a useful thing to observe.
   """
 
