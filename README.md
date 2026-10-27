@@ -40,8 +40,10 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        the whole implementation: wire include, player, input decoder,
-                  app class, server, main
+padwave.cc        the engines and server: wire include, player, input decoder,
+                  server, main
+padwave_app.hh    struct App: library, playback, controller snapshot, config
+                  and lab output (inline methods, private fields)
 padwave_wire.hh   the wire formats (number types + DualSense schemas)
 index.html        the panel, embedded into the binary at build time
 test_wire.cc      wire layout and CRC (compiled and run on every build)
@@ -50,7 +52,7 @@ install.sh        build + install + systemd unit
 padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
 ```
 
-GCC 12 has no `#embed`, so the build generates `build/padwave_ui.hh` from
+GCC 12 has no `#embed`, so the build generates `padwave_ui.hh` from
 `index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
 
 ## Build and run
@@ -83,14 +85,16 @@ trusted network).
 
 ## HTTP
 
-`GET /api/status`, `GET /api/events` (SSE, 5 Hz), `GET /api/front` and
-`/api/front/events` are the server's own state stream and speak `key=value`
-lines: dotted keys nest, and `true`/`false`/`null` are literals. `POST
-/api/command` takes the same lines (`action=next`, plus `value`, `delta`,
-`position` or `id`) and answers `ok=true` or `ok=false` + `error=...`. The
-commands are `next`, `previous`, `pause`, `mute`, `shuffle_game`, `disconnect`,
-`volume`, `seek`, `seek_to`, `play_track`. `GET /api/library`, `/api/config`
-and `/api/schema` keep their JSON shapes because they are lists/objects.
+Every route speaks `key=value` lines: dotted keys nest, and
+`true`/`false`/`null` are literals. `GET /api/status`, `GET /api/events` (SSE,
+5 Hz), `GET /api/front` and `/api/front/events` are the state stream.
+`POST /api/command` takes `action=next` plus `value`, `delta`, `position` or
+`id`, and answers `ok=true` or `ok=false` + `error=...`; the commands are
+`next`, `previous`, `pause`, `mute`, `shuffle_game`, `disconnect`, `volume`,
+`seek`, `seek_to`, `play_track`. `GET /api/library` is one tab-separated line
+per track (id, title, game, path, ext); `GET /api/config` and `POST
+/api/config` are the persisted settings; `/api/schema` is `bindings.*`;
+`POST /api/output` is the controller lab.
 
 ## Status
 
@@ -98,10 +102,13 @@ Working in the single binary: station scan and shuffle, history, play/pause,
 next/previous, shuffle-game, seek, volume/mute, gapless and crossfade in the
 player, the panel with controller state and SSE, and the LAN API.
 
-Not yet ported from the old Elixir app: the idle fade/suspend and controller
-power-off, persisted playhead/config, and mic level decoding. The
-lightbar/charging/trigger/output lab endpoints are intentionally not
-implemented yet.
+The controller lab works through the player's `fields` reports (lightbar,
+player LEDs, power save, rumble, trigger effects, raw field maps), with timed
+rumble/trigger release. Config persists to `~/.config/padwave/config`.
+
+Not yet ported from the old Elixir app: idle fade/suspend and controller
+power-off, persisted playhead, and mic level decoding (the monitor switch
+returns "not implemented" rather than pretending).
 
 ## Protocol
 
