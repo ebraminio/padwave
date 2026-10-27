@@ -865,13 +865,16 @@ let triggerCfgTimer = null;
 
 async function labSend(payload) {
   try {
+    const body = Object.entries(payload)
+      .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(",") : value}`)
+      .join("\n");
     const res = await fetch("/api/output", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
+      headers: { "content-type": "text/plain" },
+      body
     });
-    const data = await res.json();
-    $("#labMsg").textContent = data.ok ? data.note : ("failed: " + data.error);
+    const data = parseKV(await res.text());
+    $("#labMsg").textContent = data.ok === true ? (data.note || "sent") : ("failed: " + data.error);
     if (payload.kind === "player_leds") $("#labRawMsg").textContent = "mask " + payload.mask;
     return data;
   } catch (e) {
@@ -971,8 +974,8 @@ $("#labLedsReset").onclick = () => {
 $("#micMonitor").onchange = async (e) => {
   await fetch("/api/output", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ kind: "mic_monitor", enabled: e.target.checked })
+    headers: { "content-type": "text/plain" },
+    body: `kind=mic_monitor\nenabled=${e.target.checked}`
   });
 };
 
@@ -1002,9 +1005,12 @@ $("#labTrigFire").onclick = () => {
 
 $("#labRawSend").onclick = async () => {
   try {
-    const fields = JSON.parse($("#labRaw").value);
+    const object = JSON.parse($("#labRaw").value);
+    const fields = Object.entries(object)
+      .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(",") : value}`)
+      .join(";");
     const data = await labSend({ kind: "fields", fields });
-    $("#labRawMsg").textContent = data.ok ? "sent" : ("failed: " + data.error);
+    $("#labRawMsg").textContent = data.ok === true ? "sent" : ("failed: " + data.error);
   } catch (e) {
     $("#labRawMsg").textContent = "invalid JSON";
   }
@@ -1044,16 +1050,16 @@ for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
   $(`#${id}`).onclick = () => {
     fetch("/api/debug/trigger", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ side, ms: 700 })
+      headers: { "content-type": "text/plain" },
+      body: `side=${side}\nms=700`
     });
   };
 }
 
 $("#reloadBtn").onclick = async () => {
   const res = await fetch("/api/reload", { method: "POST" });
-  const data = await res.json();
-  toast(data.ok ? `reloaded ${data.reloaded.length} module(s)` : "reload failed");
+  const data = parseKV(await res.text());
+  toast(data.ok === true ? `reloaded ${data.reloaded ?? 0} module(s)` : "reload failed");
 };
 
 document.addEventListener("keydown", (e) => {
@@ -1074,13 +1080,16 @@ async function boot() {
   requestAnimationFrame(frameLoop);
 
   try {
-    const lib = await fetch("/api/library").then(r => r.json());
-    tracks = lib.tracks || [];
+    const text = await fetch("/api/library").then(r => r.text());
+    tracks = text.split("\n").filter(Boolean).map((line) => {
+      const [id, title, game, path, ext] = line.split("\t");
+      return { id, title, game, path, ext };
+    });
     buildStations();
   } catch (e) { console.error(e); }
 
   try {
-    const schema = await fetch("/api/schema").then(r => r.json());
+    const schema = parseKV(await fetch("/api/schema").then(r => r.text()));
     buildBindings(schema.bindings);
   } catch (e) { /* non-fatal */ }
 

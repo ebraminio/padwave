@@ -362,8 +362,6 @@ int app_fds(struct app *a, int *fds, int max);
 void app_handle_fd(struct app *a, int fd);
 int app_status_text(struct app *a, char *buf, size_t cap);
 int app_front_text(struct app *a, char *buf, size_t cap, unsigned long requests, long uptime);
-int app_library_json(struct app *a, char *buf, size_t cap);
-int app_bindings_json(char *buf, size_t cap);
 int app_command(struct app *a, const char *action, const char *body, size_t body_len,
                 char *out, size_t out_cap);
 int app_handle_command(struct app *a, const char *body, size_t len, char *out, size_t cap);
@@ -2026,6 +2024,11 @@ struct app {
   int trigger_effect_frequency = 25;
   bool trigger_effects = true;
 
+  int rumble_left = 0, rumble_right = 0;
+  long rumble_until = 0;
+  int trigger_side = 0;  // 1 left, 2 right; 0 idle
+  long trigger_until = 0;
+
   void add_station(const char *path, const char *game);
   void scan_dir(const char *dir, const char *game);
   int find_station(const char *path);
@@ -2055,7 +2058,10 @@ struct app {
   void config_set(const char *body);
   void config_load();
   void config_save();
-  int library_json(char *buf, size_t cap);
+  void output_fields(const char *fields);
+  int output(const char *body, char *out, size_t out_cap);
+  void service_output();
+  int library_text(char *buf, size_t cap);
   int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap);
   int handle_command(const char *body, size_t len, char *out, size_t cap);
   bool owns_fd(int fd);
@@ -2071,22 +2077,6 @@ long now_ms() {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return ts.tv_sec * 1000L + ts.tv_nsec / 1000000;
-}
-
-void json_escape(const char *in, char *out, size_t cap) {
-  size_t o = 0;
-  for (const char *p = in; *p && o + 2 < cap; p++) {
-    unsigned char c = (unsigned char)*p;
-    if (c == '"' || c == '\\') {
-      out[o++] = '\\';
-      out[o++] = (char)c;
-    } else if (c < 0x20) {
-      o += (size_t)snprintf(out + o, cap - o, "\\u%04x", c);
-    } else {
-      out[o++] = (char)c;
-    }
-  }
-  out[o] = 0;
 }
 
 void make_id(const char *path, char *out) {
@@ -2552,20 +2542,27 @@ int app::front_text(char *buf, size_t cap, unsigned long requests, long uptime) 
   return (int)o;
 }
 
-int app::library_json(char *buf, size_t cap) {
-  int n = snprintf(buf, cap, "{\"tracks\":[");
-  for (int i = 0; i < this->count && n > 0 && (size_t)n < cap; i++) {
+// One track per line, tab-separated: id, title, game, path, ext. Tabs and
+// newlines inside a path are flattened to spaces so the line stays parseable.
+static void tsv_field(char *buf, size_t cap, size_t *o, const char *value, char sep) {
+  for (const char *p = value; p && *p && *o + 2 < cap; p++)
+    buf[(*o)++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;
+  if (*o + 1 < cap) buf[(*o)++] = sep;
+  buf[*o] = 0;
+}
+
+int app::library_text(char *buf, size_t cap) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  for (int i = 0; i < this->count; i++) {
     const station *s = &this->stations[i];
-    char title[2 * kMaxTitle], game[2 * kMaxGame], path[2 * kMaxPath];
-    json_escape(s->title, title, sizeof(title));
-    json_escape(s->game, game, sizeof(game));
-    json_escape(s->path, path, sizeof(path));
-    n += snprintf(buf + n, cap - (size_t)n,
-                  "%s{\"id\":\"%s\",\"title\":\"%s\",\"game\":\"%s\",\"path\":\"%s\",\"ext\":\"%s\"}",
-                  i ? "," : "", s->id, title, game, path, s->ext);
+    tsv_field(buf, cap, &o, s->id, '\t');
+    tsv_field(buf, cap, &o, s->title, '\t');
+    tsv_field(buf, cap, &o, s->game, '\t');
+    tsv_field(buf, cap, &o, s->path, '\t');
+    tsv_field(buf, cap, &o, s->ext, '\n');
   }
-  if (n > 0 && (size_t)n < cap) n += snprintf(buf + n, cap - (size_t)n, "]}");
-  return n;
+  return (int)o;
 }
 
 bool kv_get(const char *body, const char *key, char *out, size_t cap);
@@ -2678,14 +2675,25 @@ void app::config_set(const char *body) {
   config_save();
 }
 
-int app_bindings_json(char *buf, size_t cap) {
-  return snprintf(buf, cap,
-                  "{\"circle\":\"play\",\"create\":\"previous\",\"fn1\":\"toggle_pause\","
-                  "\"fn2\":\"toggle_mute\",\"l1\":\"previous\",\"l3\":\"next_random\","
-                  "\"left_paddle\":\"previous\",\"mute\":\"toggle_mute\",\"options\":\"next_random\","
-                  "\"r1\":\"next_random\",\"r3\":\"previous\",\"right_paddle\":\"next_random\","
-                  "\"square\":\"shuffle_game\",\"touchpad\":\"toggle_mute\","
-                  "\"triangle\":\"toggle_pause\"}");
+int bindings_text(char *buf, size_t cap) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  kv_text(buf, cap, &o, "bindings.circle", "play");
+  kv_text(buf, cap, &o, "bindings.create", "previous");
+  kv_text(buf, cap, &o, "bindings.fn1", "toggle_pause");
+  kv_text(buf, cap, &o, "bindings.fn2", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.l1", "previous");
+  kv_text(buf, cap, &o, "bindings.l3", "next_random");
+  kv_text(buf, cap, &o, "bindings.left_paddle", "previous");
+  kv_text(buf, cap, &o, "bindings.mute", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.options", "next_random");
+  kv_text(buf, cap, &o, "bindings.r1", "next_random");
+  kv_text(buf, cap, &o, "bindings.r3", "previous");
+  kv_text(buf, cap, &o, "bindings.right_paddle", "next_random");
+  kv_text(buf, cap, &o, "bindings.square", "shuffle_game");
+  kv_text(buf, cap, &o, "bindings.touchpad", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.triangle", "toggle_pause");
+  return (int)o;
 }
 
 // Commands arrive as the same key=value lines the panel parses back.
@@ -2714,6 +2722,164 @@ long kv_number(const char *body, const char *key, long fallback) {
   char tmp[32];
   if (!kv_get(body, key, tmp, sizeof(tmp))) return fallback;
   return atol(tmp);
+}
+
+void app::output_fields(const char *fields) {
+  if (!this->player) return;
+  char line[1200];
+  snprintf(line, sizeof(line), "fields %s\n", fields);
+  player_send(line);
+}
+
+// The panel's lab: translate a kind + params into the player's `fields`
+// control report. The player owns the output hidraw and does the write.
+int app::output(const char *body, char *out, size_t out_cap) {
+  char kind[32];
+  if (!kv_get(body, "kind", kind, sizeof(kind)))
+    return snprintf(out, out_cap, "ok=false\nerror=missing kind\n");
+  if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
+
+  char fields[1024];
+
+  if (strcmp(kind, "lightbar") == 0) {
+    char rgb[64] = "0,0,0";
+    int r = 0, g = 0, b = 0;
+    kv_get(body, "rgb", rgb, sizeof(rgb));
+    sscanf(rgb, "%d,%d,%d", &r, &g, &b);
+    r = r < 0 ? 0 : (r > 255 ? 255 : r);
+    g = g < 0 ? 0 : (g > 255 ? 255 : g);
+    b = b < 0 ? 0 : (b > 255 ? 255 : b);
+    snprintf(fields, sizeof(fields),
+             "valid_flag1=lightbar;lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=lightbar %d,%d,%d\n", r, g, b);
+  }
+
+  if (strcmp(kind, "lightbar_reset") == 0) {
+    output_fields("valid_flag1=reset_lights");
+    return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
+  }
+
+  if (strcmp(kind, "lightbar_fade") == 0) {
+    output_fields("valid_flag1=lightbar;valid_flag2=color_fade");
+    return snprintf(out, out_cap, "ok=true\nnote=fade\n");
+  }
+
+  if (strcmp(kind, "lightbar_setup") == 0) {
+    int v = (int)kv_number(body, "value", 0);
+    snprintf(fields, sizeof(fields), "valid_flag1=lightbar;lightbar_setup=%d", v & 0xFF);
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
+  }
+
+  if (strcmp(kind, "lightbar_brightness") == 0) {
+    int v = (int)kv_number(body, "value", 0);
+    snprintf(fields, sizeof(fields), "valid_flag2=brightness;led_brightness=%d", v & 0xFF);
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
+  }
+
+  if (strcmp(kind, "player_leds") == 0) {
+    int mask = (int)kv_number(body, "mask", 0);
+    snprintf(fields, sizeof(fields), "valid_flag1=player_leds;player_leds=%d", mask & 0x1F);
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=player leds %d\n", mask & 0x1F);
+  }
+
+  if (strcmp(kind, "power_save") == 0) {
+    char bits[64] = "";
+    kv_get(body, "bits", bits, sizeof(bits));
+    int mask = 0;
+    char *save = nullptr;
+    for (char *tok = strtok_r(bits, ",", &save); tok; tok = strtok_r(nullptr, ",", &save)) {
+      int bit = atoi(tok);
+      if (bit >= 0 && bit < 8) mask |= 1 << bit;
+    }
+    snprintf(fields, sizeof(fields), "valid_flag1=power_save;power_save_control=%d", mask);
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n", mask);
+  }
+
+  if (strcmp(kind, "rumble") == 0) {
+    int left = (int)kv_number(body, "left", 0);
+    int right = (int)kv_number(body, "right", 0);
+    long ms = kv_number(body, "ms", 0);
+    left = left < 0 ? 0 : (left > 255 ? 255 : left);
+    right = right < 0 ? 0 : (right > 255 ? 255 : right);
+    snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left, right);
+    output_fields(fields);
+    this->rumble_left = left;
+    this->rumble_right = right;
+    this->rumble_until = ms > 0 ? now_ms() + ms : 0;
+    return snprintf(out, out_cap, "ok=true\nnote=rumble %d/%d\n", left, right);
+  }
+
+  if (strcmp(kind, "trigger") == 0) {
+    char side[16] = "right";
+    char effect[16] = "vibration";
+    kv_get(body, "side", side, sizeof(side));
+    kv_get(body, "effect", effect, sizeof(effect));
+    int position = (int)kv_number(body, "position", 2);
+    int amplitude = (int)kv_number(body, "amplitude", 6);
+    int frequency = (int)kv_number(body, "frequency", 25);
+    long ms = kv_number(body, "ms", 0);
+
+    int mode = 0x26;
+    if (strcmp(effect, "off") == 0) mode = 0x05;
+    else if (strcmp(effect, "feedback") == 0) mode = 0x21;
+
+    int params[10] = {0};
+    if (mode != 0x05) {
+      params[0] = position;
+      params[1] = amplitude;
+      params[9] = frequency;
+    }
+
+    bool left = strcmp(side, "left") == 0;
+    const char *flag = left ? "left_trigger" : "right_trigger";
+    const char *prefix = left ? "left" : "right";
+    snprintf(fields, sizeof(fields),
+             "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+             flag, prefix, mode, prefix, params[0], params[1], params[2], params[3], params[4],
+             params[5], params[6], params[7], params[8], params[9]);
+    output_fields(fields);
+    this->trigger_side = left ? 1 : 2;
+    this->trigger_until = (ms > 0 && mode != 0x05) ? now_ms() + ms : 0;
+    return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x\n", side, mode);
+  }
+
+  if (strcmp(kind, "fields") == 0) {
+    if (!kv_get(body, "fields", fields, sizeof(fields)))
+      return snprintf(out, out_cap, "ok=false\nerror=missing fields\n");
+    output_fields(fields);
+    return snprintf(out, out_cap, "ok=true\nnote=fields\n");
+  }
+
+  if (strcmp(kind, "mic_monitor") == 0)
+    return snprintf(out, out_cap, "ok=false\nerror=mic monitor is not implemented\n");
+
+  return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
+}
+
+// Deadlines are served from the player timer (10 ms) or the app tick.
+void app::service_output() {
+  if (!this->player) return;
+  long now = now_ms();
+  if (this->rumble_until && now >= this->rumble_until) {
+    output_fields("valid_flag0=rumble;motor_left=0;motor_right=0");
+    this->rumble_until = 0;
+  }
+  if (this->trigger_until && now >= this->trigger_until) {
+    const char *flag = this->trigger_side == 1 ? "left_trigger" : "right_trigger";
+    const char *prefix = this->trigger_side == 1 ? "left" : "right";
+    char fields[192];
+    snprintf(fields, sizeof(fields),
+             "valid_flag0=%s;%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0", flag,
+             prefix, prefix);
+    output_fields(fields);
+    this->trigger_until = 0;
+    this->trigger_side = 0;
+  }
 }
 
 int app::command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
@@ -2800,6 +2966,7 @@ void app::shutdown() {
 }
 
 void app::tick() {
+  service_output();
   if (this->eof) {
     this->eof = false;
     next();
@@ -2824,6 +2991,7 @@ int app::fds(int *fds, int max) {
 void app::handle_fd(int fd) {
   if (this->player && fd == this->player_timer_fd) {
     player_step(this->player);
+    service_output();
     return;
   }
   if (this->input && fd == this->input_fd) {
@@ -2847,7 +3015,6 @@ int app_status_text(app *a, char *buf, size_t cap) { return a->status_text(buf, 
 int app_front_text(app *a, char *buf, size_t cap, unsigned long requests, long uptime) {
   return a->front_text(buf, cap, requests, uptime);
 }
-int app_library_json(app *a, char *buf, size_t cap) { return a->library_json(buf, cap); }
 int app_command(app *a, const char *action, const char *body, size_t len, char *out, size_t cap) {
   return a->command(action, body, len, out, cap);
 }
@@ -3031,10 +3198,10 @@ void read_client(server *s, conn *c) {
 
   if (s->standalone && strcmp(path, "/api/library") == 0) {
     char *body = (char *)malloc(65536);
-    int len = body ? app_library_json(s->a, body, 65536) : 0;
+    int len = body ? s->a->library_text(body, 65536) : 0;
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body ? body : "{}",
-                                     body ? (size_t)len : 2);
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8",
+                                     body ? body : "", body ? (size_t)len : 0);
     free(body);
     mod_fd(s, c->fd, EPOLLOUT);
     return;
@@ -3060,15 +3227,11 @@ void read_client(server *s, conn *c) {
   }
 
   if (s->standalone && strcmp(path, "/api/schema") == 0) {
-    char bindings[512];
-    app_bindings_json(bindings, sizeof(bindings));
     char body[1024];
-    int len = snprintf(body, sizeof(body),
-                       "{\"note\":\"wire formats live in padwave_wire.hh\","
-                       "\"bindings\":%s}",
-                       bindings);
+    int len = bindings_text(body, sizeof(body));
     c->static_reply = true;
-    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, (size_t)len);
     mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
@@ -3087,6 +3250,62 @@ void read_client(server *s, conn *c) {
     c->static_reply = true;
     c->out_len =
         (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (s->standalone && strcmp(path, "/api/output") == 0) {
+    if (strcmp(method, "POST") != 0) {
+      c->static_reply = true;
+      c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                    "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
+                                    "Connection: close\r\n\r\n");
+      mod_fd(s, c->fd, EPOLLOUT);
+      return;
+    }
+    char result[256];
+    int len = s->a->output(c->in + head_len, result, sizeof(result));
+    c->static_reply = true;
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (s->standalone && strcmp(path, "/api/debug/trigger") == 0) {
+    char side[16] = "right";
+    char tmp[16];
+    if (kv_get(c->in + head_len, "side", tmp, sizeof(tmp)))
+      snprintf(side, sizeof(side), "%s", tmp);
+    long ms = kv_number(c->in + head_len, "ms", 700);
+    char request[192];
+    snprintf(request, sizeof(request),
+             "kind=trigger\nside=%s\neffect=vibration\nposition=2\namplitude=6\n"
+             "frequency=25\nms=%ld",
+             side, ms);
+    char result[256];
+    int len = s->a->output(request, result, sizeof(result));
+    c->static_reply = true;
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", result, (size_t)len);
+    mod_fd(s, c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (s->standalone && strcmp(path, "/api/mic/reset") == 0) {
+    static const char body[] = "ok=true\n";
+    c->static_reply = true;
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1);
+    mod_fd(s, c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (s->standalone && strcmp(path, "/api/reload") == 0) {
+    static const char body[] = "ok=true\nreloaded=0\n";
+    c->static_reply = true;
+    c->out_len =
+        (size_t)make_static(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1);
     mod_fd(s, c->fd, EPOLLOUT);
     return;
   }
