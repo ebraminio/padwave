@@ -169,7 +169,7 @@ roughly 0.9 % of a core even while paused; that is the input engine, not audio.
 
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
-confirmation of the lightbar, rumble, trigger and jack paths.
+confirmation of the lightbar, trigger and jack paths (rumble is confirmed).
 
 ## Protocol
 

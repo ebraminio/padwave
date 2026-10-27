@@ -51,9 +51,10 @@ Every byte is named in `Padwave.Schema.DualSenseInput.Body`.
 
 **Output `0x31`.** Applied field-by-field according to `valid_flag0/1/2`: a
 report only changes what it flags, which is why padwave's lightbar and trigger
-updates coexist with the audio service's stream. Rumble is `valid_flag0` bit 0
-and haptics bit 1 — deliberately left to the audio service, which drives the
-grip motors as a subwoofer.
+updates coexist with the audio service's stream. The main grip motors are
+`valid_flag0` bit 0 (`rumble`) **plus** bit 1 (`haptics`); DS4Windows and
+dualsense-tester both set the pair, and bit 0 alone is ignored. Padwave's lab
+claims both for the start and the zero stop.
 
 **Audio `0x36`.** Four length-tagged sub-packets; the hard parts are the
 10.667 ms pacing, Opus CBR 160 kbps, and bit 0 of the enable mask (clear it, or

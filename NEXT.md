@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `9bf7a8f`
+- HEAD: latest `main`; the behavior described here landed through `053a630`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -24,7 +24,7 @@
   fade/suspend/wake, BlueZ power-off + hidraw reopen, playhead persistence,
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + charging player LEDs, controller-loss auto-pause + slow paused
-  player tick.
+  player tick, confirmed Rumble|Haptics main-motor fix.
 
 ## Pi Bluetooth tuning
 
@@ -83,7 +83,8 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
    crash can lose up to 30 s (shutdown/power-off save exactly). Volume is not
    persisted.
 4. Jack pause and the lab effects have API/decoder verification only; physical
-   unplug/lightbar/rumble/trigger response has not been observed.
+   unplug/lightbar/trigger response has not been observed. Rumble is confirmed
+   after claiming `Rumble|Haptics` (bit 0 alone is ignored by the main motors).
 5. If the controller mic LED blinks while the monitor switch is on, that is the
    firmware's capture indicator; the app only forces `power_save`/mic volume.
    A stable `MuteLed` claim can be added if needed.
