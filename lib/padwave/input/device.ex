@@ -96,6 +96,11 @@ defmodule Padwave.Input.Device do
     end
   end
 
+  def handle_info({port, {:data, {:eol, "action " <> action}}}, %{port: port} = state) do
+    Padwave.Bus.broadcast({:action, parse_action(action)})
+    {:noreply, state}
+  end
+
   def handle_info({port, {:data, {:eol, "mic " <> hex}}}, %{port: port} = state) do
     case Base.decode16(hex, case: :mixed) do
       {:ok, payload} -> Padwave.Mic.ingest(payload)
@@ -132,6 +137,9 @@ defmodule Padwave.Input.Device do
         %{state | port: port, pending: info, info: nil}
     end
   end
+
+  defp parse_action("seek " <> value), do: {:seek, String.to_integer(value)}
+  defp parse_action(name), do: String.to_atom(name)
 
   defp find_binary do
     System.find_executable("padwave") ||

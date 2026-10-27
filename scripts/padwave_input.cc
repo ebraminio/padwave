@@ -84,6 +84,75 @@ void print_buttons(uint32_t buttons) {
   }
 }
 
+/* -- d-pad steering -------------------------------------------------------
+ * The d-pad's timing lives here now: a tap seeks 6 s, a hold ramps through
+ * 10/20/40/60 s at 420 ms, then repeats the last step at 130 ms. The actions
+ * are printed as lines and the Elixir side only executes them. */
+struct dpad_state {
+  uint8_t prev = 0xFF;
+  int hold_dir = 0;
+  int hold_step = 0;
+  int64_t hold_at = 0;
+};
+
+dpad_state g_dpad;
+
+int64_t now_ms() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void emit_action(const char *line) {
+  printf("action %s\n", line);
+  fflush(stdout);
+}
+
+void track_dpad(uint32_t buttons) {
+  static const int steps[] = {10, 20, 40, 60};
+  static const int intervals[] = {320, 260, 190, 130};
+
+  uint8_t dpad = (uint8_t)(buttons & 0x0F);
+  int64_t now = now_ms();
+
+  if (dpad != g_dpad.prev) {
+    g_dpad.prev = dpad;
+    g_dpad.hold_dir = 0;
+
+    switch (dpad) {
+      case padwave::InputBody::Left:
+        emit_action("seek -6");
+        g_dpad.hold_dir = -1;
+        g_dpad.hold_step = 0;
+        g_dpad.hold_at = now + 420;
+        break;
+      case padwave::InputBody::Right:
+        emit_action("seek 6");
+        g_dpad.hold_dir = 1;
+        g_dpad.hold_step = 0;
+        g_dpad.hold_at = now + 420;
+        break;
+      case padwave::InputBody::Up:
+        emit_action("next_random");
+        break;
+      case padwave::InputBody::Down:
+        emit_action("previous");
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  if (g_dpad.hold_dir == 0 || now < g_dpad.hold_at) return;
+
+  int index = g_dpad.hold_step < 4 ? g_dpad.hold_step : 3;
+  printf("action seek %d\n", g_dpad.hold_dir * steps[index]);
+  fflush(stdout);
+  g_dpad.hold_step = index + 1;
+  g_dpad.hold_at = now + intervals[index];
+}
+
 void print_frame(const padwave::InputBody &b) {
   uint32_t buttons = b.buttons;
   int battery = (b.status0 & 0x0F) * 10 + 5;
@@ -104,6 +173,8 @@ void print_frame(const padwave::InputBody &b) {
          (unsigned)b.touch2[0].get(), (unsigned)b.touch2[1].get(), (unsigned)b.touch2[2].get(),
          (unsigned)b.touch2[3].get());
   fflush(stdout);
+
+  track_dpad(b.buttons);
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.

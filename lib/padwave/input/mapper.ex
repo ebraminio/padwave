@@ -9,9 +9,9 @@ defmodule Padwave.Input.Mapper do
 
       L2 (analogue)     volume down, deeper = faster
       R2 (analogue)     volume up
-      d-pad ← / →       seek back / forward; hold to steer, ramping up
-      d-pad ↑           next random station
-      d-pad ↓           previously played station
+      d-pad             handled by `padwave input` (CLI): ←/→ seek and steer,
+                        ↑ next random, ↓ previous; the actions arrive here as
+                        ordinary bus events
       △  triangle       pause / resume
       ○  circle         play / resume   (stand-in for the broken ✕)
       □  square         random station from a different game
@@ -49,9 +49,6 @@ defmodule Padwave.Input.Mapper do
     fn2: :toggle_mute
   }
 
-  @seek_tap_seconds 6
-  @seek_hold_steps [10, 20, 40, 60]
-  @seek_hold_intervals [320, 260, 190, 130]
   @ps_hold_ms 2000
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -82,7 +79,6 @@ defmodule Padwave.Input.Mapper do
        frame: nil,
        prev: nil,
        prev_buttons: [],
-       prev_dpad: :none,
        last_activity: now,
        last_l2: now,
        last_r2: now,
@@ -123,18 +119,6 @@ defmodule Padwave.Input.Mapper do
   def handle_info({:sim_end}, state),
     do: {:noreply, %{state | sim_depth: max(state.sim_depth - 1, 0)}}
 
-  def handle_info({:hold, direction, step}, state) do
-    frame = state.frame
-
-    if frame && frame.dpad == direction do
-      interval = Enum.at(@seek_hold_intervals, min(step, length(@seek_hold_intervals) - 1))
-      Process.send_after(self(), {:hold, direction, step + 1}, interval)
-      {:noreply, emit({:seek, sign(direction) * Enum.at(@seek_hold_steps, min(step, 3))}, state)}
-    else
-      {:noreply, state}
-    end
-  end
-
   def handle_info({:ps_hold}, state) do
     if state.frame && Frame.pressed?(state.frame, :ps) do
       {:noreply, emit(:suspend, state)}
@@ -147,7 +131,7 @@ defmodule Padwave.Input.Mapper do
     # Forget the jack: the next controller should be judged on its own first
     # report, not on what was plugged into the previous one.
     state = %{state | jack: nil, jack_pending: nil, jack_since: nil}
-    {:noreply, %{state | frame: nil, prev: nil, prev_buttons: [], prev_dpad: :none}}
+    {:noreply, %{state | frame: nil, prev: nil, prev_buttons: []}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -164,7 +148,6 @@ defmodule Padwave.Input.Mapper do
 
     state = detect_shake(now, frame, state)
     state = emit_new_buttons(state.prev_buttons, frame, state)
-    state = handle_dpad(state.prev_dpad, frame, state)
     state = handle_analog(now, frame, state)
     state = track_trigger(:left, frame.l2, state)
     state = track_trigger(:right, frame.r2, state)
@@ -175,8 +158,7 @@ defmodule Padwave.Input.Mapper do
        state
        | frame: frame,
          prev: frame,
-         prev_buttons: frame.buttons,
-         prev_dpad: frame.dpad
+         prev_buttons: frame.buttons
      }}
   end
 
@@ -221,34 +203,6 @@ defmodule Padwave.Input.Mapper do
   end
 
   # -- d-pad -----------------------------------------------------------------
-
-  defp handle_dpad(prev_dpad, frame, state) do
-    if frame.dpad == prev_dpad do
-      state
-    else
-      case frame.dpad do
-        :left ->
-          Process.send_after(self(), {:hold, :left, 0}, Config.get(:dpad_hold_delay_ms, 420))
-          emit({:seek, -@seek_tap_seconds}, state)
-
-        :right ->
-          Process.send_after(self(), {:hold, :right, 0}, Config.get(:dpad_hold_delay_ms, 420))
-          emit({:seek, @seek_tap_seconds}, state)
-
-        :up ->
-          emit(:next_random, state)
-
-        :down ->
-          emit(:previous, state)
-
-        _ ->
-          state
-      end
-    end
-  end
-
-  defp sign(:left), do: -1
-  defp sign(:right), do: 1
 
   # -- analogue triggers -----------------------------------------------------
 
