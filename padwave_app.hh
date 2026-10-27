@@ -1,0 +1,1097 @@
+// padwave_app.hh — the app and the engine interface it drives.
+//
+// The app is the one stateful object in the binary: the library, the current
+// station, the playback counters, the controller snapshot, the persisted
+// config and the lab output deadlines. Its fields are private; the server only
+// sees the methods it needs. The implementation is inline because the project
+// is one translation unit.
+#pragma once
+
+#include <dirent.h>
+#include <errno.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+// DualSense discovery is implemented in padwave.cc; the app only needs the
+// node name.
+static inline int find_dualsense(char *node, size_t len);
+static inline int find_dualsense();
+
+// Entry points and in-process engines. The service calls the player/input
+// engines directly from its epoll loop; the *_main wrappers keep the debug
+// modes working.
+
+int native_main(int argc, char **argv);
+int input_main(int argc, char **argv);
+int opusdec_main(int argc, char **argv);
+int server_main(int argc, char **argv);
+
+void *player_create(const char *node, bool speaker);
+struct player_status {
+  long pos_ms;
+  long dur_ms;
+  long sent;
+  long underruns;
+  long pushed;
+  int paused;
+  int eof;
+};
+
+typedef void (*player_status_fn)(const struct player_status *, void *);
+typedef void (*player_track_fn)(const char *, void *);
+
+void player_set_sink(void *handle, player_status_fn status, player_track_fn track, void *ud);
+int player_timer_fd(void *handle);
+void player_step(void *handle);
+void player_command(void *handle, const char *line);
+void player_destroy(void *handle);
+
+void *input_create(const char *node);
+struct input_touch {
+  unsigned active;
+  unsigned id;
+  unsigned x, y;
+};
+struct input_frame {
+  unsigned seq;
+  unsigned lx, ly, rx, ry, l2, r2;
+  char dpad[16];
+  char buttons[256];
+  int battery;
+  unsigned charging;
+  int jack;
+  int mic;
+  unsigned temp;
+  int gx, gy, gz;
+  int ax, ay, az;
+  unsigned tfl, tfr;
+  struct input_touch touches[2];
+  char raw[512];
+};
+typedef void (*input_frame_fn)(const struct input_frame *, void *);
+typedef void (*input_action_fn)(const char *name, int value, void *);
+typedef void (*input_event_fn)(const char *name, void *);
+typedef void (*input_mic_fn)(const uint8_t *data, size_t len, void *);
+
+void input_set_sink(void *handle, input_frame_fn frame, input_action_fn action,
+                    input_event_fn event, input_mic_fn mic, void *ud);
+int input_fd(void *handle);
+int input_feed(void *handle, const uint8_t *buf, size_t len);
+void input_destroy(void *handle);
+
+// ---------------------------------------------------------------------------
+// Library and tunables
+// ---------------------------------------------------------------------------
+
+constexpr int kMaxStations = 4096;
+constexpr int kMaxPath = 1024;
+constexpr int kMaxTitle = 160;
+constexpr int kMaxGame = 96;
+constexpr int kMaxHistory = 48;
+
+struct station {
+  char path[kMaxPath];
+  char title[kMaxTitle];
+  char game[kMaxGame];
+  char ext[8];
+  char id[17];
+};
+
+// ---------------------------------------------------------------------------
+// Small helpers (one TU, so internal linkage)
+// ---------------------------------------------------------------------------
+
+static inline long now_ms() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000L + ts.tv_nsec / 1000000;
+}
+
+static inline void make_id(const char *path, char *out) {
+  uint64_t h = 1469598103934665603ULL;
+  for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+    h ^= *p;
+    h *= 1099511628211ULL;
+  }
+  snprintf(out, 17, "%016llx", (unsigned long long)h);
+}
+
+static inline bool audio_ext(const char *name) {
+  const char *dot = strrchr(name, '.');
+  if (!dot) return false;
+  static const char *exts[] = {".flac", ".wav", ".mp3", ".ogg", ".opus", ".m4a", ".aac", ".wma"};
+  for (const char *e : exts)
+    if (strcasecmp(dot, e) == 0) return true;
+  return false;
+}
+
+static inline int cmp_station(const void *a, const void *b) {
+  const station *x = (const station *)a;
+  const station *y = (const station *)b;
+  int c = strcasecmp(x->game, y->game);
+  return c ? c : strcasecmp(x->title, y->title);
+}
+
+static inline void kv_add(char *buf, size_t cap, size_t *len, const char *key, const char *fmt, ...) {
+  size_t start = *len;
+  if (start + 2 > cap) return;
+  int n = snprintf(buf + start, cap - start, "%s=", key);
+  if (n <= 0 || (size_t)n >= cap - start) return;
+  *len = start + (size_t)n;
+
+  va_list ap;
+  va_start(ap, fmt);
+  int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
+  va_end(ap);
+  if (m < 0 || (size_t)m + 2 > cap - *len) {
+    *len = start;
+    buf[start] = 0;
+    return;
+  }
+  *len += (size_t)m;
+
+  buf[(*len)++] = '\n';
+  buf[*len] = 0;
+}
+
+static inline void kv_text(char *buf, size_t cap, size_t *len, const char *key, const char *value) {
+  size_t start = *len;
+  if (start + 2 > cap) return;
+  int n = snprintf(buf + start, cap - start, "%s=", key);
+  if (n <= 0 || (size_t)n >= cap - start) return;
+  *len = start + (size_t)n;
+
+  for (const char *p = value; p && *p; p++) {
+    if (*len + 2 >= cap) break;
+    buf[(*len)++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+  }
+  buf[(*len)++] = '\n';
+  buf[*len] = 0;
+}
+
+static inline bool kv_get(const char *body, const char *key, char *out, size_t cap) {
+  if (!body || cap == 0) return false;
+  size_t klen = strlen(key);
+  for (const char *p = body; *p;) {
+    const char *eol = strchr(p, '\n');
+    size_t n = eol ? (size_t)(eol - p) : strlen(p);
+    if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
+      const char *v = p + klen + 1;
+      size_t vn = n - klen - 1;
+      if (vn > 0 && v[vn - 1] == '\r') vn--;
+      if (vn >= cap) vn = cap - 1;
+      memcpy(out, v, vn);
+      out[vn] = 0;
+      return true;
+    }
+    if (!eol) break;
+    p = eol + 1;
+  }
+  return false;
+}
+
+static inline long kv_number(const char *body, const char *key, long fallback) {
+  char tmp[32];
+  if (!kv_get(body, key, tmp, sizeof(tmp))) return fallback;
+  return atol(tmp);
+}
+
+static inline bool config_path(char *buf, size_t cap) {
+  const char *home = getenv("HOME");
+  if (!home || !*home) return false;
+  snprintf(buf, cap, "%s/.config/padwave/config", home);
+  return true;
+}
+
+static inline void tsv_field(char *buf, size_t cap, size_t *o, const char *value, char sep) {
+  for (const char *p = value; p && *p && *o + 2 < cap; p++)
+    buf[(*o)++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;
+  if (*o + 1 < cap) buf[(*o)++] = sep;
+  buf[*o] = 0;
+}
+
+static inline int bindings_text(char *buf, size_t cap) {
+  size_t o = 0;
+  if (cap) buf[0] = 0;
+  kv_text(buf, cap, &o, "bindings.circle", "play");
+  kv_text(buf, cap, &o, "bindings.create", "previous");
+  kv_text(buf, cap, &o, "bindings.fn1", "toggle_pause");
+  kv_text(buf, cap, &o, "bindings.fn2", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.l1", "previous");
+  kv_text(buf, cap, &o, "bindings.l3", "next_random");
+  kv_text(buf, cap, &o, "bindings.left_paddle", "previous");
+  kv_text(buf, cap, &o, "bindings.mute", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.options", "next_random");
+  kv_text(buf, cap, &o, "bindings.r1", "next_random");
+  kv_text(buf, cap, &o, "bindings.r3", "previous");
+  kv_text(buf, cap, &o, "bindings.right_paddle", "next_random");
+  kv_text(buf, cap, &o, "bindings.square", "shuffle_game");
+  kv_text(buf, cap, &o, "bindings.touchpad", "toggle_mute");
+  kv_text(buf, cap, &o, "bindings.triangle", "toggle_pause");
+  return (int)o;
+}
+
+// ---------------------------------------------------------------------------
+// The app
+// ---------------------------------------------------------------------------
+
+struct App {
+ private:
+  station stations[kMaxStations];
+  int count = 0;
+  int current = -1;
+  int history[kMaxHistory];
+  int history_len = 0;
+
+  void *player = nullptr;
+  void *input = nullptr;
+  int player_timer_fd = -1;
+  int input_fd = -1;
+
+  long pos_ms = 0;
+  long dur_ms = 0;
+  long sent = 0;
+  long underruns = 0;
+  bool eof = false;
+  bool playing = false;
+  bool paused = false;
+  int volume = 70;
+  bool muted = false;
+  long start_ms = 0;
+
+  bool controller = false;
+  bool jack = false;
+  int battery = -1;
+  char charging[16] = "unknown";
+  int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
+  char dpad[16] = "none";
+  char buttons[256] = "";
+  int temp = 0;
+  int ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+  unsigned seq = 0;
+  int rate = 0;
+  unsigned tfl = 0, tfr = 0;
+  struct input_touch touch[2] = {};
+  long rate_at = 0;
+  unsigned rate_frames = 0;
+  char input_node[64] = "";
+  char last_action[64] = "";
+  char raw[400] = "";
+
+  int reconnect_at = 0;
+  long idle_since = 0;
+
+  // Config that the panel edits; persisted as ~/.config/padwave/config.
+  int idle_timeout_ms = 900000;
+  int idle_warn_grace_ms = 10000;
+  int trigger_effect_amplitude = 6;
+  int trigger_effect_position = 2;
+  int trigger_effect_frequency = 25;
+  bool trigger_effects = true;
+
+  int rumble_left = 0, rumble_right = 0;
+  long rumble_until = 0;
+  int trigger_side = 0;  // 1 left, 2 right; 0 idle
+  long trigger_until = 0;
+
+ public:
+  bool init() {
+    signal(SIGPIPE, SIG_IGN);
+
+    const char *roots = getenv("PADWAVE_ROOTS");
+    if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
+    char rootbuf[2048];
+    snprintf(rootbuf, sizeof(rootbuf), "%s", roots);
+
+    char *save = nullptr;
+    for (char *dir = strtok_r(rootbuf, ":", &save); dir; dir = strtok_r(nullptr, ":", &save)) {
+      if (strstr(dir, "$HOME")) {
+        const char *home = getenv("HOME");
+        char expanded[2048];
+        snprintf(expanded, sizeof(expanded), "%s%s", home ? home : "", dir + 5);
+        scanDir(expanded, "");
+      } else {
+        scanDir(dir, "");
+      }
+    }
+
+    qsort(this->stations, (size_t)this->count, sizeof(station), cmp_station);
+    srand((unsigned)time(nullptr) ^ (unsigned)getpid());
+    this->player = nullptr;
+    this->input = nullptr;
+    this->player_timer_fd = this->input_fd = -1;
+    configLoad();
+    setVolume(70);
+    return true;
+  }
+
+  void shutdown() {
+    if (this->player) {
+      playerSend("quit\n");
+      ::player_destroy(this->player);
+      this->player = nullptr;
+    }
+    this->player_timer_fd = -1;
+    inputStop();
+  }
+
+  void tick() {
+    serviceOutput();
+    if (this->eof) {
+      this->eof = false;
+      next();
+    }
+    if (!this->player) {
+      playerStart();
+      if (this->player && this->current < 0 && this->count > 0) {
+        int start = rand() % this->count;
+        play(start, 0);
+      }
+    }
+    if (!this->input && (int)now_ms() >= this->reconnect_at) inputStart();
+  }
+
+  int fds(int *fds, int max) {
+    int n = 0;
+    if (this->player_timer_fd >= 0 && n < max) fds[n++] = this->player_timer_fd;
+    if (this->input_fd >= 0 && n < max) fds[n++] = this->input_fd;
+    return n;
+  }
+
+  void handleFd(int fd) {
+    if (this->player && fd == this->player_timer_fd) {
+      player_step(this->player);
+      serviceOutput();
+      return;
+    }
+    if (this->input && fd == this->input_fd) {
+      uint8_t buf[512];
+      ssize_t n = read(fd, buf, sizeof(buf));
+      if (n > 0) {
+        input_feed(this->input, buf, (size_t)n);
+      } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
+        inputStop();
+        this->reconnect_at = (int)(now_ms() + 1500);
+      }
+    }
+  }
+
+  int statusText(char *buf, size_t cap) {
+    size_t o = 0;
+    if (cap) buf[0] = 0;
+    const station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
+
+    kv_add(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
+    kv_add(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
+    kv_add(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
+    kv_add(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
+    kv_add(buf, cap, &o, "radio.volume", "%d", this->volume);
+    kv_add(buf, cap, &o, "radio.muted", "%s", this->muted ? "true" : "false");
+    kv_add(buf, cap, &o, "radio.fade_percent", "%d", 100);
+    if (s) {
+      kv_text(buf, cap, &o, "radio.current.id", s->id);
+      kv_text(buf, cap, &o, "radio.current.title", s->title);
+      kv_text(buf, cap, &o, "radio.current.game", s->game);
+      kv_text(buf, cap, &o, "radio.current.path", s->path);
+      kv_text(buf, cap, &o, "radio.current.ext", s->ext);
+    }
+
+    kv_text(buf, cap, &o, "session.phase", "active");
+    kv_add(buf, cap, &o, "session.warning_in", "%d", 900);
+    kv_add(buf, cap, &o, "session.shutdown_in", "%d", 0);
+
+    kv_add(buf, cap, &o, "audio.present", "%s", "false");
+    kv_text(buf, cap, &o, "audio.sink", "");
+    kv_text(buf, cap, &o, "audio.state", "null");
+
+    kv_text(buf, cap, &o, "hid.power_save", "null");
+    kv_text(buf, cap, &o, "hid.player_leds", "null");
+
+    kv_add(buf, cap, &o, "mic.level", "%d", 0);
+    kv_add(buf, cap, &o, "mic.active", "%s", "false");
+    kv_add(buf, cap, &o, "mic.frames", "%d", 0);
+    kv_add(buf, cap, &o, "mic.rms", "%d", 0);
+    kv_add(buf, cap, &o, "mic.peak", "%d", 0);
+    kv_add(buf, cap, &o, "mic.running", "%s", "false");
+    kv_add(buf, cap, &o, "mic.monitor", "%s", "false");
+
+    kv_add(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
+    kv_text(buf, cap, &o, "controller.bus", "bluetooth");
+    kv_text(buf, cap, &o, "controller.name", "DualSense");
+    kv_text(buf, cap, &o, "controller.mac", "");
+    kv_text(buf, cap, &o, "controller.model", "dualsense");
+    kv_text(buf, cap, &o, "controller.node", this->input_node);
+    if (this->battery >= 0) kv_add(buf, cap, &o, "controller.battery", "%d", this->battery);
+    else kv_text(buf, cap, &o, "controller.battery", "null");
+    kv_text(buf, cap, &o, "controller.charging", this->charging);
+    kv_add(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
+    kv_text(buf, cap, &o, "controller.buttons", this->buttons);
+    kv_text(buf, cap, &o, "controller.dpad", this->dpad);
+    kv_add(buf, cap, &o, "controller.rate", "%d", this->rate);
+    kv_add(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
+    kv_add(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
+    kv_add(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
+    for (int t = 0; t < 2; t++) {
+      char key[48];
+      snprintf(key, sizeof(key), "controller.touches.%d.active", t);
+      kv_add(buf, cap, &o, key, "%s", this->touch[t].active ? "true" : "false");
+      snprintf(key, sizeof(key), "controller.touches.%d.id", t);
+      kv_add(buf, cap, &o, key, "%u", this->touch[t].id);
+      snprintf(key, sizeof(key), "controller.touches.%d.x", t);
+      kv_add(buf, cap, &o, key, "%u", this->touch[t].x);
+      snprintf(key, sizeof(key), "controller.touches.%d.y", t);
+      kv_add(buf, cap, &o, key, "%u", this->touch[t].y);
+    }
+    kv_add(buf, cap, &o, "controller.l2", "%d", this->l2);
+    kv_add(buf, cap, &o, "controller.r2", "%d", this->r2);
+    kv_add(buf, cap, &o, "controller.lx", "%d", this->lx);
+    kv_add(buf, cap, &o, "controller.ly", "%d", this->ly);
+    kv_add(buf, cap, &o, "controller.rx", "%d", this->rx);
+    kv_add(buf, cap, &o, "controller.ry", "%d", this->ry);
+    kv_add(buf, cap, &o, "controller.temperature", "%d", this->temp);
+    kv_add(buf, cap, &o, "controller.accel", "%d,%d,%d", this->ax, this->ay, this->az);
+    kv_add(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
+    kv_text(buf, cap, &o, "controller.raw", this->raw);
+    kv_text(buf, cap, &o, "controller.last_action", this->last_action);
+
+    kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+    kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+    kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+    kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    return (int)o;
+  }
+
+  int frontText(char *buf, size_t cap, unsigned long requests, long uptime) {
+    size_t o = 0;
+    if (cap) buf[0] = 0;
+    kv_add(buf, cap, &o, "ok", "%s", "true");
+    kv_add(buf, cap, &o, "front", "%d", 1);
+    kv_add(buf, cap, &o, "uptime_s", "%ld", uptime);
+    kv_add(buf, cap, &o, "requests", "%lu", requests);
+    kv_add(buf, cap, &o, "controller", "%s", this->controller ? "true" : "false");
+    kv_add(buf, cap, &o, "player.valid", "%s", this->player ? "true" : "false");
+    kv_add(buf, cap, &o, "player.pos", "%ld", this->pos_ms);
+    kv_add(buf, cap, &o, "player.dur", "%ld", this->dur_ms);
+    kv_add(buf, cap, &o, "player.sent", "%ld", this->sent);
+    kv_add(buf, cap, &o, "player.underruns", "%ld", this->underruns);
+    kv_add(buf, cap, &o, "player.paused", "%s", this->paused ? "true" : "false");
+    kv_add(buf, cap, &o, "input.valid", "%s", this->input ? "true" : "false");
+    kv_add(buf, cap, &o, "input.lx", "%d", this->lx);
+    kv_add(buf, cap, &o, "input.ly", "%d", this->ly);
+    kv_add(buf, cap, &o, "input.rx", "%d", this->rx);
+    kv_add(buf, cap, &o, "input.ry", "%d", this->ry);
+    kv_add(buf, cap, &o, "input.l2", "%d", this->l2);
+    kv_add(buf, cap, &o, "input.r2", "%d", this->r2);
+    kv_add(buf, cap, &o, "input.battery", "%d", this->battery);
+    kv_add(buf, cap, &o, "input.jack", "%s", this->jack ? "true" : "false");
+    return (int)o;
+  }
+
+  int configText(char *buf, size_t cap) {
+    size_t o = 0;
+    if (cap) buf[0] = 0;
+    kv_add(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
+    kv_add(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
+    kv_add(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
+    kv_add(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
+    kv_add(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kv_add(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    return (int)o;
+  }
+
+  void configSet(const char *body) {
+    char value[64];
+
+    if (kv_get(body, "idle_timeout_ms", value, sizeof(value))) {
+      long v = atol(value);
+      this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+    }
+    if (kv_get(body, "idle_warn_grace_ms", value, sizeof(value))) {
+      long v = atol(value);
+      this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+    }
+    if (kv_get(body, "trigger_effect_amplitude", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
+    }
+    if (kv_get(body, "trigger_effect_position", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
+    }
+    if (kv_get(body, "trigger_effect_frequency", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+    }
+    if (kv_get(body, "trigger_effects", value, sizeof(value)))
+      this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+
+    configSave();
+  }
+
+  int libraryText(char *buf, size_t cap) {
+    size_t o = 0;
+    if (cap) buf[0] = 0;
+    for (int i = 0; i < this->count; i++) {
+      const station *s = &this->stations[i];
+      tsv_field(buf, cap, &o, s->id, '\t');
+      tsv_field(buf, cap, &o, s->title, '\t');
+      tsv_field(buf, cap, &o, s->game, '\t');
+      tsv_field(buf, cap, &o, s->path, '\t');
+      tsv_field(buf, cap, &o, s->ext, '\n');
+    }
+    return (int)o;
+  }
+
+  int output(const char *body, char *out, size_t out_cap) {
+    char kind[32];
+    if (!kv_get(body, "kind", kind, sizeof(kind)))
+      return snprintf(out, out_cap, "ok=false\nerror=missing kind\n");
+    if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
+
+    char fields[1024];
+
+    if (strcmp(kind, "lightbar") == 0) {
+      char rgb[64] = "0,0,0";
+      int r = 0, g = 0, b = 0;
+      kv_get(body, "rgb", rgb, sizeof(rgb));
+      sscanf(rgb, "%d,%d,%d", &r, &g, &b);
+      r = r < 0 ? 0 : (r > 255 ? 255 : r);
+      g = g < 0 ? 0 : (g > 255 ? 255 : g);
+      b = b < 0 ? 0 : (b > 255 ? 255 : b);
+      snprintf(fields, sizeof(fields),
+               "valid_flag1=lightbar;lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=lightbar %d,%d,%d\n", r, g, b);
+    }
+
+    if (strcmp(kind, "lightbar_reset") == 0) {
+      outputFields("valid_flag1=reset_lights");
+      return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
+    }
+
+    if (strcmp(kind, "lightbar_fade") == 0) {
+      outputFields("valid_flag1=lightbar;valid_flag2=color_fade");
+      return snprintf(out, out_cap, "ok=true\nnote=fade\n");
+    }
+
+    if (strcmp(kind, "lightbar_setup") == 0) {
+      int v = (int)kv_number(body, "value", 0);
+      snprintf(fields, sizeof(fields), "valid_flag1=lightbar;lightbar_setup=%d", v & 0xFF);
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
+    }
+
+    if (strcmp(kind, "lightbar_brightness") == 0) {
+      int v = (int)kv_number(body, "value", 0);
+      snprintf(fields, sizeof(fields), "valid_flag2=brightness;led_brightness=%d", v & 0xFF);
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
+    }
+
+    if (strcmp(kind, "player_leds") == 0) {
+      int mask = (int)kv_number(body, "mask", 0);
+      snprintf(fields, sizeof(fields), "valid_flag1=player_leds;player_leds=%d", mask & 0x1F);
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=player leds %d\n", mask & 0x1F);
+    }
+
+    if (strcmp(kind, "power_save") == 0) {
+      char bits[64] = "";
+      kv_get(body, "bits", bits, sizeof(bits));
+      int mask = 0;
+      char *save = nullptr;
+      for (char *tok = strtok_r(bits, ",", &save); tok; tok = strtok_r(nullptr, ",", &save)) {
+        int bit = atoi(tok);
+        if (bit >= 0 && bit < 8) mask |= 1 << bit;
+      }
+      snprintf(fields, sizeof(fields), "valid_flag1=power_save;power_save_control=%d", mask);
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n", mask);
+    }
+
+    if (strcmp(kind, "rumble") == 0) {
+      int left = (int)kv_number(body, "left", 0);
+      int right = (int)kv_number(body, "right", 0);
+      long ms = kv_number(body, "ms", 0);
+      left = left < 0 ? 0 : (left > 255 ? 255 : left);
+      right = right < 0 ? 0 : (right > 255 ? 255 : right);
+      snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left, right);
+      outputFields(fields);
+      this->rumble_left = left;
+      this->rumble_right = right;
+      this->rumble_until = ms > 0 ? now_ms() + ms : 0;
+      return snprintf(out, out_cap, "ok=true\nnote=rumble %d/%d\n", left, right);
+    }
+
+    if (strcmp(kind, "trigger") == 0) {
+      char side[16] = "right";
+      char effect[16] = "vibration";
+      kv_get(body, "side", side, sizeof(side));
+      kv_get(body, "effect", effect, sizeof(effect));
+      int position = (int)kv_number(body, "position", 2);
+      int amplitude = (int)kv_number(body, "amplitude", 6);
+      int frequency = (int)kv_number(body, "frequency", 25);
+      long ms = kv_number(body, "ms", 0);
+
+      int mode = 0x26;
+      if (strcmp(effect, "off") == 0) mode = 0x05;
+      else if (strcmp(effect, "feedback") == 0) mode = 0x21;
+
+      int params[10] = {0};
+      if (mode != 0x05) {
+        params[0] = position;
+        params[1] = amplitude;
+        params[9] = frequency;
+      }
+
+      bool left = strcmp(side, "left") == 0;
+      const char *flag = left ? "left_trigger" : "right_trigger";
+      const char *prefix = left ? "left" : "right";
+      snprintf(fields, sizeof(fields),
+               "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+               flag, prefix, mode, prefix, params[0], params[1], params[2], params[3], params[4],
+               params[5], params[6], params[7], params[8], params[9]);
+      outputFields(fields);
+      this->trigger_side = left ? 1 : 2;
+      this->trigger_until = (ms > 0 && mode != 0x05) ? now_ms() + ms : 0;
+      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x\n", side, mode);
+    }
+
+    if (strcmp(kind, "fields") == 0) {
+      if (!kv_get(body, "fields", fields, sizeof(fields)))
+        return snprintf(out, out_cap, "ok=false\nerror=missing fields\n");
+      outputFields(fields);
+      return snprintf(out, out_cap, "ok=true\nnote=fields\n");
+    }
+
+    if (strcmp(kind, "mic_monitor") == 0)
+      return snprintf(out, out_cap, "ok=false\nerror=mic monitor is not implemented\n");
+
+    return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
+  }
+
+  int handleCommand(const char *body, size_t len, char *out, size_t cap) {
+    char action[64];
+    if (!kv_get(body, "action", action, sizeof(action)))
+      return snprintf(out, cap, "ok=false\nerror=missing action\n");
+    return command(action, body, len, out, cap);
+  }
+
+  bool ownsFd(int fd) {
+    return fd >= 0 && (fd == this->player_timer_fd || fd == this->input_fd);
+  }
+
+ private:
+  void addStation(const char *path, const char *game) {
+  if (this->count >= kMaxStations) return;
+  station *s = &this->stations[this->count];
+  snprintf(s->path, sizeof(s->path), "%s", path);
+
+  const char *base = strrchr(path, '/');
+  snprintf(s->title, sizeof(s->title), "%.*s", (int)sizeof(s->title) - 1, base ? base + 1 : path);
+  char *dot = strrchr(s->title, '.');
+  if (dot) *dot = 0;
+
+  snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
+  const char *d = strrchr(path, '.');
+  snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
+  make_id(path, s->id);
+  this->count++;
+  }
+
+  void scanDir(const char *dir, const char *game) {
+  DIR *d = opendir(dir);
+  if (!d) return;
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+    char path[kMaxPath];
+    snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+    struct stat st;
+    if (lstat(path, &st) != 0) continue;
+    if (S_ISDIR(st.st_mode)) {
+      scanDir(path, e->d_name);
+    } else if (S_ISREG(st.st_mode) && audio_ext(e->d_name)) {
+      addStation(path, game);
+    }
+  }
+  closedir(d);
+  }
+
+  int findStation(const char *path) {
+  for (int i = 0; i < this->count; i++)
+    if (strcmp(this->stations[i].path, path) == 0) return i;
+  return -1;
+  }
+
+  int findId(const char *id) {
+  for (int i = 0; i < this->count; i++)
+    if (strcmp(this->stations[i].id, id) == 0) return i;
+  return -1;
+  }
+
+  void pushHistory(int index) {
+  if (index < 0) return;
+  if (this->history_len < kMaxHistory) {
+    this->history[this->history_len++] = index;
+  } else {
+    memmove(this->history, this->history + 1, sizeof(int) * (kMaxHistory - 1));
+    this->history[kMaxHistory - 1] = index;
+  }
+  }
+
+  void playerSend(const char *line) {
+  if (this->player) ::player_command(this->player, line);
+  }
+
+  void playerStart() {
+  if (this->player) return;
+  this->player = ::player_create(nullptr, false);
+  if (!this->player) return;
+  ::player_set_sink(this->player, playerStatusCb, playerTrackCb, this);
+  this->player_timer_fd = ::player_timer_fd(this->player);
+  }
+
+  void inputStart() {
+  if (this->input) return;
+
+  char node[64];
+  if (find_dualsense(node, sizeof(node)) < 0) {
+    this->reconnect_at = (int)(now_ms() + 1500);
+    return;
+  }
+
+  this->input = ::input_create(node);
+  if (!this->input) {
+    this->reconnect_at = (int)(now_ms() + 1500);
+    return;
+  }
+  snprintf(this->input_node, sizeof(this->input_node), "%s", node);
+  ::input_set_sink(this->input, inputFrameCb, inputActionCb, inputEventCb, inputMicCb,
+                   this);
+  this->input_fd = ::input_fd(this->input);
+  }
+
+  void inputStop() {
+  if (this->input) {
+    ::input_destroy(this->input);
+    this->input = nullptr;
+  }
+  this->input_fd = -1;
+  this->controller = false;
+  this->input_node[0] = 0;
+  this->rate = 0;
+  this->rate_at = 0;
+  this->rate_frames = 0;
+  }
+
+  static void playerStatusCb(const struct player_status *st, void *ud) {
+  App *a = (App *)ud;
+  a->pos_ms = st->pos_ms;
+  a->dur_ms = st->dur_ms;
+  a->sent = st->sent;
+  a->underruns = st->underruns;
+  a->paused = st->paused != 0;
+  a->eof = st->eof != 0;
+  }
+
+  static void playerTrackCb(const char *path, void *ud) {
+  App *a = (App *)ud;
+  int idx = a->findStation(path);
+  if (idx < 0) return;
+  if (a->current >= 0 && a->current != idx) a->pushHistory(a->current);
+  a->current = idx;
+  a->paused = false;
+  a->playing = true;
+  }
+
+  void play(int index, long start_ms) {
+  if (index < 0 || index >= this->count) return;
+  playerStart();
+  char line[kMaxPath + 64];
+  snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
+  playerSend(line);
+
+  if (this->current >= 0 && this->current != index && this->history_len == 0) pushHistory(this->current);
+  this->current = index;
+  this->playing = true;
+  this->paused = false;
+  this->eof = false;
+  this->pos_ms = start_ms;
+  this->dur_ms = 0;
+  this->idle_since = now_ms();
+
+  // Gapless: queue a different station for the junction.
+  if (this->count > 1) {
+    int next = rand() % this->count;
+    if (next == index) next = (next + 1) % this->count;
+    char q[kMaxPath + 16];
+    snprintf(q, sizeof(q), "queue %s\n", this->stations[next].path);
+    playerSend(q);
+  }
+  }
+
+  void next() {
+  if (this->count == 0) return;
+  int next = rand() % this->count;
+  if (this->count > 1 && next == this->current) next = (next + 1) % this->count;
+  play(next, 0);
+  }
+
+  void previous() {
+  if (this->history_len > 0) {
+    int prev = this->history[--this->history_len];
+    play(prev, 0);
+  } else if (this->current > 0) {
+    play(this->current - 1, 0);
+  }
+  }
+
+  void shuffleGame() {
+  if (this->count == 0) return;
+  const char *game = this->current >= 0 ? this->stations[this->current].game : "";
+  for (int tries = 0; tries < 100; tries++) {
+    int i = rand() % this->count;
+    if (strcmp(this->stations[i].game, game) != 0) {
+      play(i, 0);
+      return;
+    }
+  }
+  next();
+  }
+
+  void togglePause() {
+  if (!this->playing) {
+    if (this->current >= 0)
+      play(this->current, this->pos_ms);
+    return;
+  }
+  this->paused = !this->paused;
+  playerSend(this->paused ? "pause 1\n" : "pause 0\n");
+  }
+
+  void setVolume(int v) {
+  if (v < 0) v = 0;
+  if (v > 100) v = 100;
+  this->volume = v;
+  this->muted = v == 0;
+  char line[32];
+  snprintf(line, sizeof(line), "volume %d\n", v);
+  playerSend(line);
+  }
+
+  void seek(long ms) {
+  if (ms < 0) ms = 0;
+  if (this->dur_ms > 0 && ms > this->dur_ms) ms = this->dur_ms;
+  char line[32];
+  snprintf(line, sizeof(line), "seek %ld\n", ms);
+  playerSend(line);
+  this->pos_ms = ms;
+  }
+
+  static void inputFrameCb(const struct input_frame *f, void *ud) {
+  App *a = (App *)ud;
+  a->controller = true;
+  a->lx = (int)f->lx;
+  a->ly = (int)f->ly;
+  a->rx = (int)f->rx;
+  a->ry = (int)f->ry;
+  a->l2 = (int)f->l2;
+  a->r2 = (int)f->r2;
+  a->battery = f->battery;
+  a->jack = f->jack != 0;
+  a->temp = (int)f->temp;
+  snprintf(a->dpad, sizeof(a->dpad), "%s", f->dpad);
+  snprintf(a->buttons, sizeof(a->buttons), "%s", f->buttons);
+  snprintf(a->raw, sizeof(a->raw), "%.*s", (int)sizeof(a->raw) - 1, f->raw);
+  snprintf(a->charging, sizeof(a->charging), "%s",
+           f->charging == 1 ? "charging" : f->charging == 2 ? "full" : "discharging");
+  a->gx = f->gx;
+  a->gy = f->gy;
+  a->gz = f->gz;
+  a->ax = f->ax;
+  a->ay = f->ay;
+  a->az = f->az;
+  a->seq = f->seq;
+  a->tfl = f->tfl;
+  a->tfr = f->tfr;
+  for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
+
+  long now = now_ms();
+  if (a->rate_at == 0) a->rate_at = now;
+  a->rate_frames++;
+  if (now - a->rate_at >= 1000) {
+    a->rate = (int)((a->rate_frames * 1000) / (now - a->rate_at));
+    a->rate_frames = 0;
+    a->rate_at = now;
+  }
+  }
+
+  static void inputActionCb(const char *name, int value, void *ud) {
+  ((App *)ud)->handleAction(name, value);
+  }
+
+  static void inputEventCb(const char *name, void *ud) {
+  (void)name;
+  (void)ud;
+  }
+
+  static void inputMicCb(const uint8_t *data, size_t len, void *ud) {
+  (void)data;
+  (void)len;
+  (void)ud;
+  }
+
+  void handleAction(const char *name, int value) {
+  if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0) next();
+  else if (strcmp(name, "previous") == 0) previous();
+  else if (strcmp(name, "shuffle_game") == 0) shuffleGame();
+  else if (strcmp(name, "pause") == 0 || strcmp(name, "toggle_pause") == 0) togglePause();
+  else if (strcmp(name, "play") == 0) {
+    if (!this->playing || this->paused) togglePause();
+  } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
+    setVolume(this->muted ? this->volume : 0);
+  } else if (strcmp(name, "volume") == 0) {
+    setVolume(this->volume + value);
+  } else if (strcmp(name, "seek") == 0) {
+    seek(this->pos_ms + (long)value * 1000);
+  } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
+    this->playing = false;
+    this->paused = true;
+    playerSend("pause 1\n");
+  }
+  snprintf(this->last_action, sizeof(this->last_action), "%s", name);
+  }
+
+  void configLoad() {
+  char path[512];
+  if (!config_path(path, sizeof(path))) return;
+  FILE *f = fopen(path, "r");
+  if (!f) return;
+
+  char line[256];
+  while (fgets(line, sizeof(line), f)) {
+    char *eq = strchr(line, '=');
+    if (!eq) continue;
+    *eq = 0;
+    char *value = eq + 1;
+    char *nl = strchr(value, '\n');
+    if (nl) *nl = 0;
+
+    if (strcmp(line, "idle_timeout_ms") == 0) {
+      long v = atol(value);
+      this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+    } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
+      long v = atol(value);
+      this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+    } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
+    } else if (strcmp(line, "trigger_effect_position") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
+    } else if (strcmp(line, "trigger_effect_frequency") == 0) {
+      int v = atoi(value);
+      this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+    } else if (strcmp(line, "trigger_effects") == 0) {
+      this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+    }
+  }
+  fclose(f);
+  }
+
+  void configSave() {
+  char path[512];
+  if (!config_path(path, sizeof(path))) return;
+
+  char dir[512];
+  snprintf(dir, sizeof(dir), "%s", path);
+  char *slash = strrchr(dir, '/');
+  if (slash) {
+    *slash = 0;
+    mkdir(dir, 0755);
+  }
+
+  FILE *f = fopen(path, "w");
+  if (!f) return;
+  fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
+  fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
+  fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
+  fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
+  fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
+  fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
+  fclose(f);
+  }
+
+  void outputFields(const char *fields) {
+  if (!this->player) return;
+  char line[1200];
+  snprintf(line, sizeof(line), "fields %s\n", fields);
+  playerSend(line);
+  }
+
+  void serviceOutput() {
+  if (!this->player) return;
+  long now = now_ms();
+  if (this->rumble_until && now >= this->rumble_until) {
+    outputFields("valid_flag0=rumble;motor_left=0;motor_right=0");
+    this->rumble_until = 0;
+  }
+  if (this->trigger_until && now >= this->trigger_until) {
+    const char *flag = this->trigger_side == 1 ? "left_trigger" : "right_trigger";
+    const char *prefix = this->trigger_side == 1 ? "left" : "right";
+    char fields[192];
+    snprintf(fields, sizeof(fields),
+             "valid_flag0=%s;%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0", flag,
+             prefix, prefix);
+    outputFields(fields);
+    this->trigger_until = 0;
+    this->trigger_side = 0;
+  }
+  }
+
+  int command(const char *action, const char *body, size_t body_len, char *out, size_t out_cap) {
+  (void)body_len;
+
+  if (strcmp(action, "next") == 0) next();
+  else if (strcmp(action, "previous") == 0) previous();
+  else if (strcmp(action, "shuffle_game") == 0) shuffleGame();
+  else if (strcmp(action, "pause") == 0) togglePause();
+  else if (strcmp(action, "mute") == 0) setVolume(this->muted ? this->volume : 0);
+  else if (strcmp(action, "disconnect") == 0) {
+    this->playing = false;
+    this->paused = true;
+    playerSend("pause 1\n");
+  } else if (strcmp(action, "volume") == 0) {
+    setVolume((int)kv_number(body, "value", this->volume));
+  } else if (strcmp(action, "seek") == 0) {
+    seek(this->pos_ms + kv_number(body, "delta", 0) * 1000);
+  } else if (strcmp(action, "seek_to") == 0) {
+    seek(kv_number(body, "position", this->pos_ms / 1000) * 1000);
+  } else if (strcmp(action, "play_track") == 0) {
+    char id[64];
+    if (kv_get(body, "id", id, sizeof(id))) {
+      int idx = findId(id);
+      if (idx >= 0) play(idx, 0);
+    }
+  } else {
+    return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
+  }
+
+  snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+  return snprintf(out, out_cap, "ok=true\n");
+  }
+
+};
