@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `1f0061a`
+- HEAD: latest `main`; the behavior described here landed through `694829d`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -23,7 +23,7 @@
 - Recent work: server/lab text routes, App/Input/Server class split, idle
   fade/suspend/wake, BlueZ power-off + hidraw reopen, playhead persistence,
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
-  lightbar + charging player LEDs, controller-loss auto-pause + slow paused
+  lightbar + battery-bar player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
   presets + unified trigger lab, host-driven lightbar pulse, persisted volume,
   mic/playback exclusion + pause-auto-mic + mute-button LED.
@@ -182,12 +182,13 @@ with no audio the same `fields` line produces a 0x31 report.
   state until the next playback/session state change, survives device-down/up,
   and device-up forces one repaint. Reset drops the custom colour and repaints
   the state colour.
-- Player LEDs: `charging`/`full` sweeps `0b01010`/`0b10101` every 3 s; otherwise
-  the kernel player-1 pattern `0b00100`, or a lab manual mask while not
-  charging. Device-down returns to `0b00100`.
+- Player LEDs: left-to-right battery bar, 1-5 segments (`45%` → `0b00111`,
+  `100%` → `0b11111`). At `<=15%` while discharging, blink `0b00001`/`0b00000`
+  at 500 ms. Charging uses the solid bar. A lab manual mask overrides it.
+  Device-down is all off.
 - Only changed values are written. `serviceLeds()` runs from the 10 ms player
   timer and the app tick; player start/reconnect/shutdown force a repaint
-  (`now_ms` pulse, charging transitions and state changes compare before send).
+  (`now_ms` pulse, battery changes and state changes compare before send).
 - Status: `led.mode` (`off/playing/paused/muted/warning/custom`),
   `led.red/green/blue`, `led.custom`, `led.painted`, and the real
   `hid.player_leds` mask (the panel's five dots follow it).

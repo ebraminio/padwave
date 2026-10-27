@@ -177,8 +177,10 @@ pause state are applied on every player start.
 
 The lightbar follows playback: cyan playing, amber paused, purple muted,
 pulsing red for the idle warning, and black when suspended/off. A lab custom
-colour overrides it until the next state change. Charging/full sweeps the five
-player LEDs; otherwise the kernel player-1 pattern is used.
+colour overrides it until the next state change. The five player LEDs are a
+left-to-right battery bar (45 % → 11100, full → 11111); at 15 % or below the
+first LED blinks 10000/00000 while discharging, and charging uses the same bar.
+A lab manual mask overrides it.
 
 If the controller disconnects there is no audio sink, so playback pauses and
 the player tick slows to 500 ms; that keeps a controller-less unit near 0 % CPU
