@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `72590a3`
+- HEAD: latest `main`; the behavior described here landed through `423e572`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -26,7 +26,7 @@
   lightbar + charging player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
   presets + unified trigger lab, host-driven lightbar pulse, persisted volume,
-  mic/playback exclusion + mute precedence.
+  mic/playback exclusion + pause-auto-mic.
 
 ## Pi Bluetooth tuning
 
@@ -70,11 +70,13 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   persisted; 15 is only the fallback when no non-zero value exists. Do not add
   a separate mute flag. `setVolume`, `togglePause`, `ensureAudibleVolume` and
   `playerStart` carry this model.
-- Mic monitoring and playback are mutually exclusive. Enabling the mic pauses
-  and sets `paused_by_mic`; disabling resumes only if the mic caused the pause.
-  Every playback start/resume calls `stopMicForPlayback()` first. Touchpad/
-  mute supersedes a mic pause: it turns the mic off and records the pause as
-  volume-caused, so the next unmute resumes.
+- Mic monitoring and playback are mutually exclusive. Pausing via triangle,
+  touchpad/mute, pause command or zero volume turns the mic on; resuming turns
+  it off. Enabling the mic directly pauses and sets `paused_by_mic`; disabling
+  resumes only if the mic caused the pause. Every playback start/resume calls
+  `stopMicForPlayback()` first. Touchpad mute records volume as the pause cause
+  (and auto-enables the mic), so the next click unmutes, resumes and turns the
+  mic off.
 - Power-off is a BlueZ disconnect after idle (`bluetoothctl disconnect
   <HID_UNIQ>`, `timeout 5`), not a 0x31 bit. The pad sleeps; press PS to wake.
   The player reopens its hidraw on write failure/missing node.

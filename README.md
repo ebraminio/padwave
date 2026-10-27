@@ -160,10 +160,11 @@ disconnect the pad, which puts it to sleep; press PS to wake it. Unplugging the
 headset pauses and plugging it back resumes only if the jack caused the pause.
 The monitor switch opens the 0x36 mic path, and the status stream carries a live
 Opus-decoded level (frames, RMS, peak). Microphone monitoring and playback are
-mutually exclusive: enabling the mic pauses playback, disabling it resumes only
-if the mic caused the pause, and starting/resuming playback turns the mic off.
-Touchpad/mute also turns the mic off and makes volume the pause cause, so the
-next unmute resumes playback.
+mutually exclusive: pausing with triangle, the touchpad/mute, the pause command
+or zero volume turns the mic on; resuming turns it off. Enabling the mic
+directly pauses playback, and switching it off resumes only when the mic caused
+that pause. Touchpad mute records the pause as volume-caused, so its next click
+unmutes and resumes.
 
 Volume zero *is* the paused state: reaching 0 pauses, raising it again or
 pressing play/mute restores the last nonzero volume, and a new controller
