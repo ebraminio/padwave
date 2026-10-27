@@ -143,8 +143,9 @@ player LEDs, power save, rumble, trigger effects, raw field maps), with timed
 rumble/trigger release. Trigger effects use the eight DS4Windows Trigger Lab
 presets or a custom 0x26 vibration; the selected preset and custom
 position/amplitude/frequency are also used by the "on volume" buzz and both
-test buttons. Config and the playhead persist to `~/.config/padwave/config`;
-the app resumes the saved station and offset.
+test buttons. Config, volume and the playhead persist to
+`~/.config/padwave/config`; the app resumes the saved station, offset and
+volume.
 
 The lightbar row has the normal colour/brightness controls, a one-shot
 **light out**, and a host-driven **pulse**. `lightbar_setup` is gated by
@@ -161,9 +162,12 @@ The monitor switch opens the 0x36 mic path, and the status stream carries a live
 Opus-decoded level (frames, RMS, peak).
 
 Volume zero *is* the paused state: reaching 0 pauses, raising it again or
-pressing play/mute restores the last nonzero volume (15% by default), and a new
-controller connection never leaves a paused zero-volume session. The player's
-volume and pause state are applied on every player start.
+pressing play/mute restores the last nonzero volume, and a new controller
+connection never leaves a paused zero-volume session. The current and last
+non-zero volumes are persisted and restored on restart; 15% is used only when
+no non-zero value has ever been stored. A change is saved after a second of
+quiet, and immediately on shutdown or `/api/config`. The player's volume and
+pause state are applied on every player start.
 
 The lightbar follows playback: cyan playing, amber paused, purple muted,
 pulsing red for the idle warning, and black when suspended/off. A lab custom

@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `32a256c`
+- HEAD: latest `main`; the behavior described here landed through `1f7c55d`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -25,7 +25,7 @@
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + charging player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
-  presets + unified trigger lab, host-driven lightbar pulse.
+  presets + unified trigger lab, host-driven lightbar pulse, persisted volume.
 
 ## Pi Bluetooth tuning
 
@@ -65,9 +65,10 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   `accel`/`gyro`/`buttons`). SSE prefixes each line with `data:`.
   `/api/library` is TSV. `index.html` has `parseKV`; keep both sides in sync.
 - Volume 0 is the paused state. `muted` is derived; resume/mute/new controller
-  restores the last nonzero volume; default is 15. Do not add a separate mute
-  flag. `setVolume`, `togglePause`, `ensureAudibleVolume` and `playerStart`
-  carry this model.
+  restores the last nonzero volume. Current and last non-zero volumes are
+  persisted; 15 is only the fallback when no non-zero value exists. Do not add
+  a separate mute flag. `setVolume`, `togglePause`, `ensureAudibleVolume` and
+  `playerStart` carry this model.
 - Power-off is a BlueZ disconnect after idle (`bluetoothctl disconnect
   <HID_UNIQ>`, `timeout 5`), not a 0x31 bit. The pad sleeps; press PS to wake.
   The player reopens its hidraw on write failure/missing node.
@@ -81,8 +82,9 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
 2. Idle fade floor is fixed at 10%; only timeout/grace/poweroff delay are
    configurable. Mic monitor state is not persisted (off after restart).
 3. Playhead is saved 1 s after changes and every 30 s while playing, so a hard
-   crash can lose up to 30 s (shutdown/power-off save exactly). Volume is not
-   persisted.
+   crash can lose up to 30 s (shutdown/power-off save exactly). Volume is saved
+   1 s after changes (immediately on shutdown/config-set), so a hard kill can
+   lose the last second.
 4. Jack pause has API/decoder verification only; physical unplug response has
    not been observed. Lightbar, rumble and adaptive-trigger effects are
    confirmed. `lightbar_setup` is a one-shot light-out handoff, not an
