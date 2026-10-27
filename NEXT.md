@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `694829d`
+- HEAD: latest `main`; the behavior described here landed through `63dfff8`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -184,8 +184,9 @@ with no audio the same `fields` line produces a 0x31 report.
   the state colour.
 - Player LEDs: left-to-right battery bar, 1-5 segments (`45%` → `0b00111`,
   `100%` → `0b11111`). At `<=15%` while discharging, blink `0b00001`/`0b00000`
-  at 500 ms. Charging uses the solid bar. A lab manual mask overrides it.
-  Device-down is all off.
+  at 500 ms. Charging pulses the next empty segment (45% `0b00111`/`0b01111`,
+  80%+ `0b01111`/`0b11111`); at 100%/full it is solid `0b11111` with no
+  animation. A lab manual mask overrides it. Device-down is all off.
 - Only changed values are written. `serviceLeds()` runs from the 10 ms player
   timer and the app tick; player start/reconnect/shutdown force a repaint
   (`now_ms` pulse, battery changes and state changes compare before send).
