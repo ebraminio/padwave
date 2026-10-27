@@ -327,9 +327,8 @@ private:
   int led_last_state = -1;
   bool led_warning_high = true;
   long led_warning_at = 0;
-  long led_charge_at = 0;
-  int led_charge_phase = 0;
-  bool led_charging = false;
+  long led_battery_at = 0;
+  int led_battery_phase = 0;
   bool led_manual_player = false;
   int led_manual_mask = 4;
   bool led_painted = false;
@@ -1738,25 +1737,27 @@ private:
 
     bool charging = this->controller && (strcmp(this->charging, "charging") == 0 ||
                                          strcmp(this->charging, "full") == 0);
-    if (charging && !this->led_charging) {
-      this->led_charging = true;
-      this->led_charge_phase = 0;
-      this->led_charge_at = now;
-    } else if (!charging && this->led_charging) {
-      this->led_charging = false;
-    }
-    if (charging && now - this->led_charge_at >= 3000) {
-      this->led_charge_phase ^= 1;
-      this->led_charge_at = now;
-    }
 
-    int mask = 4;
-    if (!this->controller)
-      mask = 4;
-    else if (charging)
-      mask = this->led_charge_phase ? 21 : 10;
-    else if (this->led_manual_player)
-      mask = this->led_manual_mask;
+    // Five player LEDs as a left-to-right battery bar. Half is 11100, full is
+    // 11111. At <=15% and not charging, blink only the first LED (10000 /
+    // 00000). Charging uses the same bar instead of the old 01010/10101 sweep.
+    int mask = 0;
+    if (this->controller && this->battery >= 0) {
+      int lit = (this->battery * 5 + 99) / 100;
+      if (lit < 1) lit = 1;
+      if (lit > 5) lit = 5;
+      if (this->battery <= 15 && !charging) {
+        if (now - this->led_battery_at >= 500) {
+          this->led_battery_at = now;
+          this->led_battery_phase ^= 1;
+        }
+        mask = this->led_battery_phase ? 0 : 1;
+      } else {
+        this->led_battery_phase = 0;
+        for (int i = 0; i < lit; i++) mask |= 1 << i;
+      }
+    }
+    if (this->led_manual_player) mask = this->led_manual_mask;
 
     if (this->led_pulse_until) {
       if (now >= this->led_pulse_until) {
