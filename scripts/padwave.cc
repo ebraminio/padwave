@@ -1,14 +1,17 @@
-// padwave — one binary, two modes.
+// padwave — one binary, the native modes.
 //
-// Every piece of the audio path lives behind this entry point: the player that
-// owns decode, resample, Opus and the 0x36 report, and the small codec helper
-// the Elixir side uses for the microphone decoder and the lab's encoder. They
-// share scripts/padwave_schemas.hh, so the protocol is described once.
+//   padwave native            the player: decode, Opus and 0x36/0x31
+//   padwave input             the input decoder: 0x31 -> state lines
+//   padwave opusdec [-e|-s]   the codec helper
+//
+// All of them include scripts/padwave_schemas.hh, so the protocol is described
+// once and no mode redefines a packet.
 #include <string.h>
 
 #include "padwave_modes.hh"
 
 int main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "opusdec") == 0) return opusdec_main(argc - 1, argv + 1);
+  if (argc > 1 && strcmp(argv[1], "input") == 0) return input_main(argc - 1, argv + 1);
   return native_main(argc - 1, argv + 1);
 }
