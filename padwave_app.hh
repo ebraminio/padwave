@@ -329,6 +329,7 @@ private:
   long led_warning_at = 0;
   long led_battery_at = 0;
   int led_battery_phase = 0;
+  static constexpr long kLedBlinkMs = 3000;
   bool led_manual_player = false;
   int led_manual_mask = 4;
   bool led_painted = false;
@@ -1753,7 +1754,7 @@ private:
           this->led_battery_phase = 0;
           mask = 31;
         } else {
-          if (now - this->led_battery_at >= 500) {
+          if (now - this->led_battery_at >= kLedBlinkMs) {
             this->led_battery_at = now;
             this->led_battery_phase ^= 1;
           }
@@ -1763,7 +1764,7 @@ private:
           mask = this->led_battery_phase ? low : high;
         }
       } else if (this->battery <= 15) {
-        if (now - this->led_battery_at >= 500) {
+        if (now - this->led_battery_at >= kLedBlinkMs) {
           this->led_battery_at = now;
           this->led_battery_phase ^= 1;
         }
