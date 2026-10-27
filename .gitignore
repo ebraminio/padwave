@@ -2,3 +2,5 @@
 /var/
 /fuzz/fuzz_input
 /crash-*
+/fuzz/fuzz_http
+*.dSYM

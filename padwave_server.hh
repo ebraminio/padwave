@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include "padwave_app.hh"
+#include "padwave_http.hh"
 
 namespace padwave_ui {
 static const unsigned char kIndexHtml[] = {
@@ -322,27 +323,22 @@ private:
     c->in_len += (size_t)n;
     c->in[c->in_len] = 0;
 
-    char *end = strstr(c->in, "\r\n\r\n");
-    if (!end) {
+    HttpRequest req;
+    int parsed = httpParseRequest(c->in, c->in_len, &req);
+    if (parsed < 0) {
+      closeConn(c);
+      return;
+    }
+    if (parsed == 0) {
       if (c->in_len >= kRequestMax - 1) closeConn(c);
       return;
     }
+    if (!req.complete) return; // body still arriving
 
-    size_t head_len = (size_t)(end - c->in) + 4;
-    size_t body_len = 0;
-    const char *cl = strcasestr(c->in, "Content-Length:");
-    if (cl && cl < end) body_len = (size_t)strtoul(cl + 15, nullptr, 10);
-    if (head_len + body_len > kRequestMax) {
-      closeConn(c);
-      return;
-    }
-    if (c->in_len < head_len + body_len) return; // body still arriving
-
-    char method[8] = {0}, path[1024] = {0};
-    if (sscanf(c->in, "%7s %1023s", method, path) != 2) {
-      closeConn(c);
-      return;
-    }
+    const char *method = req.method;
+    const char *path = req.path;
+    size_t head_len = req.head_len;
+    size_t body_len = req.body_len;
 
     requests++;
 
