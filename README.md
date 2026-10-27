@@ -114,11 +114,18 @@ player, the panel with controller state and SSE, and the LAN API.
 
 The controller lab works through the player's `fields` reports (lightbar,
 player LEDs, power save, rumble, trigger effects, raw field maps), with timed
-rumble/trigger release. Config persists to `~/.config/padwave/config`.
+rumble/trigger release. Config and the playhead persist to
+`~/.config/padwave/config`; the app resumes the saved station and offset.
 
-Not yet ported from the old Elixir app: idle fade/suspend and controller
-power-off, persisted playhead, and mic level decoding (the monitor switch
-returns "not implemented" rather than pretending).
+Idle fades the volume over the configured grace and suspends playback; any
+controller action, event, command or config edit restores the volume and
+resumes. Unplugging the headset pauses and plugging it back resumes only if the
+jack caused the pause. The monitor switch opens the 0x36 mic path, and the
+status stream carries a live Opus-decoded level (frames, RMS, peak).
+
+Not yet done: controller power-off after idle, real audio-sink/state reporting
+(the panel still says no sink), and physical confirmation of the lightbar,
+rumble, trigger and jack paths.
 
 ## Protocol
 

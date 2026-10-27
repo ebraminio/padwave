@@ -3,8 +3,8 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `2e4b84d add an LLVM-based .clang-format and format the C++
-  sources`.
+- HEAD: `bf7c15b implement playhead resume, idle fade/suspend, jack pause
+  and mic level`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -44,6 +44,10 @@ Passes already landed:
   the static-Server wrapper.
 - `2e4b84d` — `.clang-format` (LLVM/100 cols/2-space, private fields, compact
   guards) and the whole C++ tree formatted with it.
+- `726e399` — duplicate wire includes removed (housekeeping).
+- `bf7c15b` — playhead save/resume; idle warning/fade/suspend/wake; jack pause;
+  Opus mic decode (level/RMS/peak) and the monitor switch opening the 0x36 mic
+  path; dynamic session status.
 
 ## Preferences / constraints
 
@@ -73,24 +77,23 @@ Passes already landed:
 
 ## What is genuinely missing
 
-1. Idle is not implemented. `idle_timeout_ms`/`idle_warn_grace_ms` are saved
-   and shown, but nothing expires; `session.phase`, `warning_in`,
-   `shutdown_in` and `fade_percent` in `status_text` are static. There is no
-   idle fade, suspend, power-off or resume-on-activity.
-2. Jack pause is not implemented. `jack_plugged`/`jack_unplugged` reach
-   `handleAction` but fall through to only recording `last_action`; there is no
-   `paused_by_jack` behaviour.
-3. Playhead is not persisted. Startup picks a random station; only config is
-   saved. A small `path`/`position` in the config file plus a resume on init
-   would finish this.
-4. Mic level decoding is not implemented. `input_mic_cb` discards the Opus
-   frame, the `mic.*` status fields are static, and the monitor switch returns
-   `ok=false error=mic monitor is not implemented`.
+1. Controller power-off after idle is not implemented. `session.shutdown_in`
+   is the time to the idle *suspend*; there is no controller power-off or
+   shutdown step and no `poweroff_when_idle_ms` in the saved config.
+2. `audio.present`, `audio.sink` and `audio.state` are still static
+   (`false`/empty/null): the player does not report the ALSA sink, so the panel
+   always says "no sink".
+3. The idle fade floor is fixed at 10%; only the timeout and grace are
+   configurable. The mic monitor is level capture only (no speaker monitoring)
+   and its on/off state is not persisted across restarts.
+4. Playhead is saved 1 s after changes and every 30 s while playing; a hard
+   crash can lose up to 30 s. Shutdown saves exactly. Jack pause and the lab
+   effects have only been verified through the API/decoder, not by physically
+   unplugging or watching the controller.
 5. `/api/reload` is a deliberate no-op (`reloaded=0`): there are no modules to
    reload in a single binary.
-6. The lab writes real reports (`ok 1` in the journal) but the physical
-   lightbar/rumble/trigger response was not observed; only the API and the
-   `fields` writes were verified. Timed stops run from the 10 ms player timer.
+6. `/api/mic/reset` frees the Opus decoder; the next monitored frame recreates
+   it (frames/running go to zero immediately, as intended).
 
 ## Verify commands
 
@@ -111,11 +114,20 @@ ssh ebrahim@192.168.1.175 \
    curl -s http://127.0.0.1:8787/api/schema | head -3; \
    curl -s -X POST --data-binary "kind=lightbar;rgb=0,160,255" \
      http://127.0.0.1:8787/api/output; \
+   curl -s -X POST --data-binary "kind=mic_monitor;enabled=true" \
+     http://127.0.0.1:8787/api/output; \
+   sleep 2; curl -s http://127.0.0.1:8787/api/status | grep '^mic\\.'; \
+   curl -s -X POST --data-binary "kind=mic_monitor;enabled=false" \
+     http://127.0.0.1:8787/api/output; \
    curl -s -X POST --data-binary "action=pause" http://127.0.0.1:8787/api/command; \
    curl -s -X POST --data-binary "action=pause" http://127.0.0.1:8787/api/command'
 ```
 
-(The lightbar example must be two lines: `kind=lightbar` newline `rgb=...`.)
+(The lightbar/mic examples must be two lines: `kind=...` newline `rgb=...` or
+`enabled=...`.) For a fast idle test set `idle_timeout_ms=3000` and
+`idle_warn_grace_ms=3000` via POST /api/config, watch `session.phase`, then
+wake with a command and restore the defaults (900000/10000). A service restart
+should resume the same `radio.current.path` around the saved position.
 
 `./deploy.sh` does the rsync + install if `PADWAVE_HOST` is set.
 
