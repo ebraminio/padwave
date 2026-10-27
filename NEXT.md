@@ -3,15 +3,17 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `39dd81c serve health and unknown API routes as text too`.
+- HEAD: `b45a5c3 move the epoll/HTTP layer into a Server class in
+  padwave_server.hh`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
 - Service: systemd user unit `padwave.service`, one process / one thread, one
   listener on 8787, ~2 % CPU, radio playing, controller connected.
   UI: `http://192.168.1.175:8787`.
-- Layout: `padwave.cc` (engines + server + main), `padwave_app.hh` (struct App),
-  `padwave_wire.hh` (the only wire description), `index.html` (panel),
+- Layout: `padwave.cc` (engines + main), `padwave_app.hh` (struct App),
+  `padwave_server.hh` (struct Server), `padwave_wire.hh` (the only wire
+  description), `index.html` (panel),
   `test_wire.cc`, `build.sh`, `install.sh`, `padwave.service`,
   `padwave-boot.sh`, `padwave-ctl`, `deploy.sh`, `docs/`.
 
@@ -37,6 +39,9 @@ Passes already landed:
   private, methods are inline camelCase, and the server calls App directly.
 - `39dd81c` — `/health` and the unknown-API fallback are text too, so no route
   emits JSON.
+- `b45a5c3` — struct Server moved to `padwave_server.hh`; private nested Conn
+  table, private fields, inline camelCase helpers, public run(); server_main is
+  the static-Server wrapper.
 
 ## Preferences / constraints
 
@@ -47,7 +52,8 @@ Passes already landed:
   private fields, Java-style camelCase methods. Free functions and the
   wire/protocol names keep snake_case.
 - Callbacks take userdata; no file-scope state. Input state is in
-  `input_handle`; server state is in `struct server` passed to every helper.
+  `input_handle`; server state is in `struct Server` (`padwave_server.hh`)
+  passed through its methods.
 - `padwave serve [port]`; the in-process app is the only backend. No proxy.
 - Every route is key=value (dotted keys nest, `true`/`false`/`null` literals,
   comma lists for `accel`/`gyro`/`buttons`). SSE prefixes every line with
