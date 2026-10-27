@@ -80,7 +80,7 @@ PADWAVE_HOST=ebrahim@192.168.1.175 ./deploy.sh
 
 # or manually
 rsync -az --delete --exclude '.git' --exclude 'padwave' \
-  --exclude 'padwave_ui.hh' --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
+  --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
 ssh ebrahim@192.168.1.175 'cd ~/padwave && ./build.sh && ./install.sh'
 
 ssh ebrahim@192.168.1.175 \

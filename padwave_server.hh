@@ -27,20 +27,12 @@
 
 #include "padwave_app.hh"
 
-#if defined(__has_embed)
-#if __has_embed("index.html")
 namespace padwave_ui {
 static const unsigned char kIndexHtml[] = {
 #embed "index.html"
 };
 static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
-} // namespace padwave_ui
-#else
-#include "padwave_ui.hh"
-#endif
-#else
-#include "padwave_ui.hh"
-#endif
+}
 
 struct Server {
 private:

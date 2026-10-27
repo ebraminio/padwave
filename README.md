@@ -53,9 +53,6 @@ install.sh        build + install + systemd unit
 padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
 ```
 
-GCC 12 has no `#embed`, so the build generates `padwave_ui.hh` from
-`index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
-
 ## Formatting
 
 The C++ sources are formatted with `.clang-format`: LLVM, 100 columns, 2-space
@@ -107,7 +104,7 @@ The manual equivalent:
 
 ```sh
 rsync -az --delete --exclude '.git' --exclude 'padwave' \
-  --exclude 'padwave_ui.hh' --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
+  --exclude 'var' ./ ebrahim@192.168.1.175:~/padwave/
 ssh ebrahim@192.168.1.175 'cd ~/padwave && ./build.sh && ./install.sh'
 ```
 

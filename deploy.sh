@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 
 echo "==> syncing to $HOST:~/$TARGET"
 rsync -az --delete \
-  --exclude 'padwave' --exclude 'padwave_ui.hh' --exclude '.git' --exclude 'var' \
+  --exclude 'padwave' --exclude '.git' --exclude 'var' \
   ./ "$HOST:~/$TARGET/"
 
 echo "==> building and installing on $HOST"

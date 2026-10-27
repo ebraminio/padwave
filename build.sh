@@ -4,28 +4,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-CXX="${CXX:-c++}"
+CXX="${CXX:-clang}"
 PKGS="libavformat libavcodec libswresample libavutil"
 CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 
-echo "==> ui header"
-python3 - > padwave_ui.hh <<'PY'
-data = open("index.html", "rb").read()
-print("#pragma once")
-print("#include <stddef.h>")
-print("namespace padwave_ui {")
-print("static const unsigned char kIndexHtml[] = {")
-print(",".join(str(b) for b in data))
-print("};")
-print("static const size_t kIndexHtmlSize = sizeof(kIndexHtml);")
-print("} // namespace padwave_ui")
-PY
-
 echo "==> wire test"
-"$CXX" -std=c++23 -O2 -fno-exceptions -fno-rtti -I. -o /tmp/padwave_test_wire test_wire.cc
+"$CXX" -std=c++23 -Wno-c23-extensions -O2 -fno-exceptions -fno-rtti -I. -o /tmp/padwave_test_wire test_wire.cc
 /tmp/padwave_test_wire
 
 echo "==> padwave"
-"$CXX" -std=c++23 -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra \
+"$CXX" -std=c++23 -Wno-c23-extensions -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra \
   -I. $CFLAGS -o padwave padwave.cc $LIBS
