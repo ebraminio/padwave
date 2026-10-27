@@ -1740,30 +1740,14 @@ private:
                                          strcmp(this->charging, "full") == 0);
 
     // Five player LEDs as a left-to-right battery bar. Half is 11100, full is
-    // 11111. At <=15% and not charging, blink only the first LED (10000 /
-    // 00000). While charging, the next empty segment blinks (45% 11100/11110,
-    // 80%+ 11110/11111); full is solid 11111.
+    // 11111. Only a near-empty battery blinks (first LED, 10000/00000); charging
+    // is always the solid bar so it cannot distract.
     int mask = 0;
     if (this->controller && this->battery >= 0) {
       int lit = (this->battery * 5 + 99) / 100;
       if (lit < 1) lit = 1;
       if (lit > 5) lit = 5;
-      if (charging) {
-        bool full = this->battery >= 100 || strcmp(this->charging, "full") == 0;
-        if (full) {
-          this->led_battery_phase = 0;
-          mask = 31;
-        } else {
-          if (now - this->led_battery_at >= kLedBlinkMs) {
-            this->led_battery_at = now;
-            this->led_battery_phase ^= 1;
-          }
-          int anim = lit < 5 ? lit + 1 : 5;
-          int high = (1 << anim) - 1;
-          int low = high & ~(1 << (anim - 1));
-          mask = this->led_battery_phase ? low : high;
-        }
-      } else if (this->battery <= 15) {
+      if (!charging && this->battery <= 15) {
         if (now - this->led_battery_at >= kLedBlinkMs) {
           this->led_battery_at = now;
           this->led_battery_phase ^= 1;
