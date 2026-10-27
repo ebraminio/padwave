@@ -146,3 +146,35 @@ A FIFO of successive reports exercises the stateful parts (d-pad hold ramps
 debounce). The panel can be checked headlessly with Chrome's DevTools protocol
 (remember `--no-proxy-server` for the LAN URL); status/config/library/schema,
 the lab kinds and a pause click were verified that way.
+
+## Controller power-off (for the next session)
+
+The old Elixir "power off" was **not** a hardware power-off. `Radio.suspend/2`
+(at `3791444^:lib/padwave/radio.ex`) did:
+
+- `Player.stop(fade: 300)`, save the position to the store, set
+  `suspended/resume_pending` and broadcast; it never closed the hidraw or sent a
+  power command. The README's "power the controller off" was aspirational.
+
+What is documented in the 0x31 output report:
+
+- `power_save_control` (+0x09), claimed by `valid_flag1` bit 1 (`PowerSave`).
+- Bit 4 = microphone mute (0x10), bit 6 = audio mute (0x40). Bits 0–3, 5, 7 are
+  **guesses**; the old lab exposed them as eight toggles precisely to probe them.
+  No confirmed power-off bit in any reference.
+
+A real power-off, in order of reliability:
+
+1. **PS button held ~10 s** (hardware).
+2. **Host-side Bluetooth disconnect**:
+   `bluetoothctl disconnect 4C:B9:9B:3A:46:C6` (BlueZ/D-Bus); the pad then goes
+   to sleep. Closing the hidraw alone only drops the reports; it does not turn
+   the pad off.
+3. If a probed `power_save_control` bit ever does turn it off, send it through
+   the player's fields line:
+   `fields valid_flag1=power_save;power_save_control=0x??`
+   (`player_command` handles the line; the app has no output endpoint yet).
+
+So for the next session: implement "power off" as fade/stop → persist (still
+missing) → `bluetoothctl disconnect <MAC>` (or a probed fields bit), and do not
+promise a 0x31 power-off.
