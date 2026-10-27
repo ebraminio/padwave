@@ -3,8 +3,8 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `c2930fd clear one-shot lab flags from the 0x36 state and log volume
-  changes`.
+- HEAD: `2cda98a treat zero volume as paused and restore an audible volume
+  on resume`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -53,6 +53,9 @@ Passes already landed:
   controller.mac; player hidraw reopens after the controller sleeps.
 - `c2930fd` — one-shot `reset_lights`/`color_fade` cleared from the 0x36 state
   after the 0x31 write; volume changes log to the journal.
+- `2cda98a` — volume 0 is the paused state; muted is derived; resume/mute/new
+  controller restores the last nonzero volume; default 15; playerStart applies
+  the current volume/pause to a new player.
 
 ## Preferences / constraints
 
@@ -74,6 +77,9 @@ Passes already landed:
   `data:`. `/api/library` is tab-separated. `index.html` has `parseKV`; keep
   the two sides in sync.
 - The wire test is fast and runs on every `build.sh`; keep it green.
+- Volume 0 is the pause state. Do not add a separate mute flag; resume paths
+  call ensureAudibleVolume() and the default is 15. Player start applies the
+  app's volume and pause state.
 - Edit in small blocks and build on the Pi after each. Avoid blind global
   replacements: past failures were an over-broad `g.` replace, an ambiguous
   `app`, and duplicated call arguments.
@@ -127,8 +133,11 @@ ssh ebrahim@192.168.1.175 \
    sleep 2; curl -s http://127.0.0.1:8787/api/status | grep '^mic\\.'; \
    curl -s -X POST --data-binary "kind=mic_monitor;enabled=false" \
      http://127.0.0.1:8787/api/output; \
+   curl -s -X POST --data-binary "action=volume;value=0" \
+     http://127.0.0.1:8787/api/command; \
+   curl -s http://127.0.0.1:8787/api/status | grep -E 'radio.(volume|paused|muted)'; \
    curl -s -X POST --data-binary "action=pause" http://127.0.0.1:8787/api/command; \
-   curl -s -X POST --data-binary "action=pause" http://127.0.0.1:8787/api/command'
+   curl -s http://127.0.0.1:8787/api/status | grep -E 'radio.(volume|paused|muted)''
 ```
 
 (The lightbar/mic examples must be two lines: `kind=...` newline `rgb=...` or

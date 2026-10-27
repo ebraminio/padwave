@@ -125,6 +125,11 @@ headset pauses and plugging it back resumes only if the jack caused the pause.
 The monitor switch opens the 0x36 mic path, and the status stream carries a live
 Opus-decoded level (frames, RMS, peak).
 
+Volume zero *is* the paused state: reaching 0 pauses, raising it again or
+pressing play/mute restores the last nonzero volume (15% by default), and a new
+controller connection never leaves a paused zero-volume session. The player's
+volume and pause state are applied on every player start.
+
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
 confirmation of the lightbar, rumble, trigger and jack paths.
