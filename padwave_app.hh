@@ -775,8 +775,11 @@ public:
       long ms = kvNumber(body, "ms", 0);
       left = left < 0 ? 0 : (left > 255 ? 255 : left);
       right = right < 0 ? 0 : (right > 255 ? 255 : right);
-      snprintf(fields, sizeof(fields), "valid_flag0=rumble;motor_left=%d;motor_right=%d", left,
-               right);
+      // The main motors need both ValidFlag0 bits: Rumble (0x01) and Haptics
+      // (0x02). DS4Windows and dualsense-tester both set the pair; bit 0 alone
+      // is ignored by the controller.
+      snprintf(fields, sizeof(fields), "valid_flag0=rumble,haptics;motor_left=%d;motor_right=%d",
+               left, right);
       outputFields(fields);
       this->rumble_left = left;
       this->rumble_right = right;
@@ -1590,7 +1593,7 @@ private:
     if (!this->player) return;
     long now = nowMs();
     if (this->rumble_until && now >= this->rumble_until) {
-      outputFields("valid_flag0=rumble;motor_left=0;motor_right=0");
+      outputFields("valid_flag0=rumble,haptics;motor_left=0;motor_right=0");
       this->rumble_until = 0;
     }
     if (this->trigger_until && now >= this->trigger_until) {

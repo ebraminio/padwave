@@ -187,8 +187,8 @@ struct OutputBody {
   // Example: RightTrigger | LeftTrigger claims only the two trigger blocks,
   // leaving volumes, LEDs and rumble untouched.
   enum ValidFlag0 : uint8_t {
-    Rumble = 0x01,          // +0x00 bit 0
-    Haptics = 0x02,         //       bit 1
+    Rumble = 0x01,          // +0x00 bit 0; main motors also need Haptics
+    Haptics = 0x02,         //       bit 1; paired with Rumble for the motors
     RightTrigger = 0x04,    //       bit 2
     LeftTrigger = 0x08,     //       bit 3
     HeadphoneVolume = 0x10, //       bit 4
