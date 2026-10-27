@@ -3,8 +3,8 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `10fc5a0 power the controller off after idle via BlueZ, and reopen
-  the player hidraw`.
+- HEAD: `c2930fd clear one-shot lab flags from the 0x36 state and log volume
+  changes`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -51,6 +51,8 @@ Passes already landed:
 - `10fc5a0` — idle power-off via `bluetoothctl disconnect <HID_UNIQ>` after
   `poweroff_when_idle_ms`; persisted first; session.powered_off/poweroff_in and
   controller.mac; player hidraw reopens after the controller sleeps.
+- `c2930fd` — one-shot `reset_lights`/`color_fade` cleared from the 0x36 state
+  after the 0x31 write; volume changes log to the journal.
 
 ## Preferences / constraints
 
