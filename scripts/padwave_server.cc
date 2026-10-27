@@ -26,6 +26,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "padwave_app.hh"
 #include "padwave_common.hh"
 #include "padwave_status.hh"
 
@@ -63,6 +64,7 @@ struct conn {
   bool up_sent = false;
   bool static_reply = false;
   bool front_sse = false;
+  bool status_sse = false;
   bool internal = false;
   bool client_blocked = false;
 };
@@ -73,6 +75,7 @@ conn *g_owner[kMaxFds];
 int g_epoll = -1;
 int g_backend_port = 8787;
 int g_status_fd = -1;
+bool g_standalone = false;
 int g_internal_listen = -1;
 int g_player_send = -1;
 int g_timer_fd = -1;
@@ -283,6 +286,92 @@ void read_client(conn *c) {
 
   g_requests++;
 
+  if (g_standalone && strcmp(path, "/api/status") == 0) {
+    static char body[8192];
+    int len = app_status_json(body, sizeof(body));
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strcmp(path, "/api/events") == 0) {
+    c->status_sse = true;
+    c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                  "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                                  "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
+                                  "Connection: keep-alive\r\n\r\n");
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strcmp(path, "/api/library") == 0) {
+    char *body = (char *)malloc(65536);
+    int len = body ? app_library_json(body, 65536) : 0;
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body ? body : "{}",
+                                     body ? (size_t)len : 2);
+    free(body);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strcmp(path, "/api/config") == 0) {
+    if (strcmp(method, "POST") == 0) {
+      static const char ok[] = "{\"ok\":true}";
+      c->static_reply = true;
+      c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", ok, sizeof(ok) - 1);
+      mod_fd(c->fd, EPOLLOUT);
+      return;
+    }
+    char body[1024];
+    int len = app_config_json(body, sizeof(body));
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strcmp(path, "/api/schema") == 0) {
+    char bindings[512];
+    app_bindings_json(bindings, sizeof(bindings));
+    char body[1024];
+    int len = snprintf(body, sizeof(body),
+                       "{\"note\":\"wire formats live in scripts/padwave_schemas.hh\","
+                       "\"bindings\":%s}",
+                       bindings);
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body, (size_t)len);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strcmp(path, "/api/command") == 0) {
+    if (strcmp(method, "POST") != 0) {
+      c->static_reply = true;
+      c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
+                                    "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
+                                    "Connection: close\r\n\r\n");
+      mod_fd(c->fd, EPOLLOUT);
+      return;
+    }
+    char result[512];
+    int len = app_handle_command(c->in + head_len, body_len, result, sizeof(result));
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", result, (size_t)len);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
+  if (g_standalone && strncmp(path, "/api/", 5) == 0) {
+    static const char body[] = "{\"ok\":false,\"error\":\"not implemented\"}";
+    c->static_reply = true;
+    c->out_len = (size_t)make_static(c->out, sizeof(c->out), "application/json", body,
+                                     sizeof(body) - 1);
+    mod_fd(c->fd, EPOLLOUT);
+    return;
+  }
+
   if (strcmp(path, "/api/front/events") == 0) {
     c->front_sse = true;
     c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
@@ -402,7 +491,7 @@ void flush_client(conn *c) {
   c->out_off = c->out_len = 0;
   c->client_blocked = false;
 
-  if (c->front_sse) return;
+  if (c->front_sse || c->status_sse) return;
 
   if (c->static_reply) {
     close_conn(c);
@@ -479,6 +568,30 @@ int front_json(char *buf, size_t cap) {
                   g_player.underruns, g_player.paused, g_input.valid ? 1 : 0, g_input.lx, g_input.ly, g_input.rx,
                   g_input.ry, g_input.l2, g_input.r2, g_input.buttons, g_input.battery,
                   g_input.jack);
+}
+
+void append_status_event(conn *c) {
+  if (c->out_off > 0) {
+    if (c->out_off < c->out_len) memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
+    c->out_len -= c->out_off;
+    c->out_off = 0;
+  }
+  char body[8192];
+  int n = app_status_json(body, sizeof(body));
+  if (n <= 0) return;
+  char *chunk = (char *)malloc((size_t)n + 64);
+  if (!chunk) return;
+  int m = snprintf(chunk, (size_t)n + 64, "%x\r\ndata: ", n + 6);
+  memcpy(chunk + m, body, (size_t)n);
+  m += n;
+  memcpy(chunk + m, "\n\n\r\n", 4);
+  m += 4;
+  if (c->out_len + (size_t)m <= sizeof(c->out)) {
+    memcpy(c->out + c->out_len, chunk, (size_t)m);
+    c->out_len += (size_t)m;
+    mod_fd(c->fd, EPOLLOUT);
+  }
+  free(chunk);
 }
 
 void append_front_event(conn *c) {
@@ -584,6 +697,9 @@ int server_main(int argc, char **argv) {
   sigprocmask(SIG_BLOCK, &mask, nullptr);
   int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
+  g_standalone = getenv("PADWAVE_STANDALONE") != nullptr;
+  if (g_standalone) app_init();
+
   g_start_ms = monotonic_ms();
 
   g_status_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -618,6 +734,11 @@ int server_main(int argc, char **argv) {
   if (signal_fd >= 0) add_fd(signal_fd, EPOLLIN, nullptr);
   if (g_status_fd >= 0) add_fd(g_status_fd, EPOLLIN, nullptr);
   if (g_timer_fd >= 0) add_fd(g_timer_fd, EPOLLIN, nullptr);
+  if (g_standalone) {
+    int fds[4];
+    int n = app_fds(fds, 4);
+    for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
+  }
 
   fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI, /api -> 127.0.0.1:%d, "
                   "internal 127.0.0.1:%d)\n",
@@ -659,9 +780,19 @@ int server_main(int argc, char **argv) {
       }
       if (fd == g_timer_fd) {
         uint64_t expirations = 0;
-        if (read(g_timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations))
-          for (int j = 0; j < kMaxConns; j++)
-            if (g_conns[j].fd >= 0 && g_conns[j].front_sse) append_front_event(&g_conns[j]);
+        if (read(g_timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+          if (g_standalone) {
+            app_tick();
+            int fds[4];
+            int n = app_fds(fds, 4);
+            for (int i = 0; i < n; i++) add_fd(fds[i], EPOLLIN, nullptr);
+          }
+          for (int j = 0; j < kMaxConns; j++) {
+            if (g_conns[j].fd < 0) continue;
+            if (g_conns[j].front_sse) append_front_event(&g_conns[j]);
+            if (g_conns[j].status_sse) append_status_event(&g_conns[j]);
+          }
+        }
         continue;
       }
       if (fd == g_status_fd) {
@@ -676,6 +807,11 @@ int server_main(int argc, char **argv) {
       if (fd == signal_fd) {
         struct signalfd_siginfo info;
         if (read(signal_fd, &info, sizeof(info)) == sizeof(info)) running = false;
+        continue;
+      }
+
+      if (g_standalone && app_owns_fd(fd)) {
+        app_handle_fd(fd);
         continue;
       }
 
@@ -706,6 +842,7 @@ int server_main(int argc, char **argv) {
     unlink(padwave_status::kPath);
   }
   if (g_timer_fd >= 0) close(g_timer_fd);
+  if (g_standalone) app_shutdown();
   close(g_epoll);
   if (signal_fd >= 0) close(signal_fd);
   close(listen_fd);
