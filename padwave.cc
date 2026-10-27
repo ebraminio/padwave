@@ -318,11 +318,22 @@ int opusdec_main(int argc, char **argv);
 int server_main(int argc, char **argv);
 
 void *player_create(const char *node, bool speaker);
-void player_set_sink(void *handle, void (*sink)(const char *, void *), void *ud);
+struct player_status {
+  long pos_ms;
+  long dur_ms;
+  long sent;
+  long underruns;
+  long pushed;
+  int paused;
+  int eof;
+};
+
+typedef void (*player_status_fn)(const struct player_status *, void *);
+typedef void (*player_track_fn)(const char *, void *);
+
+void player_set_sink(void *handle, player_status_fn status, player_track_fn track, void *ud);
 int player_timer_fd(void *handle);
-int player_bus_fd(void *handle);
 void player_step(void *handle);
-void player_on_bus(void *handle);
 void player_command(void *handle, const char *line);
 void player_destroy(void *handle);
 
@@ -391,38 +402,7 @@ bool app_owns_fd(struct app *a, int fd);
 
 
 
-static void (*g_player_sink)(const char *, void *) = nullptr;
-static void *g_player_sink_ud = nullptr;
-static char g_player_emit_buf[8192];
-static size_t g_player_emit_len = 0;
 
-static void player_emit(const char *fmt, ...) {
-  char tmp[2048];
-  va_list ap;
-  va_start(ap, fmt);
-  vsnprintf(tmp, sizeof(tmp), fmt, ap);
-  va_end(ap);
-
-  size_t n = strlen(tmp);
-  if (g_player_emit_len + n >= sizeof(g_player_emit_buf)) g_player_emit_len = 0;
-  memcpy(g_player_emit_buf + g_player_emit_len, tmp, n);
-  g_player_emit_len += n;
-  g_player_emit_buf[g_player_emit_len] = 0;
-
-  char *start = g_player_emit_buf;
-  char *nl;
-  while ((nl = strchr(start, '\n'))) {
-    *nl = 0;
-    if (g_player_sink) g_player_sink(start, g_player_sink_ud);
-    else puts(start);
-    start = nl + 1;
-  }
-  size_t left = strlen(start);
-  memmove(g_player_emit_buf, start, left + 1);
-  g_player_emit_len = left;
-}
-
-#define printf(...) player_emit(__VA_ARGS__)
 
 #define RATE 48000
 #define CHANNELS 2
@@ -449,6 +429,9 @@ typedef float block_t[IN_FRAMES][CHANNELS];
 struct player {
   int hidraw;
   bool speaker; /* 0x13 tag instead of 0x16 */
+  player_status_fn status_fn;
+  player_track_fn track_fn;
+  void *sink_ud;
 
   OpusEncoder *enc;
   uint8_t seq, counter;
@@ -747,7 +730,7 @@ static void promote(struct player *pl) {
   pl->eof = pl->cur.eof;
   pl->has_next = false;
 
-  printf("track %s\n", pl->path);
+  if (pl->track_fn) pl->track_fn(pl->path, pl->sink_ud);
   fflush(stdout);
 }
 
@@ -808,7 +791,7 @@ static void finish_fade(struct player *pl) {
 
   if (!manual && !seek) {
     pl->has_next = false;
-    printf("track %s\n", pl->path);
+    if (pl->track_fn) pl->track_fn(pl->path, pl->sink_ud);
     fflush(stdout);
   }
 }
@@ -1036,15 +1019,15 @@ static void handle_line(struct player *pl, char *line) {
 struct player_handle {
   struct player pl;
   int tfd;
-  int bus_fd;
-  int status_fd;
   int64_t last_status;
 };
 
-void player_set_sink(void *handle, void (*sink)(const char *, void *), void *ud) {
-  (void)handle;
-  g_player_sink = sink;
-  g_player_sink_ud = ud;
+void player_set_sink(void *handle, player_status_fn status, player_track_fn track, void *ud) {
+  player_handle *h = (player_handle *)handle;
+  if (!h) return;
+  h->pl.status_fn = status;
+  h->pl.track_fn = track;
+  h->pl.sink_ud = ud;
 }
 
 void *player_create(const char *node, bool speaker) {
@@ -1079,27 +1062,11 @@ void *player_create(const char *node, bool speaker) {
   its.it_value = its.it_interval;
   if (h->tfd >= 0) timerfd_settime(h->tfd, 0, &its, NULL);
 
-  h->status_fd = padwave_status::sender_open();
-
-  h->bus_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-  if (h->bus_fd >= 0) {
-    struct sockaddr_un cmd_addr;
-    memset(&cmd_addr, 0, sizeof(cmd_addr));
-    cmd_addr.sun_family = AF_UNIX;
-    snprintf(cmd_addr.sun_path, sizeof(cmd_addr.sun_path), "%s", padwave_status::kPlayerPath);
-    unlink(padwave_status::kPlayerPath);
-    if (bind(h->bus_fd, (struct sockaddr *)&cmd_addr, sizeof(cmd_addr)) != 0) {
-      close(h->bus_fd);
-      h->bus_fd = -1;
-    }
-  }
-
   h->last_status = 0;
   return h;
 }
 
 int player_timer_fd(void *handle) { return handle ? ((player_handle *)handle)->tfd : -1; }
-int player_bus_fd(void *handle) { return handle ? ((player_handle *)handle)->bus_fd : -1; }
 
 void player_command(void *handle, const char *line) {
   player_handle *h = (player_handle *)handle;
@@ -1116,17 +1083,6 @@ void player_command(void *handle, const char *line) {
     p = nl + 1;
   }
   if (*p) handle_line(&h->pl, p);
-}
-
-void player_on_bus(void *handle) {
-  player_handle *h = (player_handle *)handle;
-  if (!h || h->bus_fd < 0) return;
-
-  char cmd[1200];
-  ssize_t n = recv(h->bus_fd, cmd, sizeof(cmd) - 1, 0);
-  if (n <= 0) return;
-  cmd[n] = 0;
-  player_command(h, cmd);
 }
 
 void player_step(void *handle) {
@@ -1196,16 +1152,15 @@ void player_step(void *handle) {
   int64_t ms = now.tv_sec * 1000LL + now.tv_nsec / 1000000;
   if (ms - h->last_status >= 100) {
     h->last_status = ms;
-    int64_t pos = pl.base_ms + pl.consumed * 1000 / RATE;
-    printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\n", (long)pos,
-           (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns, (long)pl.pushed);
-
-    char status_line[160];
-    snprintf(status_line, sizeof(status_line), "player %ld %ld %ld %ld %d", (long)pos,
-             (long)pl.cur.duration_ms, (long)pl.sent, (long)pl.underruns,
-             pl.paused ? 1 : 0);
-    padwave_status::send_line(h->status_fd, status_line);
-    if (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) printf("eof\n");
+    struct player_status st;
+    st.pos_ms = pl.base_ms + pl.consumed * 1000 / RATE;
+    st.dur_ms = pl.cur.duration_ms;
+    st.sent = pl.sent;
+    st.underruns = pl.underruns;
+    st.pushed = pl.pushed;
+    st.paused = pl.paused ? 1 : 0;
+    st.eof = (pl.eof && pl.tail == pl.head && pl.nxt.fmt == NULL && !pl.has_next) ? 1 : 0;
+    if (pl.status_fn) pl.status_fn(&st, pl.sink_ud);
   }
 }
 
@@ -1216,18 +1171,20 @@ void player_destroy(void *handle) {
   struct player &pl = h->pl;
   close_file(&pl);
   close_next(&pl);
-  if (h->bus_fd >= 0) {
-    close(h->bus_fd);
-    unlink(padwave_status::kPlayerPath);
-  }
   if (pl.hidraw >= 0) close(pl.hidraw);
   if (pl.enc) opus_encoder_destroy(pl.enc);
   if (pl.pkt) av_packet_free(&pl.pkt);
   if (pl.frame) av_frame_free(&pl.frame);
   if (h->tfd >= 0) close(h->tfd);
-  if (h->status_fd >= 0) close(h->status_fd);
   free(h);
 }
+
+static void mode_status(const struct player_status *st, void *) {
+  printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\npaused %d\neof %d\n",
+         st->pos_ms, st->dur_ms, st->sent, st->underruns, st->pushed, st->paused, st->eof);
+}
+
+static void mode_track(const char *path, void *) { printf("track %s\n", path); }
 
 int native_main(int argc, char **argv) {
   signal(SIGINT, on_signal);
@@ -1236,24 +1193,21 @@ int native_main(int argc, char **argv) {
   void *h = player_create(argc > 1 ? argv[1] : nullptr,
                           argc > 2 && strcmp(argv[2], "speaker") == 0);
   if (!h) return 1;
+  player_set_sink(h, mode_status, mode_track, nullptr);
 
   int tfd = player_timer_fd(h);
-  int bfd = player_bus_fd(h);
   char line[1200];
   int line_len = 0;
 
   while (running) {
-    struct pollfd fds[3];
+    struct pollfd fds[2];
     fds[0].fd = STDIN_FILENO;
     fds[0].events = POLLIN;
     fds[0].revents = 0;
     fds[1].fd = tfd;
     fds[1].events = POLLIN;
     fds[1].revents = 0;
-    fds[2].fd = bfd;
-    fds[2].events = POLLIN;
-    fds[2].revents = 0;
-    int ready = poll(fds, 3, 20);
+    int ready = poll(fds, 2, 20);
     if (ready < 0 && errno != EINTR) break;
 
     if (fds[0].revents & POLLIN) {
@@ -1270,7 +1224,6 @@ int native_main(int argc, char **argv) {
         }
       }
     }
-    if (bfd >= 0 && (fds[2].revents & POLLIN)) player_on_bus(h);
     if (fds[1].revents & POLLIN) player_step(h);
   }
 
@@ -2023,7 +1976,6 @@ struct app {
   void *player = nullptr;
   void *input = nullptr;
   int player_timer_fd = -1;
-  int player_bus_fd = -1;
   int input_fd = -1;
 
   long pos_ms = 0;
@@ -2062,7 +2014,8 @@ struct app {
   void player_start();
   void input_start();
   void input_stop();
-  void player_line(const char *line);
+  static void player_status_cb(const struct player_status *st, void *ud);
+  static void player_track_cb(const char *path, void *ud);
   void play(int index, long start_ms);
   void next();
   void previous();
@@ -2193,7 +2146,6 @@ void app::push_history(int index) {
   }
 }
 
-void player_sink(const char *line, void *ud) { ((app *)ud)->player_line(line); }
 void input_sink(const char *line, void *ud) { ((app *)ud)->input_line(line); }
 
 void app::player_send(const char *line) {
@@ -2204,9 +2156,8 @@ void app::player_start() {
   if (this->player) return;
   this->player = ::player_create(nullptr, false);
   if (!this->player) return;
-  ::player_set_sink(this->player, player_sink, this);
+  ::player_set_sink(this->player, player_status_cb, player_track_cb, this);
   this->player_timer_fd = ::player_timer_fd(this->player);
-  this->player_bus_fd = ::player_bus_fd(this->player);
 }
 
 void app::input_start() {
@@ -2236,27 +2187,24 @@ void app::input_stop() {
   this->controller = false;
 }
 
-void app::player_line(const char *line) {
-  if (strncmp(line, "pos ", 4) == 0) {
-    this->pos_ms = atol(line + 4);
-  } else if (strncmp(line, "dur ", 4) == 0) {
-    this->dur_ms = atol(line + 4);
-  } else if (strncmp(line, "sent ", 5) == 0) {
-    this->sent = atol(line + 5);
-  } else if (strncmp(line, "underruns ", 10) == 0) {
-    this->underruns = atol(line + 10);
-  } else if (strncmp(line, "track ", 6) == 0) {
-    int idx = find_station(line + 6);
-    if (idx >= 0) {
-      if (this->current >= 0 && this->current != idx) push_history(this->current);
-      this->current = idx;
-      this->paused = false;
-      this->playing = true;
-    }
-  } else if (strcmp(line, "eof") == 0) {
-    this->eof = true;
-    this->playing = false;
-  }
+void app::player_status_cb(const struct player_status *st, void *ud) {
+  app *a = (app *)ud;
+  a->pos_ms = st->pos_ms;
+  a->dur_ms = st->dur_ms;
+  a->sent = st->sent;
+  a->underruns = st->underruns;
+  a->paused = st->paused != 0;
+  a->eof = st->eof != 0;
+}
+
+void app::player_track_cb(const char *path, void *ud) {
+  app *a = (app *)ud;
+  int idx = a->find_station(path);
+  if (idx < 0) return;
+  if (a->current >= 0 && a->current != idx) a->push_history(a->current);
+  a->current = idx;
+  a->paused = false;
+  a->playing = true;
 }
 
 void app::play(int index, long start_ms) {
@@ -2616,7 +2564,7 @@ int app::handle_command(const char *body, size_t len, char *out, size_t cap) {
 }
 
 bool app::owns_fd(int fd) {
-  return fd >= 0 && (fd == this->player_timer_fd || fd == this->player_bus_fd || fd == this->input_fd);
+  return fd >= 0 && (fd == this->player_timer_fd || fd == this->input_fd);
 }
 
 bool app::init() {
@@ -2643,7 +2591,7 @@ bool app::init() {
   srand((unsigned)time(nullptr) ^ (unsigned)getpid());
   this->player = nullptr;
   this->input = nullptr;
-  this->player_timer_fd = this->player_bus_fd = this->input_fd = -1;
+  this->player_timer_fd = this->input_fd = -1;
   set_volume(70);
   return true;
 }
@@ -2654,7 +2602,7 @@ void app::shutdown() {
     ::player_destroy(this->player);
     this->player = nullptr;
   }
-  this->player_timer_fd = this->player_bus_fd = -1;
+  this->player_timer_fd = -1;
   input_stop();
 }
 
@@ -2676,7 +2624,6 @@ void app::tick() {
 int app::fds(int *fds, int max) {
   int n = 0;
   if (this->player_timer_fd >= 0 && n < max) fds[n++] = this->player_timer_fd;
-  if (this->player_bus_fd >= 0 && n < max) fds[n++] = this->player_bus_fd;
   if (this->input_fd >= 0 && n < max) fds[n++] = this->input_fd;
   return n;
 }
@@ -2684,10 +2631,6 @@ int app::fds(int *fds, int max) {
 void app::handle_fd(int fd) {
   if (this->player && fd == this->player_timer_fd) {
     player_step(this->player);
-    return;
-  }
-  if (this->player && fd == this->player_bus_fd) {
-    player_on_bus(this->player);
     return;
   }
   if (this->input && fd == this->input_fd) {
