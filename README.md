@@ -56,6 +56,15 @@ padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
 GCC 12 has no `#embed`, so the build generates `padwave_ui.hh` from
 `index.html`; a compiler with `#embed` (Clang 19+) can use the file directly.
 
+## Formatting
+
+The C++ sources are formatted with `.clang-format`: LLVM, 100 columns, 2-space
+indent, private class fields, compact one-line guards. Run:
+
+```sh
+clang-format -i padwave.cc padwave_app.hh padwave_server.hh padwave_wire.hh test_wire.cc
+```
+
 ## Build and run
 
 Needs a C++ compiler, `pkg-config`, the FFmpeg development packages

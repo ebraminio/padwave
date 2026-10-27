@@ -3,8 +3,8 @@
 ## State (verified)
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: `b45a5c3 move the epoll/HTTP layer into a Server class in
-  padwave_server.hh`.
+- HEAD: `2e4b84d add an LLVM-based .clang-format and format the C++
+  sources`.
 - Build: `./build.sh` (generates `padwave_ui.hh` from `index.html`, compiles and
   runs `test_wire.cc`, then builds `./padwave`). `./install.sh` builds,
   installs to `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -13,7 +13,7 @@
   UI: `http://192.168.1.175:8787`.
 - Layout: `padwave.cc` (engines + main), `padwave_app.hh` (struct App),
   `padwave_server.hh` (struct Server), `padwave_wire.hh` (the only wire
-  description), `index.html` (panel),
+  description), `index.html` (panel), `.clang-format` (LLVM, 100 cols),
   `test_wire.cc`, `build.sh`, `install.sh`, `padwave.service`,
   `padwave-boot.sh`, `padwave-ctl`, `deploy.sh`, `docs/`.
 
@@ -42,6 +42,8 @@ Passes already landed:
 - `b45a5c3` — struct Server moved to `padwave_server.hh`; private nested Conn
   table, private fields, inline camelCase helpers, public run(); server_main is
   the static-Server wrapper.
+- `2e4b84d` — `.clang-format` (LLVM/100 cols/2-space, private fields, compact
+  guards) and the whole C++ tree formatted with it.
 
 ## Preferences / constraints
 
@@ -51,6 +53,9 @@ Passes already landed:
 - `padwave_app.hh` is the class: `struct App`, inline method definitions,
   private fields, Java-style camelCase methods. Free functions and the
   wire/protocol names keep snake_case.
+- Format: `.clang-format` at the root (LLVM, 100 columns, 2-space, access
+  modifiers outdented, includes unsorted). Run `clang-format -i` on the five
+  C++ files before committing.
 - Callbacks take userdata; no file-scope state. Input state is in
   `input_handle`; server state is in `struct Server` (`padwave_server.hh`)
   passed through its methods.
