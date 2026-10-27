@@ -268,6 +268,8 @@ private:
   bool resume_pending = false;
   bool playhead_dirty = false;
   long playhead_saved_at = 0;
+  bool volume_dirty = false;
+  long volume_saved_at = 0;
 
   int reconnect_at = 0;
   long idle_since = 0;
@@ -379,7 +381,14 @@ public:
     }
     this->playhead_saved_at = nowMs();
     this->last_activity_ms = this->playhead_saved_at;
-    setVolume(kDefaultVolume);
+    // configLoad() restored the current and last non-zero volumes. A current
+    // non-zero value is by definition the latest one; only fall back to 15
+    // when no non-zero value has ever been stored.
+    if (this->volume > 0)
+      this->last_nonzero_volume = this->volume;
+    else if (this->last_nonzero_volume <= 0)
+      this->last_nonzero_volume = kDefaultVolume;
+    this->volume_dirty = false;
     return true;
   }
 
@@ -434,6 +443,11 @@ public:
       configSave();
     } else if (this->current >= 0 && now - this->playhead_saved_at >= 30000) {
       this->playhead_saved_at = now;
+      configSave();
+    }
+    if (this->volume_dirty && now - this->volume_saved_at >= 1000) {
+      this->volume_dirty = false;
+      this->volume_saved_at = now;
       configSave();
     }
   }
@@ -610,6 +624,8 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
+    kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     return (int)o;
   }
 
@@ -650,6 +666,8 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
+    kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     return (int)o;
   }
 
@@ -701,8 +719,10 @@ public:
     }
     if (kvGet(body, "trigger_effects", value, sizeof(value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+    if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
 
     configSave();
+    this->volume_dirty = false;
   }
 
   int libraryText(char *buf, size_t cap) {
@@ -1164,7 +1184,11 @@ private:
     if (v < 0) v = 0;
     if (v > 100) v = 100;
     if (v > 0) this->last_nonzero_volume = v;
-    if (v != this->volume) fprintf(stderr, "padwave: volume %d%s\n", v, v == 0 ? " (muted)" : "");
+    if (v != this->volume) {
+      fprintf(stderr, "padwave: volume %d%s\n", v, v == 0 ? " (muted)" : "");
+      this->volume_dirty = true;
+      this->volume_saved_at = nowMs();
+    }
     this->volume = v;
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", v);
@@ -1402,6 +1426,12 @@ private:
                  value[0] ? value : "custom");
       } else if (strcmp(line, "trigger_effects") == 0) {
         this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
+      } else if (strcmp(line, "volume") == 0) {
+        int v = atoi(value);
+        this->volume = v < 0 ? 0 : (v > 100 ? 100 : v);
+      } else if (strcmp(line, "last_nonzero_volume") == 0) {
+        int v = atoi(value);
+        this->last_nonzero_volume = v < 0 ? 0 : (v > 100 ? 100 : v);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -1438,6 +1468,8 @@ private:
     for (const char *p = play_path; *p; p++) fputc((*p == '\n' || *p == '\r') ? ' ' : *p, f);
     fputc('\n', f);
     fprintf(f, "play_pos_ms=%ld\n", this->pos_ms);
+    fprintf(f, "volume=%d\n", this->volume);
+    fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fclose(f);
     this->playhead_saved_at = nowMs();
   }
