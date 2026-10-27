@@ -5,7 +5,6 @@
 #include "padwave_http.hh"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  HttpRequest req;
-  httpParseRequest(reinterpret_cast<const char *>(data), size, &req);
-  return 0;
+  HttpRequest req(reinterpret_cast<const char *>(data), size);
+  return req.complete ? 0 : 0;
 }

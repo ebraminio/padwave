@@ -323,13 +323,12 @@ private:
     c->in_len += (size_t)n;
     c->in[c->in_len] = 0;
 
-    HttpRequest req;
-    int parsed = httpParseRequest(c->in, c->in_len, &req);
-    if (parsed < 0) {
+    HttpRequest req(c->in, c->in_len);
+    if (!req.valid()) {
       closeConn(c);
       return;
     }
-    if (parsed == 0) {
+    if (!req.headReady()) {
       if (c->in_len >= kRequestMax - 1) closeConn(c);
       return;
     }
