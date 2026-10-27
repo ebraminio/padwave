@@ -18,12 +18,26 @@ fi
 echo "==> native player + codec helper"
 mkdir -p "$HOME/.local/bin"
 if command -v cc >/dev/null && pkg-config --exists libavformat libavcodec libswresample 2>/dev/null; then
+  # GCC 12 has no #embed; the server includes this generated header instead.
+  python3 - "$ROOT/priv/ui/index.html" "$ROOT/scripts/padwave_ui.hh" <<'PY'
+import sys
+data = open(sys.argv[1], "rb").read()
+with open(sys.argv[2], "w") as f:
+    f.write("#pragma once\n#include <stddef.h>\nstatic const unsigned char kIndexHtml[] = {\n")
+    f.write(",".join(str(b) for b in data))
+    f.write("\n};\nstatic const size_t kIndexHtmlSize = sizeof(kIndexHtml);\n")
+PY
+  # Build next to the target and move only on success, so a failed build
+  # cannot leave a broken binary or a green "built" line.
   cc -std=c++23 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2 -I "$ROOT/scripts" \
-    -o "$HOME/.local/bin/padwave" \
-    "$ROOT/scripts/padwave.cc" "$ROOT/scripts/padwave_native.cc" "$ROOT/scripts/padwave_opusdec.cc" "$ROOT/scripts/padwave_input.cc" \
-    $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz -lm
+    -o "$HOME/.local/bin/padwave.new" \
+    "$ROOT/scripts/padwave.cc" "$ROOT/scripts/padwave_native.cc" "$ROOT/scripts/padwave_opusdec.cc" \
+    "$ROOT/scripts/padwave_input.cc" "$ROOT/scripts/padwave_server.cc" \
+    $(pkg-config --cflags --libs libavformat libavcodec libswresample libavutil) -lopus -lz -lm \
+    || { rm -f "$HOME/.local/bin/padwave.new"; echo "    build failed" >&2; exit 1; }
+  mv "$HOME/.local/bin/padwave.new" "$HOME/.local/bin/padwave"
   rm -f "$HOME/.local/bin/padwave_native" "$HOME/.local/bin/padwave_opusdec"
-  echo "    built ~/.local/bin/padwave (native + opusdec)"
+  echo "    built ~/.local/bin/padwave (native + input + serve + opusdec)"
 else
   echo "    skipped: needs libavformat/libavcodec/libswresample and libopus dev packages"
 fi

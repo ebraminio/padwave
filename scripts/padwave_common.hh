@@ -1,28 +1,37 @@
 #pragma once
+// Shared helpers for the native modes: finding the controller's hidraw node
+// and writing a whole buffer to it.
 
+#include <fcntl.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <fcntl.h>
+#include <unistd.h>
 
-static inline int
-find_dualsense(char *node, size_t len) {
-  /* /sys/class/hidraw/hidrawN/device/uevent carries HID_ID=0005:0000054C:00000CE6 */
+// The sysfs uevent carries HID_ID=0005:0000054C:00000CE6 for the DualSense and
+// ...0DF2 for the Edge. Scan a bounded range; each node's uevent is small.
+static const char *const kDualsenseIds[] = {"054C:00000CE6", "054C:00000DF2"};
+
+static inline int find_dualsense(char *node, size_t len) {
   for (int i = 0; i < 16; i++) {
     char path[128];
     snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
     FILE *f = fopen(path, "r");
     if (!f) continue;
+
     char line[256];
     bool match = false;
-    #define SONY_VID "054C"
-    #define DS_PID "0CE6"
-    #define DS_EDGE_PID "0DF2"
-    while (fgets(line, sizeof(line), f))
-      if (strstr(line, SONY_VID ":0000" DS_PID) || strstr(line, SONY_VID ":0000" DS_EDGE_PID)) match = true;
-    #undef SONY_VID
-    #undef DS_PID
-    #undef DS_EDGE_PID
+    while (fgets(line, sizeof(line), f)) {
+      for (const char *id : kDualsenseIds) {
+        if (strstr(line, id)) {
+          match = true;
+          break;
+        }
+      }
+    }
     fclose(f);
+
     if (!match) continue;
     snprintf(node, len, "/dev/hidraw%d", i);
     return i;
@@ -30,9 +39,21 @@ find_dualsense(char *node, size_t len) {
   return -1;
 }
 
-static inline
-int find_dualsense() {
+// Open the first DualSense. The player needs read/write; callers that only
+// want to read should use find_dualsense(node, len) and open it themselves.
+static inline int find_dualsense() {
   char node[64];
-  find_dualsense(node, sizeof(node));
+  if (find_dualsense(node, sizeof(node)) < 0) return -1;
   return open(node, O_RDWR | O_CLOEXEC);
+}
+
+static inline bool write_all(int fd, const void *buf, size_t len) {
+  const uint8_t *data = (const uint8_t *)buf;
+  size_t put = 0;
+  while (put < len) {
+    ssize_t n = write(fd, data + put, len - put);
+    if (n <= 0) return false;
+    put += (size_t)n;
+  }
+  return true;
 }

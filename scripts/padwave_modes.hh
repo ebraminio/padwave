@@ -7,3 +7,4 @@
 int native_main(int argc, char **argv);
 int opusdec_main(int argc, char **argv);
 int input_main(int argc, char **argv);
+int server_main(int argc, char **argv);

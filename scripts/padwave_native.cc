@@ -527,17 +527,6 @@ static void tick(struct player *pl) {
   send_report(pl, opus, n);
 }
 
-static bool write_all(int fd, const void *buf, size_t len) {
-  const uint8_t *data = (const uint8_t *)buf;
-  size_t put = 0;
-  while (put < len) {
-    ssize_t n = write(fd, data + put, len - put);
-    if (n <= 0) return false;
-    put += (size_t)n;
-  }
-  return true;
-}
-
 /* ---- commands ----------------------------------------------------------- */
 
 static void handle_line(struct player *pl, char *line) {
