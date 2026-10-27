@@ -339,20 +339,6 @@
         <span class="msg" id="cfgMsg"></span>
       </div>
 
-      <div class="setting">
-        <label><input type="checkbox" id="teOn"> trigger buzz</label>
-        <label>strength <input type="range" id="teAmp" min="0" max="8" step="1" style="width:70px"></label>
-        <b id="teAmpV" style="color:var(--accent-2);font-family:var(--mono)">6</b>
-        <label>rate <input type="range" id="teFreq" min="0" max="60" step="1" style="width:70px"></label>
-        <b id="teFreqV" style="color:var(--accent-2);font-family:var(--mono)">25</b>
-        <label>at <input type="number" id="tePos" min="0" max="9" step="1" style="width:56px" title="trigger zone 0-9"></label>
-        <button id="teTestL" title="buzz the left trigger">test L</button>
-        <button id="teTestR" title="buzz the right trigger">test R</button>
-      </div>
-      <p style="color:var(--muted);font-size:11.5px;margin:6px 0 0">
-        The trigger actuator — not the grip motors — buzzes while that trigger is changing the volume.
-        Lower force and rate make it subtler; the test buttons apply the current settings immediately.
-      </p>
       <details>
         <summary>about</summary>
         <p style="color:var(--muted);font-size:12.5px">
@@ -420,16 +406,25 @@
       <div class="lab-row">
         <b>trigger effect</b>
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
-        <select id="labTrigEffect">
-          <option value="vibration" selected>0x26 vibration</option>
-          <option value="feedback">0x21 feedback</option>
-          <option value="off">0x05 off</option>
+        <select id="labTrigPreset" title="DS4Windows Trigger Lab presets">
+          <option value="custom" selected>custom 0x26</option>
+          <option value="balanced-weapon">balanced weapon</option>
+          <option value="soft-resistance">soft resistance</option>
+          <option value="firm-resistance">firm resistance</option>
+          <option value="hair-trigger">hair trigger</option>
+          <option value="pistol-break">pistol break</option>
+          <option value="rifle-break">rifle break</option>
+          <option value="machine-gun">machine gun</option>
+          <option value="road-texture">road texture</option>
         </select>
-        <input type="number" id="labP0" value="2" min="0" max="9" title="position / zone 0-9">
-        <input type="number" id="labP1" value="8" min="0" max="8" title="amplitude 0-8">
-        <input type="number" id="labP2" value="30" min="0" max="255" title="frequency in Hz">
-        <span style="font-size:11px">position / amplitude / frequency</span>
-        <button id="labTrigFire">fire 800ms</button>
+        <input type="number" id="labP0" value="2" min="0" max="9" title="custom position / zone 0-9">
+        <input type="number" id="labP1" value="6" min="0" max="8" title="custom amplitude 0-8">
+        <input type="number" id="labP2" value="25" min="1" max="255" title="custom frequency in Hz">
+        <span id="labTrigHint" style="font-size:11px">custom: position / amplitude / frequency</span>
+        <button id="labTrigFire">fire 900ms</button>
+        <label title="apply this trigger effect while R2/L2 changes the volume"><input type="checkbox" id="teOn"> on volume</label>
+        <button id="teTestL" title="apply the selected effect to the left trigger">test L</button>
+        <button id="teTestR" title="apply the selected effect to the right trigger">test R</button>
       </div>
 
       <details>
@@ -628,18 +623,19 @@ function render(s) {
 
   const cfg = s.config || {};
 
-  if (document.activeElement !== $("#teAmp") && cfg.trigger_effect_amplitude != null) {
-    $("#teAmp").value = cfg.trigger_effect_amplitude;
-    $("#teAmpV").textContent = cfg.trigger_effect_amplitude;
+  if (document.activeElement !== $("#labP0") && cfg.trigger_effect_position != null)
+    $("#labP0").value = cfg.trigger_effect_position;
+  if (document.activeElement !== $("#labP1") && cfg.trigger_effect_amplitude != null)
+    $("#labP1").value = cfg.trigger_effect_amplitude;
+  if (document.activeElement !== $("#labP2") && cfg.trigger_effect_frequency != null)
+    $("#labP2").value = cfg.trigger_effect_frequency;
+  if (document.activeElement !== $("#labTrigPreset")) {
+    $("#labTrigPreset").value = cfg.trigger_effect_preset || "custom";
+    if (!$("#labTrigPreset").value) $("#labTrigPreset").value = "custom";
+    syncTriggerControls();
   }
-  if (document.activeElement !== $("#tePos") && cfg.trigger_effect_position != null) {
-    $("#tePos").value = cfg.trigger_effect_position;
-  }
-  if (document.activeElement !== $("#teFreq") && cfg.trigger_effect_frequency != null) {
-    $("#teFreq").value = cfg.trigger_effect_frequency;
-    $("#teFreqV").textContent = cfg.trigger_effect_frequency;
-  }
-  $("#teOn").checked = cfg.trigger_effects !== false;
+  if (document.activeElement !== $("#teOn"))
+    $("#teOn").checked = cfg.trigger_effects !== false;
 
   if (document.activeElement !== $("#idleMin") && cfg.idle_timeout_ms)
     $("#idleMin").value = Math.round(cfg.idle_timeout_ms / 60000);
@@ -993,17 +989,50 @@ $("#labRumBuzz").onclick = () => labSend({
 });
 $("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms: 0 });
 
-$("#labTrigFire").onclick = () => {
-  labSend({
-    kind: "trigger",
-    side: $("#labTrigSide").value,
-    effect: $("#labTrigEffect").value,
-    position: Number($("#labP0").value),
-    amplitude: Number($("#labP1").value),
-    frequency: Number($("#labP2").value),
-    ms: 900
+function syncTriggerControls() {
+  const custom = $("#labTrigPreset").value === "custom";
+  for (const id of ["labP0", "labP1", "labP2"]) {
+    $("#" + id).disabled = !custom;
+  }
+  $("#labTrigHint").textContent = custom ? "custom: position / amplitude / frequency" : "preset";
+}
+
+function triggerPayload(side, ms) {
+  const payload = { kind: "trigger", side, ms };
+  const preset = $("#labTrigPreset").value;
+  if (preset === "custom") {
+    payload.effect = "vibration";
+    payload.position = Number($("#labP0").value);
+    payload.amplitude = Number($("#labP1").value);
+    payload.frequency = Number($("#labP2").value);
+  } else {
+    payload.preset = preset;
+  }
+  return payload;
+}
+
+$("#labTrigPreset").addEventListener("change", () => {
+  syncTriggerControls();
+  pushTriggerConfig({ trigger_effect_preset: $("#labTrigPreset").value });
+});
+syncTriggerControls();
+
+$("#labTrigFire").onclick = () => labSend(triggerPayload($("#labTrigSide").value, 900));
+for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
+  $(`#${id}`).onclick = () => labSend(triggerPayload(side, 700));
+}
+
+for (const [id, key] of [["labP0", "trigger_effect_position"],
+                         ["labP1", "trigger_effect_amplitude"],
+                         ["labP2", "trigger_effect_frequency"]]) {
+  $(`#${id}`).addEventListener("input", (e) => {
+    pushTriggerConfig({ [key]: Number(e.target.value) });
   });
-};
+}
+
+$("#teOn").addEventListener("change", (e) => {
+  pushTriggerConfig({ trigger_effects: e.target.checked });
+});
 
 $("#labRawSend").onclick = async () => {
   try {
@@ -1030,33 +1059,6 @@ function pushTriggerConfig(values) {
   }, 250);
 }
 
-$("#teAmp").addEventListener("input", (e) => {
-  $("#teAmpV").textContent = e.target.value;
-  pushTriggerConfig({ trigger_effect_amplitude: Number(e.target.value) });
-});
-
-$("#teFreq").addEventListener("input", (e) => {
-  $("#teFreqV").textContent = e.target.value;
-  pushTriggerConfig({ trigger_effect_frequency: Number(e.target.value) });
-});
-
-$("#tePos").addEventListener("change", (e) => {
-  pushTriggerConfig({ trigger_effect_position: Number(e.target.value) });
-});
-
-$("#teOn").addEventListener("change", (e) => {
-  pushTriggerConfig({ trigger_effects: e.target.checked });
-});
-
-for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
-  $(`#${id}`).onclick = () => {
-    fetch("/api/debug/trigger", {
-      method: "POST",
-      headers: { "content-type": "text/plain" },
-      body: `side=${side}\nms=700`
-    });
-  };
-}
 
 $("#reloadBtn").onclick = async () => {
   const res = await fetch("/api/reload", { method: "POST" });

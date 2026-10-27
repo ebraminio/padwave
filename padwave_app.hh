@@ -291,11 +291,28 @@ private:
   int trigger_effect_position = 2;
   int trigger_effect_frequency = 25;
   bool trigger_effects = true;
+  char trigger_effect_preset[32] = "custom";
 
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
   int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
+
+  // DS4Windows Trigger Lab's built-in presets. Percent values are converted
+  // the same way: start/end to zones 0-9, force to 1-8, wall to Hz for 0x26.
+  struct TriggerPreset {
+    const char *id;
+    uint8_t mode;
+    int start_pct;
+    int wall_pct;
+    int force_pct;
+  };
+  static constexpr TriggerPreset kTriggerPresets[] = {
+      {"balanced-weapon", 0x25, 20, 60, 85}, {"soft-resistance", 0x21, 10, 50, 30},
+      {"firm-resistance", 0x21, 5, 50, 75},  {"hair-trigger", 0x25, 5, 25, 65},
+      {"pistol-break", 0x25, 20, 55, 95},    {"rifle-break", 0x25, 35, 75, 100},
+      {"machine-gun", 0x26, 15, 80, 85},     {"road-texture", 0x26, 5, 35, 45},
+  };
 
   // The state-coloured lightbar and the player-LED ownership. The player's
   // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
@@ -589,6 +606,7 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     return (int)o;
   }
@@ -628,6 +646,7 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     return (int)o;
   }
@@ -673,6 +692,10 @@ public:
     if (kvGet(body, "trigger_effect_frequency", value, sizeof(value))) {
       int v = atoi(value);
       this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+    }
+    if (kvGet(body, "trigger_effect_preset", value, sizeof(value))) {
+      snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
+               value[0] ? value : "custom");
     }
     if (kvGet(body, "trigger_effects", value, sizeof(value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
@@ -785,39 +808,59 @@ public:
 
     if (strcmp(kind, "trigger") == 0) {
       char side[16] = "right";
+      char preset[32] = "";
       char effect[16] = "vibration";
       kvGet(body, "side", side, sizeof(side));
+      kvGet(body, "preset", preset, sizeof(preset));
       kvGet(body, "effect", effect, sizeof(effect));
       int position = (int)kvNumber(body, "position", 2);
       int amplitude = (int)kvNumber(body, "amplitude", 6);
       int frequency = (int)kvNumber(body, "frequency", 25);
+      int wall = (int)kvNumber(body, "wall", 8);
       long ms = kvNumber(body, "ms", 0);
 
-      int mode = 0x26;
-      if (strcmp(effect, "off") == 0)
+      uint8_t params[10] = {};
+      int mode = 0x05;
+      char label[40] = "off";
+      if (preset[0]) {
+        const TriggerPreset *found = findTriggerPreset(preset);
+        if (!found) return snprintf(out, out_cap, "ok=false\nerror=unknown trigger preset\n");
+        mode = encodeTriggerPreset(*found, params);
+        snprintf(label, sizeof(label), "%s", found->id);
+      } else if (strcmp(effect, "off") == 0) {
         mode = 0x05;
-      else if (strcmp(effect, "feedback") == 0)
+      } else if (strcmp(effect, "feedback") == 0) {
         mode = 0x21;
-
-      int params[10] = {0};
-      if (mode != 0x05) {
-        params[0] = position;
-        params[1] = amplitude;
-        params[9] = frequency;
+        if (!encodeTriggerZones(params, position, amplitude, 0)) mode = 0x05;
+        snprintf(label, sizeof(label), "feedback");
+      } else if (strcmp(effect, "weapon") == 0) {
+        mode = 0x25;
+        if (!encodeTriggerWeapon(params, position, wall, amplitude)) mode = 0x05;
+        snprintf(label, sizeof(label), "weapon");
+      } else if (strcmp(effect, "vibration") == 0) {
+        mode = 0x26;
+        if (frequency <= 0 || !encodeTriggerZones(params, position, amplitude, frequency))
+          mode = 0x05;
+        snprintf(label, sizeof(label), "vibration");
+      } else {
+        return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
       }
+
+      if (mode == 0x05) memset(params, 0, sizeof(params));
+      char param_text[96];
+      snprintf(param_text, sizeof(param_text), "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", params[0],
+               params[1], params[2], params[3], params[4], params[5], params[6], params[7],
+               params[8], params[9]);
 
       bool left = strcmp(side, "left") == 0;
       const char *flag = left ? "left_trigger" : "right_trigger";
       const char *prefix = left ? "left" : "right";
-      snprintf(
-          fields, sizeof(fields),
-          "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-          flag, prefix, mode, prefix, params[0], params[1], params[2], params[3], params[4],
-          params[5], params[6], params[7], params[8], params[9]);
+      snprintf(fields, sizeof(fields), "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%s",
+               flag, prefix, mode, prefix, param_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
-      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x\n", side, mode);
+      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side, mode, label);
     }
 
     if (strcmp(kind, "fields") == 0) {
@@ -840,17 +883,27 @@ public:
     return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
   }
 
+  int triggerTest(const char *side, long ms, char *out, size_t cap) {
+    char request[192];
+    if (strcmp(this->trigger_effect_preset, "custom") != 0 &&
+        findTriggerPreset(this->trigger_effect_preset))
+      snprintf(request, sizeof(request), "kind=trigger\nside=%s\npreset=%s\nms=%ld", side,
+               this->trigger_effect_preset, ms);
+    else
+      snprintf(request, sizeof(request),
+               "kind=trigger\nside=%s\neffect=vibration\nposition=%d\namplitude=%d\n"
+               "frequency=%d\nms=%ld",
+               side, this->trigger_effect_position, this->trigger_effect_amplitude,
+               this->trigger_effect_frequency, ms);
+    return output(request, out, cap);
+  }
+
   int debugTrigger(const char *body, char *out, size_t cap) {
     char side[16] = "right";
     char tmp[16];
     if (kvGet(body, "side", tmp, sizeof(tmp))) snprintf(side, sizeof(side), "%s", tmp);
     long ms = kvNumber(body, "ms", 700);
-    char request[192];
-    snprintf(request, sizeof(request),
-             "kind=trigger\nside=%s\neffect=vibration\nposition=2\namplitude=6\n"
-             "frequency=25\nms=%ld",
-             side, ms);
-    return output(request, out, cap);
+    return triggerTest(side, ms, out, cap);
   }
 
   int handleCommand(const char *body, size_t len, char *out, size_t cap) {
@@ -1258,7 +1311,12 @@ private:
     } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
       toggleMute();
     } else if (strcmp(name, "volume") == 0) {
+      int before = this->volume;
       setVolume(this->volume + value);
+      if (this->trigger_effects && this->volume != before && this->volume > 0) {
+        char result[64];
+        triggerTest(value < 0 ? "left" : "right", 180, result, sizeof(result));
+      }
     } else if (strcmp(name, "seek") == 0) {
       seek(this->pos_ms + (long)value * 1000);
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
@@ -1319,6 +1377,9 @@ private:
       } else if (strcmp(line, "trigger_effect_frequency") == 0) {
         int v = atoi(value);
         this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+      } else if (strcmp(line, "trigger_effect_preset") == 0) {
+        snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
+                 value[0] ? value : "custom");
       } else if (strcmp(line, "trigger_effects") == 0) {
         this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
       } else if (strcmp(line, "play_path") == 0) {
@@ -1350,6 +1411,7 @@ private:
     fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
     fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
     fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
+    fprintf(f, "trigger_effect_preset=%s\n", this->trigger_effect_preset);
     fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
     const char *play_path = this->current >= 0 ? this->stations[this->current].path : "";
     fputs("play_path=", f);
@@ -1583,6 +1645,79 @@ private:
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (rgb_ok && mask_ok) this->led_force = false;
+  }
+
+  static int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  static int triggerZone(int pct) {
+    int zone = (clampInt(pct, 0, 100) + 5) / 10;
+    return zone > 9 ? 9 : zone;
+  }
+
+  static int triggerStrength(int pct) {
+    if (pct <= 0) return 0;
+    int strength = (clampInt(pct, 0, 100) * 8 + 99) / 100;
+    return clampInt(strength, 1, 8);
+  }
+
+  static int triggerFrequency(int pct) {
+    int hz = (clampInt(pct, 0, 100) * 28 + 50) / 100;
+    return hz < 1 ? 1 : hz;
+  }
+
+  static bool encodeTriggerZones(uint8_t *params, int start, int strength, int frequency) {
+    memset(params, 0, 10);
+    if (strength <= 0) return false;
+    start = clampInt(start, 0, 9);
+    uint16_t zones = 0;
+    uint32_t packed = 0;
+    uint32_t value = (uint32_t)((strength - 1) & 7);
+    for (int zone = start; zone < 10; zone++) {
+      zones |= (uint16_t)(1u << zone);
+      packed |= value << (3 * zone);
+    }
+    params[0] = (uint8_t)(zones & 0xFF);
+    params[1] = (uint8_t)(zones >> 8);
+    params[2] = (uint8_t)(packed & 0xFF);
+    params[3] = (uint8_t)((packed >> 8) & 0xFF);
+    params[4] = (uint8_t)((packed >> 16) & 0xFF);
+    params[5] = (uint8_t)((packed >> 24) & 0xFF);
+    params[9] = (uint8_t)frequency;
+    return true;
+  }
+
+  static bool encodeTriggerWeapon(uint8_t *params, int start, int end, int strength) {
+    memset(params, 0, 10);
+    if (strength <= 0) return false;
+    start = clampInt(start, 2, 7);
+    end = clampInt(end, start + 1, 8);
+    uint16_t zones = (uint16_t)((1u << start) | (1u << end));
+    params[0] = (uint8_t)(zones & 0xFF);
+    params[1] = (uint8_t)(zones >> 8);
+    params[2] = (uint8_t)((strength - 1) & 7);
+    return true;
+  }
+
+  static const TriggerPreset *findTriggerPreset(const char *id) {
+    for (const TriggerPreset &preset : kTriggerPresets)
+      if (strcmp(preset.id, id) == 0) return &preset;
+    return nullptr;
+  }
+
+  static int encodeTriggerPreset(const TriggerPreset &preset, uint8_t *params) {
+    int start = triggerZone(preset.start_pct);
+    int strength = triggerStrength(preset.force_pct);
+    if (strength <= 0) {
+      memset(params, 0, 10);
+      return 0x05;
+    }
+    if (preset.mode == 0x25)
+      encodeTriggerWeapon(params, start, triggerZone(preset.wall_pct), strength);
+    else if (preset.mode == 0x26)
+      encodeTriggerZones(params, start, strength, triggerFrequency(preset.wall_pct));
+    else
+      encodeTriggerZones(params, start, strength, 0);
+    return preset.mode;
   }
 
   void serviceOutput() {
