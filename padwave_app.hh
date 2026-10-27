@@ -279,6 +279,7 @@ private:
   bool paused_by_idle = false;
   bool paused_by_jack = false;
   bool paused_by_disconnect = false;
+  bool paused_by_mic = false;
   bool idle_volume_saved = false;
   int idle_volume = 0;
   int idle_fade_volume = -1;
@@ -522,6 +523,7 @@ public:
     kvAdd(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.paused_by_disconnect", "%s",
           this->paused_by_disconnect ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.paused_by_mic", "%s", this->paused_by_mic ? "true" : "false");
     if (this->idle_warning || this->suspended)
       kvAdd(buf, cap, &o, "radio.applied_volume", "%d",
             this->idle_fade_volume >= 0 ? this->idle_fade_volume : 0);
@@ -913,9 +915,7 @@ public:
     if (strcmp(kind, "mic_monitor") == 0) {
       char value[16] = "false";
       kvGet(body, "enabled", value, sizeof(value));
-      this->mic_monitor = strcmp(value, "true") == 0 || atoi(value) != 0;
-      playerSend(this->mic_monitor ? "mic 1\n" : "mic 0\n");
-      if (!this->mic_monitor) micReset();
+      setMicMonitor(strcmp(value, "true") == 0 || atoi(value) != 0);
       return snprintf(out, out_cap, "ok=true\nnote=mic monitor %s\n",
                       this->mic_monitor ? "on" : "off");
     }
@@ -1094,6 +1094,7 @@ private:
 
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
+    stopMicForPlayback();
     ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
@@ -1152,11 +1153,13 @@ private:
 
   void togglePause() {
     if (!this->playing) {
+      stopMicForPlayback();
       ensureAudibleVolume();
       if (this->current >= 0) play(this->current, this->pos_ms);
       return;
     }
     if (this->paused) {
+      stopMicForPlayback();
       ensureAudibleVolume();
       if (this->paused) {
         this->paused = false;
@@ -1165,6 +1168,7 @@ private:
       this->paused_by_volume = false;
       this->paused_by_jack = false;
       this->paused_by_disconnect = false;
+      this->paused_by_mic = false;
       this->playhead_dirty = true;
     } else {
       this->paused = true;
@@ -1172,6 +1176,43 @@ private:
       this->paused_by_disconnect = false;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
+    }
+  }
+
+  void stopMicForPlayback() {
+    if (!this->mic_monitor) return;
+    this->mic_monitor = false;
+    this->paused_by_mic = false;
+    playerSend("mic 0\n");
+    micReset();
+  }
+
+  void setMicMonitor(bool on) {
+    if (on == this->mic_monitor) return;
+    this->mic_monitor = on;
+    playerSend(on ? "mic 1\n" : "mic 0\n");
+    if (on) {
+      // The microphone and playback are mutually exclusive. Only claim the
+      // pause if playback was actually running.
+      if (this->playing && !this->paused) {
+        this->paused = true;
+        this->paused_by_mic = true;
+        playerSend("pause 1\n");
+        this->playhead_dirty = true;
+      } else {
+        this->paused_by_mic = false;
+      }
+    } else {
+      micReset();
+      if (this->paused_by_mic) {
+        this->paused_by_mic = false;
+        ensureAudibleVolume();
+        if (this->playing && this->paused) {
+          this->paused = false;
+          playerSend("pause 0\n");
+          this->playhead_dirty = true;
+        }
+      }
     }
   }
 
@@ -1203,6 +1244,7 @@ private:
         this->playhead_dirty = true;
       }
     } else if (this->paused_by_volume && this->playing) {
+      stopMicForPlayback();
       this->paused = false;
       this->paused_by_volume = false;
       playerSend("pause 0\n");
@@ -1238,6 +1280,7 @@ private:
         a->paused_by_disconnect = false;
         a->ensureAudibleVolume();
         if (a->paused) {
+          a->stopMicForPlayback();
           a->paused = false;
           a->playerSend("pause 0\n");
           a->playhead_dirty = true;
@@ -1490,6 +1533,7 @@ private:
     if (this->paused_by_idle) {
       this->paused_by_idle = false;
       if (this->paused) {
+        stopMicForPlayback();
         this->paused = false;
         playerSend("pause 0\n");
         this->playhead_dirty = true;
