@@ -562,6 +562,10 @@ public:
           this->led_last_player >= 0 ? this->led_last_player : 4);
     int state = ledState();
     const char *mode = state == 0 ? "off" : (this->led_custom_set ? "custom" : ledStateName(state));
+    if (this->controller && strcmp(this->charging, "charging") == 0)
+      mode = "charging";
+    else if (this->controller && strcmp(this->charging, "full") == 0)
+      mode = "full";
     kvText(buf, cap, &o, "led.mode", mode);
     kvAdd(buf, cap, &o, "led.red", "%d", this->led_last_rgb[0] >= 0 ? this->led_last_rgb[0] : 0);
     kvAdd(buf, cap, &o, "led.green", "%d", this->led_last_rgb[1] >= 0 ? this->led_last_rgb[1] : 0);
@@ -1771,6 +1775,18 @@ private:
         g = (int)(g * level);
         b = (int)(b * level);
       }
+    }
+
+    // Charging owns the lightbar: amber while charging, white when full. This
+    // overrides playback/custom colours (and any lab pulse).
+    if (this->controller && strcmp(this->charging, "charging") == 0) {
+      r = 255;
+      g = 110;
+      b = 0;
+    } else if (this->controller && strcmp(this->charging, "full") == 0) {
+      r = 255;
+      g = 255;
+      b = 255;
     }
 
     bool force = this->led_force;
