@@ -8,7 +8,6 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -336,8 +335,12 @@ struct input_frame {
   char raw[512];
 };
 typedef void (*input_frame_fn)(const struct input_frame *, void *);
+typedef void (*input_action_fn)(const char *name, int value, void *);
+typedef void (*input_event_fn)(const char *name, void *);
+typedef void (*input_mic_fn)(const uint8_t *data, size_t len, void *);
 
-void input_set_sink(void *handle, input_frame_fn frame, void (*text)(const char *, void *), void *ud);
+void input_set_sink(void *handle, input_frame_fn frame, input_action_fn action,
+                    input_event_fn event, input_mic_fn mic, void *ud);
 int input_fd(void *handle);
 int input_feed(void *handle, const uint8_t *buf, size_t len);
 void input_destroy(void *handle);
@@ -1243,55 +1246,71 @@ int native_main(int argc, char **argv) {
 #undef DECODE_BUDGET_MS
 // padwave input — the controller's state, decoded by the C++ schema.
 //
-// A separate process from the player on purpose: reading input is independent
-// of whether audio is playing, and the player should not own the input fd just
-// because it happens to be the process that also writes 0x36. This CLI is the
-// input mode: it parses 0x31 (Bluetooth) and
-// 0x01 (USB) with InputReport/InputBody from padwave_schemas.hh and prints one
-// line per state report, plus "mic <hex>" for the Opus frames that share 0x31.
+// The decoder is an engine the app owns: input_create() takes the hidraw fd,
+// input_set_sink() installs four callbacks (frame, action, event, mic) plus
+// userdata, and input_feed() hands it bytes. The decoder keeps its edge state
+// in the handle. The same code backs the `padwave input` CLI, which installs no
+// callbacks and prints the actions/events/mic frames as lines for debugging.
+//
+// 0x31 (Bluetooth) and 0x01 (USB) are parsed with InputReport/InputBody from
+// padwave_wire.hh. Fields are the names the panel speaks: buttons are the
+// InputBody::Buttons enumerators, dpad is the InputBody::Dpad name, and the
+// rest is straight from the body. battery/charging keep the same 10% steps and
+// nibble 0/1/2 semantics.
 //
 //   padwave input [hidraw-node]
 //   padwave input --hex 31c1...        one captured report, decode and exit
 //   padwave input --file /path         a file of raw reports (testing)
-//
-// Fields are the names the Elixir side already speaks: buttons are the
-// InputBody::Buttons enumerators, dpad is the InputBody::Dpad name, and the
-// rest is straight from the body. battery/charging keep Frame.battery/1 and
-// Frame.charging/1 semantics (10% steps, nibble 0/1/2).
 
 
-static void (*g_input_sink)(const char *, void *) = nullptr;
-static void *g_input_sink_ud = nullptr;
-static char g_input_emit_buf[4096];
-static size_t g_input_emit_len = 0;
+// The decoder's state belongs to the handle, not the file: one handle per
+// controller, carrying the callbacks and what the edge detectors remember.
+namespace {
 
-static void input_emit(const char *fmt, ...) {
-  char tmp[1024];
-  va_list ap;
-  va_start(ap, fmt);
-  vsnprintf(tmp, sizeof(tmp), fmt, ap);
-  va_end(ap);
+struct actions_state {
+  uint32_t prev_buttons = 0;
+  int64_t last_l2 = 0;
+  int64_t last_r2 = 0;
+  int64_t ps_at = 0;
+  bool ps_armed = false;
+};
 
-  size_t n = strlen(tmp);
-  if (g_input_emit_len + n >= sizeof(g_input_emit_buf)) g_input_emit_len = 0;
-  memcpy(g_input_emit_buf + g_input_emit_len, tmp, n);
-  g_input_emit_len += n;
-  g_input_emit_buf[g_input_emit_len] = 0;
+struct sensors_state {
+  bool has_prev = false;
+  uint32_t prev_buttons = 0;
+  uint8_t prev_dpad = 0;
+  int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
+  bool prev_jack = false;
+  int64_t last_activity = 0;
+  int analog_resets = 0;
+  int64_t last_shake = 0;
+  int stable_jack = -1;
+  int pending_jack = -1;
+  int64_t jack_since = 0;
+  bool l2_down = false, r2_down = false;
+};
 
-  char *start = g_input_emit_buf;
-  char *nl;
-  while ((nl = strchr(start, '\n'))) {
-    *nl = 0;
-    if (g_input_sink) g_input_sink(start, g_input_sink_ud);
-    else puts(start);
-    start = nl + 1;
-  }
-  size_t left = strlen(start);
-  memmove(g_input_emit_buf, start, left + 1);
-  g_input_emit_len = left;
-}
+struct dpad_state {
+  uint8_t prev = 0xFF;
+  int hold_dir = 0;
+  int hold_step = 0;
+  int64_t hold_at = 0;
+};
 
-#define printf(...) input_emit(__VA_ARGS__)
+} // namespace
+
+struct input_handle {
+  int fd;
+  input_frame_fn frame_fn;
+  input_action_fn action_fn;
+  input_event_fn event_fn;
+  input_mic_fn mic_fn;
+  void *ud;
+
+  actions_state actions;
+  sensors_state sensors;
+  dpad_state dpad;
+};
 
 namespace {
 
@@ -1346,24 +1365,14 @@ void buttons_to_string(uint32_t buttons, char *out, size_t cap) {
 
 /* -- d-pad steering -------------------------------------------------------
  * The d-pad's timing lives here now: a tap seeks 6 s, a hold ramps through
- * 10/20/40/60 s at 420 ms, then repeats the last step at 130 ms. The actions
- * are printed as lines and the app only executes them. */
+ * 10/20/40/60 s at 420 ms, then repeats the last step at 130 ms. The decoder
+ * reports (name, value) actions and the app only executes them. */
 /* -- buttons and triggers -------------------------------------------------
  * The static bindings table moves here with the d-pad. The radio only executes
  * the actions; the UI's bindings map is documentation, not logic. */
 int64_t input_now_ms();
-void emit_action(const char *line);
-void emit_event(const char *line);
-
-struct actions_state {
-  uint32_t prev_buttons = 0;
-  int64_t last_l2 = 0;
-  int64_t last_r2 = 0;
-  int64_t ps_at = 0;
-  bool ps_armed = false;
-};
-
-actions_state g_actions;
+void emit_action(input_handle *h, const char *name, int value);
+void emit_event(input_handle *h, const char *name);
 
 struct binding {
   uint32_t bit;
@@ -1388,39 +1397,37 @@ const binding kBindings[] = {
     {padwave::InputBody::Fn2, "toggle_mute"},
 };
 
-void track_buttons(uint32_t buttons) {
-  uint32_t pressed = buttons & ~g_actions.prev_buttons;
-  g_actions.prev_buttons = buttons;
+void track_buttons(input_handle *h, uint32_t buttons) {
+  uint32_t pressed = buttons & ~h->actions.prev_buttons;
+  h->actions.prev_buttons = buttons;
 
   for (auto &b : kBindings)
-    if (pressed & b.bit) emit_action(b.action);
+    if (pressed & b.bit) emit_action(h, b.action, 0);
 
   if (pressed & padwave::InputBody::Ps) {
-    g_actions.ps_armed = true;
-    g_actions.ps_at = input_now_ms();
+    h->actions.ps_armed = true;
+    h->actions.ps_at = input_now_ms();
   }
 
   if (!(buttons & padwave::InputBody::Ps)) {
-    g_actions.ps_armed = false;
-  } else if (g_actions.ps_armed && input_now_ms() - g_actions.ps_at >= 2000) {
-    emit_action("suspend");
-    g_actions.ps_armed = false;
+    h->actions.ps_armed = false;
+  } else if (h->actions.ps_armed && input_now_ms() - h->actions.ps_at >= 2000) {
+    emit_action(h, "suspend", 0);
+    h->actions.ps_armed = false;
   }
 }
 
-void track_triggers(int l2, int r2) {
+void track_triggers(input_handle *h, int l2, int r2) {
   int64_t now = input_now_ms();
-  if (l2 >= 30 && now - g_actions.last_l2 >= 110) {
+  if (l2 >= 30 && now - h->actions.last_l2 >= 110) {
     int step = l2 >= 220 ? 4 : (l2 >= 150 ? 2 : 1);
-    printf("action volume %d\n", -step);
-    fflush(stdout);
-    g_actions.last_l2 = now;
+    emit_action(h, "volume", -step);
+    h->actions.last_l2 = now;
   }
-  if (r2 >= 30 && now - g_actions.last_r2 >= 110) {
+  if (r2 >= 30 && now - h->actions.last_r2 >= 110) {
     int step = r2 >= 220 ? 4 : (r2 >= 150 ? 2 : 1);
-    printf("action volume %d\n", step);
-    fflush(stdout);
-    g_actions.last_r2 = now;
+    emit_action(h, "volume", step);
+    h->actions.last_r2 = now;
   }
 }
 
@@ -1428,113 +1435,87 @@ void track_triggers(int l2, int r2) {
  * Activity/wake (with the analog cap), shake, the 250 ms jack debounce and the
  * trigger actuator's pressed/released edges. The radio still executes the
  * actions; these are announcements, not decisions. */
-struct sensors_state {
-  bool has_prev = false;
-  uint32_t prev_buttons = 0;
-  uint8_t prev_dpad = 0;
-  int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
-  bool prev_jack = false;
-  int64_t last_activity = 0;
-  int analog_resets = 0;
-  int64_t last_shake = 0;
-  int stable_jack = -1;
-  int pending_jack = -1;
-  int64_t jack_since = 0;
-  bool l2_down = false, r2_down = false;
-};
-
-sensors_state g_sensors;
-
-void track_sensors(const padwave::InputBody &b) {
+void track_sensors(input_handle *h, const padwave::InputBody &b) {
   int64_t now = input_now_ms();
   bool jack = (b.status1.get() & padwave::InputBody::Headset) != 0;
   int l2 = b.l2.get(), r2 = b.r2.get();
   int lx = b.lx.get(), ly = b.ly.get(), rx = b.rx.get(), ry = b.ry.get();
   uint32_t buttons = b.buttons;
   uint8_t dpad = (uint8_t)(buttons & 0x0F);
-  bool first = !g_sensors.has_prev;
+  bool first = !h->sensors.has_prev;
 
   bool real = false, analog = false;
   if (!first) {
-    real = buttons != g_sensors.prev_buttons || dpad != g_sensors.prev_dpad ||
-           jack != g_sensors.prev_jack || abs(l2 - g_sensors.prev_l2) > 10 ||
-           abs(r2 - g_sensors.prev_r2) > 10;
-    analog = abs(lx - g_sensors.prev_lx) > 24 || abs(ly - g_sensors.prev_ly) > 24 ||
-             abs(rx - g_sensors.prev_rx) > 24 || abs(ry - g_sensors.prev_ry) > 24;
+    real = buttons != h->sensors.prev_buttons || dpad != h->sensors.prev_dpad ||
+           jack != h->sensors.prev_jack || abs(l2 - h->sensors.prev_l2) > 10 ||
+           abs(r2 - h->sensors.prev_r2) > 10;
+    analog = abs(lx - h->sensors.prev_lx) > 24 || abs(ly - h->sensors.prev_ly) > 24 ||
+             abs(rx - h->sensors.prev_rx) > 24 || abs(ry - h->sensors.prev_ry) > 24;
   }
 
   double g = sqrt((double)b.accel_x.get() * b.accel_x.get() +
                   (double)b.accel_y.get() * b.accel_y.get() +
                   (double)b.accel_z.get() * b.accel_z.get()) /
              8192.0;
-  if (g >= 2.25 && now - g_sensors.last_shake > 1500) {
-    emit_event("shake");
-    g_sensors.last_shake = now;
+  if (g >= 2.25 && now - h->sensors.last_shake > 1500) {
+    emit_event(h, "shake");
+    h->sensors.last_shake = now;
     real = true;
   }
 
   if (real || analog) {
-    bool capped = analog && !real && g_sensors.analog_resets >= 6;
-    if (!capped && now - g_sensors.last_activity > 900) {
-      emit_event("activity");
-      g_sensors.last_activity = now;
-      if (analog) g_sensors.analog_resets++;
-      else g_sensors.analog_resets = 0;
+    bool capped = analog && !real && h->sensors.analog_resets >= 6;
+    if (!capped && now - h->sensors.last_activity > 900) {
+      emit_event(h, "activity");
+      h->sensors.last_activity = now;
+      if (analog) h->sensors.analog_resets++;
+      else h->sensors.analog_resets = 0;
     } else if (real) {
-      g_sensors.analog_resets = 0;
+      h->sensors.analog_resets = 0;
     }
   }
 
   if (first) {
-    g_sensors.stable_jack = jack ? 1 : 0;
-  } else if (jack == (g_sensors.stable_jack != 0)) {
-    g_sensors.pending_jack = -1;
-    g_sensors.jack_since = 0;
-  } else if (g_sensors.pending_jack != (jack ? 1 : 0) || g_sensors.jack_since == 0) {
-    g_sensors.pending_jack = jack ? 1 : 0;
-    g_sensors.jack_since = now;
-  } else if (now - g_sensors.jack_since >= 250) {
-    emit_action(jack ? "jack_plugged" : "jack_unplugged");
-    g_sensors.stable_jack = jack ? 1 : 0;
-    g_sensors.pending_jack = -1;
-    g_sensors.jack_since = 0;
+    h->sensors.stable_jack = jack ? 1 : 0;
+  } else if (jack == (h->sensors.stable_jack != 0)) {
+    h->sensors.pending_jack = -1;
+    h->sensors.jack_since = 0;
+  } else if (h->sensors.pending_jack != (jack ? 1 : 0) || h->sensors.jack_since == 0) {
+    h->sensors.pending_jack = jack ? 1 : 0;
+    h->sensors.jack_since = now;
+  } else if (now - h->sensors.jack_since >= 250) {
+    emit_action(h, jack ? "jack_plugged" : "jack_unplugged", 0);
+    h->sensors.stable_jack = jack ? 1 : 0;
+    h->sensors.pending_jack = -1;
+    h->sensors.jack_since = 0;
   }
 
-  if (!g_sensors.l2_down && l2 >= 30) {
-    emit_event("trigger l pressed");
-    g_sensors.l2_down = true;
-  } else if (g_sensors.l2_down && l2 < 15) {
-    emit_event("trigger l released");
-    g_sensors.l2_down = false;
+  if (!h->sensors.l2_down && l2 >= 30) {
+    emit_event(h, "trigger_l_pressed");
+    h->sensors.l2_down = true;
+  } else if (h->sensors.l2_down && l2 < 15) {
+    emit_event(h, "trigger_l_released");
+    h->sensors.l2_down = false;
   }
-  if (!g_sensors.r2_down && r2 >= 30) {
-    emit_event("trigger r pressed");
-    g_sensors.r2_down = true;
-  } else if (g_sensors.r2_down && r2 < 15) {
-    emit_event("trigger r released");
-    g_sensors.r2_down = false;
+  if (!h->sensors.r2_down && r2 >= 30) {
+    emit_event(h, "trigger_r_pressed");
+    h->sensors.r2_down = true;
+  } else if (h->sensors.r2_down && r2 < 15) {
+    emit_event(h, "trigger_r_released");
+    h->sensors.r2_down = false;
   }
 
-  g_sensors.has_prev = true;
-  g_sensors.prev_buttons = buttons;
-  g_sensors.prev_dpad = dpad;
-  g_sensors.prev_lx = lx;
-  g_sensors.prev_ly = ly;
-  g_sensors.prev_rx = rx;
-  g_sensors.prev_ry = ry;
-  g_sensors.prev_l2 = l2;
-  g_sensors.prev_r2 = r2;
-  g_sensors.prev_jack = jack;
+  h->sensors.has_prev = true;
+  h->sensors.prev_buttons = buttons;
+  h->sensors.prev_dpad = dpad;
+  h->sensors.prev_lx = lx;
+  h->sensors.prev_ly = ly;
+  h->sensors.prev_rx = rx;
+  h->sensors.prev_ry = ry;
+  h->sensors.prev_l2 = l2;
+  h->sensors.prev_r2 = r2;
+  h->sensors.prev_jack = jack;
 }
-
-struct dpad_state {
-  uint8_t prev = 0xFF;
-  int hold_dir = 0;
-  int hold_step = 0;
-  int64_t hold_at = 0;
-};
-
-dpad_state g_dpad;
 
 int64_t input_now_ms() {
   struct timespec ts;
@@ -1542,45 +1523,55 @@ int64_t input_now_ms() {
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-void emit_action(const char *line) {
-  printf("action %s\n", line);
+// The handle without a callback is the CLI: keep the lines for debugging.
+void emit_action(input_handle *h, const char *name, int value) {
+  if (h->action_fn) {
+    h->action_fn(name, value, h->ud);
+    return;
+  }
+  if (value) printf("action %s %d\n", name, value);
+  else printf("action %s\n", name);
   fflush(stdout);
 }
 
-void emit_event(const char *line) {
-  printf("event %s\n", line);
+void emit_event(input_handle *h, const char *name) {
+  if (h->event_fn) {
+    h->event_fn(name, h->ud);
+    return;
+  }
+  printf("event %s\n", name);
   fflush(stdout);
 }
 
-void track_dpad(uint32_t buttons) {
+void track_dpad(input_handle *h, uint32_t buttons) {
   static const int steps[] = {10, 20, 40, 60};
   static const int intervals[] = {320, 260, 190, 130};
 
   uint8_t dpad = (uint8_t)(buttons & 0x0F);
   int64_t now = input_now_ms();
 
-  if (dpad != g_dpad.prev) {
-    g_dpad.prev = dpad;
-    g_dpad.hold_dir = 0;
+  if (dpad != h->dpad.prev) {
+    h->dpad.prev = dpad;
+    h->dpad.hold_dir = 0;
 
     switch (dpad) {
       case padwave::InputBody::Left:
-        emit_action("seek -6");
-        g_dpad.hold_dir = -1;
-        g_dpad.hold_step = 0;
-        g_dpad.hold_at = now + 420;
+        emit_action(h, "seek", -6);
+        h->dpad.hold_dir = -1;
+        h->dpad.hold_step = 0;
+        h->dpad.hold_at = now + 420;
         break;
       case padwave::InputBody::Right:
-        emit_action("seek 6");
-        g_dpad.hold_dir = 1;
-        g_dpad.hold_step = 0;
-        g_dpad.hold_at = now + 420;
+        emit_action(h, "seek", 6);
+        h->dpad.hold_dir = 1;
+        h->dpad.hold_step = 0;
+        h->dpad.hold_at = now + 420;
         break;
       case padwave::InputBody::Up:
-        emit_action("next_random");
+        emit_action(h, "next_random", 0);
         break;
       case padwave::InputBody::Down:
-        emit_action("previous");
+        emit_action(h, "previous", 0);
         break;
       default:
         break;
@@ -1588,17 +1579,15 @@ void track_dpad(uint32_t buttons) {
     return;
   }
 
-  if (g_dpad.hold_dir == 0 || now < g_dpad.hold_at) return;
+  if (h->dpad.hold_dir == 0 || now < h->dpad.hold_at) return;
 
-  int index = g_dpad.hold_step < 4 ? g_dpad.hold_step : 3;
-  printf("action seek %d\n", g_dpad.hold_dir * steps[index]);
-  fflush(stdout);
-  g_dpad.hold_step = index + 1;
-  g_dpad.hold_at = now + intervals[index];
+  int index = h->dpad.hold_step < 4 ? h->dpad.hold_step : 3;
+  emit_action(h, "seek", h->dpad.hold_dir * steps[index]);
+  h->dpad.hold_step = index + 1;
+  h->dpad.hold_at = now + intervals[index];
 }
 
-void emit_frame(input_frame_fn fn, void *ud, const padwave::InputBody &b, const uint8_t *raw,
-                size_t len) {
+void emit_frame(input_handle *h, const padwave::InputBody &b, const uint8_t *raw, size_t len) {
   struct input_frame f;
   memset(&f, 0, sizeof(f));
   uint32_t buttons = b.buttons;
@@ -1628,35 +1617,39 @@ void emit_frame(input_frame_fn fn, void *ud, const padwave::InputBody &b, const 
   size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
   for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
 
-  if (fn) fn(&f, ud);
+  if (h->frame_fn) h->frame_fn(&f, h->ud);
 
-  track_dpad(b.buttons);
-  track_buttons(b.buttons);
-  track_triggers(b.l2, b.r2);
-  track_sensors(b);
+  track_dpad(h, b.buttons);
+  track_buttons(h, b.buttons);
+  track_triggers(h, b.l2, b.r2);
+  track_sensors(h, b);
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.
-void handle_report(input_frame_fn fn, void *ud, const uint8_t *buf, size_t len) {
+void handle_report(input_handle *h, const uint8_t *buf, size_t len) {
   if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
     size_t payload_len = 0;
     const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
-    printf("mic ");
-    for (size_t i = 0; i < payload_len; i++) printf("%02x", payload[i]);
-    printf("\n");
-    fflush(stdout);
+    if (h->mic_fn) {
+      h->mic_fn(payload, payload_len, h->ud);
+    } else {
+      printf("mic ");
+      for (size_t i = 0; i < payload_len; i++) printf("%02x", payload[i]);
+      printf("\n");
+      fflush(stdout);
+    }
     return;
   }
 
   if (buf[0] == padwave::PacketStateBluetooth && len >= padwave::InputReport::Size) {
     const padwave::InputReport *r = (const padwave::InputReport *)buf;
     if (!r->valid()) return;
-    emit_frame(fn, ud, r->body, buf, padwave::InputReport::Size);
+    emit_frame(h, r->body, buf, padwave::InputReport::Size);
     return;
   }
 
   if (buf[0] == padwave::PacketInputUsb && len >= padwave::InputReport::UsbSize)
-    emit_frame(fn, ud, *(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
+    emit_frame(h, *(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
 }
 
 bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
@@ -1675,21 +1668,15 @@ bool hex_decode(const char *hex, uint8_t *out, size_t *out_len) {
 
 } // namespace
 
-struct input_handle {
-  int fd;
-  input_frame_fn frame_fn;
-  void *ud;
-};
-
-void input_set_sink(void *handle, input_frame_fn frame, void (*text)(const char *, void *),
-                    void *ud) {
+void input_set_sink(void *handle, input_frame_fn frame, input_action_fn action,
+                    input_event_fn event, input_mic_fn mic, void *ud) {
   input_handle *h = (input_handle *)handle;
-  g_input_sink = text;
-  g_input_sink_ud = ud;
-  if (h) {
-    h->frame_fn = frame;
-    h->ud = ud;
-  }
+  if (!h) return;
+  h->frame_fn = frame;
+  h->action_fn = action;
+  h->event_fn = event;
+  h->mic_fn = mic;
+  h->ud = ud;
 }
 
 void *input_create(const char *node) {
@@ -1710,6 +1697,7 @@ void *input_create(const char *node) {
     close(fd);
     return nullptr;
   }
+  *h = input_handle{};
   h->fd = fd;
   return h;
 }
@@ -1719,7 +1707,7 @@ int input_fd(void *handle) { return handle ? ((input_handle *)handle)->fd : -1; 
 int input_feed(void *handle, const uint8_t *buf, size_t len) {
   input_handle *h = (input_handle *)handle;
   if (!h) return -1;
-  handle_report(h->frame_fn, h->ud, buf, len);
+  handle_report(h, buf, len);
   return 0;
 }
 
@@ -1732,6 +1720,7 @@ void input_destroy(void *handle) {
 
 int input_main(int argc, char **argv) {
   uint8_t buf[512];
+  input_handle scratch{};
 
   if (argc > 1 && strcmp(argv[1], "--hex") == 0 && argc > 2) {
     size_t len = 0;
@@ -1740,7 +1729,7 @@ int input_main(int argc, char **argv) {
       memmove(buf, buf + 1, len - 1);
       len--;
     }
-    handle_report(nullptr, nullptr, buf, len);
+    handle_report(&scratch, buf, len);
     return 0;
   }
 
@@ -1750,7 +1739,7 @@ int input_main(int argc, char **argv) {
     for (;;) {
       ssize_t n = read(fd, buf, sizeof(buf));
       if (n <= 0) break;
-      handle_report(nullptr, nullptr, buf, (size_t)n);
+      handle_report(&scratch, buf, (size_t)n);
     }
     close(fd);
     return 0;
@@ -1804,7 +1793,6 @@ int input_main(int argc, char **argv) {
   input_destroy(h);
   return 0;
 }
-#undef printf
 // padwave_opusdec.cc — the Opus helper, in C++ and on the schema's constants.
 //
 // The opusdec mode of the padwave binary:
@@ -2031,8 +2019,10 @@ struct app {
   void set_volume(int v);
   void seek(long ms);
   static void input_frame_cb(const struct input_frame *f, void *ud);
-  void handle_action(const char *action);
-  void input_line(const char *line);
+  static void input_action_cb(const char *name, int value, void *ud);
+  static void input_event_cb(const char *name, void *ud);
+  static void input_mic_cb(const uint8_t *data, size_t len, void *ud);
+  void handle_action(const char *name, int value);
   void status_radio(char *buf, size_t cap);
   void status_controller(char *buf, size_t cap);
   int status_json(char *buf, size_t cap);
@@ -2154,8 +2144,6 @@ void app::push_history(int index) {
   }
 }
 
-void input_sink(const char *line, void *ud) { ((app *)ud)->input_line(line); }
-
 void app::player_send(const char *line) {
   if (this->player) ::player_command(this->player, line);
 }
@@ -2182,7 +2170,8 @@ void app::input_start() {
     this->reconnect_at = (int)(now_ms() + 1500);
     return;
   }
-  ::input_set_sink(this->input, input_frame_cb, input_sink, this);
+  ::input_set_sink(this->input, input_frame_cb, input_action_cb, input_event_cb, input_mic_cb,
+                   this);
   this->input_fd = ::input_fd(this->input);
 }
 
@@ -2324,40 +2313,43 @@ void app::input_frame_cb(const struct input_frame *f, void *ud) {
   a->az = f->az;
 }
 
-void app::handle_action(const char *action) {
-  if (strcmp(action, "next") == 0) next();
-  else if (strcmp(action, "previous") == 0) previous();
-  else if (strcmp(action, "shuffle_game") == 0) shuffle_game();
-  else if (strcmp(action, "pause") == 0) toggle_pause();
-  else if (strcmp(action, "mute") == 0) set_volume(this->muted ? this->volume : 0);
-  else if (strcmp(action, "disconnect") == 0) {
+void app::input_action_cb(const char *name, int value, void *ud) {
+  ((app *)ud)->handle_action(name, value);
+}
+
+// Events are announcements for a future listener; the app has nothing to do
+// with them yet, but keeping the callback is what lets the decoder forget the
+// text format.
+void app::input_event_cb(const char *name, void *ud) {
+  (void)name;
+  (void)ud;
+}
+
+void app::input_mic_cb(const uint8_t *data, size_t len, void *ud) {
+  (void)data;
+  (void)len;
+  (void)ud;
+}
+
+void app::handle_action(const char *name, int value) {
+  if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0) next();
+  else if (strcmp(name, "previous") == 0) previous();
+  else if (strcmp(name, "shuffle_game") == 0) shuffle_game();
+  else if (strcmp(name, "pause") == 0 || strcmp(name, "toggle_pause") == 0) toggle_pause();
+  else if (strcmp(name, "play") == 0) {
+    if (!this->playing || this->paused) toggle_pause();
+  } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
+    set_volume(this->muted ? this->volume : 0);
+  } else if (strcmp(name, "volume") == 0) {
+    set_volume(this->volume + value);
+  } else if (strcmp(name, "seek") == 0) {
+    seek(this->pos_ms + (long)value * 1000);
+  } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
     this->playing = false;
     this->paused = true;
     player_send("pause 1\n");
   }
-  snprintf(this->last_action, sizeof(this->last_action), "%s", action);
-}
-
-void app::input_line(const char *line) {
-  if (strncmp(line, "action ", 7) == 0) {
-    char action[64];
-    snprintf(action, sizeof(action), "%s", line + 7);
-    char *space = strchr(action, ' ');
-    if (space && strncmp(action, "volume ", 7) == 0) {
-      int delta = atoi(space + 1);
-      set_volume(this->volume + delta);
-      snprintf(this->last_action, sizeof(this->last_action), "volume");
-    } else if (space && strncmp(action, "seek ", 5) == 0) {
-      seek(this->pos_ms + atol(space + 1) * 1000);
-      snprintf(this->last_action, sizeof(this->last_action), "seek");
-    } else {
-      if (space) *space = 0;
-      handle_action(action);
-    }
-  } else if (strncmp(line, "down", 4) == 0) {
-    input_stop();
-    this->reconnect_at = (int)(now_ms() + 1500);
-  }
+  snprintf(this->last_action, sizeof(this->last_action), "%s", name);
 }
 
 void app::status_radio(char *buf, size_t cap) {
