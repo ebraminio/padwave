@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `f00b9d2`
+- HEAD: latest `main`; the behavior described here landed through `9bf7a8f`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -23,7 +23,8 @@
 - Recent work: server/lab text routes, App/Input/Server class split, idle
   fade/suspend/wake, BlueZ power-off + hidraw reopen, playhead persistence,
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
-  lightbar + charging player LEDs.
+  lightbar + charging player LEDs, controller-loss auto-pause + slow paused
+  player tick.
 
 ## Constraints
 
@@ -115,6 +116,14 @@ For idle, set `idle_timeout_ms=3000`, `idle_warn_grace_ms=3000` via
 `POST /api/config`, watch `session.phase`, wake with a command, then restore
 `900000`/`10000`. `poweroff_when_idle_ms=0` disables the BlueZ disconnect while
 testing. A service restart should resume the saved track/position.
+
+With no controller, playback should report `paused_by_disconnect=true`,
+`led.mode=off`, and near-zero CPU. Sample it with:
+
+```sh
+pid=$(pgrep -x padwave); a=$(awk '{print $14+$15}' /proc/$pid/stat); sleep 8; \
+b=$(awk '{print $14+$15}' /proc/$pid/stat); echo "$((b-a)) ticks in 8 s"
+```
 
 ## Testing without pressing buttons
 

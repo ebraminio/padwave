@@ -153,6 +153,10 @@ pulsing red for the idle warning, and black when suspended/off. A lab custom
 colour overrides it until the next state change. Charging/full sweeps the five
 player LEDs; otherwise the kernel player-1 pattern is used.
 
+If the controller disconnects there is no audio sink, so playback pauses and
+the player tick slows to 500 ms; that keeps an idle unit near 0 % CPU. The first
+frame after the pad reconnects resumes playback.
+
 Not yet done: real audio-sink/state reporting (the panel still says no sink),
 configurable idle fade floor, persisted mic-monitor state, and physical
 confirmation of the lightbar, rumble, trigger and jack paths.
