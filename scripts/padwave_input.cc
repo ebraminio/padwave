@@ -88,6 +88,81 @@ void print_buttons(uint32_t buttons) {
  * The d-pad's timing lives here now: a tap seeks 6 s, a hold ramps through
  * 10/20/40/60 s at 420 ms, then repeats the last step at 130 ms. The actions
  * are printed as lines and the Elixir side only executes them. */
+/* -- buttons and triggers -------------------------------------------------
+ * The static bindings table moves here with the d-pad. The radio only executes
+ * the actions; the UI's bindings map is documentation, not logic. */
+int64_t now_ms();
+void emit_action(const char *line);
+
+struct actions_state {
+  uint32_t prev_buttons = 0;
+  int64_t last_l2 = 0;
+  int64_t last_r2 = 0;
+  int64_t ps_at = 0;
+  bool ps_armed = false;
+};
+
+actions_state g_actions;
+
+struct binding {
+  uint32_t bit;
+  const char *action;
+};
+
+const binding kBindings[] = {
+    {padwave::InputBody::ButtonTriangle, "toggle_pause"},
+    {padwave::InputBody::ButtonCircle, "play"},
+    {padwave::InputBody::ButtonSquare, "shuffle_game"},
+    {padwave::InputBody::L1, "previous"},
+    {padwave::InputBody::R1, "next_random"},
+    {padwave::InputBody::Create, "previous"},
+    {padwave::InputBody::Options, "next_random"},
+    {padwave::InputBody::Touchpad, "toggle_mute"},
+    {padwave::InputBody::Mute, "toggle_mute"},
+    {padwave::InputBody::L3, "next_random"},
+    {padwave::InputBody::R3, "previous"},
+    {padwave::InputBody::LeftPaddle, "previous"},
+    {padwave::InputBody::RightPaddle, "next_random"},
+    {padwave::InputBody::Fn1, "toggle_pause"},
+    {padwave::InputBody::Fn2, "toggle_mute"},
+};
+
+void track_buttons(uint32_t buttons) {
+  uint32_t pressed = buttons & ~g_actions.prev_buttons;
+  g_actions.prev_buttons = buttons;
+
+  for (auto &b : kBindings)
+    if (pressed & b.bit) emit_action(b.action);
+
+  if (pressed & padwave::InputBody::Ps) {
+    g_actions.ps_armed = true;
+    g_actions.ps_at = now_ms();
+  }
+
+  if (!(buttons & padwave::InputBody::Ps)) {
+    g_actions.ps_armed = false;
+  } else if (g_actions.ps_armed && now_ms() - g_actions.ps_at >= 2000) {
+    emit_action("suspend");
+    g_actions.ps_armed = false;
+  }
+}
+
+void track_triggers(int l2, int r2) {
+  int64_t now = now_ms();
+  if (l2 >= 30 && now - g_actions.last_l2 >= 110) {
+    int step = l2 >= 220 ? 4 : (l2 >= 150 ? 2 : 1);
+    printf("action volume %d\n", -step);
+    fflush(stdout);
+    g_actions.last_l2 = now;
+  }
+  if (r2 >= 30 && now - g_actions.last_r2 >= 110) {
+    int step = r2 >= 220 ? 4 : (r2 >= 150 ? 2 : 1);
+    printf("action volume %d\n", step);
+    fflush(stdout);
+    g_actions.last_r2 = now;
+  }
+}
+
 struct dpad_state {
   uint8_t prev = 0xFF;
   int hold_dir = 0;
@@ -175,6 +250,8 @@ void print_frame(const padwave::InputBody &b) {
   fflush(stdout);
 
   track_dpad(b.buttons);
+  track_buttons(b.buttons);
+  track_triggers(b.l2, b.r2);
 }
 
 // One report: 0x31 Bluetooth (78), 0x01 USB (64), or a 0x31 microphone frame.

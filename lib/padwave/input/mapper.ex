@@ -49,7 +49,6 @@ defmodule Padwave.Input.Mapper do
     fn2: :toggle_mute
   }
 
-  @ps_hold_ms 2000
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -80,8 +79,6 @@ defmodule Padwave.Input.Mapper do
        prev: nil,
        prev_buttons: [],
        last_activity: now,
-       last_l2: now,
-       last_r2: now,
        analog_resets: 0,
        l2_down: false,
        r2_down: false,
@@ -113,25 +110,21 @@ defmodule Padwave.Input.Mapper do
 
   def handle_info({:frame, frame}, state), do: handle_frame(frame, state)
   def handle_info({:padwave, {:frame, frame}}, state), do: handle_frame(frame, state)
+
+  def handle_info({:padwave, {:action, action}}, state),
+    do: {:noreply, %{state | last_action: action,
+                     last_action_at: System.monotonic_time(:millisecond)}}
   def handle_info({:sim_begin}, state), do: {:noreply, %{state | sim_depth: state.sim_depth + 1}}
   def handle_info({:sim_frame, frame}, state), do: handle_frame(frame, state)
 
   def handle_info({:sim_end}, state),
     do: {:noreply, %{state | sim_depth: max(state.sim_depth - 1, 0)}}
 
-  def handle_info({:ps_hold}, state) do
-    if state.frame && Frame.pressed?(state.frame, :ps) do
-      {:noreply, emit(:suspend, state)}
-    else
-      {:noreply, state}
-    end
-  end
-
   def handle_info({:padwave, {:device, :down, _info}}, state) do
     # Forget the jack: the next controller should be judged on its own first
     # report, not on what was plugged into the previous one.
     state = %{state | jack: nil, jack_pending: nil, jack_since: nil}
-    {:noreply, %{state | frame: nil, prev: nil, prev_buttons: []}}
+    {:noreply, %{state | frame: nil, prev: nil}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -147,8 +140,6 @@ defmodule Padwave.Input.Mapper do
       end
 
     state = detect_shake(now, frame, state)
-    state = emit_new_buttons(state.prev_buttons, frame, state)
-    state = handle_analog(now, frame, state)
     state = track_trigger(:left, frame.l2, state)
     state = track_trigger(:right, frame.r2, state)
     state = track_jack(state, frame, now)
@@ -182,55 +173,9 @@ defmodule Padwave.Input.Mapper do
 
   # -- buttons ---------------------------------------------------------------
 
-  defp emit_new_buttons(prev_buttons, frame, state) do
-    case frame.buttons -- prev_buttons do
-      [] ->
-        state
-
-      pressed ->
-        Enum.reduce(pressed, state, fn
-          :ps, acc ->
-            Process.send_after(self(), {:ps_hold}, @ps_hold_ms)
-            acc
-
-          button, acc ->
-            case Map.get(@bindings, button) do
-              nil -> acc
-              action -> emit(action, acc)
-            end
-        end)
-    end
-  end
-
   # -- d-pad -----------------------------------------------------------------
 
   # -- analogue triggers -----------------------------------------------------
-
-  defp handle_analog(now, frame, state) do
-    state
-    |> trigger(now, :l2, frame.l2, -1)
-    |> trigger(now, :r2, frame.r2, 1)
-  end
-
-  defp trigger(state, now, which, value, direction) do
-    last_key = :"last_#{which}"
-    last = Map.get(state, last_key, 0)
-    deadzone = Config.get(:trigger_deadzone, 30)
-    repeat = Config.get(:trigger_repeat_ms, 110)
-
-    if value >= deadzone and now - last >= repeat do
-      step =
-        cond do
-          value >= 220 -> 4
-          value >= 150 -> 2
-          true -> 1
-        end
-
-      emit({:volume, direction * step}, Map.put(state, last_key, now))
-    else
-      state
-    end
-  end
 
   # -- trigger press/release -------------------------------------------------
 

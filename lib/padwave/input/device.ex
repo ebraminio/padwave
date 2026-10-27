@@ -139,6 +139,7 @@ defmodule Padwave.Input.Device do
   end
 
   defp parse_action("seek " <> value), do: {:seek, String.to_integer(value)}
+  defp parse_action("volume " <> value), do: {:volume, String.to_integer(value)}
   defp parse_action(name), do: String.to_atom(name)
 
   defp find_binary do
