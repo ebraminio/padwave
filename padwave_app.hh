@@ -280,6 +280,7 @@ private:
   bool suspended = false;
   bool paused_by_idle = false;
   bool paused_by_jack = false;
+  bool paused_by_disconnect = false;
   bool idle_volume_saved = false;
   int idle_volume = 0;
   int idle_fade_volume = -1;
@@ -379,7 +380,7 @@ public:
       this->player = nullptr;
     }
     this->player_timer_fd = -1;
-    inputStop();
+    inputStop(false);
     micReset();
   }
 
@@ -402,6 +403,12 @@ public:
           play(start, 0);
         }
       }
+    }
+    if (this->input.fd() < 0 && this->player && this->playing && !this->paused) {
+      this->paused = true;
+      this->paused_by_disconnect = true;
+      playerSend("pause 1\n");
+      this->playhead_dirty = true;
     }
     if (this->input.fd() < 0 && (int)nowMs() >= this->reconnect_at) inputStart();
 
@@ -436,7 +443,7 @@ public:
       if (n > 0) {
         this->input.feed(buf, (size_t)n);
       } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
-        inputStop();
+        inputStop(true);
         this->reconnect_at = (int)(nowMs() + 1500);
       }
     }
@@ -484,6 +491,8 @@ public:
     kvAdd(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
     kvAdd(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
+    kvAdd(buf, cap, &o, "radio.paused_by_disconnect", "%s",
+          this->paused_by_disconnect ? "true" : "false");
     if (this->idle_warning || this->suspended)
       kvAdd(buf, cap, &o, "radio.applied_volume", "%d",
             this->idle_fade_volume >= 0 ? this->idle_fade_volume : 0);
@@ -952,9 +961,15 @@ private:
     serviceLeds();
   }
 
-  void inputStop() {
+  void inputStop(bool pause_playback = false) {
     this->input.close();
     this->controller = false;
+    if (pause_playback && this->player && this->playing && !this->paused) {
+      this->paused = true;
+      this->paused_by_disconnect = true;
+      playerSend("pause 1\n");
+      this->playhead_dirty = true;
+    }
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
     this->rate = 0;
@@ -1057,10 +1072,12 @@ private:
       }
       this->paused_by_volume = false;
       this->paused_by_jack = false;
+      this->paused_by_disconnect = false;
       this->playhead_dirty = true;
     } else {
       this->paused = true;
       this->paused_by_volume = false;
+      this->paused_by_disconnect = false;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
     }
@@ -1082,6 +1099,7 @@ private:
     playerSend(line);
 
     if (v == 0) {
+      this->paused_by_disconnect = false;
       if (this->playing && !this->paused) {
         this->paused = true;
         this->paused_by_volume = true;
@@ -1120,6 +1138,15 @@ private:
     if (!was_connected) {
       a->led_force = true;
       a->serviceLeds();
+      if (a->paused_by_disconnect) {
+        a->paused_by_disconnect = false;
+        a->ensureAudibleVolume();
+        if (a->paused) {
+          a->paused = false;
+          a->playerSend("pause 0\n");
+          a->playhead_dirty = true;
+        }
+      }
     }
     a->lx = (int)f->lx;
     a->ly = (int)f->ly;

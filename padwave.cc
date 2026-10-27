@@ -968,11 +968,24 @@ static void handle_line(struct player *pl, char *line) {
 
 /* ---- engine API --------------------------------------------------------- */
 
+static constexpr long kPlayTickNs = 10667000;   /* 10.667 ms: 93.75 blocks/s */
+static constexpr long kPauseTickNs = 500000000; /* paused: just status/idle */
+
 struct player_handle {
   struct player pl;
   int tfd;
   int64_t last_status;
+  long tick_ns = 0;
 };
+
+static void player_set_tick(player_handle *h, long ns) {
+  if (!h || h->tfd < 0 || h->tick_ns == ns) return;
+  struct itimerspec its;
+  memset(&its, 0, sizeof(its));
+  its.it_interval.tv_nsec = ns;
+  its.it_value = its.it_interval;
+  if (timerfd_settime(h->tfd, 0, &its, nullptr) == 0) h->tick_ns = ns;
+}
 
 void player_set_sink(void *handle, player_status_fn status, player_track_fn track, void *ud) {
   player_handle *h = (player_handle *)handle;
@@ -1008,11 +1021,7 @@ void *player_create(const char *node, bool speaker) {
   pl.frame = av_frame_alloc();
 
   h->tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-  struct itimerspec its;
-  its.it_interval.tv_sec = 0;
-  its.it_interval.tv_nsec = 10667000; /* 10.667 ms: 93.75 blocks/s */
-  its.it_value = its.it_interval;
-  if (h->tfd >= 0) timerfd_settime(h->tfd, 0, &its, NULL);
+  player_set_tick(h, kPlayTickNs);
 
   h->last_status = 0;
   return h;
@@ -1035,12 +1044,14 @@ void player_command(void *handle, const char *line) {
     p = nl + 1;
   }
   if (*p) handle_line(&h->pl, p);
+  player_set_tick(h, (h->pl.playing && !h->pl.paused) ? kPlayTickNs : kPauseTickNs);
 }
 
 void player_step(void *handle) {
   player_handle *h = (player_handle *)handle;
   if (!h) return;
   struct player &pl = h->pl;
+  player_set_tick(h, (pl.playing && !pl.paused) ? kPlayTickNs : kPauseTickNs);
 
   if (pl.playing && !pl.paused) fill(&pl);
 
