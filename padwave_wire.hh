@@ -23,73 +23,43 @@ struct NumType {
 
   constexpr NumType() = default;
 
-  constexpr explicit NumType(Type value) { set(value); }
+  constexpr explicit NumType(Type value) { *this = value; }
 
-  constexpr NumType &operator=(Type o) {
-    set(o);
+  constexpr NumType &operator=(Type value) {
+    UnsignedType v = static_cast<UnsignedType>(value);
+    for (unsigned int i = 0; i < sizeof(Type); i++) {
+      bytes[i] = static_cast<unsigned char>((v & 0xFF));
+      v = static_cast<UnsignedType>((v >> 8));
+    }
     return *this;
   }
 
-  constexpr operator Type() const { return get(); }
-
-  // bytes[0] is the least significant byte, on every host.
-  constexpr Type get() const {
+  constexpr operator Type() const {
     UnsignedType v = 0;
     for (unsigned int i = 0; i < sizeof(Type); i++)
       v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
     return static_cast<Type>(v);
   }
 
-  constexpr void set(Type value) {
-    UnsignedType v = static_cast<UnsignedType>(value);
-    for (unsigned int i = 0; i < sizeof(Type); i++) {
-      bytes[i] = static_cast<unsigned char>((v & 0xFF));
-      v = static_cast<UnsignedType>((v >> 8));
-    }
+  constexpr bool operator==(const NumType &o) const {
+    return static_cast<Type>(*this) == static_cast<Type>(o);
   }
 
-  constexpr bool operator==(const NumType &o) const { return get() == o.get(); }
+  constexpr bool operator!=(const NumType &o) const { return !(*this == o); }
 
-  constexpr bool operator!=(const NumType &o) const { return get() != o.get(); }
+  constexpr NumType &operator+=(Type n) { return *this = static_cast<Type>(*this) + n; }
 
-  constexpr bool operator==(Type o) const { return get() == o; }
+  constexpr NumType &operator-=(Type n) { return *this = static_cast<Type>(*this) - n; }
 
-  constexpr bool operator!=(Type o) const { return get() != o; }
+  constexpr NumType &operator|=(Type n) { return *this = static_cast<Type>(*this) | n; }
 
-  constexpr NumType &operator+=(Type n) {
-    set(static_cast<Type>((get() + n)));
-    return *this;
-  }
+  constexpr NumType &operator&=(Type n) { return *this = static_cast<Type>(*this) & n; }
 
-  constexpr NumType &operator-=(Type n) {
-    set(static_cast<Type>((get() - n)));
-    return *this;
-  }
+  constexpr NumType &operator^=(Type n) { return *this = static_cast<Type>(*this) ^ n; }
 
-  constexpr NumType &operator|=(Type n) {
-    set(static_cast<Type>((get() | n)));
-    return *this;
-  }
+  constexpr NumType &operator++() { return *this = static_cast<Type>(*this) + 1; }
 
-  constexpr NumType &operator&=(Type n) {
-    set(static_cast<Type>((get() & n)));
-    return *this;
-  }
-
-  constexpr NumType &operator^=(Type n) {
-    set(static_cast<Type>((get() ^ n)));
-    return *this;
-  }
-
-  constexpr NumType &operator++() {
-    set(static_cast<Type>((get() + 1)));
-    return *this;
-  }
-
-  constexpr NumType &operator--() {
-    set(static_cast<Type>((get() - 1)));
-    return *this;
-  }
+  constexpr NumType &operator--() { return *this = static_cast<Type>(*this) - 1; }
 
   unsigned char bytes[sizeof(Type)];
 };
@@ -751,7 +721,7 @@ constexpr PWUINT16 kU16 = [] {
   return v;
 }();
 static_assert(kU16.bytes[0] == 0x34 && kU16.bytes[1] == 0x12);
-static_assert(kU16.get() == 0x1234);
+static_assert(kU16 == 0x1234);
 
 constexpr PWUINT32 kU32 = [] {
   PWUINT32 v;
@@ -760,7 +730,7 @@ constexpr PWUINT32 kU32 = [] {
 }();
 static_assert(kU32.bytes[0] == 0x04 && kU32.bytes[1] == 0x03 && kU32.bytes[2] == 0x02 &&
               kU32.bytes[3] == 0x01);
-static_assert(kU32.get() == 0x01020304);
+static_assert(kU32 == 0x01020304);
 
 constexpr PWINT16 kS16 = [] {
   PWINT16 v;
@@ -768,7 +738,7 @@ constexpr PWINT16 kS16 = [] {
   return v;
 }();
 static_assert(kS16.bytes[0] == 0xFE && kS16.bytes[1] == 0xFF);
-static_assert(kS16.get() == -2);
+static_assert(kS16 == -2);
 
 constexpr PWINT32 kS32 = [] {
   PWINT32 v;
@@ -812,23 +782,23 @@ static_assert(offsetof(padwave::OutputBody, valid_flag0) == 0);
 static_assert(offsetof(padwave::OutputBody, headphone_volume) == 4);
 static_assert(offsetof(padwave::OutputBody, lightbar_setup) == 0x29);
 
-static_assert(kReport.report_id.get() == 0x36);
-static_assert(kReport.seq_tag.get() == 0x00);
-static_assert(kReport.config_tag.get() == 0x91);
-static_assert(kReport.config_length.get() == 7);
-static_assert(kReport.enable_mask.get() == padwave::AudioReport::SpeakerOnly);
-static_assert(kReport.haptic_lengths[0].get() == 64);
-static_assert(kReport.haptic_lengths[4].get() == 64);
-static_assert(kReport.counter.get() == 0);
-static_assert(kReport.state_tag.get() == 0x90);
-static_assert(kReport.state_length.get() == 63);
-static_assert(kReport.state.body.valid_flag0.get() == 0xF0);
-static_assert(kReport.state.body.valid_flag1.get() == 0x80);
-static_assert(kReport.state.body.headphone_volume.get() == 0x7F);
-static_assert(kReport.state.body.speaker_volume.get() == 0x64);
-static_assert(kReport.speaker_tag.get() == (padwave::AudioReport::Jack | 0x80));
-static_assert(kReport.speaker_length.get() == 200);
-static_assert(kReport.opus[0].get() == 0);
+static_assert(kReport.report_id == 0x36);
+static_assert(kReport.seq_tag == 0x00);
+static_assert(kReport.config_tag == 0x91);
+static_assert(kReport.config_length == 7);
+static_assert(kReport.enable_mask == padwave::AudioReport::SpeakerOnly);
+static_assert(kReport.haptic_lengths[0] == 64);
+static_assert(kReport.haptic_lengths[4] == 64);
+static_assert(kReport.counter == 0);
+static_assert(kReport.state_tag == 0x90);
+static_assert(kReport.state_length == 63);
+static_assert(kReport.state.body.valid_flag0 == 0xF0);
+static_assert(kReport.state.body.valid_flag1 == 0x80);
+static_assert(kReport.state.body.headphone_volume == 0x7F);
+static_assert(kReport.state.body.speaker_volume == 0x64);
+static_assert(kReport.speaker_tag == (padwave::AudioReport::Jack | 0x80));
+static_assert(kReport.speaker_length == 200);
+static_assert(kReport.opus[0] == 0);
 
 // --- sign / validate / byte copy, all constexpr ---------------------------
 

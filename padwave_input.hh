@@ -149,9 +149,9 @@ private:
 
   void trackSensors(const padwave::InputBody &b) {
     int64_t now = nowMs();
-    bool jack = (b.status1.get() & padwave::InputBody::Headset) != 0;
-    int l2 = b.l2.get(), r2 = b.r2.get();
-    int lx = b.lx.get(), ly = b.ly.get(), rx = b.rx.get(), ry = b.ry.get();
+    bool jack = (b.status1 & padwave::InputBody::Headset) != 0;
+    int l2 = b.l2, r2 = b.r2;
+    int lx = b.lx, ly = b.ly, rx = b.rx, ry = b.ry;
     uint32_t buttons = b.buttons;
     uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
     bool first = !sensors.has_prev;
@@ -165,9 +165,9 @@ private:
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
 
-    double g = sqrt(static_cast<double>(b.accel_x.get()) * b.accel_x.get() +
-                    static_cast<double>(b.accel_y.get()) * b.accel_y.get() +
-                    static_cast<double>(b.accel_z.get()) * b.accel_z.get()) /
+    double g = sqrt(static_cast<double>(b.accel_x) * b.accel_x +
+                    static_cast<double>(b.accel_y) * b.accel_y +
+                    static_cast<double>(b.accel_z) * b.accel_z) /
                8192.0;
     if (g >= 2.25 && now - sensors.last_shake > 1500) {
       emitEvent("shake");
@@ -335,37 +335,37 @@ private:
     struct input_frame f;
     memset(&f, 0, sizeof(f));
     uint32_t buttons = b.buttons;
-    f.seq = b.seq.get();
-    f.lx = b.lx.get();
-    f.ly = b.ly.get();
-    f.rx = b.rx.get();
-    f.ry = b.ry.get();
-    f.l2 = b.l2.get();
-    f.r2 = b.r2.get();
+    f.seq = b.seq;
+    f.lx = b.lx;
+    f.ly = b.ly;
+    f.rx = b.rx;
+    f.ry = b.ry;
+    f.l2 = b.l2;
+    f.r2 = b.r2;
     snprintf(f.dpad, sizeof(f.dpad), "%s", dpadName(buttons & 0x0F));
     buttonsToString(buttons, f.buttons, sizeof(f.buttons));
     f.battery = (b.status0 & 0x0F) * 10 + 5;
     if (f.battery > 100) f.battery = 100;
-    f.charging = b.status0.get() >> 4;
-    f.jack = (b.status1.get() & padwave::InputBody::Headset) ? 1 : 0;
-    f.mic = (b.status1.get() & padwave::InputBody::Microphone) ? 1 : 0;
-    f.temp = b.temperature.get();
-    f.gx = b.gyro_x.get();
-    f.gy = b.gyro_y.get();
-    f.gz = b.gyro_z.get();
-    f.ax = b.accel_x.get();
-    f.ay = b.accel_y.get();
-    f.az = b.accel_z.get();
-    f.tfl = b.trigger_feedback_l.get();
-    f.tfr = b.trigger_feedback_r.get();
+    f.charging = b.status0 >> 4;
+    f.jack = (b.status1 & padwave::InputBody::Headset) ? 1 : 0;
+    f.mic = (b.status1 & padwave::InputBody::Microphone) ? 1 : 0;
+    f.temp = b.temperature;
+    f.gx = b.gyro_x;
+    f.gy = b.gyro_y;
+    f.gz = b.gyro_z;
+    f.ax = b.accel_x;
+    f.ay = b.accel_y;
+    f.az = b.accel_z;
+    f.tfl = b.trigger_feedback_l;
+    f.tfr = b.trigger_feedback_r;
     for (int t = 0; t < 2; t++) {
       const PWUINT8 *touch = t == 0 ? b.touch1 : b.touch2;
-      unsigned contact = touch[0].get();
-      unsigned middle = touch[2].get();
+      unsigned contact = touch[0];
+      unsigned middle = touch[2];
       f.touches[t].active = (contact & 0x80) ? 0 : 1;
       f.touches[t].id = contact & 0x7F;
-      f.touches[t].x = touch[1].get() | ((middle & 0x0F) << 8);
-      f.touches[t].y = (middle >> 4) | (static_cast<unsigned>(touch[3].get()) << 4);
+      f.touches[t].x = touch[1] | ((middle & 0x0F) << 8);
+      f.touches[t].y = (middle >> 4) | (static_cast<unsigned>(touch[3]) << 4);
     }
     size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
     for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
