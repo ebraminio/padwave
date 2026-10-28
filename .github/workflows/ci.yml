@@ -9,32 +9,35 @@ jobs:
     name: build + wire test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Install clang 19 and the audio dependencies
+      - name: Install clang and the audio dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libavformat-dev libavcodec-dev \
+          sudo apt-get install -y clang pkg-config libavformat-dev libavcodec-dev \
             libswresample-dev libavutil-dev libopus-dev libz-dev
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 19
 
       - name: Build
-        run: CXX=clang++-19 ./build.sh
+        run: CXX=clang++ ./build.sh
 
   fuzz-smoke:
     name: fuzz smoke (libFuzzer)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Install clang 19 + compiler-rt
+      # Ubuntu 26.04 (the current ubuntu-latest) ships a recent clang; its own
+      # compiler-rt is enough for -fsanitize=fuzzer. The fallback covers images
+      # where the unversioned package name is not provided.
+      - name: Install clang + compiler-rt
         run: |
           sudo apt-get update
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 19
-          sudo apt-get install -y libclang-rt-19-dev
+          sudo apt-get install -y clang
+          sudo apt-get install -y libclang-rt-dev || \
+            sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
 
       - name: Build fuzzers
-        run: CXX=clang++-19 ./fuzz/build.sh
+        run: CXX=clang++ ./fuzz/build.sh
 
       # Each target gets a scratch corpus so libFuzzer's new units do not dirty
       # the checkout, and a fixed time budget keeps the job predictable.
