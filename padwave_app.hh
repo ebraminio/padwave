@@ -293,8 +293,8 @@ private:
   int trigger_effect_amplitude = 6;
   int trigger_effect_position = 2;
   int trigger_effect_frequency = 25;
-  bool trigger_effects = true;
-  char trigger_effect_preset[32] = "custom";
+  bool trigger_effects = false;
+  char trigger_effect_preset[32] = "none";
 
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
@@ -311,10 +311,15 @@ private:
     int force_pct;
   };
   static constexpr TriggerPreset kTriggerPresets[] = {
-      {"balanced-weapon", 0x25, 20, 60, 85}, {"soft-resistance", 0x21, 10, 50, 30},
-      {"firm-resistance", 0x21, 5, 50, 75},  {"hair-trigger", 0x25, 5, 25, 65},
-      {"pistol-break", 0x25, 20, 55, 95},    {"rifle-break", 0x25, 35, 75, 100},
-      {"machine-gun", 0x26, 15, 80, 85},     {"road-texture", 0x26, 5, 35, 45},
+      {"none", 0x05, 0, 0, 0},
+      {"balanced-weapon", 0x25, 20, 60, 85},
+      {"soft-resistance", 0x21, 10, 50, 30},
+      {"firm-resistance", 0x21, 5, 50, 75},
+      {"hair-trigger", 0x25, 5, 25, 65},
+      {"pistol-break", 0x25, 20, 55, 95},
+      {"rifle-break", 0x25, 35, 75, 100},
+      {"machine-gun", 0x26, 15, 80, 85},
+      {"road-texture", 0x26, 5, 35, 45},
   };
 
   // The state-coloured lightbar and the player-LED ownership. The player's
@@ -931,6 +936,8 @@ public:
   }
 
   int triggerTest(const char *side, long ms, char *out, size_t cap) {
+    if (strcmp(this->trigger_effect_preset, "none") == 0)
+      return snprintf(out, cap, "ok=true\nnote=trigger none\n");
     char request[192];
     if (strcmp(this->trigger_effect_preset, "custom") != 0 &&
         findTriggerPreset(this->trigger_effect_preset))

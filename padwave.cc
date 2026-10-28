@@ -94,8 +94,6 @@ static inline bool write_all(int fd, const void *buf, size_t len) {
   return true;
 }
 
-
-
 // The tiny status bus from the native processes to the web front.
 //
 // Unix datagrams, one line each, fixed field order so the receiver can use

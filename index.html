@@ -408,7 +408,8 @@
         <b>trigger effect</b>
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
         <select id="labTrigPreset" title="DS4Windows Trigger Lab presets">
-          <option value="custom" selected>custom 0x26</option>
+          <option value="none" selected>none</option>
+          <option value="custom">custom 0x26</option>
           <option value="balanced-weapon">balanced weapon</option>
           <option value="soft-resistance">soft resistance</option>
           <option value="firm-resistance">firm resistance</option>
@@ -631,8 +632,8 @@ function render(s) {
   if (document.activeElement !== $("#labP2") && cfg.trigger_effect_frequency != null)
     $("#labP2").value = cfg.trigger_effect_frequency;
   if (document.activeElement !== $("#labTrigPreset")) {
-    $("#labTrigPreset").value = cfg.trigger_effect_preset || "custom";
-    if (!$("#labTrigPreset").value) $("#labTrigPreset").value = "custom";
+    $("#labTrigPreset").value = cfg.trigger_effect_preset || "none";
+    if (!$("#labTrigPreset").value) $("#labTrigPreset").value = "none";
     syncTriggerControls();
   }
   if (document.activeElement !== $("#teOn"))
@@ -996,13 +997,18 @@ function syncTriggerControls() {
   for (const id of ["labP0", "labP1", "labP2"]) {
     $("#" + id).disabled = !custom;
   }
-  $("#labTrigHint").textContent = custom ? "custom: position / amplitude / frequency" : "preset";
+  $("#labTrigHint").textContent = $("#labTrigPreset").value === "none"
+    ? "off"
+    : (custom ? "custom: position / amplitude / frequency" : "preset");
 }
 
 function triggerPayload(side, ms) {
   const payload = { kind: "trigger", side, ms };
   const preset = $("#labTrigPreset").value;
-  if (preset === "custom") {
+  if (preset === "none") {
+    payload.effect = "off";
+    payload.ms = 0;
+  } else if (preset === "custom") {
     payload.effect = "vibration";
     payload.position = Number($("#labP0").value);
     payload.amplitude = Number($("#labP1").value);
