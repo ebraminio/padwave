@@ -119,7 +119,7 @@ static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
   uint32_t c = crc32_update(0, &seed, 1);
   auto raw = __builtin_bit_cast(WireBytes<Report>, report);
-  return crc32_update(c, raw.data, offsetof(Report, crc));
+  return crc32_update(c, raw.data, sizeof(Report) - sizeof(Report::crc));
 }
 
 // ===========================================================================
@@ -313,14 +313,16 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
-  PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
-  PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
-  PWUINT8 rx;                 // +0x02  right stick X
-  PWUINT8 ry;                 // +0x03  right stick Y
-  PWUINT8 l2;                 // +0x04  L2 analogue
-  PWUINT8 r2;                 // +0x05  R2 analogue
-  PWUINT8 seq;                // +0x06  report sequence number
-  PWUINT32 buttons;           // +0x07  Buttons bits (d-pad in bits 0-3)
+  PWUINT8 lx;  // +0x00  left stick X, 0..255 (128 = centre)
+  PWUINT8 ly;  // +0x01  left stick Y, 0 = up
+  PWUINT8 rx;  // +0x02  right stick X
+  PWUINT8 ry;  // +0x03  right stick Y
+  PWUINT8 l2;  // +0x04  L2 analogue
+  PWUINT8 r2;  // +0x05  R2 analogue
+  PWUINT8 seq; // +0x06  report sequence number
+private:
+  PWUINT32 buttons_; // +0x07  Buttons bits (d-pad in bits 0-3)
+public:
   PWUINT8 incremental;        // +0x0b  increments every report, wraps at 256
   PWUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
@@ -347,11 +349,13 @@ struct InputBody {
                               //        behaves like a second device clock
   PWUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
   PWUINT8 status0;            // +0x34  battery (low nibble) + charging (high)
-  PWUINT8 status1;            // +0x35  Status1 bits
-  PWUINT8 status2;            // +0x36  constant 1 in every capture so far
-  PWUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
-                              //        per-report MAC/nonce; not verified
-                              //        against the pairing handshake
+private:
+  PWUINT8 status1_; // +0x35  Status1 bits
+public:
+  PWUINT8 status2;     // +0x36  constant 1 in every capture so far
+  PWUINT8 aes_cmac[8]; // +0x37  high entropy in every report, like a
+                       //        per-report MAC/nonce; not verified
+                       //        against the pairing handshake
 
   enum : uint8_t { Size = 63 };
 
@@ -369,9 +373,7 @@ struct InputBody {
     None = 8,
   };
 
-  Dpad get_dpad() const {
-    return static_cast<Dpad>(buttons & 0x0F);
-  }
+  Dpad get_dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttons_) & 0x0F); }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
@@ -380,7 +382,7 @@ struct InputBody {
   //   +0x09  bits 0 ps, 1 touchpad, 2 mute, 3 reserved, 4 fn1, 5 fn2,
   //          6 left_paddle, 7 right_paddle
   //   +0x0a  eight bits the kernel does not read; maybe L5/R5
-  enum Buttons : uint32_t {
+  enum class Buttons : uint32_t {
     // +0x07
     ButtonSquare = 1u << 4,
     ButtonCross = 1u << 5,
@@ -408,10 +410,26 @@ struct InputBody {
   };
 
   // +0x35. Bits 2-7 are reserved; bit 2 happens to be set on this pad.
-  enum Status1 : uint8_t {
+  enum class Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
   };
+
+  constexpr Buttons buttons() const {
+    return static_cast<Buttons>(static_cast<uint32_t>(buttons_));
+  }
+
+  constexpr bool has(Buttons b) const {
+    return (static_cast<uint32_t>(buttons_) & static_cast<uint32_t>(b)) != 0;
+  }
+
+  constexpr bool headset() const {
+    return (static_cast<uint8_t>(status1_) & static_cast<uint8_t>(Status1::Headset)) != 0;
+  }
+
+  constexpr bool microphone() const {
+    return (static_cast<uint8_t>(status1_) & static_cast<uint8_t>(Status1::Microphone)) != 0;
+  }
 };
 
 static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 bytes");
@@ -540,32 +558,40 @@ struct AudioReport {
 
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
   // opens it and the input stream then also carries 0xD4 frames.
-  enum EnableMask : uint8_t {
+  enum class EnableMask : uint8_t {
     MicrophoneCapture = 0x01,
     SpeakerOnly = 0xFE,
     SpeakerAndMic = 0xFF,
   };
 
   // +0x08e: 0x13 for the membrane speaker, 0x16 for the headphone jack.
-  enum SpeakerTag : uint8_t {
+  enum class SpeakerTag : uint8_t {
     Speaker = 0x13,
     Jack = 0x16,
   };
 
+  constexpr EnableMask enableMask() const {
+    return static_cast<EnableMask>(static_cast<uint8_t>(enable_mask));
+  }
+
+  constexpr SpeakerTag speakerTag() const {
+    return static_cast<SpeakerTag>(static_cast<uint8_t>(speaker_tag) & 0x7F);
+  }
+
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
-  constexpr void init(SpeakerTag tag, EnableMask mask = SpeakerOnly) {
+  constexpr void init(SpeakerTag tag, EnableMask mask = EnableMask::SpeakerOnly) {
     *this = AudioReport{};
     report_id = ReportId;
     config_tag = 0x11 | 0x80;
     config_length = 7;
-    enable_mask = mask;
+    enable_mask = static_cast<uint8_t>(mask);
     for (int i = 0; i < 5; i++) haptic_lengths[i] = HapticSize;
     state_tag = 0x10 | 0x80;
     state_length = StateSize;
     haptics_tag = 0x12 | 0x80;
     haptics_length = HapticSize;
-    speaker_tag = static_cast<uint8_t>((tag | 0x80));
+    speaker_tag = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
     speaker_length = OpusSize;
   }
 
@@ -765,7 +791,7 @@ static_assert(kChained == 0xCBF43926u);
 
 constexpr padwave::AudioReport kReport = [] {
   padwave::AudioReport r{};
-  r.init(padwave::AudioReport::Jack, padwave::AudioReport::SpeakerOnly);
+  r.init(padwave::AudioReport::SpeakerTag::Jack, padwave::AudioReport::EnableMask::SpeakerOnly);
   r.state.body.init(padwave::OutputBody::Headphones);
   r.seq_tag = 0x00;
   r.counter = 0;
@@ -790,7 +816,7 @@ static_assert(kReport.report_id == 0x36);
 static_assert(kReport.seq_tag == 0x00);
 static_assert(kReport.config_tag == 0x91);
 static_assert(kReport.config_length == 7);
-static_assert(kReport.enable_mask == padwave::AudioReport::SpeakerOnly);
+static_assert(kReport.enableMask() == padwave::AudioReport::EnableMask::SpeakerOnly);
 static_assert(kReport.haptic_lengths[0] == 64);
 static_assert(kReport.haptic_lengths[4] == 64);
 static_assert(kReport.counter == 0);
@@ -800,7 +826,7 @@ static_assert(kReport.state.body.valid_flag0 == 0xF0);
 static_assert(kReport.state.body.valid_flag1 == 0x80);
 static_assert(kReport.state.body.headphone_volume == 0x7F);
 static_assert(kReport.state.body.speaker_volume == 0x64);
-static_assert(kReport.speaker_tag == (padwave::AudioReport::Jack | 0x80));
+static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
 static_assert(kReport.speaker_length == 200);
 static_assert(kReport.opus[0] == 0);
 

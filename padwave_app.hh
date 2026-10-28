@@ -1336,36 +1336,36 @@ private:
     return "none";
   }
 
-  static void buttonsToString(uint32_t buttons, char *out, size_t cap) {
+  static void buttonsToString(padwave::InputBody::Buttons buttons, char *out, size_t cap) {
     struct {
-      uint32_t bit;
+      padwave::InputBody::Buttons bit;
       const char *name;
     } names[] = {
-        {padwave::InputBody::ButtonSquare, "square"},
-        {padwave::InputBody::ButtonCross, "cross"},
-        {padwave::InputBody::ButtonCircle, "circle"},
-        {padwave::InputBody::ButtonTriangle, "triangle"},
-        {padwave::InputBody::L1, "l1"},
-        {padwave::InputBody::R1, "r1"},
-        {padwave::InputBody::L2, "l2"},
-        {padwave::InputBody::R2, "r2"},
-        {padwave::InputBody::Create, "create"},
-        {padwave::InputBody::Options, "options"},
-        {padwave::InputBody::L3, "l3"},
-        {padwave::InputBody::R3, "r3"},
-        {padwave::InputBody::Ps, "ps"},
-        {padwave::InputBody::Touchpad, "touchpad"},
-        {padwave::InputBody::Mute, "mute"},
-        {padwave::InputBody::Fn1, "fn1"},
-        {padwave::InputBody::Fn2, "fn2"},
-        {padwave::InputBody::LeftPaddle, "left_paddle"},
-        {padwave::InputBody::RightPaddle, "right_paddle"},
+        {padwave::InputBody::Buttons::ButtonSquare, "square"},
+        {padwave::InputBody::Buttons::ButtonCross, "cross"},
+        {padwave::InputBody::Buttons::ButtonCircle, "circle"},
+        {padwave::InputBody::Buttons::ButtonTriangle, "triangle"},
+        {padwave::InputBody::Buttons::L1, "l1"},
+        {padwave::InputBody::Buttons::R1, "r1"},
+        {padwave::InputBody::Buttons::L2, "l2"},
+        {padwave::InputBody::Buttons::R2, "r2"},
+        {padwave::InputBody::Buttons::Create, "create"},
+        {padwave::InputBody::Buttons::Options, "options"},
+        {padwave::InputBody::Buttons::L3, "l3"},
+        {padwave::InputBody::Buttons::R3, "r3"},
+        {padwave::InputBody::Buttons::Ps, "ps"},
+        {padwave::InputBody::Buttons::Touchpad, "touchpad"},
+        {padwave::InputBody::Buttons::Mute, "mute"},
+        {padwave::InputBody::Buttons::Fn1, "fn1"},
+        {padwave::InputBody::Buttons::Fn2, "fn2"},
+        {padwave::InputBody::Buttons::LeftPaddle, "left_paddle"},
+        {padwave::InputBody::Buttons::RightPaddle, "right_paddle"},
     };
 
     size_t o = 0;
     out[0] = 0;
     for (auto &n : names) {
-      if (!(buttons & n.bit)) continue;
+      if (!(static_cast<uint32_t>(buttons) & static_cast<uint32_t>(n.bit))) continue;
       int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
       if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
       o += static_cast<size_t>(w);
@@ -1397,10 +1397,10 @@ private:
     this->r2 = b.r2;
     this->battery = (b.status0 & 0x0F) * 10 + 5;
     if (this->battery > 100) this->battery = 100;
-    this->jack = (b.status1 & padwave::InputBody::Headset) ? true : false;
+    this->jack = b.headset();
     this->temp = b.temperature;
     snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.get_dpad()));
-    buttonsToString(b.buttons, this->buttons, sizeof(this->buttons));
+    buttonsToString(b.buttons(), this->buttons, sizeof(this->buttons));
     unsigned charge = b.status0 >> 4;
     this->raw[0] = 0;
     size_t r = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;

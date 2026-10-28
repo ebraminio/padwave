@@ -59,7 +59,7 @@ private:
   };
 
   struct Binding {
-    uint32_t bit;
+    padwave::InputBody::Buttons bit;
     const char *action;
   };
 
@@ -73,36 +73,37 @@ private:
   DpadState dpad_state;
 
   static constexpr Binding kBindings[] = {
-      {padwave::InputBody::ButtonTriangle, "toggle_pause"},
-      {padwave::InputBody::ButtonCircle, "play"},
-      {padwave::InputBody::ButtonSquare, "shuffle_folder"},
-      {padwave::InputBody::L1, "previous"},
-      {padwave::InputBody::R1, "next"},
-      {padwave::InputBody::Create, "previous"},
-      {padwave::InputBody::Options, "next"},
-      {padwave::InputBody::Touchpad, "toggle_mute"},
-      {padwave::InputBody::Mute, "toggle_mute"},
-      {padwave::InputBody::L3, "next"},
-      {padwave::InputBody::R3, "previous"},
-      {padwave::InputBody::LeftPaddle, "previous"},
-      {padwave::InputBody::RightPaddle, "next"},
-      {padwave::InputBody::Fn1, "toggle_pause"},
-      {padwave::InputBody::Fn2, "toggle_mute"},
+      {padwave::InputBody::Buttons::ButtonTriangle, "toggle_pause"},
+      {padwave::InputBody::Buttons::ButtonCircle, "play"},
+      {padwave::InputBody::Buttons::ButtonSquare, "shuffle_folder"},
+      {padwave::InputBody::Buttons::L1, "previous"},
+      {padwave::InputBody::Buttons::R1, "next"},
+      {padwave::InputBody::Buttons::Create, "previous"},
+      {padwave::InputBody::Buttons::Options, "next"},
+      {padwave::InputBody::Buttons::Touchpad, "toggle_mute"},
+      {padwave::InputBody::Buttons::Mute, "toggle_mute"},
+      {padwave::InputBody::Buttons::L3, "next"},
+      {padwave::InputBody::Buttons::R3, "previous"},
+      {padwave::InputBody::Buttons::LeftPaddle, "previous"},
+      {padwave::InputBody::Buttons::RightPaddle, "next"},
+      {padwave::InputBody::Buttons::Fn1, "toggle_pause"},
+      {padwave::InputBody::Buttons::Fn2, "toggle_mute"},
   };
 
-  void trackButtons(uint32_t buttons) {
-    uint32_t pressed = buttons & ~actions.prev_buttons;
-    actions.prev_buttons = buttons;
+  void trackButtons(padwave::InputBody::Buttons buttons) {
+    uint32_t raw = static_cast<uint32_t>(buttons);
+    uint32_t pressed = raw & ~actions.prev_buttons;
+    actions.prev_buttons = raw;
 
     for (auto &b : kBindings)
-      if (pressed & b.bit) emitAction(b.action, 0);
+      if (pressed & static_cast<uint32_t>(b.bit)) emitAction(b.action, 0);
 
-    if (pressed & padwave::InputBody::Ps) {
+    if (pressed & static_cast<uint32_t>(padwave::InputBody::Buttons::Ps)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!(buttons & padwave::InputBody::Ps)) {
+    if (!(raw & static_cast<uint32_t>(padwave::InputBody::Buttons::Ps))) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= 2000) {
       emitAction("suspend", 0);
@@ -126,10 +127,10 @@ private:
 
   void trackSensors(const padwave::InputBody &b) {
     int64_t now = nowMs();
-    bool jack = (b.status1 & padwave::InputBody::Headset) != 0;
+    bool jack = b.headset();
     int l2 = b.l2, r2 = b.r2;
     int lx = b.lx, ly = b.ly, rx = b.rx, ry = b.ry;
-    uint32_t buttons = b.buttons;
+    uint32_t buttons = static_cast<uint32_t>(b.buttons());
     uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
     bool first = !sensors.has_prev;
 
@@ -258,7 +259,7 @@ private:
   void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
     trackDpad(b.get_dpad());
-    trackButtons(b.buttons);
+    trackButtons(b.buttons());
     trackTriggers(b.l2, b.r2);
     trackSensors(b);
   }

@@ -507,8 +507,10 @@ private:
   void sendReport(const uint8_t *opus, int len) {
     padwave::AudioReport report;
 
-    report.init(speaker ? padwave::AudioReport::Speaker : padwave::AudioReport::Jack,
-                mic ? padwave::AudioReport::SpeakerAndMic : padwave::AudioReport::SpeakerOnly);
+    report.init(speaker ? padwave::AudioReport::SpeakerTag::Speaker
+                        : padwave::AudioReport::SpeakerTag::Jack,
+                mic ? padwave::AudioReport::EnableMask::SpeakerAndMic
+                    : padwave::AudioReport::EnableMask::SpeakerOnly);
 
     report.state.body = state;
     report.state.body.valid_flag0 |=
