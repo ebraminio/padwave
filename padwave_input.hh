@@ -77,15 +77,15 @@ private:
       {padwave::InputBody::ButtonCircle, "play"},
       {padwave::InputBody::ButtonSquare, "shuffle_folder"},
       {padwave::InputBody::L1, "previous"},
-      {padwave::InputBody::R1, "next_random"},
+      {padwave::InputBody::R1, "next"},
       {padwave::InputBody::Create, "previous"},
-      {padwave::InputBody::Options, "next_random"},
+      {padwave::InputBody::Options, "next"},
       {padwave::InputBody::Touchpad, "toggle_mute"},
       {padwave::InputBody::Mute, "toggle_mute"},
-      {padwave::InputBody::L3, "next_random"},
+      {padwave::InputBody::L3, "next"},
       {padwave::InputBody::R3, "previous"},
       {padwave::InputBody::LeftPaddle, "previous"},
-      {padwave::InputBody::RightPaddle, "next_random"},
+      {padwave::InputBody::RightPaddle, "next"},
       {padwave::InputBody::Fn1, "toggle_pause"},
       {padwave::InputBody::Fn2, "toggle_mute"},
   };
@@ -218,22 +218,20 @@ private:
       dpad_state.prev = dpad;
       dpad_state.hold_dir = 0;
 
-      switch (dpad) {
-      case padwave::InputBody::Dpad::Left:
+      if (dpad == padwave::InputBody::Dpad::Left) {
         emitAction("seek", -6);
         dpad_state.hold_dir = -1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-        break;
-      case padwave::InputBody::Dpad::Right:
+      } else if (dpad == padwave::InputBody::Dpad::Right) {
         emitAction("seek", 6);
         dpad_state.hold_dir = 1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-        break;
-      case padwave::InputBody::Dpad::Up: emitAction("next_random", 0); break;
-      case padwave::InputBody::Dpad::Down: emitAction("previous", 0); break;
-      default: break;
+      } else if (dpad == padwave::InputBody::Dpad::Up) {
+        emitAction("next", 0);
+      } else if (dpad == padwave::InputBody::Dpad::Down) {
+        emitAction("previous", 0);
       }
       return;
     }

@@ -1102,6 +1102,26 @@ private:
     paused = false;
     playing = true;
     playhead_dirty = true;
+    queueTrack(nextTrackIndex(idx));
+  }
+
+  int nextTrackIndex(int from) const {
+    if (this->count == 0) return -1;
+    if (from < 0 || from >= this->count) return 0;
+    return (from + 1) % this->count;
+  }
+
+  int previousTrackIndex(int from) const {
+    if (this->count == 0) return -1;
+    if (from < 0 || from >= this->count) return this->count - 1;
+    return (from + this->count - 1) % this->count;
+  }
+
+  void queueTrack(int index) {
+    if (index < 0 || index >= this->count || this->count <= 1) return;
+    char line[kMaxPath + 16];
+    snprintf(line, sizeof(line), "queue %s\n", this->tracks[index].path);
+    playerSend(line);
   }
 
   void play(int index, long start_ms) {
@@ -1124,30 +1144,25 @@ private:
     this->idle_since = nowMs();
     this->playhead_dirty = true;
 
-    // Gapless: queue a different track for the junction.
-    if (this->count > 1) {
-      int next = rand() % this->count;
-      if (next == index) next = (next + 1) % this->count;
-      char q[kMaxPath + 16];
-      snprintf(q, sizeof(q), "queue %s\n", this->tracks[next].path);
-      playerSend(q);
-    }
+    // Gapless: queue the next track in the sorted list for the junction.
+    queueTrack(nextTrackIndex(index));
   }
 
   void next() {
     if (this->count == 0) return;
-    int next = rand() % this->count;
-    if (this->count > 1 && next == this->current) next = (next + 1) % this->count;
-    play(next, 0);
+    play(nextTrackIndex(this->current), 0);
+  }
+
+  void nextRandom() {
+    if (this->count == 0) return;
+    int index = rand() % this->count;
+    if (this->count > 1 && index == this->current) index = nextTrackIndex(index);
+    play(index, 0);
   }
 
   void previous() {
-    if (this->history_len > 0) {
-      int prev = this->history[--this->history_len];
-      play(prev, 0);
-    } else if (this->current > 0) {
-      play(this->current - 1, 0);
-    }
+    if (this->count == 0) return;
+    play(previousTrackIndex(this->current), 0);
   }
 
   void shuffleFolder() {
@@ -1310,18 +1325,15 @@ private:
   }
 
   static const char *dpadName(padwave::InputBody::Dpad dpad) {
-    switch (dpad) {
-    case padwave::InputBody::Dpad::Up: return "up";
-    case padwave::InputBody::Dpad::UpRight: return "up_right";
-    case padwave::InputBody::Dpad::Right: return "right";
-    case padwave::InputBody::Dpad::DownRight: return "down_right";
-    case padwave::InputBody::Dpad::Down: return "down";
-    case padwave::InputBody::Dpad::DownLeft: return "down_left";
-    case padwave::InputBody::Dpad::Left: return "left";
-    case padwave::InputBody::Dpad::UpLeft: return "up_left";
-    case padwave::InputBody::Dpad::None: return "none";
-    default: return "none";
-    }
+    if (dpad == padwave::InputBody::Dpad::Up) return "up";
+    if (dpad == padwave::InputBody::Dpad::UpRight) return "up_right";
+    if (dpad == padwave::InputBody::Dpad::Right) return "right";
+    if (dpad == padwave::InputBody::Dpad::DownRight) return "down_right";
+    if (dpad == padwave::InputBody::Dpad::Down) return "down";
+    if (dpad == padwave::InputBody::Dpad::DownLeft) return "down_left";
+    if (dpad == padwave::InputBody::Dpad::Left) return "left";
+    if (dpad == padwave::InputBody::Dpad::UpLeft) return "up_left";
+    return "none";
   }
 
   static void buttonsToString(uint32_t buttons, char *out, size_t cap) {
@@ -1481,8 +1493,10 @@ private:
       return;
     }
 
-    if (strcmp(name, "next") == 0 || strcmp(name, "next_random") == 0)
+    if (strcmp(name, "next") == 0)
       next();
+    else if (strcmp(name, "next_random") == 0)
+      nextRandom();
     else if (strcmp(name, "previous") == 0)
       previous();
     else if (strcmp(name, "shuffle_folder") == 0)
