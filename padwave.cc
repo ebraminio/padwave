@@ -591,12 +591,6 @@ private:
   }
 };
 
-int server_main(int argc, char **argv) {
-  static Server server{}; // connection table in BSS; the App stays on the stack
-  int port = argc > 1 ? atoi(argv[1]) : 8787;
-  return server.run(port);
-}
-
 // padwave — one binary, one process, one thread.
 //
 //   padwave [port]    the app: panel, radio, player and input decoder
@@ -604,4 +598,8 @@ int server_main(int argc, char **argv) {
 // All of it is in this translation unit; padwave_app.hh, padwave_player.hh,
 // padwave_input.hh and padwave_http.hh describe the parts. The wire format is
 // in padwave_wire.hh, and every part uses the same schema.
-int main(int argc, char **argv) { return server_main(argc, argv); }
+int main(int argc, char **argv) {
+  static Server server{}; // connection table in BSS; the App stays on the stack
+  int port = argc > 1 ? atoi(argv[1]) : 8787;
+  return server.run(port);
+}
