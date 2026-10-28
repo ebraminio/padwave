@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `cef9f26`
+- HEAD: latest `main`; the behavior described here landed through `426b965`
   (later commits are comments/formatting/documentation). `git log --oneline` for
   detail. `SeparateDefinitionBlocks: Always` is enabled.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
