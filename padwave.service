@@ -1,5 +1,5 @@
 [Unit]
-Description=padwave — DualSense radio
+Description=padwave — DualSense music player
 After=bluetooth.target network-online.target
 Wants=bluetooth.target
 

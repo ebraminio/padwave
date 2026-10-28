@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# padwave-ctl — drive the Pi's radio from anywhere on the LAN.
+# padwave-ctl — drive the player from anywhere on the LAN.
 #
 #   padwave-ctl status
 #   padwave-ctl play | pause | next | prev | shuffle
@@ -8,10 +8,10 @@
 #   padwave-ctl seek +30
 #   padwave-ctl config
 #
-# Point it at another host with PADWAVE_URL=http://192.168.1.175:8787
+# Point it at another host with PADWAVE_URL=http://host:8787
 set -euo pipefail
 
-BASE="${PADWAVE_URL:-http://192.168.1.175:8787}"
+BASE="${PADWAVE_URL:-http://127.0.0.1:8787}"
 
 post() {
   curl -fsS -X POST "$BASE/api/command" \

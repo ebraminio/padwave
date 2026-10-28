@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>padwave — controller radio</title>
+<title>padwave — controller music</title>
 <style>
   :root {
     --bg: #0a0c11;
@@ -228,7 +228,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="brand"><h1>PADWAVE</h1><span>dualsense radio</span></div>
+    <div class="brand"><h1>PADWAVE</h1><span>dualsense music</span></div>
     <div class="chips">
       <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
       <span class="chip">battery <b id="battText">—</b></span>
@@ -323,7 +323,7 @@
       </div>
       <p style="color:var(--muted);font-size:11.5px;margin:10px 0 0">
         Sticks, gyro and accelerometer are decoded on every report but deliberately
-        <em>not</em> used to keep the radio awake — worn sticks jitter and a controller
+        <em>not</em> used to keep playback awake — worn sticks jitter and a controller
         on a table is never perfectly still. One exception: <b>a shake over 2.25 g</b>
         cancels the sleep timer, the same rule AntennaPod uses for shake-to-reset.
       </p>
