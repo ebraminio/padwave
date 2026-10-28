@@ -140,10 +140,11 @@ player, the panel with controller state and SSE, and the LAN API.
 
 The controller lab works through the player's `fields` reports (lightbar,
 player LEDs, power save, rumble, trigger effects, raw field maps), with timed
-rumble/trigger release. Trigger effects use the eight DS4Windows Trigger Lab
-presets or a custom 0x26 vibration; the selected preset and custom
-position/amplitude/frequency are also used by the "on volume" buzz and both
-test buttons. Config, volume and the playhead persist to
+rumble/trigger release. Trigger mode defaults to none; the lab can opt into
+the eight DS4Windows Trigger Lab presets or a custom 0x26 vibration. The
+selected preset and custom position/amplitude/frequency are also used by the
+"on volume" buzz (off by default) and both test buttons. Config, volume and the
+playhead persist to
 `~/.config/padwave/config`; the app resumes the saved station, offset and
 volume.
 

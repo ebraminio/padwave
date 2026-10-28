@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `00e81b3`
+- HEAD: latest `main`; the behavior described here landed through `5accbbb`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -25,7 +25,7 @@
   jack pause, Opus mic level/monitor, volume-zero == pause, state-coloured
   lightbar + battery-bar player LEDs, controller-loss auto-pause + slow paused
   player tick, confirmed Rumble|Haptics main-motor fix, DS4Windows trigger
-  presets + unified trigger lab, host-driven lightbar pulse, charging lightbar, persisted volume,
+  presets + unified trigger lab (default none), host-driven lightbar pulse, charging lightbar, persisted volume,
   mic/playback exclusion + pause-auto-mic + mute-button LED.
 
 ## Pi Bluetooth tuning
