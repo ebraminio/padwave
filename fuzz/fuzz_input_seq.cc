@@ -6,16 +6,7 @@
 
 extern "C" size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
 
-#include "padwave_input.hh"
-
-// The fuzzer never attaches an App, so the App-facing emit hooks are no-ops.
-void Input::emitFrameToApp(const input_frame *) {}
-
-void Input::emitAction(const char *, int) {}
-
-void Input::emitEvent(const char *) {}
-
-void Input::emitMic(const uint8_t *, size_t) {}
+#include "padwave_app_stub.hh"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   Input h;
