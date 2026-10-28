@@ -30,5 +30,6 @@ BreakBeforeBinaryOperators: None
 Cpp11BracedListStyle: true
 KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 1
+SeparateDefinitionBlocks: Always
 SpaceAfterCStyleCast: false
 SpacesBeforeTrailingComments: 1

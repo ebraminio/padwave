@@ -200,11 +200,14 @@ private:
   long tick_ns = 0;
 
   static inline volatile sig_atomic_t s_running = 1;
+
   static void onSignal(int) { s_running = 0; }
+
   static constexpr long kPlayTickNs = 10667000;
   static constexpr long kPauseTickNs = 500000000;
 
   static int countOf(int head, int tail, int size) { return (head - tail + size) % size; }
+
   static void warmFile(const char *path) {
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd >= 0) {
@@ -213,19 +216,24 @@ private:
       if (getenv("PADWAVE_DEBUG")) fprintf(stderr, "warm %s\n", path);
     }
   }
+
   int ringLen() const { return countOf(head, tail, RING_BLOCKS); }
+
   int nextRingLen() const { return countOf(nhead, ntail, RING_BLOCKS); }
+
   void closeFile() {
     cur.close();
     head = tail = 0;
     acc_frames = 0;
   }
+
   void closeNext() {
     nxt.close();
     nhead = ntail = 0;
     nacc_frames = 0;
     has_next = false;
   }
+
   bool openFile(const char *path) {
     closeFile();
     if (!cur.open(path)) return false;
@@ -237,6 +245,7 @@ private:
     base_ms = 0;
     return true;
   }
+
   void fillInto(File *f, block_t *ring, int *head, int *tail, float acc[IN_FRAMES][CHANNELS],
                 int *acc_frames, int high, int64_t *pushed) {
     if (!f->fmt || paused) return;
@@ -293,13 +302,16 @@ private:
       }
     }
   }
+
   void fill() {
     fillInto(&cur, ring, &head, &tail, acc, &acc_frames, RING_HIGH, &pushed);
     eof = cur.eof;
   }
+
   void fillNext() {
     fillInto(&nxt, nring, &nhead, &ntail, nacc, &nacc_frames, RING_HIGH, &npushed);
   }
+
   void promote() {
     cur.close();
     cur = nxt;
@@ -326,18 +338,21 @@ private:
     if (track_fn) track_fn(path, sink_ud);
     fflush(stdout);
   }
+
   bool takeBlock(float out[IN_FRAMES][CHANNELS]) {
     if (tail == head) return false;
     memcpy(out, ring[tail], sizeof(ring[0]));
     tail = (tail + 1) % RING_BLOCKS;
     return true;
   }
+
   bool takeNextBlock(float out[IN_FRAMES][CHANNELS]) {
     if (ntail == nhead) return false;
     memcpy(out, nring[ntail], sizeof(nring[0]));
     ntail = (ntail + 1) % RING_BLOCKS;
     return true;
   }
+
   void finishFade() {
     cur.close();
     cur = nxt;
@@ -380,6 +395,7 @@ private:
       fflush(stdout);
     }
   }
+
   void sendReport(const uint8_t *opus, int len) {
     padwave::AudioReport report;
 
@@ -429,6 +445,7 @@ private:
     counter++;
     sent++;
   }
+
   void handleLine(char *line) {
     char path[1024];
     long value;
@@ -598,6 +615,7 @@ private:
 
     if (strncmp(line, "quit", 4) == 0) s_running = 0;
   }
+
   void tick() {
     float block[IN_FRAMES][CHANNELS];
 
@@ -673,10 +691,13 @@ private:
 
 public:
   Player() = default;
+
   ~Player() { destroy(); }
 
   bool valid() const { return enc != nullptr; }
+
   explicit operator bool() const { return valid(); }
+
   int timerFd() const { return tfd; }
 
   void setSink(player_status_fn status, player_track_fn track, void *ud) {

@@ -22,6 +22,7 @@ struct NumType {
   static constexpr unsigned int static_size = sizeof(Type);
 
   NumType() = default;
+
   explicit NumType(Type value) { set(value); }
 
   NumType &operator=(Type o) {
@@ -48,26 +49,33 @@ struct NumType {
   }
 
   bool operator==(const NumType &o) const { return get() == o.get(); }
+
   bool operator!=(const NumType &o) const { return get() != o.get(); }
+
   bool operator==(Type o) const { return get() == o; }
+
   bool operator!=(Type o) const { return get() != o; }
 
   NumType &operator+=(Type n) {
     set((Type)(get() + n));
     return *this;
   }
+
   NumType &operator-=(Type n) {
     set((Type)(get() - n));
     return *this;
   }
+
   NumType &operator|=(Type n) {
     set((Type)(get() | n));
     return *this;
   }
+
   NumType &operator&=(Type n) {
     set((Type)(get() & n));
     return *this;
   }
+
   NumType &operator^=(Type n) {
     set((Type)(get() ^ n));
     return *this;
@@ -77,6 +85,7 @@ struct NumType {
     set((Type)(get() + 1));
     return *this;
   }
+
   NumType &operator--() {
     set((Type)(get() - 1));
     return *this;
@@ -457,6 +466,7 @@ struct InputReport {
   };
 
   void sign() { crc = crc_of(*this); }
+
   bool valid() const { return crc == crc_of(*this); }
 };
 

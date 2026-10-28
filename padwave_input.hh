@@ -33,6 +33,7 @@ struct input_touch {
   unsigned id;
   unsigned x, y;
 };
+
 struct input_frame {
   unsigned seq;
   unsigned lx, ly, rx, ry, l2, r2;
@@ -49,6 +50,7 @@ struct input_frame {
   struct input_touch touches[2];
   char raw[512];
 };
+
 typedef void (*input_frame_fn)(const struct input_frame *, void *);
 typedef void (*input_action_fn)(const char *name, int value, void *);
 typedef void (*input_event_fn)(const char *name, void *);
@@ -351,6 +353,7 @@ private:
         {padwave::InputBody::LeftPaddle, "left_paddle"},
         {padwave::InputBody::RightPaddle, "right_paddle"},
     };
+
     size_t o = 0;
     out[0] = 0;
     for (auto &n : names) {
@@ -452,6 +455,7 @@ private:
 
 public:
   Input() = default;
+
   ~Input() { close(); }
 
   bool open(const char *node = nullptr) {
@@ -489,6 +493,7 @@ public:
   }
 
   int fd() const { return fd_; }
+
   const char *node() const { return node_name; }
 
   void setSink(input_frame_fn frame, input_action_fn action, input_event_fn event, input_mic_fn mic,

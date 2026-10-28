@@ -196,6 +196,7 @@ private:
     if (*o + 1 < cap) buf[(*o)++] = sep;
     buf[*o] = 0;
   }
+
   Station stations[kMaxStations];
   int count = 0;
   int current = -1;
@@ -287,6 +288,7 @@ private:
     int wall_pct;
     int force_pct;
   };
+
   static constexpr TriggerPreset kTriggerPresets[] = {
       {"none", 0x05, 0, 0, 0},
       {"balanced-weapon", 0x25, 20, 60, 85},
