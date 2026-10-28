@@ -1,6 +1,6 @@
 # padwave
 
-A DualSense-controlled music player for the Raspberry Pi. One controller over
+A DualSense-controlled music player for Linux. One controller over
 Bluetooth, a folder of audio files, and the controller's headphone jack as the
 speaker.
 
@@ -41,7 +41,7 @@ Needs a C++ compiler, `pkg-config`, FFmpeg (`libavformat`, `libavcodec`,
 ```sh
 ./build.sh
 PADWAVE_ROOTS=/path/to/audio ./padwave [port]
-# panel: http://<pi>:8787
+# panel: http://<host>:8787
 ```
 
 `PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the
@@ -49,7 +49,7 @@ app uses `~/Music`. `PADWAVE_HOST`/`PADWAVE_DIR` configure `deploy.sh`.
 
 ## Install
 
-On the Pi, from the project root:
+On the host, from the project root:
 
 ```sh
 ./install.sh
@@ -62,7 +62,7 @@ keep it on a trusted network.
 ## Deploy
 
 From the development machine, sync source (not the local binary) and rebuild on
-the Pi:
+the host:
 
 ```sh
 PADWAVE_HOST=user@host ./deploy.sh
@@ -107,7 +107,7 @@ describes the lab fields; `POST /api/output` is the controller lab.
   `poweroff_when_idle_ms` asks BlueZ to disconnect the pad. Press PS to wake.
   Without a controller, playback pauses and the player tick slows to 500 ms.
 
-## Pi Bluetooth
+## Bluetooth HID tuning
 
 If `bluetoothd` sits at a few percent CPU while the controller is idle, it is
 likely relaying HID in userspace. Set `UserspaceHID=false` in
@@ -117,8 +117,8 @@ Kernel HIDP keeps the 500 Hz report path out of bluetoothd (~3% → ~0.1%).
 ## Formatting
 
 C++ sources use `.clang-format`: LLVM, 100 columns, 2-space indent, a blank line
-between definitions, private class fields and compact guards. Run the Pi's
-clang-format 19.1.7 over `padwave.cc`, the headers and `test_wire.cc`.
+between definitions, private class fields and compact guards. Run clang-format
+19.1.7 over `padwave.cc`, the headers and `test_wire.cc`.
 
 ## Known limitations
 
