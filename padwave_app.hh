@@ -41,13 +41,13 @@ private:
   static constexpr int kMaxTracks = 4096;
   static constexpr int kMaxPath = 1024;
   static constexpr int kMaxTitle = 160;
-  static constexpr int kMaxGame = 96;
+  static constexpr int kMaxFolder = 96;
   static constexpr int kMaxHistory = 48;
 
   struct Track {
     char path[kMaxPath];
     char title[kMaxTitle];
-    char game[kMaxGame];
+    char folder[kMaxFolder];
     char ext[8];
     char id[17];
   };
@@ -79,7 +79,7 @@ private:
   static int compareTracks(const void *a, const void *b) {
     const Track *x = (const Track *)a;
     const Track *y = (const Track *)b;
-    int c = strcasecmp(x->game, y->game);
+    int c = strcasecmp(x->folder, y->folder);
     return c ? c : strcasecmp(x->title, y->title);
   }
 
@@ -481,7 +481,7 @@ public:
     if (s) {
       kvText(buf, cap, &o, "radio.current.id", s->id);
       kvText(buf, cap, &o, "radio.current.title", s->title);
-      kvText(buf, cap, &o, "radio.current.game", s->game);
+      kvText(buf, cap, &o, "radio.current.folder", s->folder);
       kvText(buf, cap, &o, "radio.current.path", s->path);
       kvText(buf, cap, &o, "radio.current.ext", s->ext);
     }
@@ -687,7 +687,7 @@ public:
       const Track *s = &this->tracks[i];
       tsvField(buf, cap, &o, s->id, '\t');
       tsvField(buf, cap, &o, s->title, '\t');
-      tsvField(buf, cap, &o, s->game, '\t');
+      tsvField(buf, cap, &o, s->folder, '\t');
       tsvField(buf, cap, &o, s->path, '\t');
       tsvField(buf, cap, &o, s->ext, '\n');
     }
@@ -911,7 +911,7 @@ public:
   bool ownsFd(int fd) { return fd >= 0 && (fd == this->player_timer_fd || fd == this->input.fd()); }
 
 private:
-  void addTrack(const char *path, const char *game) {
+  void addTrack(const char *path, const char *folder) {
     if (this->count >= kMaxTracks) return;
     Track *s = &this->tracks[this->count];
     snprintf(s->path, sizeof(s->path), "%s", path);
@@ -921,14 +921,14 @@ private:
     char *dot = strrchr(s->title, '.');
     if (dot) *dot = 0;
 
-    snprintf(s->game, sizeof(s->game), "%.*s", (int)sizeof(s->game) - 1, game);
+    snprintf(s->folder, sizeof(s->folder), "%.*s", (int)sizeof(s->folder) - 1, folder);
     const char *d = strrchr(path, '.');
     snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
     makeId(path, s->id);
     this->count++;
   }
 
-  void scanDir(const char *dir, const char *game) {
+  void scanDir(const char *dir, const char *folder) {
     DIR *d = opendir(dir);
     if (!d) return;
     struct dirent *e;
@@ -941,7 +941,7 @@ private:
       if (S_ISDIR(st.st_mode)) {
         scanDir(path, e->d_name);
       } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
-        addTrack(path, game);
+        addTrack(path, folder);
       }
     }
     closedir(d);
@@ -1088,12 +1088,12 @@ private:
     }
   }
 
-  void shuffleGame() {
+  void shuffleFolder() {
     if (this->count == 0) return;
-    const char *game = this->current >= 0 ? this->tracks[this->current].game : "";
+    const char *folder = this->current >= 0 ? this->tracks[this->current].folder : "";
     for (int tries = 0; tries < 100; tries++) {
       int i = rand() % this->count;
-      if (strcmp(this->tracks[i].game, game) != 0) {
+      if (strcmp(this->tracks[i].folder, folder) != 0) {
         play(i, 0);
         return;
       }
@@ -1356,8 +1356,8 @@ private:
       next();
     else if (strcmp(name, "previous") == 0)
       previous();
-    else if (strcmp(name, "shuffle_game") == 0)
-      shuffleGame();
+    else if (strcmp(name, "shuffle_folder") == 0)
+      shuffleFolder();
     else if (strcmp(name, "pause") == 0 || strcmp(name, "toggle_pause") == 0)
       togglePause();
     else if (strcmp(name, "play") == 0) {
@@ -1848,8 +1848,8 @@ private:
       next();
     else if (strcmp(action, "previous") == 0)
       previous();
-    else if (strcmp(action, "shuffle_game") == 0)
-      shuffleGame();
+    else if (strcmp(action, "shuffle_folder") == 0)
+      shuffleFolder();
     else if (strcmp(action, "pause") == 0)
       togglePause();
     else if (strcmp(action, "mute") == 0)

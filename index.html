@@ -64,7 +64,7 @@
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
-  .game { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
+  .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
   .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; }
 
   .progress { margin: 20px 0 8px; cursor: pointer; }
@@ -243,7 +243,7 @@
   <div class="grid">
     <section class="card">
       <div class="eyebrow">now playing</div>
-      <div class="game" id="game">—</div>
+      <div class="folder" id="folder">—</div>
       <div class="track-title" id="title">Nothing playing</div>
 
       <div class="progress" id="progress" title="click to seek">
@@ -255,7 +255,7 @@
         <button class="icon" data-action="previous" title="previous track">⏮</button>
         <button class="primary" data-action="pause" id="pauseBtn">play</button>
         <button class="icon" data-action="next" title="next track in this folder">⏭</button>
-        <button class="icon" data-action="shuffle_game" title="another game's folder">🎲</button>
+        <button class="icon" data-action="shuffle_folder" title="another folder">🎲</button>
         <button class="icon" data-action="disconnect" title="stop and power the controller off">⏏</button>
       </div>
 
@@ -545,7 +545,7 @@ function render(s) {
   const cur = r.current;
 
   $("#title").textContent = cur ? cur.title : "Nothing playing";
-  $("#game").textContent = cur ? cur.game : "—";
+  $("#folder").textContent = cur ? cur.folder : "—";
   const ps = s.hid ? s.hid.power_save : null;
   if (bootPs === undefined) bootPs = ps;
   if (!psDirty) psSetButtons(ps);
@@ -754,10 +754,10 @@ function highlightTrack(id) {
 function buildTracks() {
   const list = $("#tracks");
   const items = tracks.filter(t =>
-    !filterText || (t.title + " " + t.game).toLowerCase().includes(filterText));
+    !filterText || (t.title + " " + t.folder).toLowerCase().includes(filterText));
 
   list.innerHTML = items.map(t =>
-    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.game)}</span></li>`
+    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span></li>`
   ).join("");
 
   list.querySelectorAll("li").forEach(li => {
@@ -780,7 +780,7 @@ function buildPad() {
 
 function buildBindings(bindings) {
   const labels = {
-    triangle: "△ pause", circle: "○ play", square: "□ other game",
+    triangle: "△ pause", circle: "○ play", square: "□ other folder",
     l1: "L1 previous", r1: "R1 next", create: "create previous", options: "options next",
     touchpad: "touchpad mute", mute: "mute mute", l3: "L3 next", r3: "R3 previous"
   };
@@ -1094,8 +1094,8 @@ async function boot() {
   try {
     const text = await fetch("/api/library").then(r => r.text());
     tracks = text.split("\n").filter(Boolean).map((line) => {
-      const [id, title, game, path, ext] = line.split("\t");
-      return { id, title, game, path, ext };
+      const [id, title, folder, path, ext] = line.split("\t");
+      return { id, title, folder, path, ext };
     });
     buildTracks();
   } catch (e) { console.error(e); }

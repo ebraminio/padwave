@@ -232,7 +232,7 @@ private:
                                "bindings.r1=next_random\n"
                                "bindings.r3=previous\n"
                                "bindings.right_paddle=next_random\n"
-                               "bindings.square=shuffle_game\n"
+                               "bindings.square=shuffle_folder\n"
                                "bindings.touchpad=toggle_mute\n"
                                "bindings.triangle=toggle_pause\n";
     size_t n = strlen(text);

@@ -106,7 +106,7 @@ private:
   static constexpr Binding kBindings[] = {
       {padwave::InputBody::ButtonTriangle, "toggle_pause"},
       {padwave::InputBody::ButtonCircle, "play"},
-      {padwave::InputBody::ButtonSquare, "shuffle_game"},
+      {padwave::InputBody::ButtonSquare, "shuffle_folder"},
       {padwave::InputBody::L1, "previous"},
       {padwave::InputBody::R1, "next_random"},
       {padwave::InputBody::Create, "previous"},

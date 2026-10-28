@@ -81,7 +81,7 @@ ssh user@host 'cd ~/padwave && ./build.sh && ./install.sh'
 Routes speak `key=value` lines; dotted keys nest and `true`/`false`/`null` are
 literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `/api/front/events` are the live state. `POST /api/command` accepts `next`,
-`previous`, `pause`, `mute`, `shuffle_game`, `disconnect`, `volume`, `seek`,
+`previous`, `pause`, `mute`, `shuffle_folder`, `disconnect`, `volume`, `seek`,
 `seek_to` and `play_track` with the corresponding value/delta/position/id.
 `GET /api/library` is TSV; `/api/config` persists settings; `/api/schema`
 describes the lab fields; `POST /api/output` is the controller lab.
