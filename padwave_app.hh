@@ -25,34 +25,11 @@
 
 #include <opus/opus.h>
 
+#include "padwave_player.hh"
 #include "padwave_input.hh"
 
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
 // the kernel both spell it lower-case with colons.
-
-// Entry points and in-process engines. The service calls the player/input
-// engines directly from its epoll loop; the *_main wrappers keep the debug
-// modes working.
-
-void *player_create(const char *node, bool speaker);
-struct player_status {
-  long pos_ms;
-  long dur_ms;
-  long sent;
-  long underruns;
-  long pushed;
-  int paused;
-  int eof;
-};
-
-typedef void (*player_status_fn)(const struct player_status *, void *);
-typedef void (*player_track_fn)(const char *, void *);
-
-void player_set_sink(void *handle, player_status_fn status, player_track_fn track, void *ud);
-int player_timer_fd(void *handle);
-void player_step(void *handle);
-void player_command(void *handle, const char *line);
-void player_destroy(void *handle);
 
 // The app owns the library, config and text helpers.
 // ---------------------------------------------------------------------------
@@ -225,7 +202,7 @@ private:
   int history[kMaxHistory];
   int history_len = 0;
 
-  void *player = nullptr;
+  Player player;
   Input input;
   int player_timer_fd = -1;
 
@@ -374,7 +351,6 @@ public:
 
     qsort(this->stations, (size_t)this->count, sizeof(Station), compareStations);
     srand((unsigned)time(nullptr) ^ (unsigned)getpid());
-    this->player = nullptr;
     this->player_timer_fd = -1;
     configLoad();
     if (this->resume_path[0]) {
@@ -406,8 +382,7 @@ public:
     configSave();
     if (this->player) {
       playerSend("quit\n");
-      ::player_destroy(this->player);
-      this->player = nullptr;
+      this->player.destroy();
     }
     this->player_timer_fd = -1;
     inputStop(false);
@@ -470,7 +445,7 @@ public:
 
   void handleFd(int fd) {
     if (this->player && fd == this->player_timer_fd) {
-      player_step(this->player);
+      this->player.step();
       serviceOutput();
       serviceLeds();
       return;
@@ -1029,15 +1004,14 @@ private:
   }
 
   void playerSend(const char *line) {
-    if (this->player) ::player_command(this->player, line);
+    if (this->player) this->player.command(line);
   }
 
   void playerStart() {
     if (this->player) return;
-    this->player = ::player_create(nullptr, false);
-    if (!this->player) return;
-    ::player_set_sink(this->player, playerStatusCb, playerTrackCb, this);
-    this->player_timer_fd = ::player_timer_fd(this->player);
+    if (!this->player.create(nullptr, false)) return;
+    this->player.setSink(playerStatusCb, playerTrackCb, this);
+    this->player_timer_fd = this->player.timerFd();
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
