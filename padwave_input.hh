@@ -19,12 +19,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "padwave_hid.hh"
 #include "padwave_wire.hh"
-
-// The player/input engines find the controller through the same sysfs scan,
-// implemented in padwave.cc.
-static inline int find_dualsense(char *node, size_t len);
-static inline int find_dualsense();
 
 struct input_touch {
   unsigned active;
@@ -96,6 +92,7 @@ private:
 
   int fd_ = -1;
   char node_name[64] = "";
+  char mac_[32] = "";
   input_frame_fn frame_fn = nullptr;
   input_action_fn action_fn = nullptr;
   input_event_fn event_fn = nullptr;
@@ -420,14 +417,15 @@ public:
 
   bool open(const char *node = nullptr) {
     close();
-    char found[64];
-    const char *path = node ? node : found;
+    DualsenseDevice device;
+    const char *path = node;
     if (!node) {
-      int idx = find_dualsense(found, sizeof(found));
-      if (idx < 0) {
+      if (!find_dualsense_device(&device)) {
         fprintf(stderr, "padwave: no DualSense hidraw node\n");
         return false;
       }
+      path = device.node;
+      snprintf(mac_, sizeof(mac_), "%s", device.mac);
     }
     fd_ = ::open(path, O_RDONLY | O_CLOEXEC);
     if (fd_ < 0) {
@@ -442,6 +440,7 @@ public:
     if (fd_ >= 0) ::close(fd_);
     fd_ = -1;
     node_name[0] = 0;
+    mac_[0] = 0;
     frame_fn = nullptr;
     action_fn = nullptr;
     event_fn = nullptr;
@@ -455,6 +454,8 @@ public:
   int fd() const { return fd_; }
 
   const char *node() const { return node_name; }
+
+  const char *mac() const { return mac_; }
 
   void setSink(input_frame_fn frame, input_action_fn action, input_event_fn event, input_mic_fn mic,
                void *userdata) {

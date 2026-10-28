@@ -51,10 +51,8 @@ extern "C" {
 #include <opus/opus.h>
 
 #include "padwave_fields.hh"
+#include "padwave_hid.hh"
 #include "padwave_wire.hh"
-
-static inline int find_dualsense(char *node, size_t len);
-static inline int find_dualsense();
 
 struct player_status {
   long pos_ms;

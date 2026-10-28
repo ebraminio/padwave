@@ -40,9 +40,10 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        main, discovery, struct Server (epoll/HTTP/SSE/UI)
+padwave.cc        main, struct Server (epoll/HTTP/SSE/UI)
 padwave_player.hh struct Player: decoders, rings, crossfade, 0x36 writer
 padwave_input.hh  struct Input: hidraw, callbacks and decoder
+padwave_hid.hh    one sysfs scan: hidraw node + Bluetooth MAC
 padwave_app.hh    struct App: library, playback, controller snapshot, config
                   and lab output (inline methods, private fields)
 padwave_http.hh   the request parser used by Server
@@ -63,7 +64,7 @@ guards. Run:
 
 ```sh
 clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_input.hh
-  padwave_wire.hh test_wire.cc
+  padwave_hid.hh padwave_wire.hh test_wire.cc
 # the tree is normalized with the Pi's clang-format 19.1.7; prefer its output
 ```
 

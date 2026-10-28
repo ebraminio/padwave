@@ -9,13 +9,6 @@
 extern "C" size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
 
 // input_create() only needs discovery; the fuzzer never opens a device.
-static inline int find_dualsense(char *node, size_t len) {
-  (void)node;
-  (void)len;
-  return -1;
-}
-static inline int find_dualsense() { return -1; }
-
 #include "padwave_input.hh"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
@@ -30,7 +23,7 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max
 
   if (size == padwave::InputReport::Size && data[0] == padwave::InputReport::ReportId) {
     auto *report = reinterpret_cast<padwave::InputReport *>(data);
-    report->sign();  // keep the CRC in sync with the mutated body
+    report->sign(); // keep the CRC in sync with the mutated body
   }
   return size;
 }

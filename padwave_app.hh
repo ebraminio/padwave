@@ -38,42 +38,6 @@
 
 struct App {
 private:
-  static bool dualsenseMac(char *out, size_t cap) {
-    for (int i = 0; i < 16; i++) {
-      char path[128];
-      snprintf(path, sizeof(path), "/sys/class/hidraw/hidraw%d/device/uevent", i);
-      FILE *f = fopen(path, "r");
-      if (!f) continue;
-
-      bool dualsense = false;
-      char uniq[64] = "";
-      char line[256];
-      while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, "HID_NAME=") && strstr(line, "DualSense")) dualsense = true;
-        if (strncmp(line, "HID_UNIQ=", 9) == 0) {
-          snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
-          char *nl = strchr(uniq, '\n');
-          if (nl) *nl = 0;
-        }
-      }
-      fclose(f);
-
-      if (!dualsense || strlen(uniq) != 17) continue;
-      bool valid = true;
-      for (const char *p = uniq; *p; p++)
-        if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F') ||
-              *p == ':')) {
-          valid = false;
-          break;
-        }
-      if (!valid) continue;
-      snprintf(out, cap, "%s", uniq);
-      return true;
-    }
-    out[0] = 0;
-    return false;
-  }
-
   static constexpr int kMaxStations = 4096;
   static constexpr int kMaxPath = 1024;
   static constexpr int kMaxTitle = 160;
@@ -1025,17 +989,12 @@ private:
 
   void inputStart() {
     if (this->input.fd() >= 0) return;
-    char node[64];
-    if (find_dualsense(node, sizeof(node)) < 0) {
-      this->reconnect_at = (int)(nowMs() + 1500);
-      return;
-    }
-    if (!this->input.open(node)) {
+    if (!this->input.open()) {
       this->reconnect_at = (int)(nowMs() + 1500);
       return;
     }
     snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
-    dualsenseMac(this->controller_mac, sizeof(this->controller_mac));
+    snprintf(this->controller_mac, sizeof(this->controller_mac), "%s", this->input.mac());
     this->input.setSink(inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
@@ -1608,10 +1567,13 @@ private:
 
   bool powerOffController() {
     char mac[32] = "";
-    if (this->controller_mac[0])
+    if (this->controller_mac[0]) {
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);
-    else if (!dualsenseMac(mac, sizeof(mac)))
-      return false;
+    } else {
+      DualsenseDevice device;
+      if (!find_dualsense_device(&device) || !device.mac[0]) return false;
+      snprintf(mac, sizeof(mac), "%s", device.mac);
+    }
 
     char command[160];
     snprintf(command, sizeof(command), "timeout 5 bluetoothctl disconnect %s >/dev/null 2>&1", mac);

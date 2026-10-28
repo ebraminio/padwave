@@ -6,20 +6,12 @@
 
 extern "C" size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
 
-static inline int find_dualsense(char *node, size_t len) {
-  (void)node;
-  (void)len;
-  return -1;
-}
-static inline int find_dualsense() { return -1; }
-
 #include "padwave_input.hh"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   Input h;
   constexpr size_t kReport = padwave::InputReport::Size;
-  for (size_t off = 0; off + kReport <= size; off += kReport)
-    h.parse(data + off, kReport);
+  for (size_t off = 0; off + kReport <= size; off += kReport) h.parse(data + off, kReport);
   return 0;
 }
 
