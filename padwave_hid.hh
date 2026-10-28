@@ -55,8 +55,8 @@ struct DualSenseDevice {
           unsigned vendor = 0, product = 0;
           id_seen = true;
           if (sscanf(line + 7, "%*x:%x:%x", &vendor, &product) == 2 &&
-              (vendor & 0xFFFF) == 0x054C &&
-              ((product & 0xFFFF) == 0x0CE6 || (product & 0xFFFF) == 0x0DF2))
+              (vendor & 0xFFFF) == SONY_VID &&
+              ((product & 0xFFFF) == DS_PID || (product & 0xFFFF) == DS_EDGE_PID))
             id_match = true;
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
           snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
@@ -87,4 +87,9 @@ struct DualSenseDevice {
   }
 
   int open() const { return node[0] ? ::open(node, O_RDWR | O_CLOEXEC) : -1; }
+
+private:
+  static constexpr int SONY_VID = 0x054C;
+  static constexpr int DS_PID = 0x0CE6;
+  static constexpr int DS_EDGE_PID = 0x0DF2;
 };
