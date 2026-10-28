@@ -21,26 +21,26 @@ template <typename Type, typename UnsignedType = Type>
 struct NumType {
   static constexpr unsigned int static_size = sizeof(Type);
 
-  NumType() = default;
+  constexpr NumType() = default;
 
-  explicit NumType(Type value) { set(value); }
+  constexpr explicit NumType(Type value) { set(value); }
 
-  NumType &operator=(Type o) {
+  constexpr NumType &operator=(Type o) {
     set(o);
     return *this;
   }
 
-  operator Type() const { return get(); }
+  constexpr operator Type() const { return get(); }
 
   // bytes[0] is the least significant byte, on every host.
-  Type get() const {
+  constexpr Type get() const {
     UnsignedType v = 0;
     for (unsigned int i = 0; i < sizeof(Type); i++)
       v = (UnsignedType)((v << 8) | bytes[sizeof(Type) - 1 - i]);
     return (Type)v;
   }
 
-  void set(Type value) {
+  constexpr void set(Type value) {
     UnsignedType v = (UnsignedType)value;
     for (unsigned int i = 0; i < sizeof(Type); i++) {
       bytes[i] = (unsigned char)(v & 0xFF);
@@ -48,45 +48,45 @@ struct NumType {
     }
   }
 
-  bool operator==(const NumType &o) const { return get() == o.get(); }
+  constexpr bool operator==(const NumType &o) const { return get() == o.get(); }
 
-  bool operator!=(const NumType &o) const { return get() != o.get(); }
+  constexpr bool operator!=(const NumType &o) const { return get() != o.get(); }
 
-  bool operator==(Type o) const { return get() == o; }
+  constexpr bool operator==(Type o) const { return get() == o; }
 
-  bool operator!=(Type o) const { return get() != o; }
+  constexpr bool operator!=(Type o) const { return get() != o; }
 
-  NumType &operator+=(Type n) {
+  constexpr NumType &operator+=(Type n) {
     set((Type)(get() + n));
     return *this;
   }
 
-  NumType &operator-=(Type n) {
+  constexpr NumType &operator-=(Type n) {
     set((Type)(get() - n));
     return *this;
   }
 
-  NumType &operator|=(Type n) {
+  constexpr NumType &operator|=(Type n) {
     set((Type)(get() | n));
     return *this;
   }
 
-  NumType &operator&=(Type n) {
+  constexpr NumType &operator&=(Type n) {
     set((Type)(get() & n));
     return *this;
   }
 
-  NumType &operator^=(Type n) {
+  constexpr NumType &operator^=(Type n) {
     set((Type)(get() ^ n));
     return *this;
   }
 
-  NumType &operator++() {
+  constexpr NumType &operator++() {
     set((Type)(get() + 1));
     return *this;
   }
 
-  NumType &operator--() {
+  constexpr NumType &operator--() {
     set((Type)(get() - 1));
     return *this;
   }
@@ -130,8 +130,7 @@ enum Packet : uint8_t {
 // member. Every report type carries `crc`, `CrcSeed` and a `report_id`, so one
 // template covers them all. This is the same result as zlib's crc32(), but
 // local so the binary does not need -lz.
-static inline uint32_t crc32_update(uint32_t crc, const void *data, size_t len) {
-  const uint8_t *p = (const uint8_t *)data;
+static constexpr uint32_t crc32_update(uint32_t crc, const uint8_t *p, size_t len) {
   crc = ~crc;
   while (len--) {
     crc ^= *p++;
@@ -143,8 +142,8 @@ static inline uint32_t crc32_update(uint32_t crc, const void *data, size_t len) 
 template <typename Report>
 static inline uint32_t crc_of(const Report &report) {
   uint8_t seed = (uint8_t)Report::CrcSeed;
-  uint32_t c = crc32_update(0, &seed, 1);
-  return crc32_update(c, &report, offsetof(Report, crc));
+  uint32_t c = crc32_update(0, (const uint8_t *)&seed, 1);
+  return crc32_update(c, (const uint8_t *)&report, offsetof(Report, crc));
 }
 
 // ===========================================================================
@@ -258,8 +257,8 @@ struct OutputBody {
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
-  void init(AudioControl routing = Headphones) {
-    memset(this, 0, sizeof(*this));
+  constexpr void init(AudioControl routing = Headphones) {
+    *this = OutputBody{};
     valid_flag0 = HeadphoneVolume | SpeakerVolume | MicVolume | AudioRouting;
     valid_flag1 = AudioControl2;
     headphone_volume = 0x7F;
@@ -289,8 +288,8 @@ struct OutputReport {
     CrcSeed = 0xA2,
   };
 
-  void init() {
-    memset(this, 0, sizeof(*this));
+  constexpr void init() {
+    *this = OutputReport{};
     report_id = ReportId;
     tag = 0x10;
     body.init();
@@ -575,8 +574,8 @@ struct AudioReport {
 
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
-  void init(SpeakerTag tag, EnableMask mask = SpeakerOnly) {
-    memset(this, 0, sizeof(*this));
+  constexpr void init(SpeakerTag tag, EnableMask mask = SpeakerOnly) {
+    *this = AudioReport{};
     report_id = ReportId;
     config_tag = 0x11 | 0x80;
     config_length = 7;

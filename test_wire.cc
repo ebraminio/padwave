@@ -1,68 +1,113 @@
-// Checks that the wire layout is what the controller expects, and that the
-// integers are little-endian by construction rather than by host. Runs on any
-// machine: a big-endian box would execute exactly the same assertions.
+// Compile-time checks for the wire layout, endianness and CRC, plus the small
+// runtime part that needs the object's bytes: sign(), valid() and memcpy.
+//
+// A big-endian host runs the same static_asserts, because the byte order lives
+// in NumType rather than in host integers.
 #include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "padwave_wire.hh"
 
+// --- byte order ------------------------------------------------------------
+
+constexpr PWUINT16 kU16 = [] {
+  PWUINT16 v;
+  v = 0x1234;
+  return v;
+}();
+static_assert(kU16.bytes[0] == 0x34 && kU16.bytes[1] == 0x12);
+static_assert(kU16.get() == 0x1234);
+
+constexpr PWUINT32 kU32 = [] {
+  PWUINT32 v;
+  v = 0x01020304;
+  return v;
+}();
+static_assert(kU32.bytes[0] == 0x04 && kU32.bytes[1] == 0x03 && kU32.bytes[2] == 0x02 &&
+              kU32.bytes[3] == 0x01);
+static_assert(kU32.get() == 0x01020304);
+
+constexpr PWINT16 kS16 = [] {
+  PWINT16 v;
+  v = -2;
+  return v;
+}();
+static_assert(kS16.bytes[0] == 0xFE && kS16.bytes[1] == 0xFF);
+static_assert(kS16.get() == -2);
+
+constexpr PWINT32 kS32 = [] {
+  PWINT32 v;
+  v = -1;
+  return v;
+}();
+static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
+
+// --- CRC-32 ----------------------------------------------------------------
+
+constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+static_assert(padwave::crc32_update(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+constexpr uint32_t kChained = [] {
+  uint32_t c = padwave::crc32_update(0, kCheck, 4);
+  return padwave::crc32_update(c, kCheck + 4, 5);
+}();
+static_assert(kChained == 0xCBF43926u);
+
+// --- initialized reports and offsets --------------------------------------
+
+constexpr padwave::AudioReport kReport = [] {
+  padwave::AudioReport r{};
+  r.init(padwave::AudioReport::Jack, padwave::AudioReport::SpeakerOnly);
+  r.state.body.init(padwave::OutputBody::Headphones);
+  r.seq_tag = 0x00;
+  r.counter = 0;
+  return r;
+}();
+
+static_assert(sizeof(padwave::AudioReport) == 398);
+static_assert(sizeof(padwave::AudioReport::State) == 63);
+static_assert(sizeof(padwave::OutputBody) == 47);
+static_assert(offsetof(padwave::AudioReport, report_id) == 0);
+static_assert(offsetof(padwave::AudioReport, seq_tag) == 1);
+static_assert(offsetof(padwave::AudioReport, config_tag) == 2);
+static_assert(offsetof(padwave::AudioReport, state) == 13);
+static_assert(offsetof(padwave::AudioReport, speaker_tag) == 142);
+static_assert(offsetof(padwave::AudioReport, opus) == 144);
+static_assert(offsetof(padwave::AudioReport, crc) == 394);
+static_assert(offsetof(padwave::OutputBody, valid_flag0) == 0);
+static_assert(offsetof(padwave::OutputBody, headphone_volume) == 4);
+static_assert(offsetof(padwave::OutputBody, lightbar_setup) == 0x29);
+
+static_assert(kReport.report_id.get() == 0x36);
+static_assert(kReport.seq_tag.get() == 0x00);
+static_assert(kReport.config_tag.get() == 0x91);
+static_assert(kReport.config_length.get() == 7);
+static_assert(kReport.enable_mask.get() == padwave::AudioReport::SpeakerOnly);
+static_assert(kReport.haptic_lengths[0].get() == 64);
+static_assert(kReport.haptic_lengths[4].get() == 64);
+static_assert(kReport.counter.get() == 0);
+static_assert(kReport.state_tag.get() == 0x90);
+static_assert(kReport.state_length.get() == 63);
+static_assert(kReport.state.body.valid_flag0.get() == 0xF0);
+static_assert(kReport.state.body.valid_flag1.get() == 0x80);
+static_assert(kReport.state.body.headphone_volume.get() == 0x7F);
+static_assert(kReport.state.body.speaker_volume.get() == 0x64);
+static_assert(kReport.speaker_tag.get() == (padwave::AudioReport::Jack | 0x80));
+static_assert(kReport.speaker_length.get() == 200);
+static_assert(kReport.opus[0].get() == 0);
+
+// --- runtime object-representation checks ----------------------------------
+
 int main() {
-  // The byte order belongs to the type, not the host.
-  PWUINT16 u16;
-  u16 = 0x1234;
-  assert(u16.bytes[0] == 0x34 && u16.bytes[1] == 0x12);
-
-  PWUINT32 u32;
-  u32 = 0x01020304;
-  assert(u32.bytes[0] == 0x04 && u32.bytes[1] == 0x03 && u32.bytes[2] == 0x02 &&
-         u32.bytes[3] == 0x01);
-
-  PWINT16 s16;
-  s16 = -2;
-  assert(s16.bytes[0] == 0xFE && s16.bytes[1] == 0xFF);
-
-  PWINT32 s32;
-  s32 = -1;
-  assert(s32.bytes[0] == 0xFF && s32.bytes[3] == 0xFF);
-
-  assert(u32.get() == 0x01020304);
-  assert(s16.get() == -2);
-
-  // Standard CRC-32 check value ("123456789"), and chaining must equal the
-  // checksum of the concatenation.
-  assert(padwave::crc32_update(0, "123456789", 9) == 0xCBF43926u);
-  uint32_t c = padwave::crc32_update(0, "1234", 4);
-  c = padwave::crc32_update(c, "56789", 5);
-  assert(c == 0xCBF43926u);
-
-  // A whole report: the header, the audio state snapshot and the CRC.
-  padwave::AudioReport report;
-  report.init(padwave::AudioReport::Jack, padwave::AudioReport::SpeakerOnly);
-  report.state.body.init(padwave::OutputBody::Headphones);
-  report.seq_tag = 0x00;
-  report.counter = 0;
+  padwave::AudioReport report = kReport;
   report.sign();
-
-  const unsigned char *b = (const unsigned char *)&report;
-  assert(sizeof(report) == 398);
-  assert(b[0] == 0x36);              // report id
-  assert(b[1] == 0x00);              // seq tag
-  assert(b[2] == 0x91 && b[3] == 7); // config sub-packet
-  assert(b[4] == 0xFE);              // speaker only, mic shut
-  assert(b[5] == 64 && b[9] == 64);  // haptic lengths
-  assert(b[10] == 0);                // counter
-  assert(b[11] == 0x90 && b[12] == 63);
-  assert(b[13] == 0xF0 && b[14] == 0x80);           // valid_flag0/1 of the snapshot
-  assert(b[17] == 0x7F && b[18] == 0x64);           // headphone/speaker volume (state +0x04/+0x05)
-  assert(b[142] == (0x16 | 0x80) && b[143] == 200); // jack + Opus block
   assert(report.valid());
 
   // And it survives a memcpy, which is how it is written.
   padwave::AudioReport copy;
-  memcpy(&copy, b, sizeof(copy));
+  memcpy(&copy, &report, sizeof(copy));
   assert(copy.valid());
-  assert(copy.opus[0].get() == 0);
 
   printf("wire layout ok: %zu bytes, little-endian by construction, crc valid\n", sizeof(report));
   return 0;
