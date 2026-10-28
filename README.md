@@ -40,7 +40,8 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        the player and main
+padwave.cc        main, controller discovery and the opusdec helper
+padwave_player.hh struct Player: decoders, rings, crossfade, 0x36 writer, CLI
 padwave_input.hh  struct Input: hidraw, callbacks, decoder and the input CLI
 padwave_app.hh    struct App: library, playback, controller snapshot, config
                   and lab output (inline methods, private fields)
@@ -59,7 +60,8 @@ The C++ sources are formatted with `.clang-format`: LLVM, 100 columns, 2-space
 indent, private class fields, compact one-line guards. Run:
 
 ```sh
-clang-format -i padwave.cc padwave_app.hh padwave_server.hh padwave_wire.hh test_wire.cc
+clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_server.hh
+  padwave_input.hh padwave_wire.hh test_wire.cc
 ```
 
 ## Build and run

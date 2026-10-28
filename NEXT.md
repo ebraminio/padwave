@@ -3,7 +3,7 @@
 ## State
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
-- HEAD: latest `main`; the behavior described here landed through `5accbbb`
+- HEAD: latest `main`; the behavior described here landed through `bbf86c1`
   (later commits are documentation only). `git log --oneline` for detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
@@ -11,7 +11,8 @@
   UI at `http://192.168.1.175:8787`. The idle power-off can leave the pad
   asleep until PS is pressed.
 - Layout:
-  - `padwave.cc` — player + main
+  - `padwave.cc` — main, controller discovery, opusdec helper
+  - `padwave_player.hh` — `struct Player` (decoders, rings, 0x36 writer, CLI)
   - `padwave_input.hh` — `struct Input` (hidraw, callbacks, decoder, CLI)
   - `padwave_app.hh` — `struct App` (private fields, inline camelCase methods)
   - `padwave_server.hh` — `struct Server` (epoll, routes, SSE, embedded UI)
@@ -54,9 +55,12 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   directly. App-only helpers are private static members; Server constants and
   its bindings text are private. The only remaining free interfaces are
   `input_main` and the player/main/find_dualsense engine API that belongs to
-  padwave.cc. Free functions and wire names stay snake_case.
-- Run `clang-format -i padwave.cc padwave_app.hh padwave_server.hh
-  padwave_wire.hh test_wire.cc` before committing.
+  padwave.cc. Free functions and wire names stay snake_case. Player and its
+  File are the same pattern: private fields/helpers, public create/destroy/
+  setSink/timerFd/step/command; native_main is only a wrapper for cli().
+- Run `clang-format -i padwave.cc padwave_player.hh padwave_app.hh
+  padwave_server.hh padwave_input.hh padwave_wire.hh test_wire.cc` before
+  committing.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
   add `-lz` back. FFmpeg's shared libraries may still bring libz in
   transitively.
