@@ -90,6 +90,8 @@
   .volume { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
   .volume input[type=range] { flex: 1; accent-color: var(--accent-2); }
   .volume .val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .speed { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .speed select { background: #111520; color: var(--text); border: 1px solid #2a3245; border-radius: 7px; padding: 4px 8px; font: inherit; }
 
   .list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   input[type=search], input[type=number] {
@@ -263,6 +265,18 @@
         <button class="icon" data-action="mute" id="muteBtn" title="mute">🔊</button>
         <input type="range" id="volume" min="0" max="100" step="1" value="15">
         <span class="val" id="volLabel">15</span>
+      </div>
+
+      <div class="speed">
+        <span>speed</span>
+        <select id="speed" title="playback speed">
+          <option value="75">0.75×</option>
+          <option value="100">1×</option>
+          <option value="125">1.25×</option>
+          <option value="150">1.5×</option>
+          <option value="175">1.75×</option>
+          <option value="200">2×</option>
+        </select>
       </div>
 
       <div class="warnbar" id="warnbar">Sleep timer: volume fading out. Shutting down in <b id="warnLeft">60</b>s — press anything or <b>shake the controller</b>.</div>
@@ -581,6 +595,7 @@ function render(s) {
     $("#volume").value = r.volume ?? 0;
     $("#volLabel").textContent = muted ? "muted" : (r.volume ?? 0);
   }
+  if (document.activeElement !== $("#speed")) $("#speed").value = String(r.speed ?? 100);
 
   $("#connDot").className = "dot " + (c.connected ? "on" : "off");
   $("#connText").textContent = c.connected
@@ -839,6 +854,10 @@ $("#volume").addEventListener("input", () => {
 $("#volume").addEventListener("change", () => {
   dragging = false;
   send("volume", { value: Number($("#volume").value) });
+});
+
+$("#speed").addEventListener("change", (e) => {
+  send("speed", { value: Number(e.target.value) });
 });
 
 $("#filter").addEventListener("input", (e) => {

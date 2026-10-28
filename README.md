@@ -36,7 +36,7 @@ Analogue sticks are deliberately unbound: ours are worn and jitter.
 ## Build and run
 
 Needs a C++ compiler, `pkg-config`, FFmpeg (`libavformat`, `libavcodec`,
-`libswresample`, `libavutil`), `libopus` and `python3` for the embedded UI.
+`libswresample`, `libavutil`, `libavfilter`), `libopus` and `python3` for the embedded UI.
 
 ```sh
 ./build.sh
@@ -84,7 +84,7 @@ ssh user@host 'cd ~/padwave && ./build.sh && ./install.sh'
 Routes speak `key=value` lines; dotted keys nest and `true`/`false`/`null` are
 literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `/api/front/events` are the live state. `POST /api/command` accepts `next`,
-`previous`, `pause`, `mute`, `shuffle_folder`, `disconnect`, `volume`, `seek`,
+`previous`, `pause`, `mute`, `shuffle_folder`, `disconnect`, `volume`, `speed`, `seek`,
 `seek_to` and `play_track` with the corresponding value/delta/position/id.
 `GET /api/library` is TSV; `/api/config` persists settings; `/api/schema`
 describes the lab fields; `POST /api/output` is the controller lab.
@@ -93,7 +93,8 @@ describes the lab fields; `POST /api/output` is the controller lab.
 
 - **Playback:** track scan, shuffle, history, gapless transitions, crossfade,
   natural numeric order (ep2 before ep10), resume of the saved track/position,
-  and volume/mute.
+  and volume/mute. Speed is 0.75×–2× via FFmpeg's pitch-preserving `atempo`,
+  persisted across restarts.
 - **Volume:** zero is the paused state. Resume restores the last non-zero
   volume; 15% is used only when no non-zero value has ever been stored. Current
   and last non-zero volumes persist across restarts.

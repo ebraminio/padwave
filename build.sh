@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CXX="${CXX:-clang}"
-PKGS="libavformat libavcodec libswresample libavutil"
+PKGS="libavformat libavcodec libswresample libavutil libavfilter"
 CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 

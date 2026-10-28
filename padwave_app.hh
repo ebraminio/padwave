@@ -230,6 +230,7 @@ private:
   bool paused_by_volume = false;
   int volume = kDefaultVolume;
   int last_nonzero_volume = kDefaultVolume;
+  int speed = 100;
 
   bool controller = false;
   bool jack = false;
@@ -518,6 +519,7 @@ public:
     kvAdd(buf, cap, &o, "radio.position", "%.1f", static_cast<double>(this->pos_ms) / 1000.0);
     kvAdd(buf, cap, &o, "radio.duration", "%.1f", static_cast<double>(this->dur_ms) / 1000.0);
     kvAdd(buf, cap, &o, "radio.volume", "%d", this->volume);
+    kvAdd(buf, cap, &o, "radio.speed", "%d", this->speed);
     kvAdd(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
     kvAdd(buf, cap, &o, "radio.paused_by_jack", "%s", this->paused_by_jack ? "true" : "false");
@@ -632,6 +634,7 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
+    kvAdd(buf, cap, &o, "config.speed", "%d", this->speed);
     return static_cast<int>(o);
   }
 
@@ -1035,6 +1038,8 @@ private:
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
+    snprintf(line, sizeof(line), "speed %d\n", this->speed);
+    playerSend(line);
     applyMicLed(this->mic_monitor);
     if (this->paused) playerSend("pause 1\n");
     this->led_force = true;
@@ -1234,6 +1239,17 @@ private:
   void ensureAudibleVolume() {
     if (this->volume == 0)
       setVolume(this->last_nonzero_volume > 0 ? this->last_nonzero_volume : kDefaultVolume);
+  }
+
+  void setSpeed(int percent) {
+    if (percent < 50) percent = 50;
+    if (percent > 200) percent = 200;
+    if (percent == this->speed) return;
+    this->speed = percent;
+    char line[32];
+    snprintf(line, sizeof(line), "speed %d\n", percent);
+    playerSend(line);
+    configSave();
   }
 
   void setVolume(int v) {
@@ -1489,6 +1505,9 @@ private:
       } else if (strcmp(line, "last_nonzero_volume") == 0) {
         int v = atoi(value);
         this->last_nonzero_volume = v < 0 ? 0 : (v > 100 ? 100 : v);
+      } else if (strcmp(line, "speed") == 0) {
+        int v = atoi(value);
+        this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -1527,6 +1546,7 @@ private:
     fprintf(f, "play_pos_ms=%ld\n", this->pos_ms);
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
+    fprintf(f, "speed=%d\n", this->speed);
     fclose(f);
     this->playhead_saved_at = nowMs();
   }
@@ -1906,6 +1926,8 @@ private:
       playerSend("pause 1\n");
     } else if (strcmp(action, "volume") == 0) {
       setVolume(static_cast<int>(kvNumber(body, "value", this->volume)));
+    } else if (strcmp(action, "speed") == 0) {
+      setSpeed(static_cast<int>(kvNumber(body, "value", this->speed)));
     } else if (strcmp(action, "seek") == 0) {
       seek(this->pos_ms + kvNumber(body, "delta", 0) * 1000);
     } else if (strcmp(action, "seek_to") == 0) {

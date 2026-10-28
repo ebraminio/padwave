@@ -42,6 +42,9 @@
 // FFmpeg's public headers are C-only (no extern "C" guards).
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/error.h>
@@ -85,11 +88,18 @@ private:
     AVFormatContext *fmt = nullptr;
     AVCodecContext *dec = nullptr;
     SwrContext *swr = nullptr;
+    AVFilterGraph *graph = nullptr;
+    AVFilterContext *fsrc = nullptr;
+    AVFilterContext *fsink = nullptr;
+    AVFilterContext *ftempo = nullptr;
     int audio_index = -1;
+    int speed_percent = 100;
     int64_t duration_ms = 0;
     bool eof = false;
+    bool filter_flushed = false;
 
     void close() {
+      closeFilter();
       if (swr) swr_free(&swr);
       if (dec) avcodec_free_context(&dec);
       if (fmt) avformat_close_input(&fmt);
@@ -101,7 +111,78 @@ private:
       eof = false;
     }
 
-    bool open(const char *file_path) {
+    void closeFilter() {
+      if (graph) avfilter_graph_free(&graph);
+      fsrc = nullptr;
+      fsink = nullptr;
+      ftempo = nullptr;
+      filter_flushed = false;
+    }
+
+    bool openFilter() {
+      closeFilter();
+      graph = avfilter_graph_alloc();
+      if (!graph) return false;
+
+      char args[192];
+      snprintf(args, sizeof(args),
+               "sample_fmt=flt:sample_rate=%d:channel_layout=stereo:time_base=1/%d", RATE, RATE);
+      const AVFilter *src = avfilter_get_by_name("abuffer");
+      const AVFilter *sink = avfilter_get_by_name("abuffersink");
+      const AVFilter *tempo = avfilter_get_by_name("atempo");
+      if (!src || !sink || !tempo ||
+          avfilter_graph_create_filter(&fsrc, src, "in", args, nullptr, graph) < 0 ||
+          avfilter_graph_create_filter(&fsink, sink, "out", nullptr, nullptr, graph) < 0 ||
+          avfilter_graph_create_filter(&ftempo, tempo, "tempo", "tempo=1.0", nullptr, graph) < 0 ||
+          avfilter_link(fsrc, 0, ftempo, 0) < 0 || avfilter_link(ftempo, 0, fsink, 0) < 0 ||
+          avfilter_graph_config(graph, nullptr) < 0) {
+        closeFilter();
+        return false;
+      }
+      if (!setSpeed(speed_percent)) {
+        closeFilter();
+        return false;
+      }
+      return true;
+    }
+
+    bool setSpeed(int percent) {
+      if (percent < 50) percent = 50;
+      if (percent > 200) percent = 200;
+      speed_percent = percent;
+      if (!ftempo) return true;
+      char value[16];
+      snprintf(value, sizeof(value), "%.3f", static_cast<double>(percent) / 100.0);
+      if (avfilter_graph_send_command(graph, "tempo", "tempo", value, nullptr, 0, 0) < 0)
+        return false;
+      return true;
+    }
+
+    void resetFilter() {
+      closeFilter();
+      openFilter();
+    }
+
+    bool filterInput(const float *samples, int n) {
+      if (!fsrc || n <= 0) return false;
+      AVFrame *in = av_frame_alloc();
+      if (!in) return false;
+      in->format = AV_SAMPLE_FMT_FLT;
+      in->sample_rate = RATE;
+      in->nb_samples = n;
+      av_channel_layout_default(&in->ch_layout, CHANNELS);
+      if (av_frame_get_buffer(in, 0) < 0) {
+        av_frame_free(&in);
+        return false;
+      }
+      memcpy(in->data[0], samples, static_cast<size_t>(n) * CHANNELS * sizeof(float));
+      int ret = av_buffersrc_add_frame_flags(fsrc, in, AV_BUFFERSRC_FLAG_KEEP_REF);
+      av_frame_free(&in);
+      return ret >= 0;
+    }
+
+    bool open(const char *file_path, int percent) {
+      speed_percent = percent;
       close();
 
       if (avformat_open_input(&fmt, file_path, NULL, NULL) < 0) return false;
@@ -128,6 +209,8 @@ private:
       av_channel_layout_uninit(&in_layout);
       av_channel_layout_uninit(&out_layout);
       if (converted < 0 || !swr || swr_init(swr) < 0) return false;
+
+      if (!openFilter()) return false;
 
       duration_ms = fmt->duration > 0 ? fmt->duration / (AV_TIME_BASE / 1000) : 0;
       eof = false;
@@ -179,7 +262,10 @@ private:
 
   bool playing = false, paused = false, eof = false, primed = false;
   int volume = 80;
+  int speed_percent = 100;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
+
+  void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
 
   int tfd = -1;
   int64_t last_status = 0;
@@ -218,7 +304,7 @@ private:
 
   bool openFile(const char *file_path) {
     closeFile();
-    if (!cur.open(file_path)) return false;
+    if (!cur.open(file_path, speed_percent)) return false;
     snprintf(this->path, sizeof(this->path), "%s", file_path);
     eof = false;
     consumed = 0;
@@ -226,6 +312,35 @@ private:
     underruns = 0;
     base_ms = 0;
     return true;
+  }
+
+  void appendFiltered(File *f, block_t *dst_ring, int *dst_head, int *dst_tail,
+                      float dst_acc[IN_FRAMES][CHANNELS], int *dst_acc_frames,
+                      int64_t *dst_pushed) {
+    if (!f->fsink) return;
+    AVFrame *fo = av_frame_alloc();
+    if (!fo) return;
+    while (av_buffersink_get_frame(f->fsink, fo) >= 0) {
+      const float *samples = reinterpret_cast<const float *>(fo->data[0]);
+      for (int i = 0; i < fo->nb_samples; i++) {
+        dst_acc[*dst_acc_frames][0] = samples[i * CHANNELS + 0];
+        dst_acc[*dst_acc_frames][1] = samples[i * CHANNELS + 1];
+        if (++(*dst_acc_frames) == IN_FRAMES) {
+          int next = (*dst_head + 1) % RING_BLOCKS;
+          if (next == *dst_tail) {
+            *dst_acc_frames = 0;
+            break;
+          }
+          memcpy(dst_ring[*dst_head], dst_acc, sizeof(float) * IN_FRAMES * CHANNELS);
+          *dst_head = next;
+          if (dst_pushed) (*dst_pushed)++;
+          *dst_acc_frames = 0;
+        }
+      }
+      av_frame_unref(fo);
+      if (((*dst_head + 1) % RING_BLOCKS) == *dst_tail) break;
+    }
+    av_frame_free(&fo);
   }
 
   void fillInto(File *f, block_t *dst_ring, int *dst_head, int *dst_tail,
@@ -268,24 +383,20 @@ private:
         if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
         for (int i = 0; i < channels; i++) in[i] = frame->extended_data[i];
         int got = swr_convert(f->swr, encoded, cap, in, frame->nb_samples);
-        for (int i = 0; i < got; i++) {
-          dst_acc[*dst_acc_frames][0] = tmp[i * CHANNELS + 0];
-          dst_acc[*dst_acc_frames][1] = tmp[i * CHANNELS + 1];
-          if (++(*dst_acc_frames) == IN_FRAMES) {
-            int next = (*dst_head + 1) % RING_BLOCKS;
-            if (next == *dst_tail) { /* dst_ring full: keep the partial block */
-              *dst_acc_frames = 0;
-              break;
-            }
-            memcpy(dst_ring[*dst_head], dst_acc, sizeof(float) * IN_FRAMES * CHANNELS);
-            *dst_head = next;
-            if (dst_pushed) (*dst_pushed)++;
-            *dst_acc_frames = 0;
-          }
+        if (got > 0 && !f->filterInput(tmp, got)) {
+          av_frame_unref(frame);
+          break;
         }
+        appendFiltered(f, dst_ring, dst_head, dst_tail, dst_acc, dst_acc_frames, dst_pushed);
         av_frame_unref(frame);
         if (((*dst_head + 1) % RING_BLOCKS) == *dst_tail) break;
       }
+    }
+
+    if (f->eof && !f->filter_flushed) {
+      if (f->fsrc) (void)av_buffersrc_add_frame_flags(f->fsrc, nullptr, 0);
+      f->filter_flushed = true;
+      appendFiltered(f, dst_ring, dst_head, dst_tail, dst_acc, dst_acc_frames, dst_pushed);
     }
   }
 
@@ -444,17 +555,24 @@ private:
     char line_path[1024];
     long value;
 
+    int percent = 0;
+    if (sscanf(line, "speed %d", &percent) == 1) {
+      setSpeed(percent);
+      return;
+    }
+
     // "play <start_ms> <path>" — the number comes first so a path can contain
     // spaces and the two fields never have to be guessed apart. "play <path>" is
     // still accepted for driving the binary by hand.
     if (sscanf(line, "play %ld %1023[^\n]", &value, line_path) == 2) {
       if (playing && !paused && cur.fmt && fade_ms > 0) {
         closeNext();
-        if (nxt.open(line_path)) {
+        if (nxt.open(line_path, speed_percent)) {
           if (value > 0) {
             int64_t ts = value * (AV_TIME_BASE / 1000);
             av_seek_frame(nxt.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
             avcodec_flush_buffers(nxt.dec);
+            nxt.resetFilter();
           }
           snprintf(manual_path, sizeof(manual_path), "%s", line_path);
           manual_fade = true;
@@ -476,6 +594,7 @@ private:
           int64_t ts = value * (AV_TIME_BASE / 1000);
           av_seek_frame(cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
           avcodec_flush_buffers(cur.dec);
+          cur.resetFilter();
           base_ms = value;
         }
       }
@@ -570,10 +689,11 @@ private:
     long fade = 0;
     if (sscanf(line, "seek %ld %ld", &value, &fade) == 2 && cur.fmt) {
       if (fade > 0 && playing && !paused && !fading) {
-        if (nxt.open(this->path)) {
+        if (nxt.open(this->path, speed_percent)) {
           int64_t ts = value * (AV_TIME_BASE / 1000);
           av_seek_frame(nxt.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
           avcodec_flush_buffers(nxt.dec);
+          nxt.resetFilter();
           nhead = ntail = 0;
           nacc_frames = 0;
           seek_fade = true;
@@ -593,6 +713,7 @@ private:
       int64_t ts = value * (AV_TIME_BASE / 1000);
       if (av_seek_frame(cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
         avcodec_flush_buffers(cur.dec);
+        cur.resetFilter();
         head = tail = 0;
         acc_frames = 0;
         cur.eof = false;
@@ -620,7 +741,7 @@ private:
          * without advancing the fade. */
         if (have_old) {
           memcpy(block, old, sizeof(block));
-          consumed += IN_FRAMES;
+          advanceConsumed();
         } else {
           underruns++;
           memset(block, 0, sizeof(block));
@@ -638,9 +759,9 @@ private:
             block[i][ch] = (have_old ? old[i][ch] : 0.0f) * g_out + next[i][ch] * g_in;
 
         if (seek_fade) {
-          if (have_next) consumed += IN_FRAMES;
+          if (have_next) advanceConsumed();
         } else if (have_old) {
-          consumed += IN_FRAMES;
+          advanceConsumed();
         }
         fade_pos++;
         if (fade_pos >= fade_total || !have_old) finishFade();
@@ -652,7 +773,7 @@ private:
         underruns++;
         memset(block, 0, sizeof(block)); /* keep the stream alive with silence */
       } else {
-        consumed += IN_FRAMES;
+        advanceConsumed();
       }
     }
 
@@ -692,6 +813,16 @@ public:
   int timerFd() const { return tfd; }
 
   void attach(App *owner) { app = owner; }
+
+  void setSpeed(int percent) {
+    if (percent < 50) percent = 50;
+    if (percent > 200) percent = 200;
+    speed_percent = percent;
+    cur.setSpeed(percent);
+    nxt.setSpeed(percent);
+  }
+
+  int speedPercent() const { return speed_percent; }
 
   int fd() const { return hidraw; }
 
@@ -807,7 +938,7 @@ public:
       int64_t pos = base_ms + consumed * 1000 / RATE;
       if (eof || (cur.duration_ms > 0 && pos + 5000 >= cur.duration_ms)) {
         warmFile(next_path);
-        if (!nxt.open(next_path)) has_next = false;
+        if (!nxt.open(next_path, speed_percent)) has_next = false;
       }
     }
 
