@@ -2,6 +2,7 @@
 // The wire formats: padwave_number.hh (endian-safe integers) and
 // padwave_schemas.hh (the DualSense reports) merged into one header.
 // This is the only file that describes the packets.
+#include <bit>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -140,10 +141,16 @@ static constexpr uint32_t crc32_update(uint32_t crc, const uint8_t *p, size_t le
 }
 
 template <typename Report>
-static inline uint32_t crc_of(const Report &report) {
+struct WireBytes {
+  unsigned char data[sizeof(Report)];
+};
+
+template <typename Report>
+static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = (uint8_t)Report::CrcSeed;
-  uint32_t c = crc32_update(0, (const uint8_t *)&seed, 1);
-  return crc32_update(c, (const uint8_t *)&report, offsetof(Report, crc));
+  uint32_t c = crc32_update(0, &seed, 1);
+  auto raw = std::bit_cast<WireBytes<Report>>(report);
+  return crc32_update(c, raw.data, offsetof(Report, crc));
 }
 
 // ===========================================================================
@@ -295,9 +302,9 @@ struct OutputReport {
     body.init();
   }
 
-  void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = crc_of(*this); }
 
-  bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
+  constexpr bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
 };
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
@@ -464,9 +471,9 @@ struct InputReport {
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
-  void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = crc_of(*this); }
 
-  bool valid() const { return crc == crc_of(*this); }
+  constexpr bool valid() const { return crc == crc_of(*this); }
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
@@ -589,9 +596,9 @@ struct AudioReport {
     speaker_length = OpusSize;
   }
 
-  void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = crc_of(*this); }
 
-  bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
+  constexpr bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
 };
 
 static_assert(sizeof(AudioReport::State) == AudioReport::StateSize,

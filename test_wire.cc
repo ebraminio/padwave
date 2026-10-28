@@ -1,12 +1,9 @@
-// Compile-time checks for the wire layout, endianness and CRC, plus the small
-// runtime part that needs the object's bytes: sign(), valid() and memcpy.
+// Compile-time checks for the wire layout, endianness and CRC.
 //
 // A big-endian host runs the same static_asserts, because the byte order lives
 // in NumType rather than in host integers.
-#include <assert.h>
+#include <bit>
 #include <stddef.h>
-#include <stdio.h>
-#include <string.h>
 
 #include "padwave_wire.hh"
 
@@ -97,18 +94,15 @@ static_assert(kReport.speaker_tag.get() == (padwave::AudioReport::Jack | 0x80));
 static_assert(kReport.speaker_length.get() == 200);
 static_assert(kReport.opus[0].get() == 0);
 
-// --- runtime object-representation checks ----------------------------------
+// --- sign / validate / byte copy, all constexpr ---------------------------
 
-int main() {
-  padwave::AudioReport report = kReport;
-  report.sign();
-  assert(report.valid());
+constexpr padwave::AudioReport kSigned = [] {
+  padwave::AudioReport r = kReport;
+  r.sign();
+  return r;
+}();
+static_assert(kSigned.valid());
 
-  // And it survives a memcpy, which is how it is written.
-  padwave::AudioReport copy;
-  memcpy(&copy, &report, sizeof(copy));
-  assert(copy.valid());
-
-  printf("wire layout ok: %zu bytes, little-endian by construction, crc valid\n", sizeof(report));
-  return 0;
-}
+constexpr auto kRaw = std::bit_cast<padwave::WireBytes<padwave::AudioReport>>(kSigned);
+constexpr padwave::AudioReport kCopy = std::bit_cast<padwave::AudioReport>(kRaw);
+static_assert(kCopy.valid());
