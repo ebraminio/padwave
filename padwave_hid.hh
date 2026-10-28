@@ -1,8 +1,8 @@
 // padwave_hid.hh — one sysfs scan for the controller node and its MAC.
 //
 // The player, input engine and App all need the same hidraw discovery. A
-// single pass over /sys/class/hidraw reads HID_ID/HID_NAME and HID_UNIQ once,
-// returning both the /dev node and the Bluetooth address. Enumeration is by
+// single pass over /sys/class/hidraw reads HID_ID and HID_UNIQ once, returning
+// both the /dev node and the Bluetooth address. Enumeration is by
 // class entry rather than a fixed hidraw0..15 range, and HID_ID is parsed as
 // numbers; this follows hidapi's Linux discovery instead of assuming a layout.
 #pragma once
@@ -26,9 +26,8 @@ struct DualSenseDevice {
   explicit operator bool() const { return index >= 0; }
 
   // Enumerate the hidraw class rather than assuming hidraw0..hidrawN are
-  // contiguous. HID_ID is parsed numerically (vendor/product), as hidapi does,
-  // so leading-zero formatting changes do not matter; the sysfs name supplies
-  // the /dev path.
+  // contiguous. Match only by HID_ID's vendor/product, as hidapi does; this
+  // avoids HID_NAME or sysfs ordering deciding which device is the pad.
   bool find() {
     index = -1;
     node[0] = 0;
@@ -47,18 +46,18 @@ struct DualSenseDevice {
       FILE *f = fopen(uevent, "r");
       if (!f) continue;
 
-      bool match = false;
+      bool id_seen = false;
+      bool id_match = false;
       char uniq[64] = "";
       char line[256];
       while (fgets(line, sizeof(line), f)) {
         if (strncmp(line, "HID_ID=", 7) == 0) {
           unsigned vendor = 0, product = 0;
+          id_seen = true;
           if (sscanf(line + 7, "%*x:%x:%x", &vendor, &product) == 2 &&
               (vendor & 0xFFFF) == 0x054C &&
               ((product & 0xFFFF) == 0x0CE6 || (product & 0xFFFF) == 0x0DF2))
-            match = true;
-        } else if (strncmp(line, "HID_NAME=", 9) == 0 && strstr(line, "DualSense")) {
-          match = true;
+            id_match = true;
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
           snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
           char *nl = strchr(uniq, '\n');
@@ -66,7 +65,7 @@ struct DualSenseDevice {
         }
       }
       fclose(f);
-      if (!match) continue;
+      if (!id_seen || !id_match) continue;
 
       index = atoi(entry->d_name + 6);
       snprintf(node, sizeof(node), "/dev/%s", entry->d_name);
