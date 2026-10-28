@@ -197,10 +197,20 @@ the player tick slows to 500 ms; that keeps a controller-less unit near 0 % CPU
 playback. With the controller connected, the ~500 Hz input stream still costs
 roughly 0.9 % of a core even while paused; that is the input engine, not audio.
 
-Not yet done: real audio-sink/state reporting (the panel still says no sink),
-configurable idle fade floor, persisted mic-monitor state, and physical
-confirmation of the jack path (lightbar, rumble and trigger effects are
-confirmed).
+## Known limitations
+
+- `audio.present`, `audio.sink` and `audio.state` are still static; the panel
+  says "no sink". The player does not report an ALSA sink.
+- The idle fade floor is fixed at 10%; only timeout/grace/poweroff delay are
+  configurable.
+- Mic-monitor state is not persisted; a restart leaves the mic off.
+- Playhead saves 1 s after changes and every 30 s while playing, so a hard crash
+  can lose up to 30 s. Volume saves after 1 s of quiet, so a hard kill can lose
+  the last second.
+- Jack pause has API/decoder verification only; the physical unplug response
+  has not been observed. Lightbar, rumble and adaptive triggers are confirmed.
+- `/api/reload` is a deliberate no-op (`reloaded=0`); there are no modules.
+- `hid.power_save` is null; the last `power_save_control` byte is not exposed.
 
 ## Protocol
 
