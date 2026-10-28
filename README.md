@@ -45,7 +45,8 @@ PADWAVE_ROOTS=/path/to/audio ./padwave [port]
 ```
 
 `PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the
-app uses `~/Music`. `PADWAVE_HOST`/`PADWAVE_DIR` configure `deploy.sh`.
+app uses `~/Music`. `PADWAVE_HOST`/`PADWAVE_DIR` configure `deploy.sh`. The wire
+layout, field-offset and CRC assertions compile as part of `padwave_wire.hh`.
 
 ## Install
 
@@ -118,7 +119,7 @@ Kernel HIDP keeps the 500 Hz report path out of bluetoothd (~3% → ~0.1%).
 
 C++ sources use `.clang-format`: LLVM, 100 columns, 2-space indent, a blank line
 between definitions, private class fields and compact guards. Run clang-format
-19.1.7 over `padwave.cc`, the headers and `test_wire.cc`.
+19.1.7 over `padwave.cc` and the headers.
 
 ## Known limitations
 

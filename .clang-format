@@ -1,6 +1,6 @@
 # padwave's C++ style: LLVM, but 100 columns and the project's compact
 # one-line guards. Keep includes in their hand-written order (the FFmpeg block
-# must stay inside extern "C"). Run: clang-format -i padwave.cc *.hh test_wire.cc
+# must stay inside extern "C"). Run: clang-format -i padwave.cc *.hh
 BasedOnStyle: LLVM
 Language: Cpp
 Standard: Latest
