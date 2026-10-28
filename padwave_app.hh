@@ -1571,7 +1571,7 @@ private:
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);
     } else {
       DualsenseDevice device;
-      if (!find_dualsense_device(&device) || !device.mac[0]) return false;
+      if (!device || !device.mac[0]) return false;
       snprintf(mac, sizeof(mac), "%s", device.mac);
     }
 

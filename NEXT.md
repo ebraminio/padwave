@@ -55,8 +55,9 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   surface, inline camelCase methods. Input owns its fd/callbacks/edge state and
   exposes only open/close/fd/node/setSink/feed; App embeds one and uses it
   directly. App-only helpers are private static members; Server constants and
-  its bindings text are private. The only remaining free interfaces are
-  `find_dualsense`/`server_main`/`main` and the wire names. There are no
+  its bindings text are private. Discovery is `DualsenseDevice` (constructor
+  scans, `find()` refreshes, `open()` opens); the only remaining free entry
+  points are `server_main`/`main` and the wire names. There are no
   player/input/opusdec CLIs: `padwave [port]` always serves the app. Player and
   its File are the same pattern: private fields/helpers, public
   create/destroy/setSink/timerFd/step/command.

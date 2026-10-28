@@ -409,7 +409,8 @@ private:
       if (hidraw_retry > 0)
         hidraw_retry--;
       else {
-        hidraw = find_dualsense();
+        DualsenseDevice device;
+        hidraw = device.open();
         if (hidraw < 0) hidraw_retry = 100;
       }
     }
@@ -509,7 +510,10 @@ private:
       out.seq_tag = (uint8_t)((out_seq & 0x0F) << 4);
       if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
       out.sign();
-      if (hidraw < 0) hidraw = find_dualsense();
+      if (hidraw < 0) {
+        DualsenseDevice device;
+        hidraw = device.open();
+      }
       bool ok =
           hidraw >= 0 && padwave_fields::write_all(hidraw, (const uint8_t *)&out, sizeof(out));
       if (ok) out_seq = (uint8_t)((out_seq + 1) & 0x0F);
@@ -681,7 +685,12 @@ public:
 
   bool create(const char *node = nullptr, bool speaker = false) {
     destroy();
-    hidraw = node ? open(node, O_RDWR | O_CLOEXEC) : find_dualsense();
+    if (node) {
+      hidraw = open(node, O_RDWR | O_CLOEXEC);
+    } else {
+      DualsenseDevice device;
+      hidraw = device.open();
+    }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = speaker;
     state.init(this->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);

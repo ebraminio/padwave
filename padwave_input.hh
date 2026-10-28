@@ -417,10 +417,10 @@ public:
 
   bool open(const char *node = nullptr) {
     close();
-    DualsenseDevice device;
     const char *path = node;
     if (!node) {
-      if (!find_dualsense_device(&device)) {
+      DualsenseDevice device;
+      if (!device) {
         fprintf(stderr, "padwave: no DualSense hidraw node\n");
         return false;
       }
