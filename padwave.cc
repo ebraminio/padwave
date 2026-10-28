@@ -22,6 +22,30 @@
 #include "padwave_app.hh"
 #include "padwave_http.hh"
 
+void Player::emitStatus(const player_status &st) {
+  if (app) app->playerStatus(st);
+}
+
+void Player::emitTrack(const char *path) {
+  if (app) app->playerTrack(path);
+}
+
+void Input::emitFrameToApp(const input_frame *f) {
+  if (app) app->inputFrame(f);
+}
+
+void Input::emitAction(const char *name, int value) {
+  if (app) app->inputAction(name, value);
+}
+
+void Input::emitEvent(const char *name) {
+  if (app) app->inputEvent(name);
+}
+
+void Input::emitMic(const uint8_t *data, size_t len) {
+  if (app) app->inputMic(data, len);
+}
+
 namespace padwave_ui {
 static const unsigned char kIndexHtml[] = {
 #embed "index.html"

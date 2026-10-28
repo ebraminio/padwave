@@ -1,9 +1,9 @@
 // padwave_input.hh — the controller input engine.
 //
-// One Input object owns the hidraw fd, the four callbacks, the edge detectors
-// and the decoder. The app embeds one; there is no separate input process or
-// CLI. Fields and helpers are private; the public surface is open/close/fd/
-// node/setSink/feed.
+// One Input object owns the hidraw fd, the App pointer, the edge detectors and
+// the decoder. The app embeds one; there is no separate input process or CLI.
+// Fields and helpers are private; the public surface is open/close/fd/node/
+// attach/feed.
 #pragma once
 
 #include <errno.h>
@@ -45,13 +45,10 @@ struct input_frame {
   char raw[512];
 };
 
-typedef void (*input_frame_fn)(const struct input_frame *, void *);
-typedef void (*input_action_fn)(const char *name, int value, void *);
-typedef void (*input_event_fn)(const char *name, void *);
-typedef void (*input_mic_fn)(const uint8_t *data, size_t len, void *);
-
 // padwave input — the controller's state, decoded by the C++ schema.
-// The engine is in-process; the app owns one Input and installs callbacks.
+// The engine is in-process; the app owns one Input and attaches itself.
+
+struct App;
 
 struct Input {
 private:
@@ -93,11 +90,7 @@ private:
   int fd_ = -1;
   char node_name[64] = "";
   char mac_[32] = "";
-  input_frame_fn frame_fn = nullptr;
-  input_action_fn action_fn = nullptr;
-  input_event_fn event_fn = nullptr;
-  input_mic_fn mic_fn = nullptr;
-  void *ud = nullptr;
+  App *app = nullptr;
 
   ActionsState actions;
   SensorsState sensors;
@@ -284,13 +277,10 @@ private:
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   }
 
-  void emitAction(const char *name, int value) {
-    if (action_fn) action_fn(name, value, ud);
-  }
-
-  void emitEvent(const char *name) {
-    if (event_fn) event_fn(name, ud);
-  }
+  void emitAction(const char *name, int value);
+  void emitEvent(const char *name);
+  void emitMic(const uint8_t *data, size_t len);
+  void emitFrameToApp(const input_frame *f);
 
   static const char *dpadName(uint8_t value) {
     switch (value) {
@@ -381,7 +371,7 @@ private:
     size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
     for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
 
-    if (frame_fn) frame_fn(&f, ud);
+    emitFrameToApp(&f);
 
     trackDpad(b.buttons);
     trackButtons(b.buttons);
@@ -395,7 +385,7 @@ private:
     if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
-      if (mic_fn) mic_fn(payload, payload_len, ud);
+      emitMic(payload, payload_len);
       return;
     }
 
@@ -441,11 +431,7 @@ public:
     fd_ = -1;
     node_name[0] = 0;
     mac_[0] = 0;
-    frame_fn = nullptr;
-    action_fn = nullptr;
-    event_fn = nullptr;
-    mic_fn = nullptr;
-    ud = nullptr;
+    app = nullptr;
     actions = ActionsState{};
     sensors = SensorsState{};
     dpad_state = DpadState{};
@@ -457,14 +443,7 @@ public:
 
   const char *mac() const { return mac_; }
 
-  void setSink(input_frame_fn frame, input_action_fn action, input_event_fn event, input_mic_fn mic,
-               void *userdata) {
-    frame_fn = frame;
-    action_fn = action;
-    event_fn = event;
-    mic_fn = mic;
-    ud = userdata;
-  }
+  void attach(App *owner) { app = owner; }
 
   int feed(const uint8_t *buf, size_t len) {
     if (fd_ < 0) return -1;
@@ -472,7 +451,7 @@ public:
     return 0;
   }
 
-  // Pure parser for tests and fuzzing: no fd required, no callbacks needed.
+  // Pure parser for tests and fuzzing: no fd or App required.
   int parse(const uint8_t *buf, size_t len) {
     handleReport(buf, len);
     return 0;

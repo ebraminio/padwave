@@ -64,8 +64,7 @@ struct player_status {
   int eof;
 };
 
-typedef void (*player_status_fn)(const struct player_status *, void *);
-typedef void (*player_track_fn)(const char *, void *);
+struct App;
 
 #define RATE 48000
 #define CHANNELS 2
@@ -139,9 +138,7 @@ private:
   int hidraw = -1;
   int hidraw_retry = 0;
   bool speaker = false;
-  player_status_fn status_fn = nullptr;
-  player_track_fn track_fn = nullptr;
-  void *sink_ud = nullptr;
+  App *app = nullptr;
 
   OpusEncoder *enc = nullptr;
   uint8_t seq = 0, counter = 0;
@@ -318,7 +315,7 @@ private:
     eof = cur.eof;
     has_next = false;
 
-    if (track_fn) track_fn(path, sink_ud);
+    emitTrack(path);
   }
 
   bool takeBlock(float out[IN_FRAMES][CHANNELS]) {
@@ -373,9 +370,12 @@ private:
 
     if (!manual && !seek) {
       has_next = false;
-      if (track_fn) track_fn(path, sink_ud);
+      emitTrack(path);
     }
   }
+
+  void emitStatus(const player_status &st);
+  void emitTrack(const char *path);
 
   void sendReport(const uint8_t *opus, int len) {
     padwave::AudioReport report;
@@ -677,11 +677,7 @@ public:
 
   int timerFd() const { return tfd; }
 
-  void setSink(player_status_fn status, player_track_fn track, void *ud) {
-    status_fn = status;
-    track_fn = track;
-    sink_ud = ud;
-  }
+  void attach(App *owner) { app = owner; }
 
   bool create(const char *node = nullptr, bool speaker = false) {
     destroy();
@@ -733,6 +729,7 @@ public:
     tick_ns = 0;
     playing = false;
     paused = false;
+    app = nullptr;
   }
 
   void setTick(long ns) {
@@ -822,7 +819,7 @@ public:
       st.pushed = pushed;
       st.paused = paused ? 1 : 0;
       st.eof = (eof && tail == head && nxt.fmt == NULL && !has_next) ? 1 : 0;
-      if (status_fn) status_fn(&st, sink_ud);
+      emitStatus(st);
     }
   }
 };

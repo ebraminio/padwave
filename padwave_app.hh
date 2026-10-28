@@ -37,6 +37,9 @@
 // ---------------------------------------------------------------------------
 
 struct App {
+  friend struct Player;
+  friend struct Input;
+
 private:
   static constexpr int kMaxTracks = 4096;
   static constexpr int kMaxPath = 1024;
@@ -976,7 +979,7 @@ private:
   void playerStart() {
     if (this->player) return;
     if (!this->player.create(nullptr, false)) return;
-    this->player.setSink(playerStatusCb, playerTrackCb, this);
+    this->player.attach(this);
     this->player_timer_fd = this->player.timerFd();
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
@@ -995,7 +998,7 @@ private:
     }
     snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
     snprintf(this->controller_mac, sizeof(this->controller_mac), "%s", this->input.mac());
-    this->input.setSink(inputFrameCb, inputActionCb, inputEventCb, inputMicCb, this);
+    this->input.attach(this);
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
     ensureAudibleVolume();
@@ -1021,25 +1024,23 @@ private:
     serviceLeds();
   }
 
-  static void playerStatusCb(const struct player_status *st, void *ud) {
-    App *a = (App *)ud;
-    a->pos_ms = st->pos_ms;
-    a->dur_ms = st->dur_ms;
-    a->sent = st->sent;
-    a->underruns = st->underruns;
-    a->paused = st->paused != 0;
-    a->eof = st->eof != 0;
+  void playerStatus(const struct player_status &st) {
+    pos_ms = st.pos_ms;
+    dur_ms = st.dur_ms;
+    sent = st.sent;
+    underruns = st.underruns;
+    paused = st.paused != 0;
+    eof = st.eof != 0;
   }
 
-  static void playerTrackCb(const char *path, void *ud) {
-    App *a = (App *)ud;
-    int idx = a->findTrack(path);
+  void playerTrack(const char *path) {
+    int idx = findTrack(path);
     if (idx < 0) return;
-    if (a->current >= 0 && a->current != idx) a->pushHistory(a->current);
-    a->current = idx;
-    a->paused = false;
-    a->playing = true;
-    a->playhead_dirty = true;
+    if (current >= 0 && current != idx) pushHistory(current);
+    current = idx;
+    paused = false;
+    playing = true;
+    playhead_dirty = true;
   }
 
   void play(int index, long start_ms) {
@@ -1236,70 +1237,63 @@ private:
     this->playhead_dirty = true;
   }
 
-  static void inputFrameCb(const struct input_frame *f, void *ud) {
-    App *a = (App *)ud;
-    bool was_connected = a->controller;
-    a->controller = true;
+  void inputFrame(const struct input_frame *f) {
+    bool was_connected = this->controller;
+    this->controller = true;
     if (!was_connected) {
-      a->led_force = true;
-      a->serviceLeds();
-      if (a->paused_by_disconnect) {
-        a->paused_by_disconnect = false;
-        a->ensureAudibleVolume();
-        if (a->paused) {
-          a->stopMicForPlayback();
-          a->paused = false;
-          a->playerSend("pause 0\n");
-          a->playhead_dirty = true;
+      this->led_force = true;
+      this->serviceLeds();
+      if (this->paused_by_disconnect) {
+        this->paused_by_disconnect = false;
+        this->ensureAudibleVolume();
+        if (this->paused) {
+          this->stopMicForPlayback();
+          this->paused = false;
+          this->playerSend("pause 0\n");
+          this->playhead_dirty = true;
         }
       }
     }
-    a->lx = (int)f->lx;
-    a->ly = (int)f->ly;
-    a->rx = (int)f->rx;
-    a->ry = (int)f->ry;
-    a->l2 = (int)f->l2;
-    a->r2 = (int)f->r2;
-    a->battery = f->battery;
-    a->jack = f->jack != 0;
-    a->temp = (int)f->temp;
-    snprintf(a->dpad, sizeof(a->dpad), "%s", f->dpad);
-    snprintf(a->buttons, sizeof(a->buttons), "%s", f->buttons);
-    snprintf(a->raw, sizeof(a->raw), "%.*s", (int)sizeof(a->raw) - 1, f->raw);
-    snprintf(a->charging, sizeof(a->charging), "%s",
+    this->lx = (int)f->lx;
+    this->ly = (int)f->ly;
+    this->rx = (int)f->rx;
+    this->ry = (int)f->ry;
+    this->l2 = (int)f->l2;
+    this->r2 = (int)f->r2;
+    this->battery = f->battery;
+    this->jack = f->jack != 0;
+    this->temp = (int)f->temp;
+    snprintf(this->dpad, sizeof(this->dpad), "%s", f->dpad);
+    snprintf(this->buttons, sizeof(this->buttons), "%s", f->buttons);
+    snprintf(this->raw, sizeof(this->raw), "%.*s", (int)sizeof(this->raw) - 1, f->raw);
+    snprintf(this->charging, sizeof(this->charging), "%s",
              f->charging == 1   ? "charging"
              : f->charging == 2 ? "full"
                                 : "discharging");
-    a->gx = f->gx;
-    a->gy = f->gy;
-    a->gz = f->gz;
-    a->ax = f->ax;
-    a->ay = f->ay;
-    a->az = f->az;
-    a->seq = f->seq;
-    a->tfl = f->tfl;
-    a->tfr = f->tfr;
-    for (int i = 0; i < 2; i++) a->touch[i] = f->touches[i];
+    this->gx = f->gx;
+    this->gy = f->gy;
+    this->gz = f->gz;
+    this->ax = f->ax;
+    this->ay = f->ay;
+    this->az = f->az;
+    this->seq = f->seq;
+    this->tfl = f->tfl;
+    this->tfr = f->tfr;
+    for (int i = 0; i < 2; i++) this->touch[i] = f->touches[i];
 
     long now = nowMs();
-    if (a->rate_at == 0) a->rate_at = now;
-    a->rate_frames++;
-    if (now - a->rate_at >= 1000) {
-      a->rate = (int)((a->rate_frames * 1000) / (now - a->rate_at));
-      a->rate_frames = 0;
-      a->rate_at = now;
+    if (this->rate_at == 0) this->rate_at = now;
+    this->rate_frames++;
+    if (now - this->rate_at >= 1000) {
+      this->rate = (int)((this->rate_frames * 1000) / (now - this->rate_at));
+      this->rate_frames = 0;
+      this->rate_at = now;
     }
   }
 
-  static void inputActionCb(const char *name, int value, void *ud) {
-    ((App *)ud)->handleAction(name, value);
-  }
+  void inputAction(const char *name, int value) { handleAction(name, value); }
 
-  static void inputEventCb(const char *name, void *ud) {
-    (void)name;
-    App *a = (App *)ud;
-    a->noteActivity();
-  }
+  void inputEvent(const char *) { noteActivity(); }
 
   void micDecode(const uint8_t *data, size_t len) {
     if (!this->mic_decoder) {
@@ -1338,10 +1332,9 @@ private:
     this->mic_last_ms = nowMs();
   }
 
-  static void inputMicCb(const uint8_t *data, size_t len, void *ud) {
-    App *a = (App *)ud;
-    if (!a->mic_monitor) return;
-    a->micDecode(data, len);
+  void inputMic(const uint8_t *data, size_t len) {
+    if (!this->mic_monitor) return;
+    this->micDecode(data, len);
   }
 
   void handleAction(const char *name, int value) {
