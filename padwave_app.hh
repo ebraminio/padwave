@@ -244,7 +244,10 @@ private:
   unsigned seq = 0;
   int rate = 0;
   unsigned tfl = 0, tfr = 0;
-  struct input_touch touch[2] = {};
+  unsigned touch_active[2] = {};
+  unsigned touch_id[2] = {};
+  unsigned touch_x[2] = {};
+  unsigned touch_y[2] = {};
   long rate_at = 0;
   unsigned rate_frames = 0;
   char input_node[64] = "";
@@ -604,13 +607,13 @@ public:
     for (int t = 0; t < 2; t++) {
       char key[48];
       snprintf(key, sizeof(key), "controller.touches.%d.active", t);
-      kvAdd(buf, cap, &o, key, "%s", this->touch[t].active ? "true" : "false");
+      kvAdd(buf, cap, &o, key, "%s", this->touch_active[t] ? "true" : "false");
       snprintf(key, sizeof(key), "controller.touches.%d.id", t);
-      kvAdd(buf, cap, &o, key, "%u", this->touch[t].id);
+      kvAdd(buf, cap, &o, key, "%u", this->touch_id[t]);
       snprintf(key, sizeof(key), "controller.touches.%d.x", t);
-      kvAdd(buf, cap, &o, key, "%u", this->touch[t].x);
+      kvAdd(buf, cap, &o, key, "%u", this->touch_x[t]);
       snprintf(key, sizeof(key), "controller.touches.%d.y", t);
-      kvAdd(buf, cap, &o, key, "%u", this->touch[t].y);
+      kvAdd(buf, cap, &o, key, "%u", this->touch_y[t]);
     }
     kvAdd(buf, cap, &o, "controller.l2", "%d", this->l2);
     kvAdd(buf, cap, &o, "controller.r2", "%d", this->r2);
@@ -1306,7 +1309,57 @@ private:
     this->playhead_dirty = true;
   }
 
-  void inputFrame(const struct input_frame *f) {
+  static const char *dpadName(uint8_t value) {
+    switch (value) {
+    case padwave::InputBody::Up: return "up";
+    case padwave::InputBody::UpRight: return "up_right";
+    case padwave::InputBody::Right: return "right";
+    case padwave::InputBody::DownRight: return "down_right";
+    case padwave::InputBody::Down: return "down";
+    case padwave::InputBody::DownLeft: return "down_left";
+    case padwave::InputBody::Left: return "left";
+    case padwave::InputBody::UpLeft: return "up_left";
+    default: return "none";
+    }
+  }
+
+  static void buttonsToString(uint32_t buttons, char *out, size_t cap) {
+    struct {
+      uint32_t bit;
+      const char *name;
+    } names[] = {
+        {padwave::InputBody::ButtonSquare, "square"},
+        {padwave::InputBody::ButtonCross, "cross"},
+        {padwave::InputBody::ButtonCircle, "circle"},
+        {padwave::InputBody::ButtonTriangle, "triangle"},
+        {padwave::InputBody::L1, "l1"},
+        {padwave::InputBody::R1, "r1"},
+        {padwave::InputBody::L2, "l2"},
+        {padwave::InputBody::R2, "r2"},
+        {padwave::InputBody::Create, "create"},
+        {padwave::InputBody::Options, "options"},
+        {padwave::InputBody::L3, "l3"},
+        {padwave::InputBody::R3, "r3"},
+        {padwave::InputBody::Ps, "ps"},
+        {padwave::InputBody::Touchpad, "touchpad"},
+        {padwave::InputBody::Mute, "mute"},
+        {padwave::InputBody::Fn1, "fn1"},
+        {padwave::InputBody::Fn2, "fn2"},
+        {padwave::InputBody::LeftPaddle, "left_paddle"},
+        {padwave::InputBody::RightPaddle, "right_paddle"},
+    };
+
+    size_t o = 0;
+    out[0] = 0;
+    for (auto &n : names) {
+      if (!(buttons & n.bit)) continue;
+      int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
+      if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
+      o += static_cast<size_t>(w);
+    }
+  }
+
+  void inputFrame(const padwave::InputBody &b, const uint8_t *raw_buf, size_t len) {
     bool was_connected = this->controller;
     this->controller = true;
     if (!was_connected) {
@@ -1323,32 +1376,45 @@ private:
         }
       }
     }
-    this->lx = static_cast<int>(f->lx);
-    this->ly = static_cast<int>(f->ly);
-    this->rx = static_cast<int>(f->rx);
-    this->ry = static_cast<int>(f->ry);
-    this->l2 = static_cast<int>(f->l2);
-    this->r2 = static_cast<int>(f->r2);
-    this->battery = f->battery;
-    this->jack = f->jack != 0;
-    this->temp = static_cast<int>(f->temp);
-    snprintf(this->dpad, sizeof(this->dpad), "%s", f->dpad);
-    snprintf(this->buttons, sizeof(this->buttons), "%s", f->buttons);
-    snprintf(this->raw, sizeof(this->raw), "%.*s", static_cast<int>(sizeof(this->raw)) - 1, f->raw);
+    this->lx = b.lx;
+    this->ly = b.ly;
+    this->rx = b.rx;
+    this->ry = b.ry;
+    this->l2 = b.l2;
+    this->r2 = b.r2;
+    this->battery = (b.status0 & 0x0F) * 10 + 5;
+    if (this->battery > 100) this->battery = 100;
+    this->jack = (b.status1 & padwave::InputBody::Headset) ? true : false;
+    this->temp = b.temperature;
+    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.buttons & 0x0F));
+    buttonsToString(b.buttons, this->buttons, sizeof(this->buttons));
+    unsigned charge = b.status0 >> 4;
+    this->raw[0] = 0;
+    size_t r = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;
+    for (size_t i = 0; i < r; i++)
+      snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
     snprintf(this->charging, sizeof(this->charging), "%s",
-             f->charging == 1   ? "charging"
-             : f->charging == 2 ? "full"
-                                : "discharging");
-    this->gx = f->gx;
-    this->gy = f->gy;
-    this->gz = f->gz;
-    this->ax = f->ax;
-    this->ay = f->ay;
-    this->az = f->az;
-    this->seq = f->seq;
-    this->tfl = f->tfl;
-    this->tfr = f->tfr;
-    for (int i = 0; i < 2; i++) this->touch[i] = f->touches[i];
+             charge == 1   ? "charging"
+             : charge == 2 ? "full"
+                           : "discharging");
+    this->gx = b.gyro_x;
+    this->gy = b.gyro_y;
+    this->gz = b.gyro_z;
+    this->ax = b.accel_x;
+    this->ay = b.accel_y;
+    this->az = b.accel_z;
+    this->seq = b.seq;
+    this->tfl = b.trigger_feedback_l;
+    this->tfr = b.trigger_feedback_r;
+    for (int t = 0; t < 2; t++) {
+      const PWUINT8 *touch = t == 0 ? b.touch1 : b.touch2;
+      unsigned contact = touch[0];
+      unsigned middle = touch[2];
+      this->touch_active[t] = (contact & 0x80) ? 0 : 1;
+      this->touch_id[t] = contact & 0x7F;
+      this->touch_x[t] = touch[1] | ((middle & 0x0F) << 8);
+      this->touch_y[t] = (middle >> 4) | (static_cast<unsigned>(touch[3]) << 4);
+    }
 
     long now = nowMs();
     if (this->rate_at == 0) this->rate_at = now;

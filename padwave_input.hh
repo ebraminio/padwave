@@ -21,29 +21,6 @@
 
 #include "padwave_wire.hh"
 
-struct input_touch {
-  unsigned active;
-  unsigned id;
-  unsigned x, y;
-};
-
-struct input_frame {
-  unsigned seq;
-  unsigned lx, ly, rx, ry, l2, r2;
-  char dpad[16];
-  char buttons[256];
-  int battery;
-  unsigned charging;
-  int jack;
-  int mic;
-  unsigned temp;
-  int gx, gy, gz;
-  int ax, ay, az;
-  unsigned tfl, tfr;
-  struct input_touch touches[2];
-  char raw[512];
-};
-
 // padwave input — the controller's state, decoded by the C++ schema.
 // The engine is in-process; the app owns one Input and attaches itself.
 
@@ -279,99 +256,10 @@ private:
   void emitAction(const char *name, int value);
   void emitEvent(const char *name);
   void emitMic(const uint8_t *data, size_t len);
-  void emitFrameToApp(const input_frame *f);
-
-  static const char *dpadName(uint8_t value) {
-    switch (value) {
-    case padwave::InputBody::Up: return "up";
-    case padwave::InputBody::UpRight: return "up_right";
-    case padwave::InputBody::Right: return "right";
-    case padwave::InputBody::DownRight: return "down_right";
-    case padwave::InputBody::Down: return "down";
-    case padwave::InputBody::DownLeft: return "down_left";
-    case padwave::InputBody::Left: return "left";
-    case padwave::InputBody::UpLeft: return "up_left";
-    default: return "none";
-    }
-  }
-
-  static void buttonsToString(uint32_t buttons, char *out, size_t cap) {
-    struct {
-      uint32_t bit;
-      const char *name;
-    } names[] = {
-        {padwave::InputBody::ButtonSquare, "square"},
-        {padwave::InputBody::ButtonCross, "cross"},
-        {padwave::InputBody::ButtonCircle, "circle"},
-        {padwave::InputBody::ButtonTriangle, "triangle"},
-        {padwave::InputBody::L1, "l1"},
-        {padwave::InputBody::R1, "r1"},
-        {padwave::InputBody::L2, "l2"},
-        {padwave::InputBody::R2, "r2"},
-        {padwave::InputBody::Create, "create"},
-        {padwave::InputBody::Options, "options"},
-        {padwave::InputBody::L3, "l3"},
-        {padwave::InputBody::R3, "r3"},
-        {padwave::InputBody::Ps, "ps"},
-        {padwave::InputBody::Touchpad, "touchpad"},
-        {padwave::InputBody::Mute, "mute"},
-        {padwave::InputBody::Fn1, "fn1"},
-        {padwave::InputBody::Fn2, "fn2"},
-        {padwave::InputBody::LeftPaddle, "left_paddle"},
-        {padwave::InputBody::RightPaddle, "right_paddle"},
-    };
-
-    size_t o = 0;
-    out[0] = 0;
-    for (auto &n : names) {
-      if (!(buttons & n.bit)) continue;
-      int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
-      if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
-      o += static_cast<size_t>(w);
-    }
-  }
+  void emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len);
 
   void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
-    struct input_frame f;
-    memset(&f, 0, sizeof(f));
-    uint32_t buttons = b.buttons;
-    f.seq = b.seq;
-    f.lx = b.lx;
-    f.ly = b.ly;
-    f.rx = b.rx;
-    f.ry = b.ry;
-    f.l2 = b.l2;
-    f.r2 = b.r2;
-    snprintf(f.dpad, sizeof(f.dpad), "%s", dpadName(buttons & 0x0F));
-    buttonsToString(buttons, f.buttons, sizeof(f.buttons));
-    f.battery = (b.status0 & 0x0F) * 10 + 5;
-    if (f.battery > 100) f.battery = 100;
-    f.charging = b.status0 >> 4;
-    f.jack = (b.status1 & padwave::InputBody::Headset) ? 1 : 0;
-    f.mic = (b.status1 & padwave::InputBody::Microphone) ? 1 : 0;
-    f.temp = b.temperature;
-    f.gx = b.gyro_x;
-    f.gy = b.gyro_y;
-    f.gz = b.gyro_z;
-    f.ax = b.accel_x;
-    f.ay = b.accel_y;
-    f.az = b.accel_z;
-    f.tfl = b.trigger_feedback_l;
-    f.tfr = b.trigger_feedback_r;
-    for (int t = 0; t < 2; t++) {
-      const PWUINT8 *touch = t == 0 ? b.touch1 : b.touch2;
-      unsigned contact = touch[0];
-      unsigned middle = touch[2];
-      f.touches[t].active = (contact & 0x80) ? 0 : 1;
-      f.touches[t].id = contact & 0x7F;
-      f.touches[t].x = touch[1] | ((middle & 0x0F) << 8);
-      f.touches[t].y = (middle >> 4) | (static_cast<unsigned>(touch[3]) << 4);
-    }
-    size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
-    for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
-
-    emitFrameToApp(&f);
-
+    emitFrameToApp(b, raw, len);
     trackDpad(b.buttons);
     trackButtons(b.buttons);
     trackTriggers(b.l2, b.r2);

@@ -6,7 +6,7 @@
 
 #include "padwave_input.hh"
 
-inline void Input::emitFrameToApp(const input_frame *) {}
+inline void Input::emitFrameToApp(const padwave::InputBody &, const uint8_t *, size_t) {}
 
 inline void Input::emitAction(const char *, int) {}
 
