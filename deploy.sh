@@ -19,4 +19,4 @@ rsync -az --delete \
   ./ "$HOST:~/$TARGET/"
 
 echo "==> building and installing on $HOST"
-ssh "$HOST" "cd ~/$TARGET && ./build.sh && ./install.sh"
+ssh "$HOST" "cd ~/$TARGET && ./install.sh"
