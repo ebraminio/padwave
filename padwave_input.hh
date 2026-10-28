@@ -54,6 +54,9 @@ typedef void (*input_action_fn)(const char *name, int value, void *);
 typedef void (*input_event_fn)(const char *name, void *);
 typedef void (*input_mic_fn)(const uint8_t *data, size_t len, void *);
 
+// padwave input — the controller's state, decoded by the C++ schema.
+// The engine is in-process; the app owns one Input and installs callbacks.
+
 struct Input {
 private:
   struct ActionsState {
