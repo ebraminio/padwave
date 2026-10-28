@@ -4,7 +4,8 @@
 
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
 - HEAD: latest `main`; the behavior described here landed through `bbf86c1`
-  (later commits are documentation only). `git log --oneline` for detail.
+  (later commits are comments/formatting/documentation). `git log --oneline` for
+  detail.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
 - Service: `padwave.service`, one process / one thread, port 8787, ~2 % CPU,
@@ -58,9 +59,9 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   padwave.cc. Free functions and wire names stay snake_case. Player and its
   File are the same pattern: private fields/helpers, public create/destroy/
   setSink/timerFd/step/command; native_main is only a wrapper for cli().
-- Run `clang-format -i padwave.cc padwave_player.hh padwave_app.hh
-  padwave_server.hh padwave_input.hh padwave_wire.hh test_wire.cc` before
-  committing.
+- Run the Pi's `clang-format` (19.1.7) over `padwave.cc padwave_player.hh
+  padwave_app.hh padwave_server.hh padwave_input.hh padwave_wire.hh test_wire.cc`
+  and use that output; it is the formatter the tree was last normalized with.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
   add `-lz` back. FFmpeg's shared libraries may still bring libz in
   transitively.

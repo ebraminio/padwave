@@ -62,6 +62,7 @@ indent, private class fields, compact one-line guards. Run:
 ```sh
 clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_server.hh
   padwave_input.hh padwave_wire.hh test_wire.cc
+# the tree is normalized with the Pi's clang-format 19.1.7; prefer its output
 ```
 
 ## Build and run
