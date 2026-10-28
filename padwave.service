@@ -5,12 +5,11 @@ Wants=bluetooth.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/padwave
 Environment=HOME=%h
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 # Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
 EnvironmentFile=-%h/.config/padwave/env
-ExecStart=%h/padwave/padwave-boot.sh
+ExecStart=%h/.local/bin/padwave 8787
 Restart=on-failure
 RestartSec=3
 # One process, one thread.

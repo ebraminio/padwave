@@ -12,9 +12,10 @@
   UI at `http://192.168.1.175:8787`. The idle power-off can leave the pad
   asleep until PS is pressed.
 - Layout:
-  - `padwave.cc` — main, controller discovery and server entrypoint
+  - `padwave.cc` — main, discovery, `Server` (epoll/HTTP/SSE/UI)
   - `padwave_player.hh` — `struct Player` (decoders, rings, 0x36 writer)
   - `padwave_input.hh` — `struct Input` (hidraw, callbacks, decoder)
+  - `padwave_http.hh` — request parser used by `Server`
   - `padwave_app.hh` — `struct App` (private fields, inline camelCase methods)
   - `padwave_server.hh` — `struct Server` (epoll, routes, SSE, embedded UI)
   - `padwave_wire.hh` — the only wire description
@@ -60,7 +61,7 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   its File are the same pattern: private fields/helpers, public
   create/destroy/setSink/timerFd/step/command.
 - Run the Pi's `clang-format` (19.1.7) over `padwave.cc padwave_player.hh
-  padwave_app.hh padwave_server.hh padwave_input.hh padwave_wire.hh test_wire.cc`
+  padwave_app.hh padwave_input.hh padwave_wire.hh test_wire.cc`
   and use that output; it is the formatter the tree was last normalized with.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
   add `-lz` back. FFmpeg's shared libraries may still bring libz in

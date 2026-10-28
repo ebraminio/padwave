@@ -40,18 +40,18 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        main, controller discovery and the server entrypoint
+padwave.cc        main, discovery, struct Server (epoll/HTTP/SSE/UI)
 padwave_player.hh struct Player: decoders, rings, crossfade, 0x36 writer
 padwave_input.hh  struct Input: hidraw, callbacks and decoder
 padwave_app.hh    struct App: library, playback, controller snapshot, config
                   and lab output (inline methods, private fields)
-padwave_server.hh struct Server: epoll, HTTP routes, SSE, embedded UI
+padwave_http.hh   the request parser used by Server
 padwave_wire.hh   the wire formats (number types + DualSense schemas)
 index.html        the panel, embedded into the binary at build time
 test_wire.cc      wire layout and CRC (compiled and run on every build)
 build.sh          the build: ui header, wire test, then the binary
 install.sh        build + install + systemd unit
-padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
+padwave.service, padwave-ctl, deploy.sh
 ```
 
 ## Formatting
@@ -62,8 +62,8 @@ indent, a blank line between function definitions
 guards. Run:
 
 ```sh
-clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_server.hh
-  padwave_input.hh padwave_wire.hh test_wire.cc
+clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_input.hh
+  padwave_wire.hh test_wire.cc
 # the tree is normalized with the Pi's clang-format 19.1.7; prefer its output
 ```
 
