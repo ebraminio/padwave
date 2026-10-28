@@ -2,10 +2,10 @@
 //
 // One Player object owns the FFmpeg decoders, the Opus encoder, the two
 // prefetch rings, the crossfade state, the 0x36 writer and the hidraw fd. The
-// app embeds one; `padwave native` constructs a scratch object for the CLI.
+// app embeds one; there is no separate player process or CLI.
 //
-// One thread, no async I/O framework: poll() on stdin and a timerfd is enough
-// because decoding is not the bottleneck, *latency* was. Every loop iteration
+// One thread, no async I/O framework: the server's epoll loop and a timerfd
+// are enough because decoding is not the bottleneck, *latency* was. Every loop iteration
 // spends at most DECODE_BUDGET_MS inside libav, the ring is primed before the
 // first send, and a late timer catches up with a few packets. That keeps the
 // 10.667 ms tick without a decoder thread; io_uring would only matter for
@@ -23,23 +23,12 @@
 // No external player and no audio service: decode, encode and the report are
 // one process.
 //
-// Usage:  padwave native [hidraw-node]
-//         (without a node it scans /sys/class/hidraw for a DualSense)
-//
-// stdin commands, one per line:
-//   play <path> [start_ms]   pause <0|1>   volume <0..100>   seek <ms>   quit
-// stdout, ten times a second:
-//   pos <ms>   dur <ms>   sent <n>   underruns <n>   eof
-//
 // Build (no STL, no RTTI, no exceptions): ./build.sh (single translation unit,
 // padwave.cc plus these headers).
 #pragma once
 
-#include <errno.h>
 #include <fcntl.h>
 #include <math.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -199,10 +188,6 @@ private:
   int64_t last_status = 0;
   long tick_ns = 0;
 
-  static inline volatile sig_atomic_t s_running = 1;
-
-  static void onSignal(int) { s_running = 0; }
-
   static constexpr long kPlayTickNs = 10667000;
   static constexpr long kPauseTickNs = 500000000;
 
@@ -336,7 +321,6 @@ private:
     has_next = false;
 
     if (track_fn) track_fn(path, sink_ud);
-    fflush(stdout);
   }
 
   bool takeBlock(float out[IN_FRAMES][CHANNELS]) {
@@ -392,7 +376,6 @@ private:
     if (!manual && !seek) {
       has_next = false;
       if (track_fn) track_fn(path, sink_ud);
-      fflush(stdout);
     }
   }
 
@@ -526,11 +509,7 @@ private:
       out.report_id = padwave::OutputReport::ReportId;
       out.tag = 0x10;
       out.seq_tag = (uint8_t)((out_seq & 0x0F) << 4);
-      if (!padwave_fields::apply_fields(&out.body, line + 7)) {
-        printf("err field\n");
-        fflush(stdout);
-        return;
-      }
+      if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
       out.sign();
       if (hidraw < 0) hidraw = find_dualsense();
       bool ok =
@@ -543,8 +522,6 @@ private:
         state.valid_flag1 &= (uint8_t)~padwave::OutputBody::ResetLights;
         state.valid_flag2 &= (uint8_t)~padwave::OutputBody::ColorFade;
       }
-      printf(ok ? "ok 1\n" : "err write\n");
-      fflush(stdout);
       return;
     }
 
@@ -612,8 +589,6 @@ private:
       }
       return;
     }
-
-    if (strncmp(line, "quit", 4) == 0) s_running = 0;
   }
 
   void tick() {
@@ -709,14 +684,14 @@ public:
   bool create(const char *node = nullptr, bool speaker = false) {
     destroy();
     hidraw = node ? open(node, O_RDWR | O_CLOEXEC) : find_dualsense();
-    if (hidraw < 0) fprintf(stderr, "padwave_native: no DualSense hidraw node\n");
+    if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = speaker;
     state.init(this->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
 
     int err = 0;
     enc = opus_encoder_create(RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &err);
     if (!enc || err != OPUS_OK) {
-      fprintf(stderr, "padwave_native: opus encoder: %s\n", opus_strerror(err));
+      fprintf(stderr, "padwave player: opus encoder: %s\n", opus_strerror(err));
       if (hidraw >= 0) close(hidraw);
       hidraw = -1;
       enc = nullptr;
@@ -843,58 +818,4 @@ public:
       if (status_fn) status_fn(&st, sink_ud);
     }
   }
-
-  static void cliStatus(const struct player_status *st, void *) {
-    printf("pos %ld\ndur %ld\nsent %ld\nunderruns %ld\npushed %ld\npaused %d\neof %d\n", st->pos_ms,
-           st->dur_ms, st->sent, st->underruns, st->pushed, st->paused, st->eof);
-  }
-
-  static void cliTrack(const char *path, void *) { printf("track %s\n", path); }
-
-  static int cli(int argc, char **argv) {
-    signal(SIGINT, onSignal);
-    signal(SIGTERM, onSignal);
-
-    Player p;
-    if (!p.create(argc > 1 ? argv[1] : nullptr, argc > 2 && strcmp(argv[2], "speaker") == 0))
-      return 1;
-    p.setSink(cliStatus, cliTrack, nullptr);
-
-    int tfd = p.timerFd();
-    char line[1200];
-    int line_len = 0;
-
-    while (s_running) {
-      struct pollfd fds[2];
-      fds[0].fd = STDIN_FILENO;
-      fds[0].events = POLLIN;
-      fds[0].revents = 0;
-      fds[1].fd = tfd;
-      fds[1].events = POLLIN;
-      fds[1].revents = 0;
-      int ready = poll(fds, 2, 20);
-      if (ready < 0 && errno != EINTR) break;
-
-      if (fds[0].revents & POLLIN) {
-        char buf[512];
-        ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
-        if (n <= 0) break;
-        for (ssize_t i = 0; i < n; i++) {
-          if (buf[i] == '\n') {
-            line[line_len] = 0;
-            p.command(line);
-            line_len = 0;
-          } else if (line_len < (int)sizeof(line) - 1) {
-            line[line_len++] = buf[i];
-          }
-        }
-      }
-      if (fds[1].revents & POLLIN) p.step();
-    }
-
-    p.destroy();
-    return 0;
-  }
 };
-
-inline int native_main(int argc, char **argv) { return Player::cli(argc, argv); }

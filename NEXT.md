@@ -12,9 +12,9 @@
   UI at `http://192.168.1.175:8787`. The idle power-off can leave the pad
   asleep until PS is pressed.
 - Layout:
-  - `padwave.cc` — main, controller discovery, opusdec helper
-  - `padwave_player.hh` — `struct Player` (decoders, rings, 0x36 writer, CLI)
-  - `padwave_input.hh` — `struct Input` (hidraw, callbacks, decoder, CLI)
+  - `padwave.cc` — main, controller discovery and server entrypoint
+  - `padwave_player.hh` — `struct Player` (decoders, rings, 0x36 writer)
+  - `padwave_input.hh` — `struct Input` (hidraw, callbacks, decoder)
   - `padwave_app.hh` — `struct App` (private fields, inline camelCase methods)
   - `padwave_server.hh` — `struct Server` (epoll, routes, SSE, embedded UI)
   - `padwave_wire.hh` — the only wire description
@@ -52,20 +52,20 @@ re-check it if bluetoothd climbs again. Restoring the backup and restarting
   is a function-local static.
 - `struct Input` / `struct App` / `struct Server`: private fields, public
   surface, inline camelCase methods. Input owns its fd/callbacks/edge state and
-  exposes only open/close/fd/node/setSink/feed/cli; App embeds one and uses it
+  exposes only open/close/fd/node/setSink/feed; App embeds one and uses it
   directly. App-only helpers are private static members; Server constants and
   its bindings text are private. The only remaining free interfaces are
-  `input_main` and the player/main/find_dualsense engine API that belongs to
-  padwave.cc. Free functions and wire names stay snake_case. Player and its
-  File are the same pattern: private fields/helpers, public create/destroy/
-  setSink/timerFd/step/command; native_main is only a wrapper for cli().
+  `find_dualsense`/`server_main`/`main` and the wire names. There are no
+  player/input/opusdec CLIs: `padwave [port]` always serves the app. Player and
+  its File are the same pattern: private fields/helpers, public
+  create/destroy/setSink/timerFd/step/command.
 - Run the Pi's `clang-format` (19.1.7) over `padwave.cc padwave_player.hh
   padwave_app.hh padwave_server.hh padwave_input.hh padwave_wire.hh test_wire.cc`
   and use that output; it is the formatter the tree was last normalized with.
 - CRC-32 is local in `padwave_wire.hh` (standard reflected polynomial); do not
   add `-lz` back. FFmpeg's shared libraries may still bring libz in
   transitively.
-- Callbacks take userdata. Input state is in `input_handle`; server state is in
+- Callbacks take userdata. Input state is in `Input`; server state is in
   `Server`; no file-scope state.
 - All routes are key=value (dotted keys, `true`/`false`/`null`, comma lists for
   `accel`/`gyro`/`buttons`). SSE prefixes each line with `data:`.
@@ -166,13 +166,11 @@ b=$(awk '{print $14+$15}' /proc/$pid/stat); echo "$((b-a)) ticks in 8 s"
 
 ## Testing without pressing buttons
 
-- `./padwave input --hex <128 hex>` decodes a USB 0x01 report (64 bytes: id +
-  63-byte body; d-pad bits 0-3, 8 = centre). No callbacks means actions/events
-  print as lines.
-- A FIFO of reports exercises the stateful decoder (d-pad hold ramp, trigger
-  volume, jack debounce).
 - The panel can be driven headlessly with Chrome DevTools Protocol; use
   `--no-proxy-server` for the LAN URL.
+- `test_wire` covers the packet layout and CRC on every build; the HTTP lab
+  (`/api/output`, `/api/debug/trigger`) exercises the HID writers without a
+  physical button.
 
 ## LED / playback status system
 

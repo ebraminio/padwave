@@ -8,7 +8,6 @@ Type=simple
 WorkingDirectory=%h/padwave
 Environment=HOME=%h
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-Environment=PADWAVE_STANDALONE=1
 # Optional overrides (PADWAVE_ROOTS and friends), one KEY=VALUE per line.
 EnvironmentFile=-%h/.config/padwave/env
 ExecStart=%h/padwave/padwave-boot.sh

@@ -1,16 +1,14 @@
 // padwave_input.hh — the controller input engine.
 //
 // One Input object owns the hidraw fd, the four callbacks, the edge detectors
-// and the CLI loop. The app embeds one; the `padwave input` mode constructs a
-// scratch object and feeds it captures. Fields and helpers are private; the
-// public surface is open/close/fd/node/setSink/feed and the CLI entry.
+// and the decoder. The app embeds one; there is no separate input process or
+// CLI. Fields and helpers are private; the public surface is open/close/fd/
+// node/setSink/feed.
 #pragma once
 
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -107,10 +105,6 @@ private:
   ActionsState actions;
   SensorsState sensors;
   DpadState dpad_state;
-
-  static inline volatile sig_atomic_t s_running = 1;
-
-  static void onSignal(int) { s_running = 0; }
 
   static constexpr Binding kBindings[] = {
       {padwave::InputBody::ButtonTriangle, "toggle_pause"},
@@ -294,24 +288,11 @@ private:
   }
 
   void emitAction(const char *name, int value) {
-    if (action_fn) {
-      action_fn(name, value, ud);
-      return;
-    }
-    if (value)
-      printf("action %s %d\n", name, value);
-    else
-      printf("action %s\n", name);
-    fflush(stdout);
+    if (action_fn) action_fn(name, value, ud);
   }
 
   void emitEvent(const char *name) {
-    if (event_fn) {
-      event_fn(name, ud);
-      return;
-    }
-    printf("event %s\n", name);
-    fflush(stdout);
+    if (event_fn) event_fn(name, ud);
   }
 
   static const char *dpadName(uint8_t value) {
@@ -417,14 +398,7 @@ private:
     if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
-      if (mic_fn) {
-        mic_fn(payload, payload_len, ud);
-      } else {
-        printf("mic ");
-        for (size_t i = 0; i < payload_len; i++) printf("%02x", payload[i]);
-        printf("\n");
-        fflush(stdout);
-      }
+      if (mic_fn) mic_fn(payload, payload_len, ud);
       return;
     }
 
@@ -439,20 +413,6 @@ private:
       emitFrame(*(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
   }
 
-  static bool hexDecode(const char *hex, uint8_t *out, size_t *out_len) {
-    size_t n = strlen(hex);
-    if (n % 2) return false;
-    size_t bytes = n / 2;
-    if (bytes > 512) return false;
-    for (size_t i = 0; i < bytes; i++) {
-      unsigned v = 0;
-      if (sscanf(hex + i * 2, "%2x", &v) != 1) return false;
-      out[i] = (uint8_t)v;
-    }
-    *out_len = bytes;
-    return true;
-  }
-
 public:
   Input() = default;
 
@@ -465,13 +425,13 @@ public:
     if (!node) {
       int idx = find_dualsense(found, sizeof(found));
       if (idx < 0) {
-        fprintf(stderr, "padwave input: no DualSense hidraw node\n");
+        fprintf(stderr, "padwave: no DualSense hidraw node\n");
         return false;
       }
     }
     fd_ = ::open(path, O_RDONLY | O_CLOEXEC);
     if (fd_ < 0) {
-      fprintf(stderr, "padwave input: cannot open %s\n", path);
+      fprintf(stderr, "padwave: cannot open %s\n", path);
       return false;
     }
     snprintf(node_name, sizeof(node_name), "%s", path);
@@ -516,82 +476,4 @@ public:
     handleReport(buf, len);
     return 0;
   }
-
-  static int cli(int argc, char **argv) {
-    uint8_t buf[512];
-    Input scratch;
-
-    if (argc > 1 && strcmp(argv[1], "--hex") == 0 && argc > 2) {
-      size_t len = 0;
-      if (!hexDecode(argv[2], buf, &len)) return 2;
-      if (len > 1 && (buf[0] == 0xA1 || buf[0] == 0xA2)) {
-        memmove(buf, buf + 1, len - 1);
-        len--;
-      }
-      scratch.handleReport(buf, len);
-      return 0;
-    }
-
-    if (argc > 1 && strcmp(argv[1], "--file") == 0 && argc > 2) {
-      int file_fd = ::open(argv[2], O_RDONLY | O_CLOEXEC);
-      if (file_fd < 0) return 2;
-      for (;;) {
-        ssize_t n = read(file_fd, buf, sizeof(buf));
-        if (n <= 0) break;
-        scratch.handleReport(buf, (size_t)n);
-      }
-      ::close(file_fd);
-      return 0;
-    }
-
-    signal(SIGINT, onSignal);
-    signal(SIGTERM, onSignal);
-
-    Input h;
-    if (!h.open(argc > 1 ? argv[1] : nullptr)) return 1;
-    printf("ready\n");
-
-    int input_fd = h.fd();
-    while (s_running) {
-      struct pollfd p[2];
-      p[0].fd = input_fd;
-      p[0].events = POLLIN;
-      p[0].revents = 0;
-      p[1].fd = STDIN_FILENO;
-      p[1].events = POLLIN;
-      p[1].revents = 0;
-
-      int ret = poll(p, 2, 1000);
-      if (ret < 0) {
-        if (errno == EINTR) continue;
-        break;
-      }
-
-      if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
-        char discard;
-        if (read(STDIN_FILENO, &discard, 1) <= 0) break;
-      }
-
-      if (p[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-        printf("down\n");
-        break;
-      }
-      if (p[0].revents & POLLIN) {
-        ssize_t n = read(input_fd, buf, sizeof(buf));
-        if (n <= 0) {
-          if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
-            printf("down\n");
-            break;
-          }
-          continue;
-        }
-        h.feed(buf, (size_t)n);
-      }
-    }
-
-    h.close();
-    return 0;
-  }
 };
-
-inline int input_main(int argc, char **argv) { return Input::cli(argc, argv); }

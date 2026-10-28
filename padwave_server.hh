@@ -58,7 +58,6 @@ private:
   Conn conns[kMaxConns];
   Conn *owners[kMaxFds];
   int epoll_fd = -1;
-  bool standalone = false;
   int timer_fd = -1;
   int64_t start_ms = 0;
   unsigned long requests = 0;
@@ -75,7 +74,7 @@ public:
                      "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                      padwave_ui::kIndexHtmlSize);
     if ((size_t)n + padwave_ui::kIndexHtmlSize >= sizeof(index_response)) {
-      fprintf(stderr, "padwave serve: UI too large for the static buffer\n");
+      fprintf(stderr, "padwave: UI too large for the static buffer\n");
       return 1;
     }
     snprintf(index_response, sizeof(index_response),
@@ -118,13 +117,8 @@ public:
     sigprocmask(SIG_BLOCK, &mask, nullptr);
     int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
-    standalone = getenv("PADWAVE_STANDALONE") != nullptr;
-    if (standalone) {
-      if (a.init())
-        app = &a;
-      else
-        standalone = false;
-    }
+    if (!a.init()) return 1;
+    app = &a;
     start_ms = monotonicMs();
 
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -144,14 +138,11 @@ public:
     addFd(listen_fd, EPOLLIN, nullptr);
     if (signal_fd >= 0) addFd(signal_fd, EPOLLIN, nullptr);
     if (timer_fd >= 0) addFd(timer_fd, EPOLLIN, nullptr);
-    if (standalone) {
-      int fds[4];
-      int count = app->fds(fds, 4);
-      for (int i = 0; i < count; i++) addFd(fds[i], EPOLLIN, nullptr);
-    }
+    int app_fds[4];
+    int app_fd_count = app->fds(app_fds, 4);
+    for (int i = 0; i < app_fd_count; i++) addFd(app_fds[i], EPOLLIN, nullptr);
 
-    fprintf(stderr, "padwave serve: http://0.0.0.0:%d (%zu byte UI)\n", port,
-            padwave_ui::kIndexHtmlSize);
+    fprintf(stderr, "padwave: http://0.0.0.0:%d (%zu byte UI)\n", port, padwave_ui::kIndexHtmlSize);
 
     struct epoll_event events[64];
     bool running = true;
@@ -189,12 +180,10 @@ public:
         if (fd == timer_fd) {
           uint64_t expirations = 0;
           if (read(timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
-            if (standalone) {
-              app->tick();
-              int fds[4];
-              int count = app->fds(fds, 4);
-              for (int i = 0; i < count; i++) addFd(fds[i], EPOLLIN, nullptr);
-            }
+            app->tick();
+            int app_fds[4];
+            int app_fd_count = app->fds(app_fds, 4);
+            for (int i = 0; i < app_fd_count; i++) addFd(app_fds[i], EPOLLIN, nullptr);
             for (int j = 0; j < kMaxConns; j++) {
               if (conns[j].fd < 0) continue;
               if (conns[j].front_sse) appendFrontEvent(&conns[j]);
@@ -209,7 +198,7 @@ public:
           continue;
         }
 
-        if (standalone && app->ownsFd(fd)) {
+        if (app->ownsFd(fd)) {
           app->handleFd(fd);
           continue;
         }
@@ -341,7 +330,7 @@ private:
 
     requests++;
 
-    if (standalone && strcmp(path, "/api/status") == 0) {
+    if (strcmp(path, "/api/status") == 0) {
       static char body[8192];
       int len = app->statusText(body, sizeof(body));
       c->static_reply = true;
@@ -351,7 +340,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/events") == 0) {
+    if (strcmp(path, "/api/events") == 0) {
       c->status_sse = true;
       c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
                                     "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
@@ -361,7 +350,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/library") == 0) {
+    if (strcmp(path, "/api/library") == 0) {
       char *body = (char *)malloc(65536);
       int len = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
@@ -372,7 +361,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/config") == 0) {
+    if (strcmp(path, "/api/config") == 0) {
       if (strcmp(method, "POST") == 0) {
         app->configSet(c->in + head_len);
         static const char ok[] = "ok=true\n";
@@ -391,7 +380,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/schema") == 0) {
+    if (strcmp(path, "/api/schema") == 0) {
       char body[1024];
       int len = bindingsText(body, sizeof(body));
       c->static_reply = true;
@@ -401,7 +390,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/command") == 0) {
+    if (strcmp(path, "/api/command") == 0) {
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
         c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
@@ -419,7 +408,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/output") == 0) {
+    if (strcmp(path, "/api/output") == 0) {
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
         c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
@@ -437,7 +426,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/debug/trigger") == 0) {
+    if (strcmp(path, "/api/debug/trigger") == 0) {
       char result[256];
       int len = app->debugTrigger(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
@@ -447,7 +436,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/mic/reset") == 0) {
+    if (strcmp(path, "/api/mic/reset") == 0) {
       app->micReset();
       static const char body[] = "ok=true\n";
       c->static_reply = true;
@@ -457,7 +446,7 @@ private:
       return;
     }
 
-    if (standalone && strcmp(path, "/api/reload") == 0) {
+    if (strcmp(path, "/api/reload") == 0) {
       static const char body[] = "ok=true\nreloaded=0\n";
       c->static_reply = true;
       c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
@@ -466,7 +455,7 @@ private:
       return;
     }
 
-    if (standalone && strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 &&
+    if (strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 &&
         strcmp(path, "/api/front/events") != 0) {
       static const char body[] = "ok=false\nerror=not implemented\n";
       c->static_reply = true;

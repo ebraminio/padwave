@@ -11,7 +11,6 @@ echo "==> build"
 
 echo "==> install"
 install -Dm755 "$ROOT/padwave" "$HOME/.local/bin/padwave"
-rm -f "$HOME/.local/bin/padwave_native" "$HOME/.local/bin/padwave_opusdec"
 chmod +x "$ROOT/padwave-boot.sh"
 
 echo "==> audio folders"

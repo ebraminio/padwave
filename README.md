@@ -13,11 +13,11 @@ DualSense ──BT──▶ hidraw ──▶ decode ──▶ actions ──▶ 
    └──────────── lightbar, rumble, triggers (0x31) ◀──────────────┘
 ```
 
-One binary, one process, one thread. `padwave serve` is the app: it scans the
+One binary, one process, one thread. `padwave [port]` is the app: it scans the
 station folders, owns the radio and the panel, and drives the player (timerfd +
 ring: decode, crossfade, gapless) and the input decoder (the hidraw fd) from the
-same epoll loop. The `native`, `input` and `opusdec` modes remain for debugging,
-but the service is a single PID with a single thread. There is no Mix/Elixir.
+same epoll loop. There is no separate player/input/opusdec mode and no
+Mix/Elixir.
 
 ## Controls
 
@@ -40,9 +40,9 @@ the one thing they are good for — being ignored.
 ## Layout
 
 ```
-padwave.cc        main, controller discovery and the opusdec helper
-padwave_player.hh struct Player: decoders, rings, crossfade, 0x36 writer, CLI
-padwave_input.hh  struct Input: hidraw, callbacks, decoder and the input CLI
+padwave.cc        main, controller discovery and the server entrypoint
+padwave_player.hh struct Player: decoders, rings, crossfade, 0x36 writer
+padwave_input.hh  struct Input: hidraw, callbacks and decoder
 padwave_app.hh    struct App: library, playback, controller snapshot, config
                   and lab output (inline methods, private fields)
 padwave_server.hh struct Server: epoll, HTTP routes, SSE, embedded UI
@@ -75,11 +75,10 @@ and `python3` for the UI header.
 
 ```sh
 ./build.sh
-PADWAVE_ROOTS=/path/to/audio PADWAVE_STANDALONE=1 ./padwave serve
+PADWAVE_ROOTS=/path/to/audio ./padwave [port]
 # panel: http://<pi>:8787
 ```
 
-`PADWAVE_STANDALONE=1` turns on the app's own `/api/*` routes; the unit sets it.
 `PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the app
 uses `~/Music`.
 
