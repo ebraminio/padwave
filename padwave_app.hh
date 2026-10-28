@@ -381,6 +381,10 @@ public:
         }
       }
     }
+    if (this->player && this->input.fd() >= 0 && this->input.fd() != this->player.fd()) {
+      this->input.close();
+      if (this->player.fd() >= 0) this->inputStart();
+    }
     if (this->input.fd() < 0 && this->player && this->playing && !this->paused) {
       this->paused = true;
       this->paused_by_disconnect = true;
@@ -995,7 +999,8 @@ private:
 
   void inputStart() {
     if (this->input.fd() >= 0) return;
-    if (!this->input.open()) {
+    if (!this->player) return;
+    if (!this->input.open(this->player.fd(), this->player.node(), this->player.mac())) {
       this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
     }
@@ -1011,6 +1016,7 @@ private:
 
   void inputStop(bool pause_playback = false) {
     this->input.close();
+    if (this->player) this->player.dropDevice();
     this->controller = false;
     if (pause_playback && this->player && this->playing && !this->paused) {
       this->paused = true;

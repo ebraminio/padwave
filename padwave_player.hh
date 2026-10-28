@@ -137,6 +137,8 @@ private:
 
   int hidraw = -1;
   int hidraw_retry = 0;
+  char node_name[64] = "";
+  char controller_mac[32] = "";
   bool speaker = false;
   App *app = nullptr;
 
@@ -381,6 +383,16 @@ private:
   void emitStatus(const player_status &st);
   void emitTrack(const char *path);
 
+  bool openDevice() {
+    DualSenseDevice device;
+    int fd = device.open();
+    if (fd < 0) return false;
+    hidraw = fd;
+    snprintf(node_name, sizeof(node_name), "%s", device.node);
+    snprintf(controller_mac, sizeof(controller_mac), "%s", device.mac);
+    return true;
+  }
+
   void sendReport(const uint8_t *opus, int len) {
     padwave::AudioReport report;
 
@@ -412,18 +424,14 @@ private:
     if (hidraw < 0) {
       if (hidraw_retry > 0)
         hidraw_retry--;
-      else {
-        DualSenseDevice device;
-        hidraw = device.open();
-        if (hidraw < 0) hidraw_retry = 100;
-      }
+      else if (!openDevice())
+        hidraw_retry = 5;
     }
     if (hidraw >= 0) {
       ssize_t n = write(hidraw, &report, sizeof(report));
       if (n != static_cast<ssize_t>(sizeof(report))) {
-        close(hidraw);
-        hidraw = -1;
-        hidraw_retry = 100;
+        dropDevice();
+        hidraw_retry = 5;
       }
     }
 
@@ -514,12 +522,13 @@ private:
       out.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
       if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
       out.sign();
-      if (hidraw < 0) {
-        DualSenseDevice device;
-        hidraw = device.open();
-      }
+      if (hidraw < 0) openDevice();
       bool ok = hidraw >= 0 && padwave_fields::write_all(
                                    hidraw, reinterpret_cast<const uint8_t *>(&out), sizeof(out));
+      if (!ok) {
+        dropDevice();
+        hidraw_retry = 5;
+      }
       if (ok) out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
       if (ok) {
         padwave_fields::apply_fields(&state, line + 7, true);
@@ -684,13 +693,27 @@ public:
 
   void attach(App *owner) { app = owner; }
 
+  int fd() const { return hidraw; }
+
+  const char *node() const { return node_name; }
+
+  const char *mac() const { return controller_mac; }
+
+  void dropDevice() {
+    if (hidraw >= 0) close(hidraw);
+    hidraw = -1;
+    hidraw_retry = 0;
+    node_name[0] = 0;
+    controller_mac[0] = 0;
+  }
+
   bool create(const char *node = nullptr, bool use_speaker = false) {
     destroy();
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
+      if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
     } else {
-      DualSenseDevice device;
-      hidraw = device.open();
+      openDevice();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = use_speaker;
@@ -700,8 +723,7 @@ public:
     enc = opus_encoder_create(RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &err);
     if (!enc || err != OPUS_OK) {
       fprintf(stderr, "padwave player: opus encoder: %s\n", opus_strerror(err));
-      if (hidraw >= 0) close(hidraw);
-      hidraw = -1;
+      dropDevice();
       enc = nullptr;
       return false;
     }
@@ -727,6 +749,8 @@ public:
     if (frame) av_frame_free(&frame);
     if (tfd >= 0) close(tfd);
     hidraw = -1;
+    node_name[0] = 0;
+    controller_mac[0] = 0;
     enc = nullptr;
     pkt = nullptr;
     frame = nullptr;
@@ -762,6 +786,12 @@ public:
   }
 
   void step() {
+    if (hidraw < 0) {
+      if (hidraw_retry > 0)
+        hidraw_retry--;
+      else if (!openDevice())
+        hidraw_retry = 5;
+    }
     setTick((playing && !paused) ? kPlayTickNs : kPauseTickNs);
     if (playing && !paused) fill();
 

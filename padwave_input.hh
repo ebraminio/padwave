@@ -1,9 +1,9 @@
 // padwave_input.hh — the controller input engine.
 //
-// One Input object owns the hidraw fd, the App pointer, the edge detectors and
-// the decoder. The app embeds one; there is no separate input process or CLI.
-// Fields and helpers are private; the public surface is open/close/fd/node/
-// attach/feed.
+// One Input object borrows the player's hidraw fd, and owns the App pointer,
+// the edge detectors and the decoder. The app embeds one; there is no separate
+// input process or CLI. Fields and helpers are private; the public surface is
+// open/close/fd/node/attach/feed.
 #pragma once
 
 #include <errno.h>
@@ -19,7 +19,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "padwave_hid.hh"
 #include "padwave_wire.hh"
 
 struct input_touch {
@@ -406,29 +405,17 @@ public:
 
   ~Input() { close(); }
 
-  bool open(const char *node = nullptr) {
+  // Input borrows the player's O_RDWR fd; it never opens or closes the device.
+  bool open(int fd, const char *node, const char *mac) {
     close();
-    const char *path = node;
-    if (!node) {
-      DualSenseDevice device{};
-      if (!device.isValid()) {
-        fprintf(stderr, "padwave: no DualSense hidraw node\n");
-        return false;
-      }
-      path = device.node;
-      snprintf(mac_, sizeof(mac_), "%s", device.mac);
-    }
-    fd_ = ::open(path, O_RDONLY | O_CLOEXEC);
-    if (fd_ < 0) {
-      fprintf(stderr, "padwave: cannot open %s\n", path);
-      return false;
-    }
-    snprintf(node_name, sizeof(node_name), "%s", path);
+    if (fd < 0) return false;
+    fd_ = fd;
+    snprintf(node_name, sizeof(node_name), "%s", node ? node : "");
+    snprintf(mac_, sizeof(mac_), "%s", mac ? mac : "");
     return true;
   }
 
   void close() {
-    if (fd_ >= 0) ::close(fd_);
     fd_ = -1;
     node_name[0] = 0;
     mac_[0] = 0;
