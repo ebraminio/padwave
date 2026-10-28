@@ -17,13 +17,9 @@
 #include <unistd.h>
 
 struct DualSenseDevice {
-  int index = -1;
-  char node[64] = "";
-  char mac[32] = "";
-
   DualSenseDevice() { find(); }
 
-  explicit operator bool() const { return index >= 0; }
+  bool isValid() const { return index >= 0 && mac[0]; }
 
   // Enumerate the hidraw class rather than assuming hidraw0..hidrawN are
   // contiguous. Match only by HID_ID's vendor/product, as hidapi does; this
@@ -88,7 +84,11 @@ struct DualSenseDevice {
 
   int open() const { return node[0] ? ::open(node, O_RDWR | O_CLOEXEC) : -1; }
 
+  char node[64] = "";
+  char mac[32] = "";
+
 private:
+  int index = -1;
   static constexpr int SONY_VID = 0x054C;
   static constexpr int DS_PID = 0x0CE6;
   static constexpr int DS_EDGE_PID = 0x0DF2;

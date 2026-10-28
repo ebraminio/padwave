@@ -64,7 +64,7 @@ struct player_status {
   int eof;
 };
 
-#include "padwave_app_fwd.hh"
+struct App;
 
 #define RATE 48000
 #define CHANNELS 2

@@ -48,7 +48,7 @@ struct input_frame {
 // padwave input — the controller's state, decoded by the C++ schema.
 // The engine is in-process; the app owns one Input and attaches itself.
 
-#include "padwave_app_fwd.hh"
+struct App;
 
 struct Input {
 private:
@@ -410,8 +410,8 @@ public:
     close();
     const char *path = node;
     if (!node) {
-      DualSenseDevice device;
-      if (!device) {
+      DualSenseDevice device{};
+      if (!device.isValid()) {
         fprintf(stderr, "padwave: no DualSense hidraw node\n");
         return false;
       }

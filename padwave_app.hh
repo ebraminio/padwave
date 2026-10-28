@@ -1566,8 +1566,8 @@ private:
     if (this->controller_mac[0]) {
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);
     } else {
-      DualSenseDevice device;
-      if (!device || !device.mac[0]) return false;
+      DualSenseDevice device{};
+      if (!device.isValid()) return false;
       snprintf(mac, sizeof(mac), "%s", device.mac);
     }
 

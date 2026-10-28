@@ -11,7 +11,6 @@ CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 
 echo "==> padwave"
-time "$CXX" -std=c++23 -Wno-c23-extensions -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra \
-  -Weverything -Wno-unsafe-buffer-usage -Wno-c++98-compat-pedantic -Wno-padded \
-  -Wno-format-nonliteral \
+"$CXX" -std=c++23 -Wno-c23-extensions -O3 -fno-exceptions -fno-rtti -fno-threadsafe-statics \
+  -Weverything -Wno-unsafe-buffer-usage -Wno-c++98-compat-pedantic -Wno-padded -Wno-format-nonliteral \
   -I. $CFLAGS -o padwave padwave.cc $LIBS

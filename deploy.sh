@@ -18,5 +18,8 @@ rsync -az --delete \
   --exclude 'padwave' --exclude '.git' --exclude 'var' \
   ./ "$HOST:~/$TARGET/"
 
+echo "==> test fuzzers buildability on $HOST"
+ssh "$HOST" "cd ~/$TARGET && ./fuzz/build.sh"
+
 echo "==> building and installing on $HOST"
 ssh "$HOST" "cd ~/$TARGET && ./install.sh"
