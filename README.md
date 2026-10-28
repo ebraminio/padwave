@@ -92,7 +92,8 @@ describes the lab fields; `POST /api/output` is the controller lab.
 ## Behavior
 
 - **Playback:** track scan, shuffle, history, gapless transitions, crossfade,
-  resume of the saved track/position, and volume/mute.
+  natural numeric order (ep2 before ep10), resume of the saved track/position,
+  and volume/mute.
 - **Volume:** zero is the paused state. Resume restores the last non-zero
   volume; 15% is used only when no non-zero value has ever been stored. Current
   and last non-zero volumes persist across restarts.

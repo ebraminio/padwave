@@ -79,11 +79,55 @@ private:
     return false;
   }
 
+  static unsigned char lowerAscii(unsigned char c) {
+    return c >= 'A' && c <= 'Z' ? static_cast<unsigned char>(c + ('a' - 'A')) : c;
+  }
+
+  static bool isDigit(unsigned char c) { return c >= '0' && c <= '9'; }
+
+  // Compare digit runs by value, not by their spelling: ep2 < ep10, and
+  // ep10 < ep10-1 < ep11 < ep100.
+  static int naturalCompare(const char *a, const char *b) {
+    const unsigned char *p = reinterpret_cast<const unsigned char *>(a);
+    const unsigned char *q = reinterpret_cast<const unsigned char *>(b);
+    while (*p && *q) {
+      if (isDigit(*p) && isDigit(*q)) {
+        const unsigned char *as = p;
+        const unsigned char *bs = q;
+        while (*as == '0') as++;
+        while (*bs == '0') bs++;
+        const unsigned char *ae = as;
+        const unsigned char *be = bs;
+        while (isDigit(*ae)) ae++;
+        while (isDigit(*be)) be++;
+
+        size_t alen = static_cast<size_t>(ae - as);
+        size_t blen = static_cast<size_t>(be - bs);
+        if (alen != blen) return alen < blen ? -1 : 1;
+        int c = memcmp(as, bs, alen);
+        if (c) return c < 0 ? -1 : 1;
+
+        while (isDigit(*p)) p++;
+        while (isDigit(*q)) q++;
+        continue;
+      }
+
+      unsigned char ca = lowerAscii(*p);
+      unsigned char cb = lowerAscii(*q);
+      if (ca != cb) return ca < cb ? -1 : 1;
+      p++;
+      q++;
+    }
+    if (*p) return 1;
+    if (*q) return -1;
+    return 0;
+  }
+
   static int compareTracks(const void *a, const void *b) {
     const Track *x = reinterpret_cast<const Track *>(a);
     const Track *y = reinterpret_cast<const Track *>(b);
-    int c = strcasecmp(x->folder, y->folder);
-    return c ? c : strcasecmp(x->title, y->title);
+    int c = naturalCompare(x->folder, y->folder);
+    return c ? c : naturalCompare(x->title, y->title);
   }
 
   static void kvAdd(char *buf, size_t cap, size_t *len, const char *key, const char *fmt, ...) {
