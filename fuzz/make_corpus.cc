@@ -1,5 +1,6 @@
-// Build the seed corpus into the directory given as argv[1]: a signed
-// Bluetooth 0x31 report, a USB 0x01 report and a mic frame.
+// Build the seed corpus into the directory given as argv[1]: signed 0x31
+// reports (neutral, button pressed, button released), a USB 0x01 report and a
+// mic frame.
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,19 +17,27 @@ static bool write_file(const char *dir, const char *name, const void *data, size
   return ok;
 }
 
+static padwave::InputReport report(uint32_t buttons) {
+  padwave::InputReport r{};
+  r.report_id = padwave::InputReport::ReportId;
+  r.seq_tag = 0x10;
+  r.body.lx = 128;
+  r.body.ly = 128;
+  r.body.rx = 128;
+  r.body.ry = 128;
+  r.body.status0 = 0x15;
+  r.body.temperature = 30;
+  r.body.buttons = buttons;
+  r.sign();
+  return r;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
-  padwave::InputReport bt{};
-  bt.report_id = padwave::InputReport::ReportId;
-  bt.seq_tag = 0x10;
-  bt.body.lx = 128;
-  bt.body.ly = 128;
-  bt.body.rx = 128;
-  bt.body.ry = 128;
-  bt.body.status0 = 0x15;  // battery 50%, discharging
-  bt.body.temperature = 30;
-  bt.sign();
+  padwave::InputReport neutral = report(0);
+  padwave::InputReport pressed = report(padwave::InputBody::ButtonCross);
+  padwave::InputReport released = report(0);
 
   uint8_t usb[padwave::InputReport::UsbSize] = {padwave::InputReport::UsbReportId};
   usb[1 + 0] = 0x80;
@@ -38,7 +47,9 @@ int main(int argc, char **argv) {
   mic[0] = padwave::MicFrame::ReportId;
   mic[3] = padwave::MicFrame::Toc;
 
-  bool ok = write_file(argv[1], "bt31.bin", &bt, sizeof(bt)) &&
+  bool ok = write_file(argv[1], "bt31.bin", &neutral, sizeof(neutral)) &&
+            write_file(argv[1], "press.bin", &pressed, sizeof(pressed)) &&
+            write_file(argv[1], "release.bin", &released, sizeof(released)) &&
             write_file(argv[1], "usb01.bin", usb, sizeof(usb)) &&
             write_file(argv[1], "mic.bin", mic, sizeof(mic));
   return ok ? 0 : 1;

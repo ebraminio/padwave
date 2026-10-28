@@ -5,3 +5,5 @@ cd "$(dirname "$0")/.."
 CXX="${CXX:-clang++}"
 "$CXX" -std=c++23 -I. fuzz/make_corpus.cc -o /tmp/padwave_make_corpus
 /tmp/padwave_make_corpus fuzz/corpus
+mkdir -p fuzz/corpus_seq
+cat fuzz/corpus/press.bin fuzz/corpus/release.bin > fuzz/corpus_seq/press_release.bin
