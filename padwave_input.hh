@@ -52,7 +52,7 @@ private:
   };
 
   struct DpadState {
-    uint8_t prev = 0xFF;
+    padwave::InputBody::Dpad prev = padwave::InputBody::Dpad::None;
     int hold_dir = 0;
     int hold_step = 0;
     int64_t hold_at = 0;
@@ -208,11 +208,10 @@ private:
     sensors.prev_jack = jack;
   }
 
-  void trackDpad(uint32_t buttons) {
+  void trackDpad(padwave::InputBody::Dpad dpad) {
     static const int steps[] = {10, 20, 40, 60};
     static const int intervals[] = {320, 260, 190, 130};
 
-    uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
     int64_t now = nowMs();
 
     if (dpad != dpad_state.prev) {
@@ -220,20 +219,20 @@ private:
       dpad_state.hold_dir = 0;
 
       switch (dpad) {
-      case padwave::InputBody::Left:
+      case padwave::InputBody::Dpad::Left:
         emitAction("seek", -6);
         dpad_state.hold_dir = -1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
         break;
-      case padwave::InputBody::Right:
+      case padwave::InputBody::Dpad::Right:
         emitAction("seek", 6);
         dpad_state.hold_dir = 1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
         break;
-      case padwave::InputBody::Up: emitAction("next_random", 0); break;
-      case padwave::InputBody::Down: emitAction("previous", 0); break;
+      case padwave::InputBody::Dpad::Up: emitAction("next_random", 0); break;
+      case padwave::InputBody::Dpad::Down: emitAction("previous", 0); break;
       default: break;
       }
       return;
@@ -260,7 +259,7 @@ private:
 
   void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
-    trackDpad(b.buttons);
+    trackDpad(b.get_dpad());
     trackButtons(b.buttons);
     trackTriggers(b.l2, b.r2);
     trackSensors(b);

@@ -1309,16 +1309,17 @@ private:
     this->playhead_dirty = true;
   }
 
-  static const char *dpadName(uint8_t value) {
-    switch (value) {
-    case padwave::InputBody::Up: return "up";
-    case padwave::InputBody::UpRight: return "up_right";
-    case padwave::InputBody::Right: return "right";
-    case padwave::InputBody::DownRight: return "down_right";
-    case padwave::InputBody::Down: return "down";
-    case padwave::InputBody::DownLeft: return "down_left";
-    case padwave::InputBody::Left: return "left";
-    case padwave::InputBody::UpLeft: return "up_left";
+  static const char *dpadName(padwave::InputBody::Dpad dpad) {
+    switch (dpad) {
+    case padwave::InputBody::Dpad::Up: return "up";
+    case padwave::InputBody::Dpad::UpRight: return "up_right";
+    case padwave::InputBody::Dpad::Right: return "right";
+    case padwave::InputBody::Dpad::DownRight: return "down_right";
+    case padwave::InputBody::Dpad::Down: return "down";
+    case padwave::InputBody::Dpad::DownLeft: return "down_left";
+    case padwave::InputBody::Dpad::Left: return "left";
+    case padwave::InputBody::Dpad::UpLeft: return "up_left";
+    case padwave::InputBody::Dpad::None: return "none";
     default: return "none";
     }
   }
@@ -1386,7 +1387,7 @@ private:
     if (this->battery > 100) this->battery = 100;
     this->jack = (b.status1 & padwave::InputBody::Headset) ? true : false;
     this->temp = b.temperature;
-    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.buttons & 0x0F));
+    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.get_dpad()));
     buttonsToString(b.buttons, this->buttons, sizeof(this->buttons));
     unsigned charge = b.status0 >> 4;
     this->raw[0] = 0;

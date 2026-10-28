@@ -357,7 +357,7 @@ struct InputBody {
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
-  enum Dpad : uint8_t {
+  enum class Dpad : uint8_t {
     Up = 0,
     UpRight = 1,
     Right = 2,
@@ -368,6 +368,10 @@ struct InputBody {
     UpLeft = 7,
     None = 8,
   };
+
+  Dpad get_dpad() const {
+    return static_cast<Dpad>(buttons & 0x0F);
+  }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
