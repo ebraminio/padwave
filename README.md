@@ -57,7 +57,9 @@ padwave.service, padwave-boot.sh, padwave-ctl, deploy.sh
 ## Formatting
 
 The C++ sources are formatted with `.clang-format`: LLVM, 100 columns, 2-space
-indent, private class fields, compact one-line guards. Run:
+indent, a blank line between function definitions
+(`SeparateDefinitionBlocks: Always`), private class fields, compact one-line
+guards. Run:
 
 ```sh
 clang-format -i padwave.cc padwave_player.hh padwave_app.hh padwave_server.hh

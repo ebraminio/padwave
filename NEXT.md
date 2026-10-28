@@ -5,7 +5,7 @@
 - Repo: this directory; deployed at `ebrahim@192.168.1.175:~/padwave`.
 - HEAD: latest `main`; the behavior described here landed through `bbf86c1`
   (later commits are comments/formatting/documentation). `git log --oneline` for
-  detail.
+  detail. `SeparateDefinitionBlocks: Always` is enabled.
 - Build: `./build.sh` (UI header, wire test, binary). `./install.sh` builds,
   installs `~/.local/bin/padwave`, installs the user unit and restarts it.
 - Service: `padwave.service`, one process / one thread, port 8787, ~2 % CPU,
