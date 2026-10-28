@@ -366,7 +366,7 @@ private:
       f.touches[t].active = (contact & 0x80) ? 0 : 1;
       f.touches[t].id = contact & 0x7F;
       f.touches[t].x = touch[1].get() | ((middle & 0x0F) << 8);
-      f.touches[t].y = (middle >> 4) | (touch[3].get() << 4);
+      f.touches[t].y = (middle >> 4) | ((unsigned)touch[3].get() << 4);
     }
     size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
     for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);

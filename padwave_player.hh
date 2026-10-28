@@ -260,8 +260,11 @@ private:
         out[0] = (uint8_t *)tmp;
         int cap = swr_get_out_samples(f->swr, frame->nb_samples);
         if (cap > 8192) cap = 8192;
-        int got = swr_convert(f->swr, out, cap, (const uint8_t **)frame->extended_data,
-                              frame->nb_samples);
+        const uint8_t *in[AV_NUM_DATA_POINTERS] = {};
+        int channels = f->dec->ch_layout.nb_channels;
+        if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
+        for (int i = 0; i < channels; i++) in[i] = frame->extended_data[i];
+        int got = swr_convert(f->swr, out, cap, in, frame->nb_samples);
         for (int i = 0; i < got; i++) {
           acc[*acc_frames][0] = tmp[i * CHANNELS + 0];
           acc[*acc_frames][1] = tmp[i * CHANNELS + 1];

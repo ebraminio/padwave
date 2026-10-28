@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build padwave: one source, one binary. The wire static_asserts are part of
-# padwave_wire.hh, so compiling the app validates them.
+# padwave_wire.hh, so compiling the app validates them. -Weverything keeps the
+# remaining warnings honest; time reports the compile cost.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -10,5 +11,7 @@ CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 
 echo "==> padwave"
-"$CXX" -std=c++23 -Wno-c23-extensions -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra \
+time "$CXX" -std=c++23 -Wno-c23-extensions -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -Wall -Wextra \
+  -Weverything -Wno-unsafe-buffer-usage -Wno-c++98-compat-pedantic -Wno-old-style-cast -Wno-shadow -Wno-padded \
+  -Wno-format-nonliteral \
   -I. $CFLAGS -o padwave padwave.cc $LIBS

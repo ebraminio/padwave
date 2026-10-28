@@ -98,7 +98,7 @@ inline const flag kFlag2[] = {
     {"improved_rumble", padwave::OutputBody::ImprovedRumble},
 };
 
-bool write_all(int fd, const uint8_t *data, size_t len) {
+inline bool write_all(int fd, const uint8_t *data, size_t len) {
   size_t put = 0;
   while (put < len) {
     ssize_t n = write(fd, data + put, len - put);

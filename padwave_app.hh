@@ -467,8 +467,8 @@ public:
 
     kvAdd(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
-    kvAdd(buf, cap, &o, "radio.position", "%.1f", this->pos_ms / 1000.0);
-    kvAdd(buf, cap, &o, "radio.duration", "%.1f", this->dur_ms / 1000.0);
+    kvAdd(buf, cap, &o, "radio.position", "%.1f", (double)this->pos_ms / 1000.0);
+    kvAdd(buf, cap, &o, "radio.duration", "%.1f", (double)this->dur_ms / 1000.0);
     kvAdd(buf, cap, &o, "radio.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
@@ -783,7 +783,7 @@ public:
       }
       snprintf(fields, sizeof(fields), "valid_flag1=power_save;power_save_control=%d", mask);
       outputFields(fields);
-      return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n", mask);
+      return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n", (unsigned)mask);
     }
 
     if (strcmp(kind, "rumble") == 0) {
@@ -854,11 +854,12 @@ public:
       const char *flag = left ? "left_trigger" : "right_trigger";
       const char *prefix = left ? "left" : "right";
       snprintf(fields, sizeof(fields), "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%s",
-               flag, prefix, mode, prefix, param_text);
+               flag, prefix, (unsigned)mode, prefix, param_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
-      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side, mode, label);
+      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side, (unsigned)mode,
+                      label);
     }
 
     if (strcmp(kind, "fields") == 0) {
@@ -1709,9 +1710,9 @@ private:
         // Host-driven smooth pulse: 1 Hz raised cosine between 15% and 100%.
         float phase = (float)(now - this->led_pulse_start) * 0.0062831853f;
         float level = 0.15f + 0.85f * (0.5f - 0.5f * cosf(phase));
-        r = (int)(r * level);
-        g = (int)(g * level);
-        b = (int)(b * level);
+        r = (int)((float)r * level);
+        g = (int)((float)g * level);
+        b = (int)((float)b * level);
       }
     }
 
