@@ -1,7 +1,7 @@
 // padwave_app.hh — the app and the engine interface it drives.
 //
 // The app is the one stateful object in the binary: the library, the current
-// station, the playback counters, the controller snapshot, the persisted
+// track, the playback counters, the controller snapshot, the persisted
 // config and the lab output deadlines. Its fields are private; the server only
 // sees the methods it needs. The implementation is inline because the project
 // is one translation unit.
@@ -38,13 +38,13 @@
 
 struct App {
 private:
-  static constexpr int kMaxStations = 4096;
+  static constexpr int kMaxTracks = 4096;
   static constexpr int kMaxPath = 1024;
   static constexpr int kMaxTitle = 160;
   static constexpr int kMaxGame = 96;
   static constexpr int kMaxHistory = 48;
 
-  struct Station {
+  struct Track {
     char path[kMaxPath];
     char title[kMaxTitle];
     char game[kMaxGame];
@@ -76,9 +76,9 @@ private:
     return false;
   }
 
-  static int compareStations(const void *a, const void *b) {
-    const Station *x = (const Station *)a;
-    const Station *y = (const Station *)b;
+  static int compareTracks(const void *a, const void *b) {
+    const Track *x = (const Track *)a;
+    const Track *y = (const Track *)b;
     int c = strcasecmp(x->game, y->game);
     return c ? c : strcasecmp(x->title, y->title);
   }
@@ -161,7 +161,7 @@ private:
     buf[*o] = 0;
   }
 
-  Station stations[kMaxStations];
+  Track tracks[kMaxTracks];
   int count = 0;
   int current = -1;
   int history[kMaxHistory];
@@ -315,12 +315,12 @@ public:
       }
     }
 
-    qsort(this->stations, (size_t)this->count, sizeof(Station), compareStations);
+    qsort(this->tracks, (size_t)this->count, sizeof(Track), compareTracks);
     srand((unsigned)time(nullptr) ^ (unsigned)getpid());
     this->player_timer_fd = -1;
     configLoad();
     if (this->resume_path[0]) {
-      int idx = findStation(this->resume_path);
+      int idx = findTrack(this->resume_path);
       if (idx >= 0) {
         this->current = idx;
         this->pos_ms = this->resume_pos_ms;
@@ -431,7 +431,7 @@ public:
   int statusText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
-    const Station *s = this->current >= 0 ? &this->stations[this->current] : nullptr;
+    const Track *s = this->current >= 0 ? &this->tracks[this->current] : nullptr;
 
     long now = nowMs();
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
@@ -684,7 +684,7 @@ public:
     size_t o = 0;
     if (cap) buf[0] = 0;
     for (int i = 0; i < this->count; i++) {
-      const Station *s = &this->stations[i];
+      const Track *s = &this->tracks[i];
       tsvField(buf, cap, &o, s->id, '\t');
       tsvField(buf, cap, &o, s->title, '\t');
       tsvField(buf, cap, &o, s->game, '\t');
@@ -911,9 +911,9 @@ public:
   bool ownsFd(int fd) { return fd >= 0 && (fd == this->player_timer_fd || fd == this->input.fd()); }
 
 private:
-  void addStation(const char *path, const char *game) {
-    if (this->count >= kMaxStations) return;
-    Station *s = &this->stations[this->count];
+  void addTrack(const char *path, const char *game) {
+    if (this->count >= kMaxTracks) return;
+    Track *s = &this->tracks[this->count];
     snprintf(s->path, sizeof(s->path), "%s", path);
 
     const char *base = strrchr(path, '/');
@@ -941,21 +941,21 @@ private:
       if (S_ISDIR(st.st_mode)) {
         scanDir(path, e->d_name);
       } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
-        addStation(path, game);
+        addTrack(path, game);
       }
     }
     closedir(d);
   }
 
-  int findStation(const char *path) {
+  int findTrack(const char *path) {
     for (int i = 0; i < this->count; i++)
-      if (strcmp(this->stations[i].path, path) == 0) return i;
+      if (strcmp(this->tracks[i].path, path) == 0) return i;
     return -1;
   }
 
   int findId(const char *id) {
     for (int i = 0; i < this->count; i++)
-      if (strcmp(this->stations[i].id, id) == 0) return i;
+      if (strcmp(this->tracks[i].id, id) == 0) return i;
     return -1;
   }
 
@@ -1033,7 +1033,7 @@ private:
 
   static void playerTrackCb(const char *path, void *ud) {
     App *a = (App *)ud;
-    int idx = a->findStation(path);
+    int idx = a->findTrack(path);
     if (idx < 0) return;
     if (a->current >= 0 && a->current != idx) a->pushHistory(a->current);
     a->current = idx;
@@ -1048,7 +1048,7 @@ private:
     ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
-    snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->stations[index].path);
+    snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->tracks[index].path);
     playerSend(line);
 
     if (this->current >= 0 && this->current != index && this->history_len == 0)
@@ -1062,12 +1062,12 @@ private:
     this->idle_since = nowMs();
     this->playhead_dirty = true;
 
-    // Gapless: queue a different station for the junction.
+    // Gapless: queue a different track for the junction.
     if (this->count > 1) {
       int next = rand() % this->count;
       if (next == index) next = (next + 1) % this->count;
       char q[kMaxPath + 16];
-      snprintf(q, sizeof(q), "queue %s\n", this->stations[next].path);
+      snprintf(q, sizeof(q), "queue %s\n", this->tracks[next].path);
       playerSend(q);
     }
   }
@@ -1090,10 +1090,10 @@ private:
 
   void shuffleGame() {
     if (this->count == 0) return;
-    const char *game = this->current >= 0 ? this->stations[this->current].game : "";
+    const char *game = this->current >= 0 ? this->tracks[this->current].game : "";
     for (int tries = 0; tries < 100; tries++) {
       int i = rand() % this->count;
-      if (strcmp(this->stations[i].game, game) != 0) {
+      if (strcmp(this->tracks[i].game, game) != 0) {
         play(i, 0);
         return;
       }
@@ -1474,7 +1474,7 @@ private:
     fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
     fprintf(f, "trigger_effect_preset=%s\n", this->trigger_effect_preset);
     fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
-    const char *play_path = this->current >= 0 ? this->stations[this->current].path : "";
+    const char *play_path = this->current >= 0 ? this->tracks[this->current].path : "";
     fputs("play_path=", f);
     for (const char *p = play_path; *p; p++) fputc((*p == '\n' || *p == '\r') ? ' ' : *p, f);
     fputc('\n', f);

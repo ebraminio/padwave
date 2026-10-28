@@ -44,12 +44,12 @@ usage: padwave-ctl <command> [value]
   config              runtime-tunable settings
   play                play / resume
   pause               pause / resume
-  next | prev         next station / previous station
+  next | prev         next track / previous track
   shuffle             another game's folder
   vol <delta>         nudge volume (e.g. vol -5)
   volset <0-100>      absolute volume
   seek <seconds>      relative seek (e.g. seek -30)
-  track <id>          play a station by id (see /api/library)
+  track <id>          play a track by id (see /api/library)
 EOF
     exit 1
     ;;

@@ -480,7 +480,7 @@ private:
       return;
     }
 
-    // "queue <path>" — the next station, to be decoded ahead and promoted at the
+    // "queue <path>" — the next track, to be decoded ahead and promoted at the
     // end of the current one. Only one is held; the radio pushes the one after
     // that once the promotion is reported.
     if (sscanf(line, "queue %1023[^\n]", path) == 1) {

@@ -65,7 +65,7 @@
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .game { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
-  .station-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; }
+  .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; }
 
   .progress { margin: 20px 0 8px; cursor: pointer; }
   .bar { position: relative; height: 8px; border-radius: 999px; background: #1d2230; overflow: hidden; }
@@ -99,12 +99,12 @@
   input[type=search] { width: 150px; }
   input[type=number] { width: 70px; font-variant-numeric: tabular-nums; }
   input:focus { border-color: var(--accent); }
-  .stations { list-style: none; margin: 12px 0 0; padding: 0; max-height: 360px; overflow: auto; }
-  .stations li { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
-  .stations li:hover { background: #171c28; }
-  .stations li.active { background: rgba(124, 92, 255, .13); border-color: rgba(124, 92, 255, .45); }
-  .stations .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-  .stations .g { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .tracks { list-style: none; margin: 12px 0 0; padding: 0; max-height: 360px; overflow: auto; }
+  .tracks li { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+  .tracks li:hover { background: #171c28; }
+  .tracks li.active { background: rgba(124, 92, 255, .13); border-color: rgba(124, 92, 255, .45); }
+  .tracks .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .tracks .g { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
   .pad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; margin-top: 12px; }
   .pad-key {
@@ -244,7 +244,7 @@
     <section class="card">
       <div class="eyebrow">now playing</div>
       <div class="game" id="game">—</div>
-      <div class="station-title" id="title">Nothing playing</div>
+      <div class="track-title" id="title">Nothing playing</div>
 
       <div class="progress" id="progress" title="click to seek">
         <div class="bar"><div class="fill" id="fill"></div></div>
@@ -252,9 +252,9 @@
       </div>
 
       <div class="transport">
-        <button class="icon" data-action="previous" title="previous station">⏮</button>
+        <button class="icon" data-action="previous" title="previous track">⏮</button>
         <button class="primary" data-action="pause" id="pauseBtn">play</button>
-        <button class="icon" data-action="next" title="next station in this folder">⏭</button>
+        <button class="icon" data-action="next" title="next track in this folder">⏭</button>
         <button class="icon" data-action="shuffle_game" title="another game's folder">🎲</button>
         <button class="icon" data-action="disconnect" title="stop and power the controller off">⏏</button>
       </div>
@@ -270,10 +270,10 @@
 
     <section class="card">
       <div class="list-head">
-        <h2>stations</h2>
+        <h2>tracks</h2>
         <input type="search" id="filter" placeholder="filter…" autocomplete="off">
       </div>
-      <ul class="stations" id="stations"></ul>
+      <ul class="tracks" id="tracks"></ul>
     </section>
 
     <section class="card">
@@ -558,7 +558,7 @@ function render(s) {
     : "needs the controller connected with the headset plugged in";
   $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
 
-  // A new station resets the client clock; otherwise keep the last known
+  // A new track resets the client clock; otherwise keep the last known
   // duration so a missing field never snaps the bar back to zero.
   const trackId = cur ? cur.id : null;
   if (trackId !== lastTrackId) {
@@ -645,7 +645,7 @@ function render(s) {
     $("#warnSec").value = Math.round(cfg.idle_warn_grace_ms / 1000);
 
   $("#statusLine").textContent =
-    `v0.1 · ${audio.present ? audio.sink + " " + audio.state : "no sink"} · ${cur ? cur.path : "no station"}`;
+    `v0.1 · ${audio.present ? audio.sink + " " + audio.state : "no sink"} · ${cur ? cur.path : "no track"}`;
 
   const mic = s.mic || {};
   $("#micFill").style.width = (mic.level ?? 0) + "%";
@@ -658,7 +658,7 @@ function render(s) {
   document.querySelectorAll("#leddots i").forEach((d, i) =>
     d.classList.toggle("on", leds != null && (leds & (1 << i)) !== 0));
 
-  highlightStation(cur && cur.id);
+  highlightTrack(cur && cur.id);
 }
 
 function renderSensors(c) {
@@ -745,14 +745,14 @@ function renderFields(fields) {
   }).join("");
 }
 
-function highlightStation(id) {
-  document.querySelectorAll("#stations li").forEach(li => {
+function highlightTrack(id) {
+  document.querySelectorAll("#tracks li").forEach(li => {
     li.classList.toggle("active", li.dataset.id === id);
   });
 }
 
-function buildStations() {
-  const list = $("#stations");
+function buildTracks() {
+  const list = $("#tracks");
   const items = tracks.filter(t =>
     !filterText || (t.title + " " + t.game).toLowerCase().includes(filterText));
 
@@ -764,7 +764,7 @@ function buildStations() {
     li.onclick = () => send("play_track", { id: li.dataset.id });
   });
 
-  if (last && last.radio && last.radio.current) highlightStation(last.radio.current.id);
+  if (last && last.radio && last.radio.current) highlightTrack(last.radio.current.id);
 }
 
 function escapeHtml(s) {
@@ -843,7 +843,7 @@ $("#volume").addEventListener("change", () => {
 
 $("#filter").addEventListener("input", (e) => {
   filterText = e.target.value.toLowerCase();
-  buildStations();
+  buildTracks();
 });
 
 $("#saveCfg").onclick = async () => {
@@ -1097,7 +1097,7 @@ async function boot() {
       const [id, title, game, path, ext] = line.split("\t");
       return { id, title, game, path, ext };
     });
-    buildStations();
+    buildTracks();
   } catch (e) { console.error(e); }
 
   try {

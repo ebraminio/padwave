@@ -4,7 +4,7 @@ A DualSense-controlled music player for Linux. One controller over
 Bluetooth, a folder of audio files, and the controller's headphone jack as the
 speaker.
 
-A station is a file. Albums, long mixes and downloaded podcasts already work;
+A track is a file. Albums, long mixes and downloaded podcasts already work;
 folders are scanned recursively.
 
 ```
@@ -88,7 +88,7 @@ describes the lab fields; `POST /api/output` is the controller lab.
 
 ## Behavior
 
-- **Playback:** station scan, shuffle, history, gapless transitions, crossfade,
+- **Playback:** track scan, shuffle, history, gapless transitions, crossfade,
   resume of the saved track/position, and volume/mute.
 - **Volume:** zero is the paused state. Resume restores the last non-zero
   volume; 15% is used only when no non-zero value has ever been stored. Current
