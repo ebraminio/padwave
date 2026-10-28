@@ -2,7 +2,6 @@
 // The wire formats: padwave_number.hh (endian-safe integers) and
 // padwave_schemas.hh (the DualSense reports) merged into one header.
 // This is the only file that describes the packets.
-#include <bit>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -149,7 +148,7 @@ template <typename Report>
 static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = (uint8_t)Report::CrcSeed;
   uint32_t c = crc32_update(0, &seed, 1);
-  auto raw = std::bit_cast<WireBytes<Report>>(report);
+  auto raw = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32_update(c, raw.data, offsetof(Report, crc));
 }
 
@@ -840,8 +839,8 @@ constexpr padwave::AudioReport kSigned = [] {
 }();
 static_assert(kSigned.valid());
 
-constexpr auto kRaw = std::bit_cast<padwave::WireBytes<padwave::AudioReport>>(kSigned);
-constexpr padwave::AudioReport kCopy = std::bit_cast<padwave::AudioReport>(kRaw);
+constexpr auto kRaw = __builtin_bit_cast(padwave::WireBytes<padwave::AudioReport>, kSigned);
+constexpr padwave::AudioReport kCopy = __builtin_bit_cast(padwave::AudioReport, kRaw);
 static_assert(kCopy.valid());
 
 } // namespace wire_test
