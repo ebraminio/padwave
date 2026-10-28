@@ -26,8 +26,8 @@ void Player::emitStatus(const player_status &st) {
   if (app) app->playerStatus(st);
 }
 
-void Player::emitTrack(const char *path) {
-  if (app) app->playerTrack(path);
+void Player::emitTrack(const char *track_path) {
+  if (app) app->playerTrack(track_path);
 }
 
 void Input::emitFrameToApp(const input_frame *f) {
@@ -199,9 +199,9 @@ public:
           uint64_t expirations = 0;
           if (read(timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
             app->tick();
-            int app_fds[4];
-            int app_fd_count = app->fds(app_fds, 4);
-            for (int i = 0; i < app_fd_count; i++) addFd(app_fds[i], EPOLLIN, nullptr);
+            int tick_fds[4];
+            int tick_fd_count = app->fds(tick_fds, 4);
+            for (int k = 0; k < tick_fd_count; k++) addFd(tick_fds[k], EPOLLIN, nullptr);
             for (int j = 0; j < kMaxConns; j++) {
               if (conns[j].fd < 0) continue;
               if (conns[j].front_sse) appendFrontEvent(&conns[j]);
@@ -522,11 +522,11 @@ private:
       }
     } else {
       static const char body[] = "not found\n";
-      int n = snprintf(c->out, sizeof(c->out),
-                       "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
-                       "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
-                       sizeof(body) - 1, body);
-      c->out_len = static_cast<size_t>(n);
+      int written = snprintf(c->out, sizeof(c->out),
+                             "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+                             "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+                             sizeof(body) - 1, body);
+      c->out_len = static_cast<size_t>(written);
     }
     modFd(c->fd, EPOLLOUT);
   }

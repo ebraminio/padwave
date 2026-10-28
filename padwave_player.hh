@@ -101,10 +101,10 @@ private:
       eof = false;
     }
 
-    bool open(const char *path) {
+    bool open(const char *file_path) {
       close();
 
-      if (avformat_open_input(&fmt, path, NULL, NULL) < 0) return false;
+      if (avformat_open_input(&fmt, file_path, NULL, NULL) < 0) return false;
       if (avformat_find_stream_info(fmt, NULL) < 0) return false;
 
       const AVCodec *codec = NULL;
@@ -214,10 +214,10 @@ private:
     has_next = false;
   }
 
-  bool openFile(const char *path) {
+  bool openFile(const char *file_path) {
     closeFile();
-    if (!cur.open(path)) return false;
-    snprintf(this->path, sizeof(this->path), "%s", path);
+    if (!cur.open(file_path)) return false;
+    snprintf(this->path, sizeof(this->path), "%s", file_path);
     eof = false;
     consumed = 0;
     sent = 0;
@@ -226,14 +226,15 @@ private:
     return true;
   }
 
-  void fillInto(File *f, block_t *ring, int *head, int *tail, float acc[IN_FRAMES][CHANNELS],
-                int *acc_frames, int high, int64_t *pushed) {
+  void fillInto(File *f, block_t *dst_ring, int *dst_head, int *dst_tail,
+                float dst_acc[IN_FRAMES][CHANNELS], int *dst_acc_frames, int high,
+                int64_t *dst_pushed) {
     if (!f->fmt || paused) return;
 
     struct timespec start, now;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
-    while (countOf(*head, *tail, RING_BLOCKS) < high && !f->eof) {
+    while (countOf(*dst_head, *dst_tail, RING_BLOCKS) < high && !f->eof) {
       clock_gettime(CLOCK_MONOTONIC, &now);
       long elapsed = (now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000;
       if (elapsed >= DECODE_BUDGET_MS) break;
@@ -255,33 +256,33 @@ private:
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         if (ret < 0) break;
 
-        uint8_t *out[1];
+        uint8_t *encoded[1];
         float tmp[8192 * CHANNELS];
-        out[0] = reinterpret_cast<uint8_t *>(tmp);
+        encoded[0] = reinterpret_cast<uint8_t *>(tmp);
         int cap = swr_get_out_samples(f->swr, frame->nb_samples);
         if (cap > 8192) cap = 8192;
         const uint8_t *in[AV_NUM_DATA_POINTERS] = {};
         int channels = f->dec->ch_layout.nb_channels;
         if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
         for (int i = 0; i < channels; i++) in[i] = frame->extended_data[i];
-        int got = swr_convert(f->swr, out, cap, in, frame->nb_samples);
+        int got = swr_convert(f->swr, encoded, cap, in, frame->nb_samples);
         for (int i = 0; i < got; i++) {
-          acc[*acc_frames][0] = tmp[i * CHANNELS + 0];
-          acc[*acc_frames][1] = tmp[i * CHANNELS + 1];
-          if (++(*acc_frames) == IN_FRAMES) {
-            int next = (*head + 1) % RING_BLOCKS;
-            if (next == *tail) { /* ring full: keep the partial block */
-              *acc_frames = 0;
+          dst_acc[*dst_acc_frames][0] = tmp[i * CHANNELS + 0];
+          dst_acc[*dst_acc_frames][1] = tmp[i * CHANNELS + 1];
+          if (++(*dst_acc_frames) == IN_FRAMES) {
+            int next = (*dst_head + 1) % RING_BLOCKS;
+            if (next == *dst_tail) { /* dst_ring full: keep the partial block */
+              *dst_acc_frames = 0;
               break;
             }
-            memcpy(ring[*head], acc, sizeof(float) * IN_FRAMES * CHANNELS);
-            *head = next;
-            if (pushed) (*pushed)++;
-            *acc_frames = 0;
+            memcpy(dst_ring[*dst_head], dst_acc, sizeof(float) * IN_FRAMES * CHANNELS);
+            *dst_head = next;
+            if (dst_pushed) (*dst_pushed)++;
+            *dst_acc_frames = 0;
           }
         }
         av_frame_unref(frame);
-        if (((*head + 1) % RING_BLOCKS) == *tail) break;
+        if (((*dst_head + 1) % RING_BLOCKS) == *dst_tail) break;
       }
     }
   }
@@ -321,16 +322,16 @@ private:
     emitTrack(path);
   }
 
-  bool takeBlock(float out[IN_FRAMES][CHANNELS]) {
+  bool takeBlock(float dst[IN_FRAMES][CHANNELS]) {
     if (tail == head) return false;
-    memcpy(out, ring[tail], sizeof(ring[0]));
+    memcpy(dst, ring[tail], sizeof(ring[0]));
     tail = (tail + 1) % RING_BLOCKS;
     return true;
   }
 
-  bool takeNextBlock(float out[IN_FRAMES][CHANNELS]) {
+  bool takeNextBlock(float dst[IN_FRAMES][CHANNELS]) {
     if (ntail == nhead) return false;
-    memcpy(out, nring[ntail], sizeof(nring[0]));
+    memcpy(dst, nring[ntail], sizeof(nring[0]));
     ntail = (ntail + 1) % RING_BLOCKS;
     return true;
   }
@@ -432,22 +433,22 @@ private:
   }
 
   void handleLine(char *line) {
-    char path[1024];
+    char line_path[1024];
     long value;
 
     // "play <start_ms> <path>" — the number comes first so a path can contain
     // spaces and the two fields never have to be guessed apart. "play <path>" is
     // still accepted for driving the binary by hand.
-    if (sscanf(line, "play %ld %1023[^\n]", &value, path) == 2) {
+    if (sscanf(line, "play %ld %1023[^\n]", &value, line_path) == 2) {
       if (playing && !paused && cur.fmt && fade_ms > 0) {
         closeNext();
-        if (nxt.open(path)) {
+        if (nxt.open(line_path)) {
           if (value > 0) {
             int64_t ts = value * (AV_TIME_BASE / 1000);
             av_seek_frame(nxt.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
             avcodec_flush_buffers(nxt.dec);
           }
-          snprintf(manual_path, sizeof(manual_path), "%s", path);
+          snprintf(manual_path, sizeof(manual_path), "%s", line_path);
           manual_fade = true;
           manual_pending = true;
           base_ms = value;
@@ -459,7 +460,7 @@ private:
       }
 
       closeNext();
-      if (openFile(path)) {
+      if (openFile(line_path)) {
         playing = true;
         paused = false;
         primed = false;
@@ -473,9 +474,9 @@ private:
       return;
     }
 
-    if (sscanf(line, "play %1023[^\n]", path) == 1) {
+    if (sscanf(line, "play %1023[^\n]", line_path) == 1) {
       closeNext();
-      if (openFile(path)) {
+      if (openFile(line_path)) {
         playing = true;
         paused = false;
         primed = false;
@@ -486,12 +487,12 @@ private:
     // "queue <path>" — the next track, to be decoded ahead and promoted at the
     // end of the current one. Only one is held; the radio pushes the one after
     // that once the promotion is reported.
-    if (sscanf(line, "queue %1023[^\n]", path) == 1) {
+    if (sscanf(line, "queue %1023[^\n]", line_path) == 1) {
       if (!has_next) {
-        snprintf(next_path, sizeof(next_path), "%s", path);
+        snprintf(next_path, sizeof(next_path), "%s", line_path);
         has_next = true;
         next_warmed = false;
-        warmFile(path);
+        warmFile(line_path);
       }
       return;
     }
@@ -654,11 +655,11 @@ private:
     for (int i = 0; i < OPUS_FRAMES; i++) {
       double src = i * step;
       int idx = static_cast<int>(src);
-      int nxt = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
+      int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
       float frac = static_cast<float>((src - idx));
       for (int ch = 0; ch < CHANNELS; ch++) {
         float a = block[idx][ch];
-        float b = block[nxt][ch];
+        float b = block[next_sample][ch];
         pcm[i * CHANNELS + ch] = (a + (b - a) * frac) * gain;
       }
     }
@@ -683,7 +684,7 @@ public:
 
   void attach(App *owner) { app = owner; }
 
-  bool create(const char *node = nullptr, bool speaker = false) {
+  bool create(const char *node = nullptr, bool use_speaker = false) {
     destroy();
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
@@ -692,7 +693,7 @@ public:
       hidraw = device.open();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
-    this->speaker = speaker;
+    this->speaker = use_speaker;
     state.init(this->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
 
     int err = 0;
