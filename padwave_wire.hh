@@ -36,15 +36,15 @@ struct NumType {
   constexpr Type get() const {
     UnsignedType v = 0;
     for (unsigned int i = 0; i < sizeof(Type); i++)
-      v = (UnsignedType)((v << 8) | bytes[sizeof(Type) - 1 - i]);
-    return (Type)v;
+      v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
+    return static_cast<Type>(v);
   }
 
   constexpr void set(Type value) {
-    UnsignedType v = (UnsignedType)value;
+    UnsignedType v = static_cast<UnsignedType>(value);
     for (unsigned int i = 0; i < sizeof(Type); i++) {
-      bytes[i] = (unsigned char)(v & 0xFF);
-      v = (UnsignedType)(v >> 8);
+      bytes[i] = static_cast<unsigned char>((v & 0xFF));
+      v = static_cast<UnsignedType>((v >> 8));
     }
   }
 
@@ -57,37 +57,37 @@ struct NumType {
   constexpr bool operator!=(Type o) const { return get() != o; }
 
   constexpr NumType &operator+=(Type n) {
-    set((Type)(get() + n));
+    set(static_cast<Type>((get() + n)));
     return *this;
   }
 
   constexpr NumType &operator-=(Type n) {
-    set((Type)(get() - n));
+    set(static_cast<Type>((get() - n)));
     return *this;
   }
 
   constexpr NumType &operator|=(Type n) {
-    set((Type)(get() | n));
+    set(static_cast<Type>((get() | n)));
     return *this;
   }
 
   constexpr NumType &operator&=(Type n) {
-    set((Type)(get() & n));
+    set(static_cast<Type>((get() & n)));
     return *this;
   }
 
   constexpr NumType &operator^=(Type n) {
-    set((Type)(get() ^ n));
+    set(static_cast<Type>((get() ^ n)));
     return *this;
   }
 
   constexpr NumType &operator++() {
-    set((Type)(get() + 1));
+    set(static_cast<Type>((get() + 1)));
     return *this;
   }
 
   constexpr NumType &operator--() {
-    set((Type)(get() - 1));
+    set(static_cast<Type>((get() - 1)));
     return *this;
   }
 
@@ -146,7 +146,7 @@ struct WireBytes {
 
 template <typename Report>
 static constexpr uint32_t crc_of(const Report &report) {
-  uint8_t seed = (uint8_t)Report::CrcSeed;
+  uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
   uint32_t c = crc32_update(0, &seed, 1);
   auto raw = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32_update(c, raw.data, offsetof(Report, crc));
@@ -591,7 +591,7 @@ struct AudioReport {
     state_length = StateSize;
     haptics_tag = 0x12 | 0x80;
     haptics_length = HapticSize;
-    speaker_tag = (uint8_t)(tag | 0x80);
+    speaker_tag = static_cast<uint8_t>((tag | 0x80));
     speaker_length = OpusSize;
   }
 

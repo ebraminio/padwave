@@ -257,7 +257,7 @@ private:
 
         uint8_t *out[1];
         float tmp[8192 * CHANNELS];
-        out[0] = (uint8_t *)tmp;
+        out[0] = reinterpret_cast<uint8_t *>(tmp);
         int cap = swr_get_out_samples(f->swr, frame->nb_samples);
         if (cap > 8192) cap = 8192;
         const uint8_t *in[AV_NUM_DATA_POINTERS] = {};
@@ -397,10 +397,10 @@ private:
         speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones;
     report.state.body.audio_control2 = 0x0A;
 
-    report.seq_tag = (uint8_t)((seq & 0x0F) << 4);
+    report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
     report.counter = counter;
 
-    size_t copy = len > 0 ? (size_t)len : 0;
+    size_t copy = len > 0 ? static_cast<size_t>(len) : 0;
     if (copy > padwave::AudioReport::OpusSize) copy = padwave::AudioReport::OpusSize;
     if (copy) memcpy(report.opus, opus, copy);
 
@@ -419,14 +419,14 @@ private:
     }
     if (hidraw >= 0) {
       ssize_t n = write(hidraw, &report, sizeof(report));
-      if (n != (ssize_t)sizeof(report)) {
+      if (n != static_cast<ssize_t>(sizeof(report))) {
         close(hidraw);
         hidraw = -1;
         hidraw_retry = 100;
       }
     }
 
-    seq = (uint8_t)((seq + 1) & 0x0F);
+    seq = static_cast<uint8_t>(((seq + 1) & 0x0F));
     counter++;
     sent++;
   }
@@ -497,8 +497,8 @@ private:
     }
 
     if (strcmp(line, "state_clear_lightbar") == 0) {
-      state.valid_flag1 &= (uint8_t)~padwave::OutputBody::Lightbar;
-      state.valid_flag2 &= (uint8_t)~padwave::OutputBody::ColorFade;
+      state.valid_flag1 &= static_cast<uint8_t>(~padwave::OutputBody::Lightbar);
+      state.valid_flag2 &= static_cast<uint8_t>(~padwave::OutputBody::ColorFade);
       state.lightbar_setup = 0;
       state.lightbar_red = 0;
       state.lightbar_green = 0;
@@ -510,28 +510,28 @@ private:
       memset(&out, 0, sizeof(out));
       out.report_id = padwave::OutputReport::ReportId;
       out.tag = 0x10;
-      out.seq_tag = (uint8_t)((out_seq & 0x0F) << 4);
+      out.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
       if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
       out.sign();
       if (hidraw < 0) {
         DualSenseDevice device;
         hidraw = device.open();
       }
-      bool ok =
-          hidraw >= 0 && padwave_fields::write_all(hidraw, (const uint8_t *)&out, sizeof(out));
-      if (ok) out_seq = (uint8_t)((out_seq + 1) & 0x0F);
+      bool ok = hidraw >= 0 && padwave_fields::write_all(
+                                   hidraw, reinterpret_cast<const uint8_t *>(&out), sizeof(out));
+      if (ok) out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
       if (ok) {
         padwave_fields::apply_fields(&state, line + 7, true);
         // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
         // snapshot re-trigger them forever.
-        state.valid_flag1 &= (uint8_t)~padwave::OutputBody::ResetLights;
-        state.valid_flag2 &= (uint8_t)~padwave::OutputBody::ColorFade;
+        state.valid_flag1 &= static_cast<uint8_t>(~padwave::OutputBody::ResetLights);
+        state.valid_flag2 &= static_cast<uint8_t>(~padwave::OutputBody::ColorFade);
       }
       return;
     }
 
     if (sscanf(line, "fade %ld", &value) == 1) {
-      fade_ms = (int)(value < 0 ? 0 : value);
+      fade_ms = static_cast<int>((value < 0 ? 0 : value));
       return;
     }
 
@@ -544,7 +544,7 @@ private:
       mic = value != 0;
       state.valid_flag1 |= padwave::OutputBody::PowerSave;
       if (mic) {
-        state.power_save_control &= (uint8_t)~0x10;
+        state.power_save_control &= static_cast<uint8_t>(~0x10);
         state.mic_volume = 0x40;
       } else {
         state.power_save_control |= 0x10;
@@ -553,7 +553,7 @@ private:
     }
 
     if (sscanf(line, "volume %ld", &value) == 1) {
-      volume = (int)(value < 0 ? 0 : (value > 100 ? 100 : value));
+      volume = static_cast<int>((value < 0 ? 0 : (value > 100 ? 100 : value)));
       return;
     }
 
@@ -569,7 +569,7 @@ private:
           seek_fade = true;
           fading = true;
           fade_pos = 0;
-          fade_total = (int)((long)fade * 1000 / 10667);
+          fade_total = static_cast<int>((static_cast<long>(fade) * 1000 / 10667));
           if (fade_total < 1) fade_total = 1;
           base_ms = value;
           consumed = 0;
@@ -616,7 +616,8 @@ private:
           memset(block, 0, sizeof(block));
         }
       } else {
-        float g = fade_total > 0 ? (float)fade_pos / (float)fade_total : 1.0f;
+        float g =
+            fade_total > 0 ? static_cast<float>(fade_pos) / static_cast<float>(fade_total) : 1.0f;
         /* Equal-power: the two sides' powers add to one, so the level stays
          * constant through the overlap instead of dipping in the middle. */
         float phase = g * 1.5707963267948966f;
@@ -646,15 +647,15 @@ private:
     }
 
     float pcm[OPUS_FRAMES * CHANNELS];
-    double step = (IN_FRAMES - 1) / (double)(OPUS_FRAMES - 1);
-    float gain = (float)(volume / 100.0);
+    double step = (IN_FRAMES - 1) / static_cast<double>((OPUS_FRAMES - 1));
+    float gain = static_cast<float>((volume / 100.0));
     gain = gain * gain * gain;
 
     for (int i = 0; i < OPUS_FRAMES; i++) {
       double src = i * step;
-      int idx = (int)src;
+      int idx = static_cast<int>(src);
       int nxt = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
-      float frac = (float)(src - idx);
+      float frac = static_cast<float>((src - idx));
       for (int ch = 0; ch < CHANNELS; ch++) {
         float a = block[idx][ch];
         float b = block[nxt][ch];
@@ -782,7 +783,7 @@ public:
     if (playing && !paused && nxt.fmt) fillNext();
 
     if (manual_pending && manual_fade && nextRingLen() >= 8) {
-      int fade_blocks = (int)((long)fade_ms * 1000 / 10667);
+      int fade_blocks = static_cast<int>((static_cast<long>(fade_ms) * 1000 / 10667));
       manual_pending = false;
       fading = true;
       fade_total = fade_blocks > 0 ? fade_blocks : 1;
@@ -790,7 +791,7 @@ public:
     }
 
     if (!fading && !manual_fade && playing && !paused && fade_ms > 0 && has_next && nxt.fmt) {
-      int fade_blocks = (int)((long)fade_ms * 1000 / 10667);
+      int fade_blocks = static_cast<int>((static_cast<long>(fade_ms) * 1000 / 10667));
       int left = ringLen();
       if (eof && left > 0 && left <= fade_blocks && nextRingLen() >= left) {
         fading = true;

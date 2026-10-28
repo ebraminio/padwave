@@ -16,24 +16,26 @@
 
 struct HttpRequest {
   enum class Status : uint8_t {
-    Malformed,   // not a request head
-    Incomplete,  // no CRLFCRLF yet
-    Parsed,      // head parsed; check complete for the body
+    Malformed,  // not a request head
+    Incomplete, // no CRLFCRLF yet
+    Parsed,     // head parsed; check complete for the body
   };
 
   static constexpr size_t kMax = 8192;
 
   char method[8] = {};
   char path[1024] = {};
-  size_t head_len = 0;  // through the final \r\n\r\n
-  size_t body_len = 0;  // Content-Length, or 0
-  bool complete = false;  // the whole body is present
+  size_t head_len = 0;   // through the final \r\n\r\n
+  size_t body_len = 0;   // Content-Length, or 0
+  bool complete = false; // the whole body is present
   Status status = Status::Malformed;
 
   HttpRequest() = default;
+
   explicit HttpRequest(const char *buf, size_t len) { parse(buf, len); }
 
   bool valid() const { return status != Status::Malformed; }
+
   bool headReady() const { return status == Status::Parsed; }
 
 private:
@@ -73,7 +75,7 @@ private:
       unsigned long value = strtoul(p, &end, 10);
       if (end == p || errno != 0 || value > kMax) return;
       if (*end != '\r' && *end != ' ' && *end != '\t') return;
-      body = (size_t)value;
+      body = static_cast<size_t>(value);
       break;
     }
     if (head_end + body > kMax) return;

@@ -63,11 +63,11 @@ private:
 
   static void makeId(const char *path, char *out) {
     uint64_t h = 1469598103934665603ULL;
-    for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(path); *p; p++) {
       h ^= *p;
       h *= 1099511628211ULL;
     }
-    snprintf(out, 17, "%016llx", (unsigned long long)h);
+    snprintf(out, 17, "%016llx", static_cast<unsigned long long>(h));
   }
 
   static bool audioExt(const char *name) {
@@ -80,8 +80,8 @@ private:
   }
 
   static int compareTracks(const void *a, const void *b) {
-    const Track *x = (const Track *)a;
-    const Track *y = (const Track *)b;
+    const Track *x = reinterpret_cast<const Track *>(a);
+    const Track *y = reinterpret_cast<const Track *>(b);
     int c = strcasecmp(x->folder, y->folder);
     return c ? c : strcasecmp(x->title, y->title);
   }
@@ -90,19 +90,19 @@ private:
     size_t start = *len;
     if (start + 2 > cap) return;
     int n = snprintf(buf + start, cap - start, "%s=", key);
-    if (n <= 0 || (size_t)n >= cap - start) return;
-    *len = start + (size_t)n;
+    if (n <= 0 || static_cast<size_t>(n) >= cap - start) return;
+    *len = start + static_cast<size_t>(n);
 
     va_list ap;
     va_start(ap, fmt);
     int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
     va_end(ap);
-    if (m < 0 || (size_t)m + 2 > cap - *len) {
+    if (m < 0 || static_cast<size_t>(m) + 2 > cap - *len) {
       *len = start;
       buf[start] = 0;
       return;
     }
-    *len += (size_t)m;
+    *len += static_cast<size_t>(m);
 
     buf[(*len)++] = '\n';
     buf[*len] = 0;
@@ -112,8 +112,8 @@ private:
     size_t start = *len;
     if (start + 2 > cap) return;
     int n = snprintf(buf + start, cap - start, "%s=", key);
-    if (n <= 0 || (size_t)n >= cap - start) return;
-    *len = start + (size_t)n;
+    if (n <= 0 || static_cast<size_t>(n) >= cap - start) return;
+    *len = start + static_cast<size_t>(n);
 
     for (const char *p = value; p && *p; p++) {
       if (*len + 2 >= cap) break;
@@ -128,7 +128,7 @@ private:
     size_t klen = strlen(key);
     for (const char *p = body; *p;) {
       const char *eol = strchr(p, '\n');
-      size_t n = eol ? (size_t)(eol - p) : strlen(p);
+      size_t n = eol ? static_cast<size_t>((eol - p)) : strlen(p);
       if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
         const char *v = p + klen + 1;
         size_t vn = n - klen - 1;
@@ -318,8 +318,8 @@ public:
       }
     }
 
-    qsort(this->tracks, (size_t)this->count, sizeof(Track), compareTracks);
-    srand((unsigned)time(nullptr) ^ (unsigned)getpid());
+    qsort(this->tracks, static_cast<size_t>(this->count), sizeof(Track), compareTracks);
+    srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
     this->player_timer_fd = -1;
     configLoad();
     if (this->resume_path[0]) {
@@ -387,7 +387,7 @@ public:
       playerSend("pause 1\n");
       this->playhead_dirty = true;
     }
-    if (this->input.fd() < 0 && (int)nowMs() >= this->reconnect_at) inputStart();
+    if (this->input.fd() < 0 && static_cast<int>(nowMs()) >= this->reconnect_at) inputStart();
 
     long now = nowMs();
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
@@ -423,10 +423,10 @@ public:
       uint8_t buf[512];
       ssize_t n = read(fd, buf, sizeof(buf));
       if (n > 0) {
-        this->input.feed(buf, (size_t)n);
+        this->input.feed(buf, static_cast<size_t>(n));
       } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
         inputStop(true);
-        this->reconnect_at = (int)(nowMs() + 1500);
+        this->reconnect_at = static_cast<int>((nowMs() + 1500));
       }
     }
   }
@@ -453,7 +453,7 @@ public:
     } else if (this->idle_warning && idle_ms >= timeout) {
       phase = "warning";
       long over = idle_ms - timeout;
-      int progress = grace > 0 ? (int)(over * 100 / grace) : 100;
+      int progress = grace > 0 ? static_cast<int>((over * 100 / grace)) : 100;
       if (progress < 0) progress = 0;
       if (progress > 100) progress = 100;
       fade_percent = 100 - progress * 90 / 100;
@@ -467,8 +467,8 @@ public:
 
     kvAdd(buf, cap, &o, "radio.playing", "%s", this->playing ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.paused", "%s", this->paused ? "true" : "false");
-    kvAdd(buf, cap, &o, "radio.position", "%.1f", (double)this->pos_ms / 1000.0);
-    kvAdd(buf, cap, &o, "radio.duration", "%.1f", (double)this->dur_ms / 1000.0);
+    kvAdd(buf, cap, &o, "radio.position", "%.1f", static_cast<double>(this->pos_ms) / 1000.0);
+    kvAdd(buf, cap, &o, "radio.duration", "%.1f", static_cast<double>(this->dur_ms) / 1000.0);
     kvAdd(buf, cap, &o, "radio.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "radio.muted", "%s", this->volume == 0 ? "true" : "false");
     kvAdd(buf, cap, &o, "radio.fade_percent", "%d", fade_percent);
@@ -584,7 +584,7 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
-    return (int)o;
+    return static_cast<int>(o);
   }
 
   int frontText(char *buf, size_t cap, unsigned long requests, long uptime) {
@@ -610,7 +610,7 @@ public:
     kvAdd(buf, cap, &o, "input.r2", "%d", this->r2);
     kvAdd(buf, cap, &o, "input.battery", "%d", this->battery);
     kvAdd(buf, cap, &o, "input.jack", "%s", this->jack ? "true" : "false");
-    return (int)o;
+    return static_cast<int>(o);
   }
 
   int configText(char *buf, size_t cap) {
@@ -626,7 +626,7 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
-    return (int)o;
+    return static_cast<int>(o);
   }
 
   void micReset() {
@@ -649,15 +649,15 @@ public:
 
     if (kvGet(body, "idle_timeout_ms", value, sizeof(value))) {
       long v = atol(value);
-      this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+      this->idle_timeout_ms = static_cast<int>((v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v)));
     }
     if (kvGet(body, "idle_warn_grace_ms", value, sizeof(value))) {
       long v = atol(value);
-      this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+      this->idle_warn_grace_ms = static_cast<int>((v < 0 ? 0 : (v > 600000 ? 600000 : v)));
     }
     if (kvGet(body, "poweroff_when_idle_ms", value, sizeof(value))) {
       long v = atol(value);
-      this->poweroff_when_idle_ms = (int)(v < 0 ? 0 : (v > 86400000 ? 86400000 : v));
+      this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
     }
     if (kvGet(body, "trigger_effect_amplitude", value, sizeof(value))) {
       int v = atoi(value);
@@ -694,7 +694,7 @@ public:
       tsvField(buf, cap, &o, s->path, '\t');
       tsvField(buf, cap, &o, s->ext, '\n');
     }
-    return (int)o;
+    return static_cast<int>(o);
   }
 
   int output(const char *body, char *out, size_t out_cap) {
@@ -739,7 +739,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
-      int v = (int)kvNumber(body, "value", 0);
+      int v = static_cast<int>(kvNumber(body, "value", 0));
       this->led_pulse_until = 0;
       snprintf(fields, sizeof(fields), "valid_flag2=color_fade;lightbar_setup=%d", v & 0xFF);
       outputFields(fields);
@@ -758,14 +758,14 @@ public:
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
-      int v = (int)kvNumber(body, "value", 0);
+      int v = static_cast<int>(kvNumber(body, "value", 0));
       snprintf(fields, sizeof(fields), "valid_flag2=brightness;led_brightness=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
     }
 
     if (strcmp(kind, "player_leds") == 0) {
-      int mask = (int)kvNumber(body, "mask", 0) & 0x1F;
+      int mask = static_cast<int>(kvNumber(body, "mask", 0)) & 0x1F;
       this->led_manual_player = true;
       this->led_manual_mask = mask;
       serviceLeds();
@@ -783,12 +783,13 @@ public:
       }
       snprintf(fields, sizeof(fields), "valid_flag1=power_save;power_save_control=%d", mask);
       outputFields(fields);
-      return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n", (unsigned)mask);
+      return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n",
+                      static_cast<unsigned>(mask));
     }
 
     if (strcmp(kind, "rumble") == 0) {
-      int left = (int)kvNumber(body, "left", 0);
-      int right = (int)kvNumber(body, "right", 0);
+      int left = static_cast<int>(kvNumber(body, "left", 0));
+      int right = static_cast<int>(kvNumber(body, "right", 0));
       long ms = kvNumber(body, "ms", 0);
       left = left < 0 ? 0 : (left > 255 ? 255 : left);
       right = right < 0 ? 0 : (right > 255 ? 255 : right);
@@ -811,10 +812,10 @@ public:
       kvGet(body, "side", side, sizeof(side));
       kvGet(body, "preset", preset, sizeof(preset));
       kvGet(body, "effect", effect, sizeof(effect));
-      int position = (int)kvNumber(body, "position", 2);
-      int amplitude = (int)kvNumber(body, "amplitude", 6);
-      int frequency = (int)kvNumber(body, "frequency", 25);
-      int wall = (int)kvNumber(body, "wall", 8);
+      int position = static_cast<int>(kvNumber(body, "position", 2));
+      int amplitude = static_cast<int>(kvNumber(body, "amplitude", 6));
+      int frequency = static_cast<int>(kvNumber(body, "frequency", 25));
+      int wall = static_cast<int>(kvNumber(body, "wall", 8));
       long ms = kvNumber(body, "ms", 0);
 
       uint8_t params[10] = {};
@@ -854,12 +855,12 @@ public:
       const char *flag = left ? "left_trigger" : "right_trigger";
       const char *prefix = left ? "left" : "right";
       snprintf(fields, sizeof(fields), "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%s",
-               flag, prefix, (unsigned)mode, prefix, param_text);
+               flag, prefix, static_cast<unsigned>(mode), prefix, param_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
-      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side, (unsigned)mode,
-                      label);
+      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side,
+                      static_cast<unsigned>(mode), label);
     }
 
     if (strcmp(kind, "fields") == 0) {
@@ -921,11 +922,12 @@ private:
     snprintf(s->path, sizeof(s->path), "%s", path);
 
     const char *base = strrchr(path, '/');
-    snprintf(s->title, sizeof(s->title), "%.*s", (int)sizeof(s->title) - 1, base ? base + 1 : path);
+    snprintf(s->title, sizeof(s->title), "%.*s", static_cast<int>(sizeof(s->title)) - 1,
+             base ? base + 1 : path);
     char *dot = strrchr(s->title, '.');
     if (dot) *dot = 0;
 
-    snprintf(s->folder, sizeof(s->folder), "%.*s", (int)sizeof(s->folder) - 1, folder);
+    snprintf(s->folder, sizeof(s->folder), "%.*s", static_cast<int>(sizeof(s->folder)) - 1, folder);
     const char *d = strrchr(path, '.');
     snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
     makeId(path, s->id);
@@ -994,7 +996,7 @@ private:
   void inputStart() {
     if (this->input.fd() >= 0) return;
     if (!this->input.open()) {
-      this->reconnect_at = (int)(nowMs() + 1500);
+      this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
     }
     snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
@@ -1255,18 +1257,18 @@ private:
         }
       }
     }
-    this->lx = (int)f->lx;
-    this->ly = (int)f->ly;
-    this->rx = (int)f->rx;
-    this->ry = (int)f->ry;
-    this->l2 = (int)f->l2;
-    this->r2 = (int)f->r2;
+    this->lx = static_cast<int>(f->lx);
+    this->ly = static_cast<int>(f->ly);
+    this->rx = static_cast<int>(f->rx);
+    this->ry = static_cast<int>(f->ry);
+    this->l2 = static_cast<int>(f->l2);
+    this->r2 = static_cast<int>(f->r2);
     this->battery = f->battery;
     this->jack = f->jack != 0;
-    this->temp = (int)f->temp;
+    this->temp = static_cast<int>(f->temp);
     snprintf(this->dpad, sizeof(this->dpad), "%s", f->dpad);
     snprintf(this->buttons, sizeof(this->buttons), "%s", f->buttons);
-    snprintf(this->raw, sizeof(this->raw), "%.*s", (int)sizeof(this->raw) - 1, f->raw);
+    snprintf(this->raw, sizeof(this->raw), "%.*s", static_cast<int>(sizeof(this->raw)) - 1, f->raw);
     snprintf(this->charging, sizeof(this->charging), "%s",
              f->charging == 1   ? "charging"
              : f->charging == 2 ? "full"
@@ -1286,7 +1288,7 @@ private:
     if (this->rate_at == 0) this->rate_at = now;
     this->rate_frames++;
     if (now - this->rate_at >= 1000) {
-      this->rate = (int)((this->rate_frames * 1000) / (now - this->rate_at));
+      this->rate = static_cast<int>(((this->rate_frames * 1000) / (now - this->rate_at)));
       this->rate_frames = 0;
       this->rate_at = now;
     }
@@ -1307,20 +1309,20 @@ private:
     }
 
     opus_int16 pcm[480];
-    int n = opus_decode(this->mic_decoder, data, (opus_int32)len, pcm, 480, 0);
+    int n = opus_decode(this->mic_decoder, data, static_cast<opus_int32>(len), pcm, 480, 0);
     if (n <= 0) return;
 
     long long sum = 0;
     int peak = 0;
     for (int i = 0; i < n; i++) {
       int v = pcm[i];
-      sum += (long long)v * v;
+      sum += static_cast<long long>(v) * v;
       int a = v < 0 ? -v : v;
       if (a > peak) peak = a;
     }
-    int rms = (int)sqrt((double)sum / n);
-    double db = rms > 0 ? 20.0 * log10((double)rms / 32768.0) : -90.0;
-    int level = (int)((db + 60.0) * 100.0 / 60.0);
+    int rms = static_cast<int>(sqrt(static_cast<double>(sum) / n));
+    double db = rms > 0 ? 20.0 * log10(static_cast<double>(rms) / 32768.0) : -90.0;
+    int level = static_cast<int>(((db + 60.0) * 100.0 / 60.0));
     if (level < 0) level = 0;
     if (level > 100) level = 100;
 
@@ -1329,7 +1331,7 @@ private:
     this->mic_level = (this->mic_level * 2 + level) / 3;
     this->mic_packets++;
     this->mic_frames++;
-    this->mic_samples += (unsigned long)n;
+    this->mic_samples += static_cast<unsigned long>(n);
     this->mic_last_ms = nowMs();
   }
 
@@ -1366,7 +1368,7 @@ private:
         triggerTest(value < 0 ? "left" : "right", 180, result, sizeof(result));
       }
     } else if (strcmp(name, "seek") == 0) {
-      seek(this->pos_ms + (long)value * 1000);
+      seek(this->pos_ms + static_cast<long>(value) * 1000);
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
       this->playing = false;
       this->paused = true;
@@ -1410,13 +1412,13 @@ private:
 
       if (strcmp(line, "idle_timeout_ms") == 0) {
         long v = atol(value);
-        this->idle_timeout_ms = (int)(v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v));
+        this->idle_timeout_ms = static_cast<int>((v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v)));
       } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
         long v = atol(value);
-        this->idle_warn_grace_ms = (int)(v < 0 ? 0 : (v > 600000 ? 600000 : v));
+        this->idle_warn_grace_ms = static_cast<int>((v < 0 ? 0 : (v > 600000 ? 600000 : v)));
       } else if (strcmp(line, "poweroff_when_idle_ms") == 0) {
         long v = atol(value);
-        this->poweroff_when_idle_ms = (int)(v < 0 ? 0 : (v > 86400000 ? 86400000 : v));
+        this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
       } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
         int v = atoi(value);
         this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
@@ -1532,7 +1534,7 @@ private:
     if (!this->idle_warning) return;
 
     long over = idle_ms - timeout;
-    int progress = grace > 0 ? (int)(over * 100 / grace) : 100;
+    int progress = grace > 0 ? static_cast<int>((over * 100 / grace)) : 100;
     if (progress < 0) progress = 0;
     if (progress > 100) progress = 100;
 
@@ -1708,11 +1710,11 @@ private:
         this->led_pulse_until = 0;
       } else if (state != 0) {
         // Host-driven smooth pulse: 1 Hz raised cosine between 15% and 100%.
-        float phase = (float)(now - this->led_pulse_start) * 0.0062831853f;
+        float phase = static_cast<float>((now - this->led_pulse_start)) * 0.0062831853f;
         float level = 0.15f + 0.85f * (0.5f - 0.5f * cosf(phase));
-        r = (int)((float)r * level);
-        g = (int)((float)g * level);
-        b = (int)((float)b * level);
+        r = static_cast<int>((static_cast<float>(r) * level));
+        g = static_cast<int>((static_cast<float>(g) * level));
+        b = static_cast<int>((static_cast<float>(b) * level));
       }
     }
 
@@ -1759,18 +1761,18 @@ private:
     start = clampInt(start, 0, 9);
     uint16_t zones = 0;
     uint32_t packed = 0;
-    uint32_t value = (uint32_t)((strength - 1) & 7);
+    uint32_t value = static_cast<uint32_t>(((strength - 1) & 7));
     for (int zone = start; zone < 10; zone++) {
-      zones |= (uint16_t)(1u << zone);
+      zones |= static_cast<uint16_t>((1u << zone));
       packed |= value << (3 * zone);
     }
-    params[0] = (uint8_t)(zones & 0xFF);
-    params[1] = (uint8_t)(zones >> 8);
-    params[2] = (uint8_t)(packed & 0xFF);
-    params[3] = (uint8_t)((packed >> 8) & 0xFF);
-    params[4] = (uint8_t)((packed >> 16) & 0xFF);
-    params[5] = (uint8_t)((packed >> 24) & 0xFF);
-    params[9] = (uint8_t)frequency;
+    params[0] = static_cast<uint8_t>((zones & 0xFF));
+    params[1] = static_cast<uint8_t>((zones >> 8));
+    params[2] = static_cast<uint8_t>((packed & 0xFF));
+    params[3] = static_cast<uint8_t>(((packed >> 8) & 0xFF));
+    params[4] = static_cast<uint8_t>(((packed >> 16) & 0xFF));
+    params[5] = static_cast<uint8_t>(((packed >> 24) & 0xFF));
+    params[9] = static_cast<uint8_t>(frequency);
     return true;
   }
 
@@ -1779,10 +1781,10 @@ private:
     if (strength <= 0) return false;
     start = clampInt(start, 2, 7);
     end = clampInt(end, start + 1, 8);
-    uint16_t zones = (uint16_t)((1u << start) | (1u << end));
-    params[0] = (uint8_t)(zones & 0xFF);
-    params[1] = (uint8_t)(zones >> 8);
-    params[2] = (uint8_t)((strength - 1) & 7);
+    uint16_t zones = static_cast<uint16_t>(((1u << start) | (1u << end)));
+    params[0] = static_cast<uint8_t>((zones & 0xFF));
+    params[1] = static_cast<uint8_t>((zones >> 8));
+    params[2] = static_cast<uint8_t>(((strength - 1) & 7));
     return true;
   }
 
@@ -1853,7 +1855,7 @@ private:
       this->paused = true;
       playerSend("pause 1\n");
     } else if (strcmp(action, "volume") == 0) {
-      setVolume((int)kvNumber(body, "value", this->volume));
+      setVolume(static_cast<int>(kvNumber(body, "value", this->volume)));
     } else if (strcmp(action, "seek") == 0) {
       seek(this->pos_ms + kvNumber(body, "delta", 0) * 1000);
     } else if (strcmp(action, "seek_to") == 0) {

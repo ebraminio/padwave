@@ -154,7 +154,7 @@ private:
     int l2 = b.l2.get(), r2 = b.r2.get();
     int lx = b.lx.get(), ly = b.ly.get(), rx = b.rx.get(), ry = b.ry.get();
     uint32_t buttons = b.buttons;
-    uint8_t dpad = (uint8_t)(buttons & 0x0F);
+    uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
     bool first = !sensors.has_prev;
 
     bool real = false, analog = false;
@@ -166,10 +166,10 @@ private:
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
 
-    double g =
-        sqrt((double)b.accel_x.get() * b.accel_x.get() + (double)b.accel_y.get() * b.accel_y.get() +
-             (double)b.accel_z.get() * b.accel_z.get()) /
-        8192.0;
+    double g = sqrt(static_cast<double>(b.accel_x.get()) * b.accel_x.get() +
+                    static_cast<double>(b.accel_y.get()) * b.accel_y.get() +
+                    static_cast<double>(b.accel_z.get()) * b.accel_z.get()) /
+               8192.0;
     if (g >= 2.25 && now - sensors.last_shake > 1500) {
       emitEvent("shake");
       sensors.last_shake = now;
@@ -236,7 +236,7 @@ private:
     static const int steps[] = {10, 20, 40, 60};
     static const int intervals[] = {320, 260, 190, 130};
 
-    uint8_t dpad = (uint8_t)(buttons & 0x0F);
+    uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
     int64_t now = nowMs();
 
     if (dpad != dpad_state.prev) {
@@ -274,7 +274,7 @@ private:
   static int64_t nowMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
   }
 
   void emitAction(const char *name, int value);
@@ -327,8 +327,8 @@ private:
     for (auto &n : names) {
       if (!(buttons & n.bit)) continue;
       int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
-      if (w <= 0 || (size_t)w >= cap - o) break;
-      o += (size_t)w;
+      if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
+      o += static_cast<size_t>(w);
     }
   }
 
@@ -366,7 +366,7 @@ private:
       f.touches[t].active = (contact & 0x80) ? 0 : 1;
       f.touches[t].id = contact & 0x7F;
       f.touches[t].x = touch[1].get() | ((middle & 0x0F) << 8);
-      f.touches[t].y = (middle >> 4) | ((unsigned)touch[3].get() << 4);
+      f.touches[t].y = (middle >> 4) | (static_cast<unsigned>(touch[3].get()) << 4);
     }
     size_t r = len < (sizeof(f.raw) - 1) / 2 ? len : (sizeof(f.raw) - 1) / 2;
     for (size_t i = 0; i < r; i++) snprintf(f.raw + i * 2, sizeof(f.raw) - i * 2, "%02x", raw[i]);
@@ -390,14 +390,15 @@ private:
     }
 
     if (buf[0] == padwave::PacketStateBluetooth && len >= padwave::InputReport::Size) {
-      const padwave::InputReport *r = (const padwave::InputReport *)buf;
+      const padwave::InputReport *r = reinterpret_cast<const padwave::InputReport *>(buf);
       if (!r->valid()) return;
       emitFrame(r->body, buf, padwave::InputReport::Size);
       return;
     }
 
     if (buf[0] == padwave::PacketInputUsb && len >= padwave::InputReport::UsbSize)
-      emitFrame(*(const padwave::InputBody *)(buf + 1), buf, padwave::InputReport::UsbSize);
+      emitFrame(*reinterpret_cast<const padwave::InputBody *>((buf + 1)), buf,
+                padwave::InputReport::UsbSize);
   }
 
 public:

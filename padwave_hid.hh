@@ -59,7 +59,7 @@ struct DualSenseDevice {
               ((product & 0xFFFF) == DS_PID || (product & 0xFFFF) == DS_EDGE_PID))
             id_match = true;
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
-          snprintf(uniq, sizeof(uniq), "%.*s", (int)sizeof(uniq) - 1, line + 9);
+          snprintf(uniq, sizeof(uniq), "%.*s", static_cast<int>(sizeof(uniq)) - 1, line + 9);
           char *nl = strchr(uniq, '\n');
           if (nl) *nl = 0;
         }

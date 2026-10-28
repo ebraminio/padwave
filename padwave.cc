@@ -91,7 +91,7 @@ public:
                      "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                      "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                      padwave_ui::kIndexHtmlSize);
-    if ((size_t)n + padwave_ui::kIndexHtmlSize >= sizeof(index_response)) {
+    if (static_cast<size_t>(n) + padwave_ui::kIndexHtmlSize >= sizeof(index_response)) {
       fprintf(stderr, "padwave: UI too large for the static buffer\n");
       return 1;
     }
@@ -100,7 +100,7 @@ public:
              "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
              padwave_ui::kIndexHtmlSize);
     memcpy(index_response + n, padwave_ui::kIndexHtml, padwave_ui::kIndexHtmlSize);
-    index_len = (size_t)n + padwave_ui::kIndexHtmlSize;
+    index_len = static_cast<size_t>(n) + padwave_ui::kIndexHtmlSize;
 
     int listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (listen_fd < 0) {
@@ -116,8 +116,8 @@ public:
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons((uint16_t)port);
-    if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    if (bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {
       perror("bind");
       close(listen_fd);
       return 1;
@@ -265,13 +265,13 @@ private:
       memcpy(buf, text, n);
       buf[n] = 0;
     }
-    return (int)n;
+    return static_cast<int>(n);
   }
 
   static int64_t monotonicMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
   }
 
   static int makeStatic(char *dst, size_t cap, const char *type, const char *body,
@@ -280,9 +280,9 @@ private:
                      "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
                      "Connection: close\r\nCache-Control: no-cache\r\n\r\n",
                      type, body_len);
-    if (n < 0 || (size_t)n + body_len > cap) return -1;
+    if (n < 0 || static_cast<size_t>(n) + body_len > cap) return -1;
     memcpy(dst + n, body, body_len);
-    return n + (int)body_len;
+    return n + static_cast<int>(body_len);
   }
 
   void closeConn(Conn *c) {
@@ -327,7 +327,7 @@ private:
       closeConn(c);
       return;
     }
-    c->in_len += (size_t)n;
+    c->in_len += static_cast<size_t>(n);
     c->in[c->in_len] = 0;
 
     HttpRequest req(c->in, c->in_len);
@@ -352,28 +352,30 @@ private:
       static char body[8192];
       int len = app->statusText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
     if (strcmp(path, "/api/events") == 0) {
       c->status_sse = true;
-      c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
-                                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
-                                    "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
-                                    "Connection: keep-alive\r\n\r\n");
+      c->out_len =
+          static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+                                       "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                                       "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
+                                       "Connection: keep-alive\r\n\r\n"));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
     if (strcmp(path, "/api/library") == 0) {
-      char *body = (char *)malloc(65536);
+      char *body = reinterpret_cast<char *>(malloc(65536));
       int len = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
-                                      body ? body : "", body ? (size_t)len : 0);
+      c->out_len =
+          static_cast<size_t>(makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
+                                         body ? body : "", body ? static_cast<size_t>(len) : 0));
       free(body);
       modFd(c->fd, EPOLLOUT);
       return;
@@ -384,16 +386,16 @@ private:
         app->configSet(c->in + head_len);
         static const char ok[] = "ok=true\n";
         c->static_reply = true;
-        c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok,
-                                        sizeof(ok) - 1);
+        c->out_len = static_cast<size_t>(
+            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok, sizeof(ok) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char body[1024];
       int len = app->configText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -402,8 +404,8 @@ private:
       char body[1024];
       int len = bindingsText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -411,17 +413,18 @@ private:
     if (strcmp(path, "/api/command") == 0) {
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
-        c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
-                                      "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
-                                      "Connection: close\r\n\r\n");
+        c->out_len =
+            static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+                                         "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
+                                         "Connection: close\r\n\r\n"));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char result[512];
       int len = app->handleCommand(c->in + head_len, body_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -429,17 +432,18 @@ private:
     if (strcmp(path, "/api/output") == 0) {
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
-        c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
-                                      "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
-                                      "Connection: close\r\n\r\n");
+        c->out_len =
+            static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+                                         "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
+                                         "Connection: close\r\n\r\n"));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char result[256];
       int len = app->output(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -448,8 +452,8 @@ private:
       char result[256];
       int len = app->debugTrigger(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", result,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -458,8 +462,8 @@ private:
       app->micReset();
       static const char body[] = "ok=true\n";
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      sizeof(body) - 1);
+      c->out_len = static_cast<size_t>(
+          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -467,8 +471,8 @@ private:
     if (strcmp(path, "/api/reload") == 0) {
       static const char body[] = "ok=true\nreloaded=0\n";
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      sizeof(body) - 1);
+      c->out_len = static_cast<size_t>(
+          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -477,18 +481,19 @@ private:
         strcmp(path, "/api/front/events") != 0) {
       static const char body[] = "ok=false\nerror=not implemented\n";
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      sizeof(body) - 1);
+      c->out_len = static_cast<size_t>(
+          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
     if (strcmp(path, "/api/front/events") == 0) {
       c->front_sse = true;
-      c->out_len = (size_t)snprintf(c->out, sizeof(c->out),
-                                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
-                                    "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
-                                    "Connection: keep-alive\r\n\r\n");
+      c->out_len =
+          static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+                                       "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                                       "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
+                                       "Connection: keep-alive\r\n\r\n"));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -497,8 +502,8 @@ private:
       char body[1024];
       int len = frontText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      (size_t)len);
+      c->out_len = static_cast<size_t>(makeStatic(
+          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -506,8 +511,8 @@ private:
     c->static_reply = true;
     if (strcmp(path, "/health") == 0) {
       static const char body[] = "ok=true\n";
-      c->out_len = (size_t)makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body,
-                                      sizeof(body) - 1);
+      c->out_len = static_cast<size_t>(
+          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
     } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
       if (index_len <= sizeof(c->out)) {
         memcpy(c->out, index_response, index_len);
@@ -521,7 +526,7 @@ private:
                        "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
                        "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
                        sizeof(body) - 1, body);
-      c->out_len = (size_t)n;
+      c->out_len = static_cast<size_t>(n);
     }
     modFd(c->fd, EPOLLOUT);
   }
@@ -538,7 +543,7 @@ private:
         closeConn(c);
         return;
       }
-      c->out_off += (size_t)n;
+      c->out_off += static_cast<size_t>(n);
     }
     c->out_off = c->out_len = 0;
     c->client_blocked = false;
@@ -552,7 +557,8 @@ private:
   }
 
   int frontText(char *buf, size_t cap) {
-    return app->frontText(buf, cap, requests, (long)((monotonicMs() - start_ms) / 1000));
+    return app->frontText(buf, cap, requests,
+                          static_cast<long>(((monotonicMs() - start_ms) / 1000)));
   }
 
   void appendSse(Conn *c, const char *body, size_t n) {
@@ -573,12 +579,12 @@ private:
       pos = end < n ? end + 1 : end;
     }
 
-    char *chunk = (char *)malloc(payload + 48);
+    char *chunk = reinterpret_cast<char *>(malloc(payload + 48));
     if (!chunk) return;
 
     size_t pos = 0;
     int m = snprintf(chunk, 48, "%zx\r\n", payload);
-    size_t o = (m > 0) ? (size_t)m : 0;
+    size_t o = (m > 0) ? static_cast<size_t>(m) : 0;
 
     while (pos < n) {
       size_t end = pos;
@@ -605,13 +611,13 @@ private:
   void appendStatusEvent(Conn *c) {
     char body[8192];
     int n = app->statusText(body, sizeof(body));
-    if (n > 0) appendSse(c, body, (size_t)n);
+    if (n > 0) appendSse(c, body, static_cast<size_t>(n));
   }
 
   void appendFrontEvent(Conn *c) {
     char body[1024];
     int n = frontText(body, sizeof(body));
-    if (n > 0) appendSse(c, body, (size_t)n);
+    if (n > 0) appendSse(c, body, static_cast<size_t>(n));
   }
 };
 

@@ -103,7 +103,7 @@ inline bool write_all(int fd, const uint8_t *data, size_t len) {
   while (put < len) {
     ssize_t n = write(fd, data + put, len - put);
     if (n <= 0) return false;
-    put += (size_t)n;
+    put += static_cast<size_t>(n);
   }
   return true;
 }
@@ -134,8 +134,8 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
   char *end = nullptr;
   unsigned long raw = strtoul(value, &end, 0);
   if (end && end != value && *end == 0) {
-    uint8_t *word = (uint8_t *)((char *)body + field->offset);
-    *word = merge ? (uint8_t)(*word | raw) : (uint8_t)raw;
+    uint8_t *word = reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + field->offset));
+    *word = merge ? static_cast<uint8_t>((*word | raw)) : static_cast<uint8_t>(raw);
     return;
   }
 
@@ -145,10 +145,10 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
   char *save = nullptr;
   for (char *name = strtok_r(copy, ",", &save); name; name = strtok_r(nullptr, ",", &save)) {
     const flag *f = find_flag(table, count, name);
-    if (f) bits = (uint8_t)(bits | f->bit);
+    if (f) bits = static_cast<uint8_t>((bits | f->bit));
   }
-  uint8_t *word = (uint8_t *)((char *)body + field->offset);
-  *word = merge ? (uint8_t)(*word | bits) : bits;
+  uint8_t *word = reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + field->offset));
+  *word = merge ? static_cast<uint8_t>((*word | bits)) : bits;
 }
 
 inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
@@ -156,7 +156,7 @@ inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
   for (size_t i = 0; i < len; i++) {
     unsigned value = 0;
     if (sscanf(hex + i * 2, "%2x", &value) != 1) return false;
-    out[i] = (uint8_t)value;
+    out[i] = static_cast<uint8_t>(value);
   }
   return true;
 }
@@ -181,7 +181,8 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
           strcmp(name, "valid_flag2") == 0)
         set_flag_word(body, &kU8Fields[i], value, merge_flags);
       else
-        *(uint8_t *)((char *)body + kU8Fields[i].offset) = (uint8_t)strtoul(value, nullptr, 0);
+        *reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + kU8Fields[i].offset)) =
+            static_cast<uint8_t>(strtoul(value, nullptr, 0));
       found = true;
       break;
     }
@@ -189,7 +190,8 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 
     for (size_t i = 0; i < sizeof(kArrayFields) / sizeof(kArrayFields[0]); i++) {
       if (strcmp(kArrayFields[i].name, name) != 0) continue;
-      uint8_t *dst = (uint8_t *)((char *)body + kArrayFields[i].offset);
+      uint8_t *dst =
+          reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + kArrayFields[i].offset));
       if (!hex_to_bytes(value, dst, kArrayFields[i].length)) {
         // comma-separated bytes are also accepted
         size_t index = 0;
@@ -198,7 +200,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
         char *save_bytes = nullptr;
         for (char *b = strtok_r(vcopy, ",", &save_bytes); b && index < kArrayFields[i].length;
              b = strtok_r(nullptr, ",", &save_bytes))
-          dst[index++] = (uint8_t)strtoul(b, nullptr, 0);
+          dst[index++] = static_cast<uint8_t>(strtoul(b, nullptr, 0));
       }
       found = true;
       break;
