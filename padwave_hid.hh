@@ -12,12 +12,12 @@
 #include <string.h>
 #include <unistd.h>
 
-struct DualsenseDevice {
+struct DualSenseDevice {
   int index = -1;
   char node[64] = "";
   char mac[32] = "";
 
-  DualsenseDevice() { find(); }
+  DualSenseDevice() { find(); }
 
   explicit operator bool() const { return index >= 0; }
 

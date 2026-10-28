@@ -409,7 +409,7 @@ private:
       if (hidraw_retry > 0)
         hidraw_retry--;
       else {
-        DualsenseDevice device;
+        DualSenseDevice device;
         hidraw = device.open();
         if (hidraw < 0) hidraw_retry = 100;
       }
@@ -511,7 +511,7 @@ private:
       if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
       out.sign();
       if (hidraw < 0) {
-        DualsenseDevice device;
+        DualSenseDevice device;
         hidraw = device.open();
       }
       bool ok =
@@ -688,7 +688,7 @@ public:
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
     } else {
-      DualsenseDevice device;
+      DualSenseDevice device;
       hidraw = device.open();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");

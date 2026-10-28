@@ -419,7 +419,7 @@ public:
     close();
     const char *path = node;
     if (!node) {
-      DualsenseDevice device;
+      DualSenseDevice device;
       if (!device) {
         fprintf(stderr, "padwave: no DualSense hidraw node\n");
         return false;
