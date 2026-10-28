@@ -4,6 +4,7 @@
 // Input::parse() without an App links these no-ops instead.
 #pragma once
 
+#include "padwave_app_fwd.hh"
 #include "padwave_input.hh"
 
 inline void Input::emitFrameToApp(const input_frame *) {}

@@ -48,7 +48,7 @@ struct input_frame {
 // padwave input — the controller's state, decoded by the C++ schema.
 // The engine is in-process; the app owns one Input and attaches itself.
 
-struct App;
+#include "padwave_app_fwd.hh"
 
 struct Input {
 private:
