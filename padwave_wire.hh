@@ -389,11 +389,22 @@ public:
   enum : uint8_t { Size = 63 };
 
 public:
-  struct Sticks {
-    int lx, ly, rx, ry, l2, r2;
+  struct Stick {
+    int x;
+    int y;
   };
 
-  Sticks sticks() const { return {lx, ly, rx, ry, l2, r2}; }
+  struct Trigger {
+    int pressure;
+  };
+
+  Stick leftStick() const { return {lx, ly}; }
+
+  Stick rightStick() const { return {rx, ry}; }
+
+  Trigger leftTrigger() const { return {l2}; }
+
+  Trigger rightTrigger() const { return {r2}; }
 
   int sequence() const { return seq; }
 

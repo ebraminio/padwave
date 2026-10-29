@@ -1391,13 +1391,14 @@ private:
         }
       }
     }
-    const padwave::InputBody::Sticks sticks = b.sticks();
-    this->lx = sticks.lx;
-    this->ly = sticks.ly;
-    this->rx = sticks.rx;
-    this->ry = sticks.ry;
-    this->l2 = sticks.l2;
-    this->r2 = sticks.r2;
+    const padwave::InputBody::Stick left = b.leftStick();
+    const padwave::InputBody::Stick right = b.rightStick();
+    this->lx = left.x;
+    this->ly = left.y;
+    this->rx = right.x;
+    this->ry = right.y;
+    this->l2 = b.leftTrigger().pressure;
+    this->r2 = b.rightTrigger().pressure;
     this->battery = b.battery();
     this->jack = b.headset();
     this->temp = b.temperature();

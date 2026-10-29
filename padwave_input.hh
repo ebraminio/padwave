@@ -130,9 +130,10 @@ private:
   void trackSensors(const padwave::InputBody &b) {
     int64_t now = nowMs();
     bool jack = b.headset();
-    const auto sticks = b.sticks();
-    int l2 = sticks.l2, r2 = sticks.r2;
-    int lx = sticks.lx, ly = sticks.ly, rx = sticks.rx, ry = sticks.ry;
+    const padwave::InputBody::Stick left = b.leftStick();
+    const padwave::InputBody::Stick right = b.rightStick();
+    int l2 = b.leftTrigger().pressure, r2 = b.rightTrigger().pressure;
+    int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
     const padwave::InputBody::Buttons buttons = b.buttons();
     padwave::InputBody::Dpad dpad = b.dpad();
     bool first = !sensors.has_prev;
@@ -260,8 +261,7 @@ private:
     emitFrameToApp(b, raw, len);
     trackDpad(b.dpad());
     trackButtons(b.buttons());
-    const auto sticks = b.sticks();
-    trackTriggers(sticks.l2, sticks.r2);
+    trackTriggers(b.leftTrigger().pressure, b.rightTrigger().pressure);
     trackSensors(b);
   }
 
