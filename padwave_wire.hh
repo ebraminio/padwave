@@ -86,7 +86,7 @@ namespace padwave {
 
 // Report ordinals, common to every schema. 0x31 is both the input and the
 // output state report; the direction is the stream, not the id.
-enum Packet : uint8_t {
+enum class Packet : uint8_t {
   PacketInputUsb = 0x01,
   PacketOutputUsb = 0x02,
   PacketFeatureCalibration = 0x05,
@@ -192,14 +192,6 @@ public:
 
   constexpr uint8_t speakerVolume() const { return speaker_volume; }
 
-  constexpr void clearFlag1(uint8_t flag) {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~flag);
-  }
-
-  constexpr void clearFlag2(uint8_t flag) {
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~flag);
-  }
-
   // Which fields this report owns: the kernel's (and DS4Windows', and
   // dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
   // means "adopt my bytes for this feature"; a clear bit means "leave that
@@ -207,7 +199,7 @@ public:
   //
   // Example: RightTrigger | LeftTrigger claims only the two trigger blocks,
   // leaving volumes, LEDs and rumble untouched.
-  enum ValidFlag0 : uint8_t {
+  enum class ValidFlag0 : uint8_t {
     Rumble = 0x01,          // +0x00 bit 0; main motors also need Haptics
     Haptics = 0x02,         //       bit 1; paired with Rumble for the motors
     RightTrigger = 0x04,    //       bit 2
@@ -218,7 +210,7 @@ public:
     AudioRouting = 0x80,    //       bit 7
   };
 
-  enum ValidFlag1 : uint8_t {
+  enum class ValidFlag1 : uint8_t {
     MuteLed = 0x01,         // +0x01 bit 0
     PowerSave = 0x02,       //       bit 1  enables power_save_control
     Lightbar = 0x04,        //       bit 2
@@ -232,7 +224,7 @@ public:
   // +0x26. Only two bits are documented anywhere in the references: bit 0
   // changes the LED brightness and bit 1 enables the fade-out control. Bits
   // 3-7 are reserved.
-  enum ValidFlag2 : uint8_t {
+  enum class ValidFlag2 : uint8_t {
     Brightness = 0x01,     // bit 0
     ColorFade = 0x02,      // bit 1: enables the lightbar_setup fade control
     ImprovedRumble = 0x04, // bit 2
@@ -250,7 +242,7 @@ public:
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
   // Bits 5-7 are reserved.
-  enum PlayerLeds : uint8_t {
+  enum class PlayerLeds : uint8_t {
     Led1 = 0x01, // bit 0
     Led2 = 0x02, // bit 1
     Led3 = 0x04, // bit 2
@@ -262,22 +254,38 @@ public:
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
   // use, which is why a silent jack was the first symptom of getting this
   // wrong.
-  enum AudioControl : uint8_t {
+  enum class AudioControl : uint8_t {
     Headphones = 0x00,
     Speaker = 0x09,
   };
 
+  static constexpr uint8_t bit(ValidFlag0 f) { return static_cast<uint8_t>(f); }
+
+  static constexpr uint8_t bit(ValidFlag1 f) { return static_cast<uint8_t>(f); }
+
+  static constexpr uint8_t bit(ValidFlag2 f) { return static_cast<uint8_t>(f); }
+
+  constexpr void clearFlag1(ValidFlag1 flag) {
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(flag));
+  }
+
+  constexpr void clearFlag2(ValidFlag2 flag) {
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(flag));
+  }
+
   constexpr void setAudio(AudioControl routing) {
-    valid_flag0 |= HeadphoneVolume | SpeakerVolume | MicVolume | AudioRouting;
-    valid_flag1 |= AudioControl2;
+    valid_flag0 =
+        static_cast<uint8_t>(bit(ValidFlag0::HeadphoneVolume) | bit(ValidFlag0::SpeakerVolume) |
+                             bit(ValidFlag0::MicVolume) | bit(ValidFlag0::AudioRouting));
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::AudioControl2));
     headphone_volume = 0x7F;
     speaker_volume = 0x64;
-    audio_control = routing;
+    audio_control = static_cast<uint8_t>(routing);
     audio_control2 = 0x0A;
   }
 
   constexpr void setMic(bool on) {
-    valid_flag1 |= PowerSave;
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::PowerSave));
     if (on) {
       power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
       mic_volume = 0x40;
@@ -287,8 +295,8 @@ public:
   }
 
   constexpr void clearLightbar() {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~Lightbar);
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~ColorFade);
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::Lightbar));
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::ColorFade));
     lightbar_setup = 0;
     lightbar_red = 0;
     lightbar_green = 0;
@@ -298,13 +306,15 @@ public:
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
-  constexpr void init(AudioControl routing = Headphones) {
+  constexpr void init(AudioControl routing = AudioControl::Headphones) {
     *this = OutputBody{};
-    valid_flag0 = HeadphoneVolume | SpeakerVolume | MicVolume | AudioRouting;
-    valid_flag1 = AudioControl2;
+    valid_flag0 =
+        static_cast<uint8_t>(bit(ValidFlag0::HeadphoneVolume) | bit(ValidFlag0::SpeakerVolume) |
+                             bit(ValidFlag0::MicVolume) | bit(ValidFlag0::AudioRouting));
+    valid_flag1 = bit(ValidFlag1::AudioControl2);
     headphone_volume = 0x7F;
     speaker_volume = 0x64;
-    audio_control = routing;
+    audio_control = static_cast<uint8_t>(routing);
     audio_control2 = 0x0A;
   }
 };
@@ -343,7 +353,7 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // ===========================================================================
 
 struct OutputReport {
-  PWUINT8 report_id;     // 0x00  PacketStateBluetooth
+  PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
   PWUINT8 tag;           // 0x02  must be 0x10
   OutputBody body;       // 0x03..0x31
@@ -351,7 +361,7 @@ struct OutputReport {
   PWUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
   enum : uint8_t {
-    ReportId = PacketStateBluetooth,
+    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     Size = 78,
     CrcSeed = 0xA2,
   };
@@ -374,11 +384,11 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
-  PWUINT8 report_id;    // 0x00  PacketOutputUsb
+  PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
   OutputBody body;      // 0x01..0x2f
   PWUINT8 reserved[15]; // 0x30..0x3e
 
-  enum : uint8_t { ReportId = PacketOutputUsb, Size = 63 };
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
 };
 
 static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
@@ -638,7 +648,7 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // ===========================================================================
 
 struct InputReport {
-  PWUINT8 report_id;      // 0x00  PacketStateBluetooth
+  PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
   InputBody body;         // 0x02..0x40
   PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
@@ -647,8 +657,8 @@ struct InputReport {
   PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
 
   enum : uint8_t {
-    ReportId = PacketStateBluetooth,
-    UsbReportId = PacketInputUsb,
+    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
+    UsbReportId = static_cast<uint8_t>(Packet::PacketInputUsb),
     Size = 78,
     UsbSize = 64,
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
@@ -753,7 +763,7 @@ struct AudioReport {
     PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
   };
 
-  PWUINT8 report_id;         // 0x000  PacketAudio
+  PWUINT8 report_id;         // 0x000  Packet::PacketAudio
   PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
   PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
   PWUINT8 config_length;     // 0x003  7
@@ -773,7 +783,7 @@ struct AudioReport {
   PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
   enum : uint8_t {
-    ReportId = PacketAudio,
+    ReportId = static_cast<uint8_t>(Packet::PacketAudio),
     StateSize = 63,
     HapticSize = 64,
     OpusSize = 200,
@@ -873,7 +883,7 @@ static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 byte
 // padwave needs.
 
 struct Calibration {
-  PWUINT8 report_id; // 0x00  PacketFeatureCalibration
+  PWUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
@@ -897,23 +907,23 @@ struct Calibration {
   PWINT16 acc_z_minus;
   PWUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
 
-  enum : uint8_t { ReportId = PacketFeatureCalibration, Size = 41 };
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
 };
 
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
 
 struct Pairing {
-  PWUINT8 report_id;      // 0x00  PacketFeaturePairing
+  PWUINT8 report_id;      // 0x00  Packet::PacketFeaturePairing
   PWUINT8 mac[6];         // 0x01..0x06  the controller's own address
   PWUINT8 unknown_07[13]; // 0x07..0x13
 
-  enum : uint8_t { ReportId = PacketFeaturePairing, Size = 20 };
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing), Size = 20 };
 };
 
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
-  PWUINT8 report_id;       // 0x00  PacketFeatureFirmware
+  PWUINT8 report_id;       // 0x00  Packet::PacketFeatureFirmware
   PWUINT8 unknown_01[23];  // 0x01..0x17
   PWUINT32 hw_version;     // 0x18..0x1b
   PWUINT32 fw_version;     // 0x1c..0x1f
@@ -921,7 +931,7 @@ struct Firmware {
   PWUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
   PWUINT8 unknown_46[18];  // 0x2e..0x3f
 
-  enum : uint8_t { ReportId = PacketFeatureFirmware, Size = 64 };
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware), Size = 64 };
 };
 
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
@@ -989,7 +999,7 @@ struct MicFrame {
   };
 
   enum : uint8_t {
-    ReportId = PacketStateBluetooth,
+    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     Toc = 0xD4,
     CrcBytes = 4,
   };
@@ -1071,7 +1081,7 @@ static_assert(kChained == 0xCBF43926u);
 constexpr padwave::AudioReport kReport = [] {
   padwave::AudioReport r{};
   r.init(padwave::AudioReport::SpeakerTag::Jack, padwave::AudioReport::EnableMask::SpeakerOnly);
-  r.state.body.init(padwave::OutputBody::Headphones);
+  r.state.body.init(padwave::OutputBody::AudioControl::Headphones);
   r.seq_tag = 0x00;
   r.counter = 0;
   return r;

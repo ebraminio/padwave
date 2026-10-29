@@ -531,8 +531,8 @@ private:
                     : padwave::AudioReport::EnableMask::SpeakerOnly);
 
     report.state.body = state;
-    report.state.body.setAudio(speaker ? padwave::OutputBody::Speaker
-                                       : padwave::OutputBody::Headphones);
+    report.state.body.setAudio(speaker ? padwave::OutputBody::AudioControl::Speaker
+                                       : padwave::OutputBody::AudioControl::Headphones);
 
     report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
     report.counter = counter;
@@ -661,8 +661,8 @@ private:
         padwave_fields::apply_fields(&state, line + 7, true);
         // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
         // snapshot re-trigger them forever.
-        state.clearFlag1(padwave::OutputBody::ResetLights);
-        state.clearFlag2(padwave::OutputBody::ColorFade);
+        state.clearFlag1(padwave::OutputBody::ValidFlag1::ResetLights);
+        state.clearFlag2(padwave::OutputBody::ValidFlag2::ColorFade);
       }
       return;
     }
@@ -862,7 +862,7 @@ public:
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = use_speaker;
-    state.init(this->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
+    state.init(this->speaker ? padwave::OutputBody::AudioControl::Speaker : padwave::OutputBody::AudioControl::Headphones);
 
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");

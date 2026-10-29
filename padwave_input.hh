@@ -281,14 +281,16 @@ private:
       return;
     }
 
-    if (buf[0] == padwave::PacketStateBluetooth && len >= padwave::InputReport::Size) {
+    if (buf[0] == static_cast<uint8_t>(padwave::Packet::PacketStateBluetooth) &&
+        len >= padwave::InputReport::Size) {
       const padwave::InputReport *r = reinterpret_cast<const padwave::InputReport *>(buf);
       if (!r->valid()) return;
       emitFrame(r->body, buf, padwave::InputReport::Size);
       return;
     }
 
-    if (buf[0] == padwave::PacketInputUsb && len >= padwave::InputReport::UsbSize)
+    if (buf[0] == static_cast<uint8_t>(padwave::Packet::PacketInputUsb) &&
+        len >= padwave::InputReport::UsbSize)
       emitFrame(*reinterpret_cast<const padwave::InputBody *>((buf + 1)), buf,
                 padwave::InputReport::UsbSize);
   }

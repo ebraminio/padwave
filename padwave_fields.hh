@@ -73,29 +73,29 @@ inline const array_field kArrayFields[] = {
 // The flag names are the ValidFlag0/1/2 enumerators, lowercased, as the Elixir
 // field maps and the UI spell them.
 inline const flag kFlag0[] = {
-    {"rumble", padwave::OutputBody::Rumble},
-    {"haptics", padwave::OutputBody::Haptics},
-    {"right_trigger", padwave::OutputBody::RightTrigger},
-    {"left_trigger", padwave::OutputBody::LeftTrigger},
-    {"headphone_volume", padwave::OutputBody::HeadphoneVolume},
-    {"speaker_volume", padwave::OutputBody::SpeakerVolume},
-    {"mic_volume", padwave::OutputBody::MicVolume},
-    {"audio_routing", padwave::OutputBody::AudioRouting},
+    {"rumble", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::Rumble)},
+    {"haptics", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::Haptics)},
+    {"right_trigger", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::RightTrigger)},
+    {"left_trigger", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::LeftTrigger)},
+    {"headphone_volume", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::HeadphoneVolume)},
+    {"speaker_volume", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::SpeakerVolume)},
+    {"mic_volume", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::MicVolume)},
+    {"audio_routing", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::AudioRouting)},
 };
 inline const flag kFlag1[] = {
-    {"mute_led", padwave::OutputBody::MuteLed},
-    {"power_save", padwave::OutputBody::PowerSave},
-    {"lightbar", padwave::OutputBody::Lightbar},
-    {"reset_lights", padwave::OutputBody::ResetLights},
-    {"player_leds", padwave::OutputBody::PlayerLeds},
-    {"haptic_lpf", padwave::OutputBody::HapticLpf},
-    {"motor_power_level", padwave::OutputBody::MotorPowerLevel},
-    {"audio_control2", padwave::OutputBody::AudioControl2},
+    {"mute_led", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::MuteLed)},
+    {"power_save", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::PowerSave)},
+    {"lightbar", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::Lightbar)},
+    {"reset_lights", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::ResetLights)},
+    {"player_leds", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::PlayerLeds)},
+    {"haptic_lpf", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::HapticLpf)},
+    {"motor_power_level", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::MotorPowerLevel)},
+    {"audio_control2", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag1::AudioControl2)},
 };
 inline const flag kFlag2[] = {
-    {"brightness", padwave::OutputBody::Brightness},
-    {"color_fade", padwave::OutputBody::ColorFade},
-    {"improved_rumble", padwave::OutputBody::ImprovedRumble},
+    {"brightness", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag2::Brightness)},
+    {"color_fade", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag2::ColorFade)},
+    {"improved_rumble", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag2::ImprovedRumble)},
 };
 
 inline bool write_all(int fd, const uint8_t *data, size_t len) {
