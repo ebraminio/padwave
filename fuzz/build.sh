@@ -6,6 +6,9 @@ cd "$(dirname "$0")/.."
 
 CXX="${CXX:-clang++}"
 LIBS="-lopus -lm"
+
+# The corpus generator is not linked into a fuzzer, so syntax-check it here.
+"$CXX" -std=c++23 -I. -fsyntax-only fuzz/make_corpus.cc
 "$CXX" -std=c++23 -O1 -g -fno-omit-frame-pointer \
   -fsanitize=fuzzer,address,undefined \
   -I. fuzz/fuzz_input.cc -o fuzz/fuzz_input $LIBS
