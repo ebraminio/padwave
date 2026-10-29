@@ -603,9 +603,9 @@ function render(s) {
   $("#connText").textContent = c.connected
     ? `controller · ${c.bus === "usb" ? "usb" : "bluetooth"}`
     : "controller offline";
-  $("#battText").textContent = c.battery != null
-    ? `${c.battery}%${c.charging === "charging" ? " ⚡" : ""}`
-    : "—";
+  const chargeMark = c.charging === "charging" ? " ⚡" : c.charging === "full" ? " ✓" : "";
+  $("#battText").textContent =
+    c.battery != null ? `${c.battery}%${chargeMark}` : "—";
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
 
   const audio = s.audio || {};

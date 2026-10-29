@@ -484,9 +484,9 @@ public:
 
   constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
 
-  // Battery status percentage, clamped to 100.
+  // The report carries a coarse 0..10 battery level; 10 is 100%.
   constexpr int battery() const {
-    int percent = (status0 & 0x0F) * 10 + 5;
+    int percent = (status0 & 0x0F) * 10;
     return percent > 100 ? 100 : percent;
   }
 
