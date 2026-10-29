@@ -126,8 +126,7 @@ Kernel HIDP keeps the 500 Hz report path out of bluetoothd (~3% → ~0.1%).
 
 C++ sources use `.clang-format`: LLVM, 100 columns, 2-space indent, a blank line
 between definitions, private class fields and compact guards. Run clang-format
-19.1.7 over `padwave.cc` and the headers, including `padwave_audio.hh` and
-`padwave_app_stub.hh`.
+19.1.7 over `padwave.cc` and the headers, including `padwave_app_stub.hh`.
 
 ## Known limitations
 

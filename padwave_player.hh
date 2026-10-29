@@ -222,7 +222,7 @@ private:
   bool speaker = false;
   App *app = nullptr;
 
-  padwave::AudioEncoder enc;
+  padwave::AudioReport::Encoder enc;
   uint8_t seq = 0, counter = 0;
 
   File cur;

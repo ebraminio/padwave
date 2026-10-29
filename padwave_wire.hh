@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include "padwave_audio.hh"
+#include <opus/opus.h>
 #include <math.h>
 
 // Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
@@ -702,6 +702,44 @@ static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78
 // because the high byte (0xE3) does not claim the LED colour bit.
 
 struct AudioReport {
+  // PCM-facing encoder: the rest of padwave never touches libopus.
+  struct Encoder {
+    ::OpusEncoder *encoder = nullptr;
+
+    Encoder() = default;
+
+    ~Encoder() { close(); }
+
+    Encoder(const Encoder &) = delete;
+    Encoder &operator=(const Encoder &) = delete;
+
+    bool valid() const { return encoder != nullptr; }
+
+    bool open(int rate, int channels) {
+      close();
+      int err = 0;
+      encoder = opus_encoder_create(rate, channels, OPUS_APPLICATION_AUDIO, &err);
+      if (!encoder || err != OPUS_OK) {
+        close();
+        return false;
+      }
+      opus_encoder_ctl(encoder, OPUS_SET_BITRATE(160000));
+      opus_encoder_ctl(encoder, OPUS_SET_VBR(0));
+      opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(0));
+      return true;
+    }
+
+    int encode(const float *pcm, int frames, uint8_t *out, int cap) {
+      if (!encoder) return -1;
+      return opus_encode_float(encoder, pcm, frames, out, cap);
+    }
+
+    void close() {
+      if (encoder) opus_encoder_destroy(encoder);
+      encoder = nullptr;
+    }
+  };
+
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
   // the trigger effect to this stream, which writes zeros to it 93 times a
@@ -787,7 +825,7 @@ struct AudioReport {
     speaker_length = OpusSize;
   }
 
-  bool setPcm(const float *pcm, int frames, AudioEncoder &encoder) {
+  bool setPcm(const float *pcm, int frames, Encoder &encoder) {
     uint8_t payload[OpusSize];
     int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof(payload)));
     if (n < 0) n = 0;
@@ -915,6 +953,41 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 // link traffic (speaker down and mic up are each ~160 kbps of Opus).
 
 struct MicFrame {
+  // PCM-facing decoder for the Opus mic packet.
+  struct Decoder {
+    ::OpusDecoder *decoder = nullptr;
+
+    Decoder() = default;
+
+    ~Decoder() { close(); }
+
+    Decoder(const Decoder &) = delete;
+    Decoder &operator=(const Decoder &) = delete;
+
+    bool valid() const { return decoder != nullptr; }
+
+    bool open(int rate, int channels) {
+      close();
+      int err = 0;
+      decoder = opus_decoder_create(rate, channels, &err);
+      if (!decoder || err != OPUS_OK) {
+        close();
+        return false;
+      }
+      return true;
+    }
+
+    int decode(const uint8_t *data, size_t len, int16_t *pcm, int max_samples) {
+      if (!decoder) return -1;
+      return opus_decode(decoder, data, static_cast<opus_int32>(len), pcm, max_samples, 0);
+    }
+
+    void close() {
+      if (decoder) opus_decoder_destroy(decoder);
+      decoder = nullptr;
+    }
+  };
+
   enum : uint8_t {
     ReportId = PacketStateBluetooth,
     Toc = 0xD4,

@@ -70,7 +70,7 @@ private:
   char node_name[64] = "";
   char mac_[32] = "";
   App *app = nullptr;
-  padwave::AudioDecoder mic_decoder;
+  padwave::MicFrame::Decoder mic_decoder;
 
   ActionsState actions;
   SensorsState sensors;
