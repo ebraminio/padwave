@@ -510,7 +510,8 @@ private:
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
-      report.body().setAudioRoute(route);
+      // USB audio routing needs the full audio block, not just AudioRouting.
+      report.body().setAudio(route);
       writeDevice(&report, sizeof(report));
       return;
     }
