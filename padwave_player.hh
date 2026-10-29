@@ -658,7 +658,7 @@ private:
       }
       if (ok) out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
       if (ok) {
-        padwave_fields::apply_fields(&state, line + 7, true);
+        padwave_fields::apply_fields(&state, line + 7);
         // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
         // snapshot re-trigger them forever.
         state.clearFlag1(padwave::OutputBody::ValidFlag1::ResetLights);

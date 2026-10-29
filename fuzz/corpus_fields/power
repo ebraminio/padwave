@@ -1,1 +1,1 @@
-valid_flag1=power_save;power_save_control=0x10
+power_save_control=0x10

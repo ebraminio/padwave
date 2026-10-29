@@ -277,17 +277,11 @@ public:
 
   constexpr void claim(ValidFlag2 f) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | bit(f)); }
 
-  constexpr void setValidFlag0(uint8_t v) { valid_flag0 = v; }
 
-  constexpr void mergeValidFlag0(uint8_t v) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | v); }
 
-  constexpr void setValidFlag1(uint8_t v) { valid_flag1 = v; }
 
-  constexpr void mergeValidFlag1(uint8_t v) { valid_flag1 = static_cast<uint8_t>(valid_flag1 | v); }
 
-  constexpr void setValidFlag2(uint8_t v) { valid_flag2 = v; }
 
-  constexpr void mergeValidFlag2(uint8_t v) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | v); }
 
   constexpr void setMotorRight(uint8_t v) {
     claim(ValidFlag0::Rumble);
