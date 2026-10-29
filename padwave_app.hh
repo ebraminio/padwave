@@ -326,14 +326,14 @@ private:
   long led_warning_at = 0;
   long led_battery_at = 0;
   int led_battery_phase = 0;
-  static constexpr long kLedBlinkMs = 3000;
+  static constexpr long kLedBlinkMs = 2000;
   bool led_manual_player = false;
   int led_manual_mask = 4;
   bool led_painted = false;
   bool lightbar_on = true;
   long led_charge_at = 0;
   int led_charge_setup = 0;
-  static constexpr long kChargeBlinkMs = 2000;
+  static constexpr long kChargeBlinkMs = 1000;
 
   unsigned long mic_packets = 0;
   unsigned long mic_frames = 0;
