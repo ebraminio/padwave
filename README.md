@@ -102,7 +102,8 @@ describes the lab fields; `POST /api/output` is the controller lab.
 - **Microphone:** monitoring is independent of playback. Enabling it requests
   microphone capture and reports a live PCM level; playback can continue while
   monitoring. The mute-button LED is claimed once on each pause transition:
-  lit while paused, off while playing; mic capture never touches it.
+  lit while paused, off while playing. Mic on/off reasserts the current pause
+  state with a single 0x31, but 0x36 never carries mute_led.
 - **Lightbar:** cyan playing, amber paused, purple muted, red pulse on idle
   warning, black suspended/off. Charging is solid amber and full is solid white,
   overriding playback and custom colours. The lab can set a colour, light the

@@ -685,9 +685,10 @@ private:
       mic = value != 0;
       state.setMic(mic != 0);
       // The controller only starts/stops microphone capture when it sees a
-      // 0x36 report with the enable-mask bit changed. Playback may already be
-      // paused (mic and playback are mutually exclusive), so send a silent
-      // packet immediately rather than waiting for the audio tick.
+      // 0x36 report with the enable-mask bit changed. Send the state packet
+      // immediately, and reassert the pause-only mute LED with a one-shot
+      // 0x31 so mic capture cannot turn it into an activity blink.
+      sendMuteLed(paused);
       float silence[padwave::AudioReport::PcmFrames * CHANNELS] = {};
       sendReport(silence, padwave::AudioReport::PcmFrames);
       return;
