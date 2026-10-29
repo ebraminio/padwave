@@ -90,11 +90,11 @@ struct DualSenseDevice {
 
   char node[64] = "";
   char mac[32] = "";
-  int bus = 0;
 
   bool isUsb() const { return bus == 0x03; }
 
 private:
+  int bus = 0;
   int index = -1;
   static constexpr int SONY_VID = 0x054C;
   static constexpr int DS_PID = 0x0CE6;
