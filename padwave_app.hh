@@ -240,7 +240,7 @@ private:
   char dpad[16] = "none";
   char buttons[256] = "";
   int temp = 0;
-  int ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+  float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
   unsigned seq = 0;
   int rate = 0;
   unsigned tfl = 0, tfr = 0;
@@ -622,8 +622,10 @@ public:
     kvAdd(buf, cap, &o, "controller.rx", "%d", this->rx);
     kvAdd(buf, cap, &o, "controller.ry", "%d", this->ry);
     kvAdd(buf, cap, &o, "controller.temperature", "%d", this->temp);
-    kvAdd(buf, cap, &o, "controller.accel", "%d,%d,%d", this->ax, this->ay, this->az);
-    kvAdd(buf, cap, &o, "controller.gyro", "%d,%d,%d", this->gx, this->gy, this->gz);
+    kvAdd(buf, cap, &o, "controller.accel", "%.3f,%.3f,%.3f", static_cast<double>(this->ax),
+          static_cast<double>(this->ay), static_cast<double>(this->az));
+    kvAdd(buf, cap, &o, "controller.gyro", "%.3f,%.3f,%.3f", static_cast<double>(this->gx),
+          static_cast<double>(this->gy), static_cast<double>(this->gz));
     kvText(buf, cap, &o, "controller.raw", this->raw);
     kvText(buf, cap, &o, "controller.last_action", this->last_action);
 
@@ -1414,13 +1416,13 @@ private:
                                                  : "discharging");
     }
     const padwave::InputBody::Gyro gyro = b.gyro();
-    this->gx = gyro.x;
-    this->gy = gyro.y;
-    this->gz = gyro.z;
+    this->gx = gyro.nx();
+    this->gy = gyro.ny();
+    this->gz = gyro.nz();
     const padwave::InputBody::Accelerometer accel = b.accelerometer();
-    this->ax = accel.x;
-    this->ay = accel.y;
-    this->az = accel.z;
+    this->ax = accel.xg();
+    this->ay = accel.yg();
+    this->az = accel.zg();
     this->seq = static_cast<unsigned>(b.sequence());
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());

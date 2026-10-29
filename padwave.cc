@@ -236,10 +236,8 @@ private:
                                "bindings.touchpad=toggle_mute\n"
                                "bindings.triangle=toggle_pause\n";
     return snprintf(buf, cap,
-                    "%scontroller.accel_per_g=%d\ncontroller.gyro_max_dps=%d\n"
-                    "controller.ps_hold_ms=%d\n",
-                    text, padwave::InputBody::AccelCountsPerG, padwave::InputBody::GyroMaxDps,
-                    padwave::InputBody::PsHoldMs);
+                    "%scontroller.ps_hold_ms=%d\n",
+                    text, padwave::InputBody::PsHoldMs);
   }
 
   static int64_t monotonicMs() {

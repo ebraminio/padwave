@@ -500,8 +500,6 @@ function parseKV(text) {
   return out;
 }
 
-let accelPerG = 0;
-let gyroMaxDps = 0;
 let psHoldMs = 0;
 
 const padButtons = [
@@ -683,14 +681,14 @@ function render(s) {
 function renderSensors(c) {
   const accel = c.accel || [0, 0, 0];
   const gyro = c.gyro || [0, 0, 0];
-  const g = accel.map(v => v / (accelPerG || 1));
+  const g = accel;
 
   setAxis("ax", g[0], 1.2, `${g[0].toFixed(2)} g`);
   setAxis("ay", g[1], 1.2, `${g[1].toFixed(2)} g`);
   setAxis("az", g[2], 1.2, `${g[2].toFixed(2)} g`);
-  setAxis("gx", gyro[0] / (gyroMaxDps || 1), 1, String(gyro[0]));
-  setAxis("gy", gyro[1] / (gyroMaxDps || 1), 1, String(gyro[1]));
-  setAxis("gz", gyro[2] / (gyroMaxDps || 1), 1, String(gyro[2]));
+  setAxis("gx", gyro[0], 1, gyro[0].toFixed(2));
+  setAxis("gy", gyro[1], 1, gyro[1].toFixed(2));
+  setAxis("gz", gyro[2], 1, gyro[2].toFixed(2));
 
   const temp = c.temperature != null ? `${c.temperature}°` : "—";
   $("#tempChip").textContent = `temp ${temp}`;
@@ -1126,8 +1124,6 @@ async function boot() {
   try {
     const schema = parseKV(await fetch("/api/schema").then(r => r.text()));
     const controller = schema.controller || {};
-    accelPerG = Number(controller.accel_per_g) || 0;
-    gyroMaxDps = Number(controller.gyro_max_dps) || 0;
     psHoldMs = Number(controller.ps_hold_ms) || 0;
     buildBindings(schema.bindings, psHoldMs);
   } catch (e) { /* non-fatal */ }
