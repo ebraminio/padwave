@@ -504,6 +504,24 @@ private:
     return true;
   }
 
+  void sendAudioRoute() {
+    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
+                         : dualsense::OutputBody::AudioControl::Headphones;
+    if (usb) {
+      dualsense::UsbOutputReport report{};
+      report.init();
+      report.body().setAudioRoute(route);
+      writeDevice(&report, sizeof(report));
+      return;
+    }
+
+    dualsense::OutputReport report{};
+    report.init(output_sequence);
+    report.body().setAudioRoute(route);
+    report.sign();
+    writeDevice(&report, sizeof(report));
+  }
+
   bool writeDevice(const void *data, size_t len) {
     if (hidraw < 0) {
       if (hidraw_retry > 0)
@@ -889,6 +907,14 @@ public:
 
   void attach(App *owner) { app = owner; }
 
+  void setSpeaker(bool on) {
+    if (on == speaker) return;
+    speaker = on;
+    sendAudioRoute();
+  }
+
+  bool speakerOutput() const { return speaker; }
+
   void setSpeed(int percent) {
     if (percent < 50) percent = 50;
     if (percent > 200) percent = 200;
@@ -943,6 +969,7 @@ public:
 
     if (usb && !startUsbAudio()) fprintf(stderr, "padwave player: USB audio unavailable\n");
     sendMuteLed(false);
+    sendAudioRoute();
 
     pkt = av_packet_alloc();
     frame = av_frame_alloc();

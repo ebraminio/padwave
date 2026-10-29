@@ -370,6 +370,11 @@ public:
     for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = v[i];
   }
 
+  constexpr void setAudioRoute(AudioControl routing) {
+    claim(ValidFlag0::AudioRouting);
+    audio_control = static_cast<uint8_t>(routing);
+  }
+
   constexpr void setAudio(AudioControl routing) {
     valid_flag0 =
         static_cast<uint8_t>(bit(ValidFlag0::HeadphoneVolume) | bit(ValidFlag0::SpeakerVolume) |
@@ -501,7 +506,8 @@ public:
   constexpr void init() {
     *this = UsbOutputReport{};
     report_id = ReportId;
-    body_.init();
+    // USB field reports must not claim the audio defaults.
+    body_ = OutputBody{};
   }
 
   constexpr const OutputBody &body() const { return body_; }
