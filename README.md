@@ -134,11 +134,10 @@ between definitions, private class fields and compact guards. Run clang-format
 
 ## Known limitations
 
-- USB input and 0x02 output fields (LEDs, rumble, triggers) work. USB audio and
-  microphone use the controller's ALSA UAC endpoints and are not routed; the
-  raw 0x36 speaker and 0xD4 mic paths are Bluetooth-only.
-- `audio.present`, `audio.sink` and `audio.state` are static; no ALSA sink is
-  reported.
+- USB input and 0x02 output fields (LEDs, rumble, triggers) work. USB speaker
+  PCM is routed to the controller's ALSA UAC endpoint via `aplay`; USB
+  microphone capture is not routed. The raw 0x36 speaker and 0xD4 mic paths are
+  Bluetooth-only.
 - The idle fade floor is fixed at 10%.
 - Mic-monitor state is not persisted.
 - Playhead saves every 30 s while playing; volume saves after 1 s of quiet.

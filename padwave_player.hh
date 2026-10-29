@@ -221,6 +221,7 @@ private:
   char controller_mac[32] = "";
   bool usb = false;
   bool speaker = false;
+  FILE *usb_audio = nullptr;
   App *app = nullptr;
 
   dualsense::AudioReport::Encoder enc;
@@ -520,6 +521,49 @@ private:
     return true;
   }
 
+  bool startUsbAudio() {
+    if (usb_audio) return true;
+    // A stable ALSA card id beats a card index that changes across replugs.
+    const char *device = "plughw:CARD=Controller,DEV=0";
+    char command[256];
+    snprintf(command, sizeof(command),
+             "exec aplay -q -D '%s' -t raw -f S16_LE -r 48000 -c 2 "
+             "--buffer-time=100000 --period-time=20000",
+             device);
+    usb_audio = popen(command, "w");
+    if (!usb_audio) {
+      fprintf(stderr, "padwave player: USB audio start failed\n");
+      return false;
+    }
+    setvbuf(usb_audio, nullptr, _IONBF, 0);
+    return true;
+  }
+
+  void stopUsbAudio() {
+    if (!usb_audio) return;
+    pclose(usb_audio);
+    usb_audio = nullptr;
+  }
+
+  void writeUsbPcm(const float block[IN_FRAMES][CHANNELS], float gain) {
+    int16_t samples[IN_FRAMES * CHANNELS];
+    for (int i = 0; i < IN_FRAMES; i++) {
+      for (int ch = 0; ch < CHANNELS; ch++) {
+        float v = block[i][ch] * gain;
+        if (v > 1.0f) v = 1.0f;
+        if (v < -1.0f) v = -1.0f;
+        samples[i * CHANNELS + ch] = static_cast<int16_t>(v * 32767.0f);
+      }
+    }
+    if (!startUsbAudio()) return;
+    size_t count = static_cast<size_t>(IN_FRAMES) * CHANNELS;
+    if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
+      stopUsbAudio();
+      return;
+    }
+    sent++;
+  }
+
   void sendMuteLed(bool on) {
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
@@ -804,10 +848,18 @@ private:
       }
     }
 
-    float pcm[dualsense::AudioReport::PcmFrames * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::PcmFrames - 1));
     float gain = static_cast<float>((volume / 100.0));
     gain = gain * gain * gain;
+
+    if (usb) {
+      // USB speaker path: 512 frames at 48 kHz every 10.667 ms, no 512→480
+      // conversion. That conversion remains Bluetooth-only.
+      writeUsbPcm(block, gain);
+      return;
+    }
+
+    float pcm[dualsense::AudioReport::PcmFrames * CHANNELS];
+    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::PcmFrames - 1));
 
     for (int i = 0; i < dualsense::AudioReport::PcmFrames; i++) {
       double src = i * step;
@@ -855,7 +907,12 @@ public:
 
   bool isUsb() const { return usb; }
 
+  bool audioActive() const { return usb_audio != nullptr; }
+
+  const char *audioSink() const { return usb_audio ? "usb-alsa" : ""; }
+
   void dropDevice() {
+    stopUsbAudio();
     if (hidraw >= 0) close(hidraw);
     hidraw = -1;
     hidraw_retry = 0;
@@ -884,6 +941,7 @@ public:
       return false;
     }
 
+    if (usb && !startUsbAudio()) fprintf(stderr, "padwave player: USB audio unavailable\n");
     sendMuteLed(false);
 
     pkt = av_packet_alloc();
@@ -896,6 +954,7 @@ public:
   }
 
   void destroy() {
+    stopUsbAudio();
     closeFile();
     closeNext();
     if (hidraw >= 0) close(hidraw);
