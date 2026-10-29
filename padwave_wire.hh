@@ -134,6 +134,9 @@ static constexpr uint32_t crc_of(const Report &report) {
 // ===========================================================================
 
 struct OutputBody {
+  friend struct OutputBodyLayout;
+
+protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
   PWUINT8 motor_right;              // +0x02  DS4-compatible rumble
@@ -162,7 +165,26 @@ struct OutputBody {
   PWUINT8 lightbar_green;           // +0x2d
   PWUINT8 lightbar_blue;            // +0x2e
 
+public:
   enum : uint8_t { Size = 47 };
+
+  constexpr uint8_t valid0() const { return valid_flag0; }
+
+  constexpr uint8_t valid1() const { return valid_flag1; }
+
+  constexpr uint8_t valid2() const { return valid_flag2; }
+
+  constexpr uint8_t headphoneVolume() const { return headphone_volume; }
+
+  constexpr uint8_t speakerVolume() const { return speaker_volume; }
+
+  constexpr void clearFlag1(uint8_t flag) {
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~flag);
+  }
+
+  constexpr void clearFlag2(uint8_t flag) {
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~flag);
+  }
 
   // Which fields this report owns: the kernel's (and DS4Windows', and
   // dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
@@ -271,6 +293,33 @@ struct OutputBody {
     audio_control = routing;
     audio_control2 = 0x0A;
   }
+};
+
+struct OutputBodyLayout {
+  static constexpr size_t valid_flag0 = __builtin_offsetof(OutputBody, valid_flag0);
+  static constexpr size_t valid_flag1 = __builtin_offsetof(OutputBody, valid_flag1);
+  static constexpr size_t motor_right = __builtin_offsetof(OutputBody, motor_right);
+  static constexpr size_t motor_left = __builtin_offsetof(OutputBody, motor_left);
+  static constexpr size_t headphone_volume = __builtin_offsetof(OutputBody, headphone_volume);
+  static constexpr size_t speaker_volume = __builtin_offsetof(OutputBody, speaker_volume);
+  static constexpr size_t mic_volume = __builtin_offsetof(OutputBody, mic_volume);
+  static constexpr size_t audio_control = __builtin_offsetof(OutputBody, audio_control);
+  static constexpr size_t mute_button_led = __builtin_offsetof(OutputBody, mute_button_led);
+  static constexpr size_t power_save_control = __builtin_offsetof(OutputBody, power_save_control);
+  static constexpr size_t right_trigger_mode = __builtin_offsetof(OutputBody, right_trigger_mode);
+  static constexpr size_t left_trigger_mode = __builtin_offsetof(OutputBody, left_trigger_mode);
+  static constexpr size_t right_trigger_params =
+      __builtin_offsetof(OutputBody, right_trigger_params);
+  static constexpr size_t left_trigger_params = __builtin_offsetof(OutputBody, left_trigger_params);
+  static constexpr size_t haptic_volume = __builtin_offsetof(OutputBody, haptic_volume);
+  static constexpr size_t audio_control2 = __builtin_offsetof(OutputBody, audio_control2);
+  static constexpr size_t valid_flag2 = __builtin_offsetof(OutputBody, valid_flag2);
+  static constexpr size_t lightbar_setup = __builtin_offsetof(OutputBody, lightbar_setup);
+  static constexpr size_t led_brightness = __builtin_offsetof(OutputBody, led_brightness);
+  static constexpr size_t player_leds = __builtin_offsetof(OutputBody, player_leds);
+  static constexpr size_t lightbar_red = __builtin_offsetof(OutputBody, lightbar_red);
+  static constexpr size_t lightbar_green = __builtin_offsetof(OutputBody, lightbar_green);
+  static constexpr size_t lightbar_blue = __builtin_offsetof(OutputBody, lightbar_blue);
 };
 
 static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 bytes");
@@ -394,17 +443,16 @@ public:
     int y;
   };
 
-  struct Trigger {
-    int pressure;
+  struct Triggers {
+    int left;
+    int right;
   };
 
   Stick leftStick() const { return {lx, ly}; }
 
   Stick rightStick() const { return {rx, ry}; }
 
-  Trigger leftTrigger() const { return {l2}; }
-
-  Trigger rightTrigger() const { return {r2}; }
+  Triggers triggers() const { return {l2, r2}; }
 
   int sequence() const { return seq; }
 
@@ -944,9 +992,9 @@ static_assert(offsetof(padwave::AudioReport, state) == 13);
 static_assert(offsetof(padwave::AudioReport, speaker_tag) == 142);
 static_assert(offsetof(padwave::AudioReport, opus) == 144);
 static_assert(offsetof(padwave::AudioReport, crc) == 394);
-static_assert(offsetof(padwave::OutputBody, valid_flag0) == 0);
-static_assert(offsetof(padwave::OutputBody, headphone_volume) == 4);
-static_assert(offsetof(padwave::OutputBody, lightbar_setup) == 0x29);
+static_assert(padwave::OutputBodyLayout::valid_flag0 == 0);
+static_assert(padwave::OutputBodyLayout::headphone_volume == 4);
+static_assert(padwave::OutputBodyLayout::lightbar_setup == 0x29);
 
 static_assert(kReport.report_id == 0x36);
 static_assert(kReport.seq_tag == 0x00);
@@ -958,10 +1006,10 @@ static_assert(kReport.haptic_lengths[4] == 64);
 static_assert(kReport.counter == 0);
 static_assert(kReport.state_tag == 0x90);
 static_assert(kReport.state_length == 63);
-static_assert(kReport.state.body.valid_flag0 == 0xF0);
-static_assert(kReport.state.body.valid_flag1 == 0x80);
-static_assert(kReport.state.body.headphone_volume == 0x7F);
-static_assert(kReport.state.body.speaker_volume == 0x64);
+static_assert(kReport.state.body.valid0() == 0xF0);
+static_assert(kReport.state.body.valid1() == 0x80);
+static_assert(kReport.state.body.headphoneVolume() == 0x7F);
+static_assert(kReport.state.body.speakerVolume() == 0x64);
 static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
 static_assert(kReport.speaker_length == 200);
 static_assert(kReport.opus[0] == 0);

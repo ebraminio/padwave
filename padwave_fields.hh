@@ -42,32 +42,32 @@ struct flag {
 };
 
 inline const u8_field kU8Fields[] = {
-    {"valid_flag0", offsetof(padwave::OutputBody, valid_flag0)},
-    {"valid_flag1", offsetof(padwave::OutputBody, valid_flag1)},
-    {"motor_right", offsetof(padwave::OutputBody, motor_right)},
-    {"motor_left", offsetof(padwave::OutputBody, motor_left)},
-    {"headphone_volume", offsetof(padwave::OutputBody, headphone_volume)},
-    {"speaker_volume", offsetof(padwave::OutputBody, speaker_volume)},
-    {"mic_volume", offsetof(padwave::OutputBody, mic_volume)},
-    {"audio_control", offsetof(padwave::OutputBody, audio_control)},
-    {"mute_button_led", offsetof(padwave::OutputBody, mute_button_led)},
-    {"power_save_control", offsetof(padwave::OutputBody, power_save_control)},
-    {"right_trigger_mode", offsetof(padwave::OutputBody, right_trigger_mode)},
-    {"left_trigger_mode", offsetof(padwave::OutputBody, left_trigger_mode)},
-    {"haptic_volume", offsetof(padwave::OutputBody, haptic_volume)},
-    {"audio_control2", offsetof(padwave::OutputBody, audio_control2)},
-    {"valid_flag2", offsetof(padwave::OutputBody, valid_flag2)},
-    {"lightbar_setup", offsetof(padwave::OutputBody, lightbar_setup)},
-    {"led_brightness", offsetof(padwave::OutputBody, led_brightness)},
-    {"player_leds", offsetof(padwave::OutputBody, player_leds)},
-    {"lightbar_red", offsetof(padwave::OutputBody, lightbar_red)},
-    {"lightbar_green", offsetof(padwave::OutputBody, lightbar_green)},
-    {"lightbar_blue", offsetof(padwave::OutputBody, lightbar_blue)},
+    {"valid_flag0", padwave::OutputBodyLayout::valid_flag0},
+    {"valid_flag1", padwave::OutputBodyLayout::valid_flag1},
+    {"motor_right", padwave::OutputBodyLayout::motor_right},
+    {"motor_left", padwave::OutputBodyLayout::motor_left},
+    {"headphone_volume", padwave::OutputBodyLayout::headphone_volume},
+    {"speaker_volume", padwave::OutputBodyLayout::speaker_volume},
+    {"mic_volume", padwave::OutputBodyLayout::mic_volume},
+    {"audio_control", padwave::OutputBodyLayout::audio_control},
+    {"mute_button_led", padwave::OutputBodyLayout::mute_button_led},
+    {"power_save_control", padwave::OutputBodyLayout::power_save_control},
+    {"right_trigger_mode", padwave::OutputBodyLayout::right_trigger_mode},
+    {"left_trigger_mode", padwave::OutputBodyLayout::left_trigger_mode},
+    {"haptic_volume", padwave::OutputBodyLayout::haptic_volume},
+    {"audio_control2", padwave::OutputBodyLayout::audio_control2},
+    {"valid_flag2", padwave::OutputBodyLayout::valid_flag2},
+    {"lightbar_setup", padwave::OutputBodyLayout::lightbar_setup},
+    {"led_brightness", padwave::OutputBodyLayout::led_brightness},
+    {"player_leds", padwave::OutputBodyLayout::player_leds},
+    {"lightbar_red", padwave::OutputBodyLayout::lightbar_red},
+    {"lightbar_green", padwave::OutputBodyLayout::lightbar_green},
+    {"lightbar_blue", padwave::OutputBodyLayout::lightbar_blue},
 };
 
 inline const array_field kArrayFields[] = {
-    {"right_trigger_params", offsetof(padwave::OutputBody, right_trigger_params), 10},
-    {"left_trigger_params", offsetof(padwave::OutputBody, left_trigger_params), 10},
+    {"right_trigger_params", padwave::OutputBodyLayout::right_trigger_params, 10},
+    {"left_trigger_params", padwave::OutputBodyLayout::left_trigger_params, 10},
 };
 
 // The flag names are the ValidFlag0/1/2 enumerators, lowercased, as the Elixir
@@ -118,10 +118,10 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
                           bool merge) {
   const flag *table = nullptr;
   size_t count = 0;
-  if (field->offset == offsetof(padwave::OutputBody, valid_flag0)) {
+  if (field->offset == padwave::OutputBodyLayout::valid_flag0) {
     table = kFlag0;
     count = sizeof(kFlag0) / sizeof(kFlag0[0]);
-  } else if (field->offset == offsetof(padwave::OutputBody, valid_flag1)) {
+  } else if (field->offset == padwave::OutputBodyLayout::valid_flag1) {
     table = kFlag1;
     count = sizeof(kFlag1) / sizeof(kFlag1[0]);
   } else {
@@ -134,7 +134,7 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
   char *end = nullptr;
   unsigned long raw = strtoul(value, &end, 0);
   if (end && end != value && *end == 0) {
-    uint8_t *word = reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + field->offset));
+    uint8_t *word = reinterpret_cast<uint8_t *>(body) + field->offset;
     *word = merge ? static_cast<uint8_t>((*word | raw)) : static_cast<uint8_t>(raw);
     return;
   }
@@ -147,7 +147,7 @@ inline void set_flag_word(padwave::OutputBody *body, const u8_field *field, cons
     const flag *f = find_flag(table, count, name);
     if (f) bits = static_cast<uint8_t>((bits | f->bit));
   }
-  uint8_t *word = reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + field->offset));
+  uint8_t *word = reinterpret_cast<uint8_t *>(body) + field->offset;
   *word = merge ? static_cast<uint8_t>((*word | bits)) : bits;
 }
 
@@ -181,7 +181,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
           strcmp(name, "valid_flag2") == 0)
         set_flag_word(body, &kU8Fields[i], value, merge_flags);
       else
-        *reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + kU8Fields[i].offset)) =
+        *(reinterpret_cast<uint8_t *>(body) + kU8Fields[i].offset) =
             static_cast<uint8_t>(strtoul(value, nullptr, 0));
       found = true;
       break;
@@ -190,8 +190,7 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
 
     for (size_t i = 0; i < sizeof(kArrayFields) / sizeof(kArrayFields[0]); i++) {
       if (strcmp(kArrayFields[i].name, name) != 0) continue;
-      uint8_t *dst =
-          reinterpret_cast<uint8_t *>((reinterpret_cast<char *>(body) + kArrayFields[i].offset));
+      uint8_t *dst = reinterpret_cast<uint8_t *>(body) + kArrayFields[i].offset;
       if (!hex_to_bytes(value, dst, kArrayFields[i].length)) {
         // comma-separated bytes are also accepted
         size_t index = 0;

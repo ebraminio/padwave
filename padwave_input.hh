@@ -132,7 +132,8 @@ private:
     bool jack = b.headset();
     const padwave::InputBody::Stick left = b.leftStick();
     const padwave::InputBody::Stick right = b.rightStick();
-    int l2 = b.leftTrigger().pressure, r2 = b.rightTrigger().pressure;
+    const padwave::InputBody::Triggers triggers = b.triggers();
+    int l2 = triggers.left, r2 = triggers.right;
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
     const padwave::InputBody::Buttons buttons = b.buttons();
     padwave::InputBody::Dpad dpad = b.dpad();
@@ -261,7 +262,8 @@ private:
     emitFrameToApp(b, raw, len);
     trackDpad(b.dpad());
     trackButtons(b.buttons());
-    trackTriggers(b.leftTrigger().pressure, b.rightTrigger().pressure);
+    const padwave::InputBody::Triggers triggers = b.triggers();
+    trackTriggers(triggers.left, triggers.right);
     trackSensors(b);
   }
 

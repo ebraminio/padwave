@@ -1397,8 +1397,9 @@ private:
     this->ly = left.y;
     this->rx = right.x;
     this->ry = right.y;
-    this->l2 = b.leftTrigger().pressure;
-    this->r2 = b.rightTrigger().pressure;
+    const padwave::InputBody::Triggers triggers = b.triggers();
+    this->l2 = triggers.left;
+    this->r2 = triggers.right;
     this->battery = b.battery();
     this->jack = b.headset();
     this->temp = b.temperature();
