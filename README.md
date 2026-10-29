@@ -110,8 +110,8 @@ describes the lab fields; `POST /api/output` is the controller lab.
   state with a single 0x31, but 0x36 never carries mute_led.
 - **Lightbar:** cyan playing, amber paused, purple muted, red pulse on idle
   warning, black suspended/off. Charging is solid amber and full is solid white,
-  overriding playback and custom colours. The lab can set a colour, light the
-  bar out, or run a host-driven smooth pulse.
+  overriding playback and custom colours. The lab can set a colour or use
+  `lightbar_setup` 1/2 to turn the bar on/off.
 - **Player LEDs:** left-to-right battery bar (45% → `11100`, full → `11111`);
   at 15% or below the first LED blinks `10000`/`00000` every 3 s while
   discharging. Charging is a solid bar.

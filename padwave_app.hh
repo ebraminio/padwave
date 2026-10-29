@@ -330,8 +330,7 @@ private:
   bool led_manual_player = false;
   int led_manual_mask = 4;
   bool led_painted = false;
-  long led_pulse_start = 0;
-  long led_pulse_until = 0;
+  bool lightbar_on = true;
 
   unsigned long mic_packets = 0;
   unsigned long mic_frames = 0;
@@ -767,44 +766,41 @@ public:
       this->led_custom[1] = g;
       this->led_custom[2] = b;
       this->led_custom_set = true;
+      this->lightbar_on = true;
+      this->led_force = true;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar %d,%d,%d\n", r, g, b);
     }
 
     if (strcmp(kind, "lightbar_reset") == 0) {
       this->led_custom_set = false;
-      this->led_pulse_until = 0;
+      this->lightbar_on = true;
       this->led_force = true;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
     }
 
     if (strcmp(kind, "lightbar_fade") == 0) {
-      this->led_pulse_until = 0;
-      // lightbar_setup 0x02 asks the controller to fade the bar out; the
-      // setter claims the ColorFade validity bit.
+      this->lightbar_on = false;
+      this->led_force = true;
       outputFields("lightbar_setup=2");
       playerSend("state_clear_lightbar\n");
-      return snprintf(out, out_cap, "ok=true\nnote=light out\n");
+      serviceLeds();
+      return snprintf(out, out_cap, "ok=true\nnote=light off\n");
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
-      int v = static_cast<int>(kvNumber(body, "value", 0));
-      this->led_pulse_until = 0;
-      snprintf(fields, sizeof(fields), "lightbar_setup=%d", v & 0xFF);
+      int v = static_cast<int>(kvNumber(body, "value", 0)) & 0xFF;
+      if (v == 1)
+        this->lightbar_on = true;
+      else if (v == 2)
+        this->lightbar_on = false;
+      this->led_force = true;
+      snprintf(fields, sizeof(fields), "lightbar_setup=%d", v);
       outputFields(fields);
       playerSend("state_clear_lightbar\n");
-      return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
-    }
-
-    if (strcmp(kind, "lightbar_pulse") == 0) {
-      long ms = kvNumber(body, "ms", 3000);
-      ms = ms < 500 ? 500 : (ms > 10000 ? 10000 : ms);
-      this->led_pulse_start = nowMs();
-      this->led_pulse_until = this->led_pulse_start + ms;
-      this->led_force = true;
       serviceLeds();
-      return snprintf(out, out_cap, "ok=true\nnote=pulse %ldms\n", ms);
+      return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
@@ -1785,19 +1781,6 @@ private:
     }
     if (this->led_manual_player) mask = this->led_manual_mask;
 
-    if (this->led_pulse_until) {
-      if (now >= this->led_pulse_until) {
-        this->led_pulse_until = 0;
-      } else if (state != 0) {
-        // Host-driven smooth pulse: 1 Hz raised cosine between 15% and 100%.
-        float phase = static_cast<float>((now - this->led_pulse_start)) * 0.0062831853f;
-        float level = 0.15f + 0.85f * (0.5f - 0.5f * cosf(phase));
-        r = static_cast<int>((static_cast<float>(r) * level));
-        g = static_cast<int>((static_cast<float>(g) * level));
-        b = static_cast<int>((static_cast<float>(b) * level));
-      }
-    }
-
     // Charging owns the lightbar: amber while charging, white when full. This
     // overrides playback/custom colours (and any lab pulse).
     if (this->controller && strcmp(this->charging, "charging") == 0) {
@@ -1811,10 +1794,10 @@ private:
     }
 
     bool force = this->led_force;
-    bool rgb_ok = applyLightbar(r, g, b, force);
+    bool rgb_ok = this->lightbar_on && applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
-    if (rgb_ok && mask_ok) this->led_force = false;
+    if (mask_ok) this->led_force = false;
   }
 
   static int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }

@@ -372,9 +372,9 @@
         <button id="labBarApply">apply</button>
         <button id="labBarReset">reset</button>
         <label>brightness <input type="range" id="labBright" min="0" max="255" value="255" style="width:80px"></label>
-        <button id="labBarFade" title="lightbar_setup 0x02: one-shot light out">light out</button>
-        <button id="labBarPulse" title="host-driven 1 Hz smooth pulse; lightbar_setup cannot do this">pulse 3s</button>
-        <label>setup <input type="number" id="labSetup" min="0" max="255" value="2" style="width:58px" title="lightbar_setup (0x02 = light out)"></label>
+        <button id="labBarOn" title="lightbar_setup 1: lightbar on">on</button>
+        <button id="labBarFade" title="lightbar_setup 2: lightbar off">off</button>
+        <label>setup <input type="number" id="labSetup" min="0" max="255" value="1" style="width:58px" title="lightbar_setup (1 = on, 2 = off)"></label>
         <button id="labBarSetup" title="send lightbar_setup">send</button>
         <span style="font-size:11px">(reset returns to cyan / amber / purple / red states)</span>
       </div>
@@ -981,8 +981,8 @@ $("#labBarApply").onclick = () => {
 };
 
 $("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
-$("#labBarFade").onclick = () => labSend({ kind: "lightbar_fade" });
-$("#labBarPulse").onclick = () => labSend({ kind: "lightbar_pulse", ms: 3000 });
+$("#labBarOn").onclick = () => labSend({ kind: "lightbar_setup", value: 1 });
+$("#labBarFade").onclick = () => labSend({ kind: "lightbar_setup", value: 2 });
 $("#labBarSetup").onclick = () => labSend({ kind: "lightbar_setup", value: Number($("#labSetup").value) });
 $("#labBright").onchange = (e) => labSend({ kind: "lightbar_brightness", value: Number(e.target.value) });
 $("#labLedsReset").onclick = () => {
