@@ -512,7 +512,6 @@ private:
     report.state.body = state;
     report.state.body.setAudio(speaker ? padwave::OutputBody::Speaker
                                        : padwave::OutputBody::Headphones);
-    report.state.body.setMuteLed(paused);
 
     report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
     report.counter = counter;
@@ -652,10 +651,6 @@ private:
 
     if (sscanf(line, "pause %ld", &value) == 1) {
       paused = value != 0;
-      // The mute-button LED is a playback-pause indicator only. Claim it here
-      // even while paused, because no audio tick will run to carry the state.
-      float silence[padwave::AudioReport::PcmFrames * CHANNELS] = {};
-      sendReport(silence, padwave::AudioReport::PcmFrames);
       return;
     }
 

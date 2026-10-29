@@ -286,11 +286,6 @@ public:
     }
   }
 
-  constexpr void setMuteLed(bool on) {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 | MuteLed);
-    mute_button_led = on ? 1 : 0;
-  }
-
   constexpr void clearLightbar() {
     valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~Lightbar);
     valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~ColorFade);
