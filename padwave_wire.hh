@@ -29,7 +29,7 @@ struct NumType {
 
   constexpr NumType &operator=(Type value) {
     UnsignedType v = static_cast<UnsignedType>(value);
-    for (unsigned int i = 0; i < sizeof(Type); i++) {
+    for (unsigned int i = 0; i < sizeof(Type); ++i) {
       bytes[i] = static_cast<unsigned char>((v & 0xFF));
       v = static_cast<UnsignedType>((v >> 8));
     }
@@ -38,7 +38,7 @@ struct NumType {
 
   constexpr operator Type() const {
     UnsignedType v = 0;
-    for (unsigned int i = 0; i < sizeof(Type); i++)
+    for (unsigned int i = 0; i < sizeof(Type); ++i)
       v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
     return static_cast<Type>(v);
   }
@@ -118,7 +118,7 @@ static constexpr Crc32Table makeCrc32Table() {
 
 static constexpr Crc32Table kCrc32Table = makeCrc32Table();
 
-static constexpr uint32_t crc32_update(uint32_t crc, const uint8_t *p, size_t len) {
+static constexpr uint32_t crc32(uint32_t crc, const uint8_t *p, size_t len) {
   crc = ~crc;
   while (len--) crc = kCrc32Table.entries[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
   return ~crc;
@@ -132,9 +132,9 @@ struct WireBytes {
 template <typename Report>
 static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
-  uint32_t c = crc32_update(0, &seed, 1);
+  uint32_t c = crc32(0, &seed, 1);
   auto raw = __builtin_bit_cast(WireBytes<Report>, report);
-  return crc32_update(c, raw.data, sizeof(Report) - sizeof(Report::crc));
+  return crc32(c, raw.data, sizeof(Report) - sizeof(Report::crc));
 }
 
 // ===========================================================================
@@ -366,12 +366,12 @@ public:
 
   constexpr void setRightTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::RightTrigger);
-    for (size_t i = 0; i < 10; i++) right_trigger_params[i] = v[i];
+    for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = v[i];
   }
 
   constexpr void setLeftTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::LeftTrigger);
-    for (size_t i = 0; i < 10; i++) left_trigger_params[i] = v[i];
+    for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = v[i];
   }
 
   constexpr void setAudio(AudioControl routing) {
@@ -900,7 +900,7 @@ struct AudioReport {
     config_tag = 0x11 | 0x80;
     config_length = 7;
     enable_mask = static_cast<uint8_t>(mask);
-    for (int i = 0; i < 5; i++) haptic_lengths[i] = HapticSize;
+    for (int i = 0; i < 5; ++i) haptic_lengths[i] = HapticSize;
     state_tag = 0x10 | 0x80;
     state_length = StateSize;
     haptics_tag = 0x12 | 0x80;
@@ -919,8 +919,8 @@ struct AudioReport {
 
   constexpr void setOpus(const uint8_t *data, size_t len) {
     size_t n = len < OpusSize ? len : OpusSize;
-    for (size_t i = 0; i < n; i++) opus[i] = data[i];
-    for (size_t i = n; i < OpusSize; i++) opus[i] = 0;
+    for (size_t i = 0; i < n; ++i) opus[i] = data[i];
+    for (size_t i = n; i < OpusSize; ++i) opus[i] = 0;
   }
 
   constexpr void sign() { crc = crc_of(*this); }
@@ -1143,10 +1143,10 @@ static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
 // --- CRC-32 ----------------------------------------------------------------
 
 constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-static_assert(padwave::crc32_update(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+static_assert(padwave::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
 constexpr uint32_t kChained = [] {
-  uint32_t c = padwave::crc32_update(0, kCheck, 4);
-  return padwave::crc32_update(c, kCheck + 4, 5);
+  uint32_t c = padwave::crc32(0, kCheck, 4);
+  return padwave::crc32(c, kCheck + 4, 5);
 }();
 static_assert(kChained == 0xCBF43926u);
 
@@ -1182,6 +1182,8 @@ static_assert(kReport.haptic_lengths[4] == 64);
 static_assert(kReport.counter == 0);
 static_assert(kReport.state_tag == 0x90);
 static_assert(kReport.state_length == 63);
+//static_assert(kReport.state.body.valid0() == 0xF0);
+//static_assert(kReport.state.body.valid1() == 0x80);
 static_assert(kReport.state.body.headphoneVolume() == 0x7F);
 static_assert(kReport.state.body.speakerVolume() == 0x64);
 static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
