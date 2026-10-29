@@ -102,12 +102,25 @@ enum Packet : uint8_t {
 // member. Every report type carries `crc`, `CrcSeed` and a `report_id`, so one
 // template covers them all. This is the same result as zlib's crc32(), but
 // local so the binary does not need -lz.
+struct Crc32Table {
+  uint32_t entries[256];
+};
+
+static constexpr Crc32Table makeCrc32Table() {
+  Crc32Table table{};
+  for (uint32_t i = 0; i < 256; ++i) {
+    uint32_t c = i;
+    for (unsigned bit = 0; bit < 8; ++bit) c = (c & 1u) ? (c >> 1) ^ 0xEDB88320u : (c >> 1);
+    table.entries[i] = c;
+  }
+  return table;
+}
+
+static constexpr Crc32Table kCrc32Table = makeCrc32Table();
+
 static constexpr uint32_t crc32_update(uint32_t crc, const uint8_t *p, size_t len) {
   crc = ~crc;
-  while (len--) {
-    crc ^= *p++;
-    for (int bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
-  }
+  while (len--) crc = kCrc32Table.entries[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
   return ~crc;
 }
 
