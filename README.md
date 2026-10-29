@@ -47,8 +47,10 @@ PADWAVE_ROOTS=/path/to/audio ./padwave [port]
 `PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the
 app uses `~/Music`. `PADWAVE_HOST`/`PADWAVE_DIR` configure `deploy.sh`. The wire
 layout, field-offset and CRC assertions compile as part of `padwave_wire.hh`.
-Public wire types are `InputBody`, `OutputBody`, `AudioReport` and `MicFrame`;
-implementation wrappers and test probes live in `padwave::internal`.
+Public packet types are `InputReport`, `OutputReport`, `UsbOutputReport`,
+`AudioReport` and `MicFrame`. Body layouts (`InputBody`, `OutputBody`),
+endian wrappers (`NumType`), feature payloads and test probes live in
+`padwave::internal`.
 The build uses `-Weverything` with a short suppression list and reports the
 compile's real/user/sys time.
 

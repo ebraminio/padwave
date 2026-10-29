@@ -17,10 +17,10 @@ static bool write_file(const char *dir, const char *name, const void *data, size
   return ok;
 }
 
-static padwave::internal::InputReport report(uint32_t buttons) {
-  padwave::internal::InputReport r{};
+static padwave::InputReport report(uint32_t buttons) {
+  padwave::InputReport r{};
   auto *raw = reinterpret_cast<uint8_t *>(&r);
-  raw[0] = padwave::internal::InputReport::ReportId;
+  raw[0] = padwave::InputReport::ReportId;
   raw[1] = 0x10;
   raw[2 + 0x00] = 128;
   raw[2 + 0x01] = 128;
@@ -39,11 +39,11 @@ static padwave::internal::InputReport report(uint32_t buttons) {
 int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
-  padwave::internal::InputReport neutral = report(0);
-  padwave::internal::InputReport pressed = report(1u << 5);
-  padwave::internal::InputReport released = report(0);
+  padwave::InputReport neutral = report(0);
+  padwave::InputReport pressed = report(1u << 5);
+  padwave::InputReport released = report(0);
 
-  uint8_t usb[padwave::internal::InputReport::UsbSize] = {padwave::internal::InputReport::UsbReportId};
+  uint8_t usb[padwave::InputReport::UsbSize] = {padwave::InputReport::UsbReportId};
   usb[1 + 0] = 0x80;
   usb[1 + 1] = 0x80;
 

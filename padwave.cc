@@ -599,7 +599,7 @@ void Player::emitTrack(const char *track_path) {
   if (app) app->playerTrack(track_path);
 }
 
-void Input::emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
+void Input::emitFrameToApp(const padwave::internal::InputBody &b, const uint8_t *raw, size_t len) {
   if (app) app->inputFrame(b, raw, len);
 }
 

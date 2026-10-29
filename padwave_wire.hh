@@ -1,6 +1,6 @@
 #pragma once
-// The wire formats: padwave_number.hh (endian-safe integers) and
-// padwave_schemas.hh (the DualSense reports) merged into one header.
+// The wire formats: endian-safe integer wrappers and the DualSense reports.
+// Implementation details live in padwave::internal.
 // This is the only file that describes the packets.
 #include <stddef.h>
 #include <stdint.h>
@@ -17,7 +17,8 @@
 // big-endian hosts included. get()/set() assemble and split the bytes one at a
 // time; there is no memcpy of an integer and no host byte-order assumption.
 
-namespace padwave_number {
+namespace padwave {
+namespace internal {
 
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
@@ -66,14 +67,15 @@ struct NumType {
   unsigned char bytes[sizeof(Type)];
 };
 
-} // namespace padwave_number
+} // namespace internal
+} // namespace padwave
 
-typedef padwave_number::NumType<uint8_t> PWUINT8;
-typedef padwave_number::NumType<uint16_t> PWUINT16;
-typedef padwave_number::NumType<uint32_t> PWUINT32;
-typedef padwave_number::NumType<int8_t, uint8_t> PWINT8;
-typedef padwave_number::NumType<int16_t, uint16_t> PWINT16;
-typedef padwave_number::NumType<int32_t, uint32_t> PWINT32;
+typedef padwave::internal::NumType<uint8_t> PWUINT8;
+typedef padwave::internal::NumType<uint16_t> PWUINT16;
+typedef padwave::internal::NumType<uint32_t> PWUINT32;
+typedef padwave::internal::NumType<int8_t, uint8_t> PWINT8;
+typedef padwave::internal::NumType<int16_t, uint16_t> PWINT16;
+typedef padwave::internal::NumType<int32_t, uint32_t> PWINT32;
 
 static_assert(sizeof(PWUINT8) == 1, "PWUINT8 is one byte");
 static_assert(sizeof(PWUINT16) == 2, "PWUINT16 is two bytes");
@@ -152,8 +154,9 @@ struct OutputBodyProbe;
 struct AudioReportProbe;
 } // namespace internal
 
+namespace internal {
 struct OutputBody {
-  friend struct internal::OutputBodyProbe;
+  friend struct OutputBodyProbe;
 
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
@@ -435,15 +438,16 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 
 // Implementation-only wire wrappers. Consumers use InputBody, OutputBody,
 // AudioReport and MicFrame from padwave.
-namespace internal {
+} // namespace internal
+
 struct OutputReport {
 protected:
-  PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
-  PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
-  PWUINT8 tag;           // 0x02  must be 0x10
-  OutputBody body_;      // 0x03..0x31
-  PWUINT8 reserved4[24]; // 0x32..0x49
-  PWUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
+  PWUINT8 report_id;          // 0x00  Packet::PacketStateBluetooth
+  PWUINT8 seq_tag;            // 0x01  high nibble = counter 0..15, low nibble = 0
+  PWUINT8 tag;                // 0x02  must be 0x10
+  internal::OutputBody body_; // 0x03..0x31
+  PWUINT8 reserved4[24];      // 0x32..0x49
+  PWUINT32 crc;               // 0x4a  CRC-32, seed 0xA2, little-endian
 
 public:
   enum : uint8_t {
@@ -460,9 +464,9 @@ public:
     body_.init();
   }
 
-  constexpr const OutputBody &body() const { return body_; }
+  constexpr const internal::OutputBody &body() const { return body_; }
 
-  constexpr OutputBody &body() { return body_; }
+  constexpr internal::OutputBody &body() { return body_; }
 
   constexpr void sign() { crc = crc_of(*this); }
 
@@ -476,16 +480,19 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
 protected:
-  PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
-  OutputBody body_;     // 0x01..0x2f
-  PWUINT8 reserved[15]; // 0x30..0x3e
+  PWUINT8 report_id;          // 0x00  Packet::PacketOutputUsb
+  internal::OutputBody body_; // 0x01..0x2f
+  PWUINT8 reserved[15];       // 0x30..0x3e
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
+
+  constexpr const internal::OutputBody &body() const { return body_; }
+
+  constexpr internal::OutputBody &body() { return body_; }
 };
 
 static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
-} // namespace internal
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -508,6 +515,7 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // Every byte is named, either with what it does or with an honest reserved/
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
+namespace internal {
 struct InputBody {
 protected:
   PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
@@ -741,16 +749,17 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // DS_INPUT_REPORT_BT_SIZE 78); the CRC covers the report with seed 0xA1.
 // ===========================================================================
 
-namespace internal {
+} // namespace internal
+
 struct InputReport {
 protected:
-  PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
-  PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
-  InputBody body_;        // 0x02..0x40
-  PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
-                          //             distinct values in a 150 s capture), the
-                          //             other eight were; unknown
-  PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+  PWUINT8 report_id;         // 0x00  Packet::PacketStateBluetooth
+  PWUINT8 seq_tag;           // 0x01  high nibble = sequence tag, low nibble = 0
+  internal::InputBody body_; // 0x02..0x40
+  PWUINT8 bt_reserved[9];    // 0x41..0x49  the first byte is not constant (30
+                             //             distinct values in a 150 s capture), the
+                             //             other eight were; unknown
+  PWUINT32 crc;              // 0x4a  CRC-32 over the report, seed 0xA1
 
 public:
   enum : uint8_t {
@@ -761,9 +770,9 @@ public:
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
-  constexpr const InputBody &body() const { return body_; }
+  constexpr const internal::InputBody &body() const { return body_; }
 
-  constexpr InputBody &body() { return body_; }
+  constexpr internal::InputBody &body() { return body_; }
 
   constexpr void sign() { crc = crc_of(*this); }
 
@@ -771,7 +780,6 @@ public:
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
-} // namespace internal
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -829,8 +837,8 @@ private:
     friend struct AudioReport;
 
   protected:
-    OutputBody body;     // +0x00..0x2e
-    PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
+    internal::OutputBody body; // +0x00..0x2e
+    PWUINT8 padding[16];       // +0x2f..0x3e  the rest of the 63-byte block
   };
 
 protected:
@@ -921,9 +929,9 @@ public:
     Jack = 0x16,
   };
 
-  constexpr OutputBody &stateBody() { return state.body; }
+  constexpr internal::OutputBody &stateBody() { return state.body; }
 
-  constexpr const OutputBody &stateBody() const { return state.body; }
+  constexpr const internal::OutputBody &stateBody() const { return state.body; }
 
   constexpr void setSeqTag(uint8_t value) { seq_tag = value; }
 
@@ -1240,7 +1248,7 @@ static_assert(kChained == 0xCBF43926u);
 constexpr padwave::AudioReport kReport = [] {
   padwave::AudioReport r{};
   r.init(padwave::AudioReport::SpeakerTag::Jack, padwave::AudioReport::EnableMask::SpeakerOnly);
-  r.stateBody().init(padwave::OutputBody::AudioControl::Headphones);
+  r.stateBody().init(padwave::internal::OutputBody::AudioControl::Headphones);
   r.setSeqTag(0x00);
   r.setCounter(0);
   return r;
@@ -1248,7 +1256,7 @@ constexpr padwave::AudioReport kReport = [] {
 
 static_assert(sizeof(padwave::AudioReport) == 398);
 static_assert(padwave::internal::AudioReportProbe::stateSize() == 63);
-static_assert(sizeof(padwave::OutputBody) == 47);
+static_assert(sizeof(padwave::internal::OutputBody) == 47);
 
 static_assert(padwave::internal::AudioReportProbe::reportId(kReport) == 0x36);
 static_assert(padwave::internal::AudioReportProbe::seqTag(kReport) == 0x00);

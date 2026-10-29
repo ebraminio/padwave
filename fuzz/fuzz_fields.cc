@@ -14,7 +14,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   first[n] = 0;
   memcpy(second, first, n + 1);
 
-  padwave::OutputBody body{};
+  padwave::internal::OutputBody body{};
   padwave_fields::apply_fields(&body, first);
   padwave_fields::apply_fields(&body, second);
   return 0;
