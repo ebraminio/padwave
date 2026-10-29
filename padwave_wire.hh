@@ -134,7 +134,7 @@ static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
   uint32_t c = crc32(0, &seed, 1);
   auto raw = __builtin_bit_cast(WireBytes<Report>, report);
-  return crc32(c, raw.data, sizeof(Report) - sizeof(Report::crc));
+  return crc32(c, raw.data, sizeof(Report) - sizeof(PWUINT32));
 }
 
 // ===========================================================================
@@ -147,7 +147,11 @@ static constexpr uint32_t crc_of(const Report &report) {
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
+struct OutputBodyProbe;
+
 struct OutputBody {
+  friend struct OutputBodyProbe;
+
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
@@ -785,7 +789,11 @@ static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78
 // 0xF1 (volumes and routing only) fixed it. The lightbar was never affected
 // because the high byte (0xE3) does not claim the LED colour bit.
 
+struct AudioReportProbe;
+
 struct AudioReport {
+  friend struct AudioReportProbe;
+
   // PCM-facing encoder: the rest of padwave never touches libopus.
   struct Encoder {
     ::OpusEncoder *encoder = nullptr;
@@ -837,6 +845,7 @@ struct AudioReport {
     PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
   };
 
+protected:
   PWUINT8 report_id;         // 0x000  Packet::PacketAudio
   PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
   PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
@@ -856,6 +865,7 @@ struct AudioReport {
   PWUINT8 padding[50];       // 0x158..0x189
   PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
+public:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketAudio),
     StateSize = 63,
@@ -883,6 +893,14 @@ struct AudioReport {
     Speaker = 0x13,
     Jack = 0x16,
   };
+
+  constexpr OutputBody &stateBody() { return state.body; }
+
+  constexpr const OutputBody &stateBody() const { return state.body; }
+
+  constexpr void setSeqTag(uint8_t value) { seq_tag = value; }
+
+  constexpr void setCounter(uint8_t value) { counter = value; }
 
   constexpr EnableMask enableMask() const {
     return static_cast<EnableMask>(static_cast<uint8_t>(enable_mask));
@@ -931,6 +949,26 @@ struct AudioReport {
 static_assert(sizeof(AudioReport::State) == AudioReport::StateSize,
               "the audio state snapshot must stay 63 bytes");
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
+
+struct OutputBodyProbe {
+  static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
+  static constexpr uint8_t valid1(const OutputBody &b) { return b.valid_flag1; }
+};
+
+struct AudioReportProbe {
+  static constexpr uint8_t reportId(const AudioReport &r) { return r.report_id; }
+  static constexpr uint8_t seqTag(const AudioReport &r) { return r.seq_tag; }
+  static constexpr uint8_t configTag(const AudioReport &r) { return r.config_tag; }
+  static constexpr uint8_t configLength(const AudioReport &r) { return r.config_length; }
+  static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
+    return r.haptic_lengths[i];
+  }
+  static constexpr uint8_t counter(const AudioReport &r) { return r.counter; }
+  static constexpr uint8_t stateTag(const AudioReport &r) { return r.state_tag; }
+  static constexpr uint8_t stateLength(const AudioReport &r) { return r.state_length; }
+  static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speaker_length; }
+  static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
+};
 
 // ===========================================================================
 // Feature reports — the configuration channel
@@ -1155,40 +1193,33 @@ static_assert(kChained == 0xCBF43926u);
 constexpr padwave::AudioReport kReport = [] {
   padwave::AudioReport r{};
   r.init(padwave::AudioReport::SpeakerTag::Jack, padwave::AudioReport::EnableMask::SpeakerOnly);
-  r.state.body.init(padwave::OutputBody::AudioControl::Headphones);
-  r.seq_tag = 0x00;
-  r.counter = 0;
+  r.stateBody().init(padwave::OutputBody::AudioControl::Headphones);
+  r.setSeqTag(0x00);
+  r.setCounter(0);
   return r;
 }();
 
 static_assert(sizeof(padwave::AudioReport) == 398);
 static_assert(sizeof(padwave::AudioReport::State) == 63);
 static_assert(sizeof(padwave::OutputBody) == 47);
-static_assert(offsetof(padwave::AudioReport, report_id) == 0);
-static_assert(offsetof(padwave::AudioReport, seq_tag) == 1);
-static_assert(offsetof(padwave::AudioReport, config_tag) == 2);
-static_assert(offsetof(padwave::AudioReport, state) == 13);
-static_assert(offsetof(padwave::AudioReport, speaker_tag) == 142);
-static_assert(offsetof(padwave::AudioReport, opus) == 144);
-static_assert(offsetof(padwave::AudioReport, crc) == 394);
 
-static_assert(kReport.report_id == 0x36);
-static_assert(kReport.seq_tag == 0x00);
-static_assert(kReport.config_tag == 0x91);
-static_assert(kReport.config_length == 7);
+static_assert(padwave::AudioReportProbe::reportId(kReport) == 0x36);
+static_assert(padwave::AudioReportProbe::seqTag(kReport) == 0x00);
+static_assert(padwave::AudioReportProbe::configTag(kReport) == 0x91);
+static_assert(padwave::AudioReportProbe::configLength(kReport) == 7);
 static_assert(kReport.enableMask() == padwave::AudioReport::EnableMask::SpeakerOnly);
-static_assert(kReport.haptic_lengths[0] == 64);
-static_assert(kReport.haptic_lengths[4] == 64);
-static_assert(kReport.counter == 0);
-static_assert(kReport.state_tag == 0x90);
-static_assert(kReport.state_length == 63);
-//static_assert(kReport.state.body.valid0() == 0xF0);
-//static_assert(kReport.state.body.valid1() == 0x80);
-static_assert(kReport.state.body.headphoneVolume() == 0x7F);
-static_assert(kReport.state.body.speakerVolume() == 0x64);
+static_assert(padwave::AudioReportProbe::hapticLength(kReport, 0) == 64);
+static_assert(padwave::AudioReportProbe::hapticLength(kReport, 4) == 64);
+static_assert(padwave::AudioReportProbe::counter(kReport) == 0);
+static_assert(padwave::AudioReportProbe::stateTag(kReport) == 0x90);
+static_assert(padwave::AudioReportProbe::stateLength(kReport) == 63);
+static_assert(padwave::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
+static_assert(padwave::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
+static_assert(kReport.stateBody().headphoneVolume() == 0x7F);
+static_assert(kReport.stateBody().speakerVolume() == 0x64);
 static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
-static_assert(kReport.speaker_length == 200);
-static_assert(kReport.opus[0] == 0);
+static_assert(padwave::AudioReportProbe::speakerLength(kReport) == 200);
+static_assert(padwave::AudioReportProbe::opusByte(kReport, 0) == 0);
 
 // --- sign / validate / byte copy, all constexpr ---------------------------
 

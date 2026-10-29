@@ -530,12 +530,12 @@ private:
                 mic ? padwave::AudioReport::EnableMask::SpeakerAndMic
                     : padwave::AudioReport::EnableMask::SpeakerOnly);
 
-    report.state.body = state;
-    report.state.body.setAudio(speaker ? padwave::OutputBody::AudioControl::Speaker
-                                       : padwave::OutputBody::AudioControl::Headphones);
+    report.stateBody() = state;
+    report.stateBody().setAudio(speaker ? padwave::OutputBody::AudioControl::Speaker
+                                        : padwave::OutputBody::AudioControl::Headphones);
 
-    report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
-    report.counter = counter;
+    report.setSeqTag(static_cast<uint8_t>(((seq & 0x0F) << 4)));
+    report.setCounter(counter);
 
     report.setPcm(pcm, frames, enc);
 
