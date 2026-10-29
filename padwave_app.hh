@@ -332,7 +332,7 @@ private:
   bool led_painted = false;
   bool lightbar_on = true;
   long led_charge_at = 0;
-  bool led_charge_phase = false;
+  int led_charge_setup = 0;
   static constexpr long kChargeBlinkMs = 2000;
 
   unsigned long mic_packets = 0;
@@ -1740,16 +1740,21 @@ private:
     }
 
     bool charging_now = this->controller && strcmp(this->charging, "charging") == 0;
-    bool charge_anim = charging_now && this->lightbar_on;
-    if (charge_anim) {
-      if (this->led_charge_at == 0 || now - this->led_charge_at >= kChargeBlinkMs) {
+    if (charging_now && this->lightbar_on) {
+      if (this->led_charge_at == 0) {
+        // Start the charging loop with setup 2, then 1 two seconds later.
         this->led_charge_at = now;
-        this->led_charge_phase = !this->led_charge_phase;
-        setLightbarSetup(this->led_charge_phase ? 1 : 2);
+        this->led_charge_setup = 2;
+        setLightbarSetup(2);
+      } else if (now - this->led_charge_at >= kChargeBlinkMs) {
+        this->led_charge_at = now;
+        this->led_charge_setup = this->led_charge_setup == 2 ? 1 : 2;
+        setLightbarSetup(this->led_charge_setup);
       }
     } else if (this->led_charge_at != 0) {
       this->led_charge_at = 0;
-      this->led_charge_phase = false;
+      this->led_charge_setup = 0;
+      this->led_force = this->lightbar_on;
       setLightbarSetup(this->lightbar_on ? 1 : 2);
     }
 
@@ -1803,8 +1808,8 @@ private:
     }
     if (this->led_manual_player) mask = this->led_manual_mask;
 
-    // Charging owns the lightbar: the charging animation alternates setup 1/2
-    // every 2 s; full is solid white. Both override playback/custom colours.
+    // Charging owns the lightbar: setup 2/1 alternate every 2 s with no RGB
+    // frames; full is solid white. Both override playback/custom colours.
     if (this->controller && strcmp(this->charging, "charging") == 0) {
       r = 255;
       g = 110;
@@ -1815,10 +1820,8 @@ private:
       b = 255;
     }
 
-    bool visible = this->lightbar_on;
-    if (charge_anim) visible = this->led_charge_phase;
     bool force = this->led_force;
-    bool rgb_ok = visible && applyLightbar(r, g, b, force);
+    bool rgb_ok = this->lightbar_on && !charging_now && applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;

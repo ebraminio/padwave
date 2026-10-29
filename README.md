@@ -109,10 +109,9 @@ describes the lab fields; `POST /api/output` is the controller lab.
   lit while paused, off while playing. Mic on/off reasserts the current pause
   state with a single 0x31, but 0x36 never carries mute_led.
 - **Lightbar:** cyan playing, amber paused, purple muted, red pulse on idle
-  warning, black suspended/off. While charging, setup 1/2 toggles every 2 s
-  unless the bar is manually off; full is solid white, overriding playback and
-  custom colours. The lab can set a colour or use `lightbar_setup` 1/2 to turn
-  the bar on/off.
+  warning, black suspended/off. While charging, setup 2 runs for 2 s, then
+  setup 1 for 2 s, repeating with no RGB frames; full is solid white. The lab
+  can set a colour or use `lightbar_setup` 1/2 to turn the bar on/off.
 - **Player LEDs:** left-to-right battery bar (45% → `11100`, full → `11111`);
   at 15% or below the first LED blinks `10000`/`00000` every 3 s while
   discharging. Charging is a solid bar.
