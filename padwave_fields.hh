@@ -23,17 +23,22 @@
 
 namespace padwave_fields {
 
-using Field = padwave::OutputBody::Field;
+using Body = padwave::OutputBody;
+using Setter = void (Body::*)(uint8_t);
+using ArraySetter = void (Body::*)(const uint8_t *);
+
+enum class FlagWord : uint8_t { None, Zero, One, Two };
 
 struct u8_field {
   const char *name;
-  Field field;
+  Setter set;
+  Setter merge;
+  FlagWord flags;
 };
 
 struct array_field {
   const char *name;
-  Field field;
-  size_t length;
+  ArraySetter set;
 };
 
 struct flag {
@@ -42,32 +47,32 @@ struct flag {
 };
 
 inline const u8_field kU8Fields[] = {
-    {"valid_flag0", Field::ValidFlag0},
-    {"valid_flag1", Field::ValidFlag1},
-    {"motor_right", Field::MotorRight},
-    {"motor_left", Field::MotorLeft},
-    {"headphone_volume", Field::HeadphoneVolume},
-    {"speaker_volume", Field::SpeakerVolume},
-    {"mic_volume", Field::MicVolume},
-    {"audio_control", Field::AudioRouting},
-    {"mute_button_led", Field::MuteButtonLed},
-    {"power_save_control", Field::PowerSaveControl},
-    {"right_trigger_mode", Field::RightTriggerMode},
-    {"left_trigger_mode", Field::LeftTriggerMode},
-    {"haptic_volume", Field::HapticVolume},
-    {"audio_control2", Field::AudioControl2},
-    {"valid_flag2", Field::ValidFlag2},
-    {"lightbar_setup", Field::LightbarSetup},
-    {"led_brightness", Field::LedBrightness},
-    {"player_leds", Field::PlayerLedsMask},
-    {"lightbar_red", Field::LightbarRed},
-    {"lightbar_green", Field::LightbarGreen},
-    {"lightbar_blue", Field::LightbarBlue},
+    {"valid_flag0", &Body::setValidFlag0, &Body::mergeValidFlag0, FlagWord::Zero},
+    {"valid_flag1", &Body::setValidFlag1, &Body::mergeValidFlag1, FlagWord::One},
+    {"motor_right", &Body::setMotorRight, nullptr, FlagWord::None},
+    {"motor_left", &Body::setMotorLeft, nullptr, FlagWord::None},
+    {"headphone_volume", &Body::setHeadphoneVolume, nullptr, FlagWord::None},
+    {"speaker_volume", &Body::setSpeakerVolume, nullptr, FlagWord::None},
+    {"mic_volume", &Body::setMicVolume, nullptr, FlagWord::None},
+    {"audio_control", &Body::setAudioRouting, nullptr, FlagWord::None},
+    {"mute_button_led", &Body::setMuteButtonLed, nullptr, FlagWord::None},
+    {"power_save_control", &Body::setPowerSaveControl, nullptr, FlagWord::None},
+    {"right_trigger_mode", &Body::setRightTriggerMode, nullptr, FlagWord::None},
+    {"left_trigger_mode", &Body::setLeftTriggerMode, nullptr, FlagWord::None},
+    {"haptic_volume", &Body::setHapticVolume, nullptr, FlagWord::None},
+    {"audio_control2", &Body::setAudioControl2, nullptr, FlagWord::None},
+    {"valid_flag2", &Body::setValidFlag2, &Body::mergeValidFlag2, FlagWord::Two},
+    {"lightbar_setup", &Body::setLightbarSetup, nullptr, FlagWord::None},
+    {"led_brightness", &Body::setLedBrightness, nullptr, FlagWord::None},
+    {"player_leds", &Body::setPlayerLedsMask, nullptr, FlagWord::None},
+    {"lightbar_red", &Body::setLightbarRed, nullptr, FlagWord::None},
+    {"lightbar_green", &Body::setLightbarGreen, nullptr, FlagWord::None},
+    {"lightbar_blue", &Body::setLightbarBlue, nullptr, FlagWord::None},
 };
 
 inline const array_field kArrayFields[] = {
-    {"right_trigger_params", Field::RightTriggerParams, 10},
-    {"left_trigger_params", Field::LeftTriggerParams, 10},
+    {"right_trigger_params", &Body::setRightTriggerParams},
+    {"left_trigger_params", &Body::setLeftTriggerParams},
 };
 
 // The flag names are the ValidFlag0/1/2 enumerators, lowercased, as the Elixir
@@ -79,8 +84,7 @@ inline const flag kFlag0[] = {
     {"left_trigger", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::LeftTrigger)},
     {"headphone_volume",
      padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::HeadphoneVolume)},
-    {"speaker_volume",
-     padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::SpeakerVolume)},
+    {"speaker_volume", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::SpeakerVolume)},
     {"mic_volume", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::MicVolume)},
     {"audio_routing", padwave::OutputBody::bit(padwave::OutputBody::ValidFlag0::AudioRouting)},
 };
@@ -117,22 +121,18 @@ inline const flag *find_flag(const flag *table, size_t count, const char *name) 
   return nullptr;
 }
 
-inline bool is_flag_field(Field field) {
-  return field == Field::ValidFlag0 || field == Field::ValidFlag1 || field == Field::ValidFlag2;
-}
-
 // Parse either a raw byte or a comma-separated list of flag names. This is the
 // only place that knows the flag spellings; OutputBody only receives the mask.
-inline uint8_t parse_flag_mask(Field field, const char *value) {
+inline uint8_t parse_flag_mask(FlagWord kind, const char *value) {
   const flag *table = nullptr;
   size_t count = 0;
-  if (field == Field::ValidFlag0) {
+  if (kind == FlagWord::Zero) {
     table = kFlag0;
     count = sizeof(kFlag0) / sizeof(kFlag0[0]);
-  } else if (field == Field::ValidFlag1) {
+  } else if (kind == FlagWord::One) {
     table = kFlag1;
     count = sizeof(kFlag1) / sizeof(kFlag1[0]);
-  } else if (field == Field::ValidFlag2) {
+  } else if (kind == FlagWord::Two) {
     table = kFlag2;
     count = sizeof(kFlag2) / sizeof(kFlag2[0]);
   }
@@ -178,12 +178,14 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
     bool found = false;
     for (size_t i = 0; i < sizeof(kU8Fields) / sizeof(kU8Fields[0]); i++) {
       if (strcmp(kU8Fields[i].name, name) != 0) continue;
-      if (is_flag_field(kU8Fields[i].field)) {
-        uint8_t bits = parse_flag_mask(kU8Fields[i].field, value);
-        if (!body->setFlagWord(kU8Fields[i].field, bits, merge_flags)) return false;
-      } else if (!body->setField(kU8Fields[i].field,
-                                 static_cast<uint8_t>(strtoul(value, nullptr, 0)))) {
-        return false;
+      if (kU8Fields[i].flags != FlagWord::None) {
+        uint8_t bits = parse_flag_mask(kU8Fields[i].flags, value);
+        if (merge_flags && kU8Fields[i].merge)
+          (body->*(kU8Fields[i].merge))(bits);
+        else
+          (body->*(kU8Fields[i].set))(bits);
+      } else {
+        (body->*(kU8Fields[i].set))(static_cast<uint8_t>(strtoul(value, nullptr, 0)));
       }
       found = true;
       break;
@@ -193,16 +195,16 @@ inline bool apply_fields(padwave::OutputBody *body, const char *text, bool merge
     for (size_t i = 0; i < sizeof(kArrayFields) / sizeof(kArrayFields[0]); i++) {
       if (strcmp(kArrayFields[i].name, name) != 0) continue;
       uint8_t bytes[10] = {};
-      if (!hex_to_bytes(value, bytes, kArrayFields[i].length)) {
+      if (!hex_to_bytes(value, bytes, sizeof(bytes))) {
         size_t index = 0;
         char vcopy[256];
         snprintf(vcopy, sizeof(vcopy), "%s", value);
         char *save_bytes = nullptr;
-        for (char *b = strtok_r(vcopy, ",", &save_bytes);
-             b && index < kArrayFields[i].length; b = strtok_r(nullptr, ",", &save_bytes))
+        for (char *b = strtok_r(vcopy, ",", &save_bytes); b && index < sizeof(bytes);
+             b = strtok_r(nullptr, ",", &save_bytes))
           bytes[index++] = static_cast<uint8_t>(strtoul(b, nullptr, 0));
       }
-      if (!body->setArray(kArrayFields[i].field, bytes, kArrayFields[i].length)) return false;
+      (body->*(kArrayFields[i].set))(bytes);
       found = true;
       break;
     }

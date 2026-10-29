@@ -271,103 +271,60 @@ public:
     valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(flag));
   }
 
-  enum class Field : uint8_t {
-    ValidFlag0,
-    ValidFlag1,
-    MotorRight,
-    MotorLeft,
-    HeadphoneVolume,
-    SpeakerVolume,
-    MicVolume,
-    AudioRouting,
-    MuteButtonLed,
-    PowerSaveControl,
-    RightTriggerMode,
-    LeftTriggerMode,
-    HapticVolume,
-    AudioControl2,
-    ValidFlag2,
-    LightbarSetup,
-    LedBrightness,
-    PlayerLedsMask,
-    LightbarRed,
-    LightbarGreen,
-    LightbarBlue,
-    RightTriggerParams,
-    LeftTriggerParams,
-  };
+  constexpr void setValidFlag0(uint8_t v) { valid_flag0 = v; }
 
-  constexpr bool setFlagWord(Field field, uint8_t bits, bool merge) {
-    if (field == Field::ValidFlag0)
-      valid_flag0 = merge ? static_cast<uint8_t>(valid_flag0 | bits) : bits;
-    else if (field == Field::ValidFlag1)
-      valid_flag1 = merge ? static_cast<uint8_t>(valid_flag1 | bits) : bits;
-    else if (field == Field::ValidFlag2)
-      valid_flag2 = merge ? static_cast<uint8_t>(valid_flag2 | bits) : bits;
-    else
-      return false;
-    return true;
+  constexpr void mergeValidFlag0(uint8_t v) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | v); }
+
+  constexpr void setValidFlag1(uint8_t v) { valid_flag1 = v; }
+
+  constexpr void mergeValidFlag1(uint8_t v) { valid_flag1 = static_cast<uint8_t>(valid_flag1 | v); }
+
+  constexpr void setValidFlag2(uint8_t v) { valid_flag2 = v; }
+
+  constexpr void mergeValidFlag2(uint8_t v) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | v); }
+
+  constexpr void setMotorRight(uint8_t v) { motor_right = v; }
+
+  constexpr void setMotorLeft(uint8_t v) { motor_left = v; }
+
+  constexpr void setHeadphoneVolume(uint8_t v) { headphone_volume = v; }
+
+  constexpr void setSpeakerVolume(uint8_t v) { speaker_volume = v; }
+
+  constexpr void setMicVolume(uint8_t v) { mic_volume = v; }
+
+  constexpr void setAudioRouting(uint8_t v) { audio_control = v; }
+
+  constexpr void setMuteButtonLed(uint8_t v) { mute_button_led = v; }
+
+  constexpr void setPowerSaveControl(uint8_t v) { power_save_control = v; }
+
+  constexpr void setRightTriggerMode(uint8_t v) { right_trigger_mode = v; }
+
+  constexpr void setLeftTriggerMode(uint8_t v) { left_trigger_mode = v; }
+
+  constexpr void setHapticVolume(uint8_t v) { haptic_volume = v; }
+
+  constexpr void setAudioControl2(uint8_t v) { audio_control2 = v; }
+
+  constexpr void setLightbarSetup(uint8_t v) { lightbar_setup = v; }
+
+  constexpr void setLedBrightness(uint8_t v) { led_brightness = v; }
+
+  constexpr void setPlayerLedsMask(uint8_t v) { player_leds = v; }
+
+  constexpr void setLightbarRed(uint8_t v) { lightbar_red = v; }
+
+  constexpr void setLightbarGreen(uint8_t v) { lightbar_green = v; }
+
+  constexpr void setLightbarBlue(uint8_t v) { lightbar_blue = v; }
+
+  constexpr void setRightTriggerParams(const uint8_t *v) {
+    for (size_t i = 0; i < 10; i++) right_trigger_params[i] = v[i];
   }
 
-  constexpr bool setField(Field field, uint8_t value) {
-    if (field == Field::ValidFlag0)
-      valid_flag0 = value;
-    else if (field == Field::ValidFlag1)
-      valid_flag1 = value;
-    else if (field == Field::MotorRight)
-      motor_right = value;
-    else if (field == Field::MotorLeft)
-      motor_left = value;
-    else if (field == Field::HeadphoneVolume)
-      headphone_volume = value;
-    else if (field == Field::SpeakerVolume)
-      speaker_volume = value;
-    else if (field == Field::MicVolume)
-      mic_volume = value;
-    else if (field == Field::AudioRouting)
-      audio_control = value;
-    else if (field == Field::MuteButtonLed)
-      mute_button_led = value;
-    else if (field == Field::PowerSaveControl)
-      power_save_control = value;
-    else if (field == Field::RightTriggerMode)
-      right_trigger_mode = value;
-    else if (field == Field::LeftTriggerMode)
-      left_trigger_mode = value;
-    else if (field == Field::HapticVolume)
-      haptic_volume = value;
-    else if (field == Field::AudioControl2)
-      audio_control2 = value;
-    else if (field == Field::ValidFlag2)
-      valid_flag2 = value;
-    else if (field == Field::LightbarSetup)
-      lightbar_setup = value;
-    else if (field == Field::LedBrightness)
-      led_brightness = value;
-    else if (field == Field::PlayerLedsMask)
-      player_leds = value;
-    else if (field == Field::LightbarRed)
-      lightbar_red = value;
-    else if (field == Field::LightbarGreen)
-      lightbar_green = value;
-    else if (field == Field::LightbarBlue)
-      lightbar_blue = value;
-    else
-      return false;
-    return true;
-  }
-
-  constexpr bool setArray(Field field, const uint8_t *values, size_t len) {
-    PWUINT8 *dst = nullptr;
-    if (field == Field::RightTriggerParams)
-      dst = right_trigger_params;
-    else if (field == Field::LeftTriggerParams)
-      dst = left_trigger_params;
-    else
-      return false;
-    if (len > 10) return false;
-    for (size_t i = 0; i < len; i++) dst[i] = values[i];
-    return true;
+  constexpr void setLeftTriggerParams(const uint8_t *v) {
+    for (size_t i = 0; i < 10; i++) left_trigger_params[i] = v[i];
   }
 
   constexpr void setAudio(AudioControl routing) {
