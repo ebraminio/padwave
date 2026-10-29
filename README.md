@@ -99,9 +99,10 @@ describes the lab fields; `POST /api/output` is the controller lab.
 - **Volume:** zero is the paused state. Resume restores the last non-zero
   volume; 15% is used only when no non-zero value has ever been stored. Current
   and last non-zero volumes persist across restarts.
-- **Microphone:** monitoring is independent of playback and does not claim the
-  controller's mute-button LED. Enabling it requests microphone capture and
-  reports a live PCM level; playback can continue while monitoring.
+- **Microphone:** monitoring is independent of playback. Enabling it requests
+  microphone capture and reports a live PCM level; playback can continue while
+  monitoring. The mute-button LED reflects playback pause only, never mic
+  capture.
 - **Lightbar:** cyan playing, amber paused, purple muted, red pulse on idle
   warning, black suspended/off. Charging is solid amber and full is solid white,
   overriding playback and custom colours. The lab can set a colour, light the
