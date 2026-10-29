@@ -348,7 +348,7 @@ protected:
                               //        tracks sensor_time's high byte: it
                               //        behaves like a second device clock
   PWUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
-  PWUINT8 status0;            // +0x34  battery (low nibble) + charging (high)
+  PWUINT8 status0;            // +0x34  low nibble: battery 0..10; high: charging
   PWUINT8 status1;            // +0x35  Status1 bits
   PWUINT8 status2;            // +0x36  constant 1 in every capture so far
   PWUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
@@ -484,7 +484,9 @@ public:
 
   constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
 
-  // The report carries a coarse 0..10 battery level; 10 is 100%.
+  // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
+  // high nibble is ChargingState. The controller can report Full before the
+  // level reaches 10, especially on an aged pack.
   constexpr int battery() const {
     int percent = (status0 & 0x0F) * 10;
     return percent > 100 ? 100 : percent;
