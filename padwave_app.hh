@@ -229,7 +229,6 @@ private:
   int volume = kDefaultVolume;
   int last_nonzero_volume = kDefaultVolume;
   int speed = 100;
-  bool speaker = false;
 
   bool controller = false;
   bool jack = false;
@@ -556,7 +555,6 @@ public:
 
     kvAdd(buf, cap, &o, "audio.present", "%s", this->player.valid() ? "true" : "false");
     kvText(buf, cap, &o, "audio.sink", this->player.audioSink());
-    kvText(buf, cap, &o, "audio.route", this->speaker ? "speaker" : "headphones");
     kvText(buf, cap, &o, "audio.state",
            this->player.audioActive() ? "running" : (this->player.valid() ? "ready" : "null"));
 
@@ -642,7 +640,6 @@ public:
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     kvAdd(buf, cap, &o, "config.speed", "%d", this->speed);
-    kvAdd(buf, cap, &o, "config.speaker", "%s", this->speaker ? "true" : "false");
     return static_cast<int>(o);
   }
 
@@ -686,7 +683,6 @@ public:
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     kvAdd(buf, cap, &o, "config.speed", "%d", this->speed);
-    kvAdd(buf, cap, &o, "config.speaker", "%s", this->speaker ? "true" : "false");
     return static_cast<int>(o);
   }
 
@@ -735,14 +731,6 @@ public:
     if (kvGet(body, "trigger_effects", value, sizeof(value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
     if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
-    if (kvGet(body, "speaker", value, sizeof(value))) {
-      bool next = strcmp(value, "true") == 0 || atoi(value) != 0;
-      if (next != this->speaker) {
-        this->speaker = next;
-        if (this->player) this->player.setSpeaker(next);
-      }
-    }
-
     configSave();
     this->volume_dirty = false;
   }
@@ -1037,7 +1025,7 @@ private:
 
   void playerStart() {
     if (this->player) return;
-    if (!this->player.create(nullptr, this->speaker)) return;
+    if (!this->player.create()) return;
     this->player.attach(this);
     this->player_timer_fd = this->player.timerFd();
     char line[32];
@@ -1125,6 +1113,15 @@ private:
     playerSend(line);
   }
 
+  void pauseIfNoJack() {
+    if (this->controller && !this->jack && this->playing && !this->paused) {
+      this->paused = true;
+      this->paused_by_jack = true;
+      playerSend("pause 1\n");
+      this->playhead_dirty = true;
+    }
+  }
+
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
     ensureAudibleVolume();
@@ -1143,6 +1140,8 @@ private:
     this->dur_ms = 0;
     this->idle_since = nowMs();
     this->playhead_dirty = true;
+
+    pauseIfNoJack();
 
     // Gapless: queue the next track in the sorted list for the junction.
     queueTrack(nextTrackIndex(index));
@@ -1185,6 +1184,11 @@ private:
       return;
     }
     if (this->paused) {
+      if (this->controller && !this->jack) {
+        this->paused_by_jack = true;
+        playerSend("pause 1\n");
+        return;
+      }
       ensureAudibleVolume();
       if (this->paused) {
         this->paused = false;
@@ -1350,6 +1354,19 @@ private:
     this->r2 = triggers.right;
     this->battery = b.battery();
     this->jack = b.headset();
+    if (!was_connected) {
+      if (this->jack && this->paused_by_jack) {
+        this->paused_by_jack = false;
+        ensureAudibleVolume();
+        if (this->paused) {
+          this->paused = false;
+          playerSend("pause 0\n");
+          this->playhead_dirty = true;
+        }
+      } else {
+        pauseIfNoJack();
+      }
+    }
     this->temp = b.temperature();
     snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.dpad()));
     buttonsToString(b.buttons(), this->buttons, sizeof(this->buttons));
@@ -1527,8 +1544,6 @@ private:
       } else if (strcmp(line, "speed") == 0) {
         int v = atoi(value);
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
-      } else if (strcmp(line, "speaker") == 0) {
-        this->speaker = strcmp(value, "true") == 0 || atoi(value) != 0;
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -1568,7 +1583,6 @@ private:
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
-    fprintf(f, "speaker=%d\n", this->speaker ? 1 : 0);
     fclose(f);
     this->playhead_saved_at = nowMs();
   }

@@ -220,7 +220,6 @@ private:
   char node_name[64] = "";
   char controller_mac[32] = "";
   bool usb = false;
-  bool speaker = false;
   FILE *usb_audio = nullptr;
   App *app = nullptr;
 
@@ -505,8 +504,7 @@ private:
   }
 
   void sendAudioRoute() {
-    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
-                         : dualsense::OutputBody::AudioControl::Headphones;
+    auto route = dualsense::OutputBody::AudioControl::Headphones;
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
@@ -605,14 +603,12 @@ private:
     if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     dualsense::AudioReport report;
 
-    report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
-                        : dualsense::AudioReport::SpeakerTag::Jack,
+    report.init(dualsense::AudioReport::SpeakerTag::Jack,
                 mic ? dualsense::AudioReport::EnableMask::SpeakerAndMic
                     : dualsense::AudioReport::EnableMask::SpeakerOnly);
 
     report.stateBody() = state;
-    report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
-                                        : dualsense::OutputBody::AudioControl::Headphones);
+    report.stateBody().setAudio(dualsense::OutputBody::AudioControl::Headphones);
 
     audio_sequence.apply(report);
 
@@ -907,14 +903,6 @@ public:
 
   void attach(App *owner) { app = owner; }
 
-  void setSpeaker(bool on) {
-    if (on == speaker) return;
-    speaker = on;
-    sendAudioRoute();
-  }
-
-  bool speakerOutput() const { return speaker; }
-
   void setSpeed(int percent) {
     if (percent < 50) percent = 50;
     if (percent > 200) percent = 200;
@@ -947,7 +935,7 @@ public:
     usb = false;
   }
 
-  bool create(const char *node = nullptr, bool use_speaker = false) {
+  bool create(const char *node = nullptr) {
     destroy();
     usb = false;
     if (node) {
@@ -957,9 +945,7 @@ public:
       openDevice();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
-    this->speaker = use_speaker;
-    state.init(this->speaker ? dualsense::OutputBody::AudioControl::Speaker
-                             : dualsense::OutputBody::AudioControl::Headphones);
+    state.init(dualsense::OutputBody::AudioControl::Headphones);
 
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");

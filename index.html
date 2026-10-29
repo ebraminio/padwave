@@ -268,14 +268,6 @@
       </div>
 
       <div class="speed">
-        <span>output</span>
-        <select id="audioRoute" title="play through the controller speaker or headphone jack">
-          <option value="headphones">headphones</option>
-          <option value="speaker">speaker</option>
-        </select>
-      </div>
-
-      <div class="speed">
         <span>speed</span>
         <select id="speed" title="playback speed">
           <option value="75">0.75×</option>
@@ -651,9 +643,6 @@ function render(s) {
 
   const cfg = s.config || {};
 
-  if (document.activeElement !== $("#audioRoute"))
-    $("#audioRoute").value = cfg.speaker ? "speaker" : "headphones";
-
   if (document.activeElement !== $("#labP0") && cfg.trigger_effect_position != null)
     $("#labP0").value = cfg.trigger_effect_position;
   if (document.activeElement !== $("#labP1") && cfg.trigger_effect_amplitude != null)
@@ -872,14 +861,6 @@ $("#volume").addEventListener("change", () => {
 
 $("#speed").addEventListener("change", (e) => {
   send("speed", { value: Number(e.target.value) });
-});
-
-$("#audioRoute").addEventListener("change", async (e) => {
-  await fetch("/api/config", {
-    method: "POST",
-    headers: { "content-type": "text/plain" },
-    body: `speaker=${e.target.value === "speaker" ? 1 : 0}`
-  });
 });
 
 $("#filter").addEventListener("input", (e) => {
