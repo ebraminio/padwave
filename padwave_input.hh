@@ -70,6 +70,7 @@ private:
   char node_name[64] = "";
   char mac_[32] = "";
   App *app = nullptr;
+  padwave::AudioDecoder mic_decoder;
 
   ActionsState actions;
   SensorsState sensors;
@@ -255,7 +256,7 @@ private:
 
   void emitAction(const char *name, int value);
   void emitEvent(const char *name);
-  void emitMic(const uint8_t *data, size_t len);
+  void emitMic(const int16_t *pcm, size_t samples);
   void emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len);
 
   void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
@@ -273,7 +274,10 @@ private:
     if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
-      emitMic(payload, payload_len);
+      if (!mic_decoder.valid() && !mic_decoder.open(padwave::MicFrame::SampleRate, 1)) return;
+      int16_t pcm[padwave::MicFrame::Samples];
+      int n = mic_decoder.decode(payload, payload_len, pcm, padwave::MicFrame::Samples);
+      if (n > 0) emitMic(pcm, static_cast<size_t>(n));
       return;
     }
 
@@ -309,12 +313,15 @@ public:
     node_name[0] = 0;
     mac_[0] = 0;
     app = nullptr;
+    mic_decoder.close();
     actions = ActionsState{};
     sensors = SensorsState{};
     dpad_state = DpadState{};
   }
 
   int fd() const { return fd_; }
+
+  bool micReady() const { return mic_decoder.valid(); }
 
   const char *node() const { return node_name; }
 

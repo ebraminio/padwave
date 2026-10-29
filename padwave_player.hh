@@ -51,7 +51,6 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 }
-#include <opus/opus.h>
 
 #include "padwave_fields.hh"
 #include "padwave_hid.hh"
@@ -72,8 +71,6 @@ struct App;
 #define RATE 48000
 #define CHANNELS 2
 #define IN_FRAMES 512
-#define OPUS_FRAMES 480
-#define OPUS_BYTES 200
 #define REPORT_SIZE 398
 #define RING_BLOCKS 192
 #define RING_HIGH 160
@@ -225,7 +222,7 @@ private:
   bool speaker = false;
   App *app = nullptr;
 
-  OpusEncoder *enc = nullptr;
+  padwave::AudioEncoder enc;
   uint8_t seq = 0, counter = 0;
 
   File cur;
@@ -504,7 +501,7 @@ private:
     return true;
   }
 
-  void sendReport(const uint8_t *opus, int len) {
+  void sendReport(const float *pcm, int frames) {
     padwave::AudioReport report;
 
     report.init(speaker ? padwave::AudioReport::SpeakerTag::Speaker
@@ -519,7 +516,7 @@ private:
     report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
     report.counter = counter;
 
-    report.setOpus(opus, len > 0 ? static_cast<size_t>(len) : 0);
+    report.setPcm(pcm, frames, enc);
 
     report.sign();
 
@@ -710,6 +707,11 @@ private:
   }
 
   void tick() {
+    // The decode ring is intentionally built from 512-sample blocks, while
+    // the controller's speaker frame is 480 samples (10 ms). The 10.667 ms
+    // tick (512 / 48 kHz) and the 512→480 interpolation below are coupled to
+    // that ring, matching LinuxAudio4Dualsense5; changing one without the
+    // other changes pitch/timing. Keep the conversion.
     float block[IN_FRAMES][CHANNELS];
 
     if (fading) {
@@ -759,12 +761,12 @@ private:
       }
     }
 
-    float pcm[OPUS_FRAMES * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((OPUS_FRAMES - 1));
+    float pcm[padwave::AudioReport::PcmFrames * CHANNELS];
+    double step = (IN_FRAMES - 1) / static_cast<double>((padwave::AudioReport::PcmFrames - 1));
     float gain = static_cast<float>((volume / 100.0));
     gain = gain * gain * gain;
 
-    for (int i = 0; i < OPUS_FRAMES; i++) {
+    for (int i = 0; i < padwave::AudioReport::PcmFrames; i++) {
       double src = i * step;
       int idx = static_cast<int>(src);
       int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
@@ -776,11 +778,7 @@ private:
       }
     }
 
-    uint8_t opus[OPUS_BYTES];
-    int n = opus_encode_float(enc, pcm, OPUS_FRAMES, opus, sizeof(opus));
-    if (getenv("PADWAVE_DEBUG")) fprintf(stderr, "enc %d\n", n);
-    if (n < 0) n = 0;
-    sendReport(opus, n);
+    sendReport(pcm, padwave::AudioReport::PcmFrames);
   }
 
 public:
@@ -788,7 +786,7 @@ public:
 
   ~Player() { destroy(); }
 
-  bool valid() const { return enc != nullptr; }
+  bool valid() const { return enc.valid(); }
 
   explicit operator bool() const { return valid(); }
 
@@ -832,17 +830,11 @@ public:
     this->speaker = use_speaker;
     state.init(this->speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones);
 
-    int err = 0;
-    enc = opus_encoder_create(RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &err);
-    if (!enc || err != OPUS_OK) {
-      fprintf(stderr, "padwave player: opus encoder: %s\n", opus_strerror(err));
+    if (!enc.open(RATE, CHANNELS)) {
+      fprintf(stderr, "padwave player: audio encoder init failed\n");
       dropDevice();
-      enc = nullptr;
       return false;
     }
-    opus_encoder_ctl(enc, OPUS_SET_BITRATE(160000));
-    opus_encoder_ctl(enc, OPUS_SET_VBR(0));
-    opus_encoder_ctl(enc, OPUS_SET_COMPLEXITY(0));
 
     pkt = av_packet_alloc();
     frame = av_frame_alloc();
@@ -857,14 +849,13 @@ public:
     closeFile();
     closeNext();
     if (hidraw >= 0) close(hidraw);
-    if (enc) opus_encoder_destroy(enc);
+    enc.close();
     if (pkt) av_packet_free(&pkt);
     if (frame) av_frame_free(&frame);
     if (tfd >= 0) close(tfd);
     hidraw = -1;
     node_name[0] = 0;
     controller_mac[0] = 0;
-    enc = nullptr;
     pkt = nullptr;
     frame = nullptr;
     tfd = -1;

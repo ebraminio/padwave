@@ -611,8 +611,8 @@ void Input::emitEvent(const char *name) {
   if (app) app->inputEvent(name);
 }
 
-void Input::emitMic(const uint8_t *data, size_t len) {
-  if (app) app->inputMic(data, len);
+void Input::emitMic(const int16_t *pcm, size_t samples) {
+  if (app) app->inputMic(pcm, samples);
 }
 
 // padwave — one binary, one process, one thread.

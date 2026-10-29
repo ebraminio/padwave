@@ -23,8 +23,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <opus/opus.h>
-
 #include "padwave_player.hh"
 #include "padwave_input.hh"
 
@@ -335,7 +333,6 @@ private:
   long led_pulse_start = 0;
   long led_pulse_until = 0;
 
-  OpusDecoder *mic_decoder = nullptr;
   unsigned long mic_packets = 0;
   unsigned long mic_frames = 0;
   unsigned long mic_samples = 0;
@@ -583,7 +580,7 @@ public:
     kvAdd(buf, cap, &o, "mic.samples", "%lu", this->mic_samples);
     kvAdd(buf, cap, &o, "mic.rms", "%d", this->mic_rms);
     kvAdd(buf, cap, &o, "mic.peak", "%d", this->mic_peak);
-    kvAdd(buf, cap, &o, "mic.running", "%s", this->mic_decoder ? "true" : "false");
+    kvAdd(buf, cap, &o, "mic.running", "%s", this->input.micReady() ? "true" : "false");
     kvAdd(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
 
     kvAdd(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
@@ -686,10 +683,6 @@ public:
   }
 
   void micReset() {
-    if (this->mic_decoder) {
-      opus_decoder_destroy(this->mic_decoder);
-      this->mic_decoder = nullptr;
-    }
     this->mic_packets = 0;
     this->mic_frames = 0;
     this->mic_samples = 0;
@@ -1450,29 +1443,18 @@ private:
 
   void inputEvent(const char *) { noteActivity(); }
 
-  void micDecode(const uint8_t *data, size_t len) {
-    if (!this->mic_decoder) {
-      int err = 0;
-      this->mic_decoder = opus_decoder_create(48000, 1, &err);
-      if (!this->mic_decoder || err != OPUS_OK) {
-        this->mic_decoder = nullptr;
-        return;
-      }
-    }
-
-    opus_int16 pcm[480];
-    int n = opus_decode(this->mic_decoder, data, static_cast<opus_int32>(len), pcm, 480, 0);
-    if (n <= 0) return;
+  void inputMic(const int16_t *pcm, size_t samples) {
+    if (!this->mic_monitor || samples == 0) return;
 
     long long sum = 0;
     int peak = 0;
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < samples; i++) {
       int v = pcm[i];
       sum += static_cast<long long>(v) * v;
       int a = v < 0 ? -v : v;
       if (a > peak) peak = a;
     }
-    int rms = static_cast<int>(sqrt(static_cast<double>(sum) / n));
+    int rms = static_cast<int>(sqrt(static_cast<double>(sum) / static_cast<double>(samples)));
     double db = rms > 0 ? 20.0 * log10(static_cast<double>(rms) / 32768.0) : -90.0;
     int level = static_cast<int>(((db + 60.0) * 100.0 / 60.0));
     if (level < 0) level = 0;
@@ -1483,13 +1465,8 @@ private:
     this->mic_level = (this->mic_level * 2 + level) / 3;
     this->mic_packets++;
     this->mic_frames++;
-    this->mic_samples += static_cast<unsigned long>(n);
+    this->mic_samples += static_cast<unsigned long>(samples);
     this->mic_last_ms = nowMs();
-  }
-
-  void inputMic(const uint8_t *data, size_t len) {
-    if (!this->mic_monitor) return;
-    this->micDecode(data, len);
   }
 
   void handleAction(const char *name, int value) {

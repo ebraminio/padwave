@@ -12,4 +12,4 @@ inline void Input::emitAction(const char *, int) {}
 
 inline void Input::emitEvent(const char *) {}
 
-inline void Input::emitMic(const uint8_t *, size_t) {}
+inline void Input::emitMic(const int16_t *, size_t) {}

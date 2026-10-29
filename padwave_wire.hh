@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "padwave_audio.hh"
 #include <math.h>
 
 // Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
@@ -730,7 +731,7 @@ struct AudioReport {
 
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
-  enum : uint16_t { OpusFrames = 480, InputBlock = 512, Channels = 2 };
+  enum : uint16_t { PcmFrames = 480, InputBlock = 512, Channels = 2 };
 
   static constexpr size_t Size = 398;
 
@@ -771,6 +772,14 @@ struct AudioReport {
     haptics_length = HapticSize;
     speaker_tag = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
     speaker_length = OpusSize;
+  }
+
+  bool setPcm(const float *pcm, int frames, AudioEncoder &encoder) {
+    uint8_t payload[OpusSize];
+    int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof(payload)));
+    if (n < 0) n = 0;
+    setOpus(payload, static_cast<size_t>(n));
+    return n > 0;
   }
 
   constexpr void setOpus(const uint8_t *data, size_t len) {
