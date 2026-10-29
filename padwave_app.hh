@@ -584,9 +584,9 @@ public:
     kvAdd(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
 
     kvAdd(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
-    kvText(buf, cap, &o, "controller.bus", "bluetooth");
+    kvText(buf, cap, &o, "controller.bus", this->player.isUsb() ? "usb" : "bluetooth");
     kvText(buf, cap, &o, "controller.name", "DualSense");
-    kvText(buf, cap, &o, "controller.mac", this->controller_mac);
+    kvText(buf, cap, &o, "controller.mac", this->player.isUsb() ? "" : this->controller_mac);
     kvText(buf, cap, &o, "controller.model", "dualsense");
     kvText(buf, cap, &o, "controller.node", this->input_node);
     if (this->battery >= 0)
@@ -1641,6 +1641,7 @@ private:
   }
 
   bool powerOffController() {
+    if (this->player.isUsb()) return false;
     char mac[32] = "";
     if (this->controller_mac[0]) {
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);

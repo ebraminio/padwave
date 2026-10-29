@@ -27,6 +27,7 @@ struct DualSenseDevice {
   // avoids HID_NAME or sysfs ordering deciding which device is the pad.
   bool find() {
     index = -1;
+    bus = 0;
     node[0] = 0;
     mac[0] = 0;
 
@@ -49,12 +50,14 @@ struct DualSenseDevice {
       char line[256];
       while (fgets(line, sizeof(line), f)) {
         if (strncmp(line, "HID_ID=", 7) == 0) {
-          unsigned vendor = 0, product = 0;
+          unsigned bus_value = 0, vendor = 0, product = 0;
           id_seen = true;
-          if (sscanf(line + 7, "%*x:%x:%x", &vendor, &product) == 2 &&
+          if (sscanf(line + 7, "%x:%x:%x", &bus_value, &vendor, &product) == 3 &&
               (vendor & 0xFFFF) == SONY_VID &&
-              ((product & 0xFFFF) == DS_PID || (product & 0xFFFF) == DS_EDGE_PID))
+              ((product & 0xFFFF) == DS_PID || (product & 0xFFFF) == DS_EDGE_PID)) {
             id_match = true;
+            bus = static_cast<int>(bus_value);
+          }
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
           snprintf(uniq, sizeof(uniq), "%.*s", static_cast<int>(sizeof(uniq)) - 1, line + 9);
           char *nl = strchr(uniq, '\n');
@@ -87,6 +90,9 @@ struct DualSenseDevice {
 
   char node[64] = "";
   char mac[32] = "";
+  int bus = 0;
+
+  bool isUsb() const { return bus == 0x03; }
 
 private:
   int index = -1;

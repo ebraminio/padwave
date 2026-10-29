@@ -474,6 +474,12 @@ protected:
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
 
+  constexpr void init() {
+    *this = UsbOutputReport{};
+    report_id = ReportId;
+    body_.init();
+  }
+
   constexpr const OutputBody &body() const { return body_; }
 
   constexpr OutputBody &body() { return body_; }

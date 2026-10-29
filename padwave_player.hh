@@ -219,6 +219,7 @@ private:
   int hidraw_retry = 0;
   char node_name[64] = "";
   char controller_mac[32] = "";
+  bool usb = false;
   bool speaker = false;
   App *app = nullptr;
 
@@ -496,31 +497,51 @@ private:
     int fd = device.open();
     if (fd < 0) return false;
     hidraw = fd;
+    usb = device.isUsb();
     snprintf(node_name, sizeof(node_name), "%s", device.node);
     snprintf(controller_mac, sizeof(controller_mac), "%s", device.mac);
     return true;
   }
 
-  void sendMuteLed(bool on) {
-    dualsense::OutputReport report{};
-    report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
-    char fields[64];
-    snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
-    if (!padwave_fields::apply_fields(&report.body(), fields)) return;
-    report.sign();
-
-    if (hidraw < 0) openDevice();
-    if (hidraw < 0) return;
-    ssize_t n = write(hidraw, &report, sizeof(report));
-    if (n != static_cast<ssize_t>(sizeof(report))) {
+  bool writeDevice(const void *data, size_t len) {
+    if (hidraw < 0) {
+      if (hidraw_retry > 0)
+        hidraw_retry--;
+      else if (!openDevice())
+        hidraw_retry = 5;
+    }
+    if (hidraw < 0) return false;
+    ssize_t n = write(hidraw, data, len);
+    if (n != static_cast<ssize_t>(len)) {
       dropDevice();
       hidraw_retry = 5;
+      return false;
+    }
+    return true;
+  }
+
+  void sendMuteLed(bool on) {
+    char fields[64];
+    snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
+
+    if (usb) {
+      dualsense::UsbOutputReport report{};
+      report.init();
+      if (!padwave_fields::apply_fields(&report.body(), fields)) return;
+      writeDevice(&report, sizeof(report));
       return;
     }
+
+    dualsense::OutputReport report{};
+    report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
+    if (!padwave_fields::apply_fields(&report.body(), fields)) return;
+    report.sign();
+    if (!writeDevice(&report, sizeof(report))) return;
     out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
   }
 
   void sendReport(const float *pcm, int frames) {
+    if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     dualsense::AudioReport report;
 
     report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
@@ -641,23 +662,22 @@ private:
     }
 
     if (strncmp(line, "fields ", 7) == 0) {
-      out.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
-      if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
-      out.sign();
-      if (hidraw < 0) openDevice();
-      bool ok = hidraw >= 0 && padwave_fields::write_all(
-                                   hidraw, reinterpret_cast<const uint8_t *>(&out), sizeof(out));
-      if (!ok) {
-        dropDevice();
-        hidraw_retry = 5;
+      if (usb) {
+        dualsense::UsbOutputReport report{};
+        report.init();
+        if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
+        if (!writeDevice(&report, sizeof(report))) return;
+      } else {
+        out.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
+        if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
+        out.sign();
+        if (!writeDevice(&out, sizeof(out))) return;
+        out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
       }
-      if (ok) out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
-      if (ok) {
-        padwave_fields::apply_fields(&state, line + 7);
-        // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
-        // snapshot re-trigger them forever.
-        state.clearOneShotLightbar();
-      }
+      padwave_fields::apply_fields(&state, line + 7);
+      // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
+      // snapshot re-trigger them forever.
+      state.clearOneShotLightbar();
       return;
     }
 
@@ -838,16 +858,20 @@ public:
 
   const char *mac() const { return controller_mac; }
 
+  bool isUsb() const { return usb; }
+
   void dropDevice() {
     if (hidraw >= 0) close(hidraw);
     hidraw = -1;
     hidraw_retry = 0;
     node_name[0] = 0;
     controller_mac[0] = 0;
+    usb = false;
   }
 
   bool create(const char *node = nullptr, bool use_speaker = false) {
     destroy();
+    usb = false;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);

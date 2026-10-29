@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <unistd.h>
 
 #include "dualsense.hh"
 
@@ -62,16 +61,6 @@ inline const array_field kArrayFields[] = {
     {"right_trigger_params", &Body::setRightTriggerParams},
     {"left_trigger_params", &Body::setLeftTriggerParams},
 };
-
-inline bool write_all(int fd, const uint8_t *data, size_t len) {
-  size_t put = 0;
-  while (put < len) {
-    ssize_t n = write(fd, data + put, len - put);
-    if (n <= 0) return false;
-    put += static_cast<size_t>(n);
-  }
-  return true;
-}
 
 inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
   if (strlen(hex) != len * 2) return false;
