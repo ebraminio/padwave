@@ -148,8 +148,6 @@ static constexpr uint32_t crc_of(const Report &report) {
 // ===========================================================================
 
 struct OutputBody {
-  friend struct OutputBodyLayout;
-
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
@@ -273,6 +271,105 @@ public:
     valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(flag));
   }
 
+  enum class Field : uint8_t {
+    ValidFlag0,
+    ValidFlag1,
+    MotorRight,
+    MotorLeft,
+    HeadphoneVolume,
+    SpeakerVolume,
+    MicVolume,
+    AudioRouting,
+    MuteButtonLed,
+    PowerSaveControl,
+    RightTriggerMode,
+    LeftTriggerMode,
+    HapticVolume,
+    AudioControl2,
+    ValidFlag2,
+    LightbarSetup,
+    LedBrightness,
+    PlayerLedsMask,
+    LightbarRed,
+    LightbarGreen,
+    LightbarBlue,
+    RightTriggerParams,
+    LeftTriggerParams,
+  };
+
+  constexpr bool setFlagWord(Field field, uint8_t bits, bool merge) {
+    if (field == Field::ValidFlag0)
+      valid_flag0 = merge ? static_cast<uint8_t>(valid_flag0 | bits) : bits;
+    else if (field == Field::ValidFlag1)
+      valid_flag1 = merge ? static_cast<uint8_t>(valid_flag1 | bits) : bits;
+    else if (field == Field::ValidFlag2)
+      valid_flag2 = merge ? static_cast<uint8_t>(valid_flag2 | bits) : bits;
+    else
+      return false;
+    return true;
+  }
+
+  constexpr bool setField(Field field, uint8_t value) {
+    if (field == Field::ValidFlag0)
+      valid_flag0 = value;
+    else if (field == Field::ValidFlag1)
+      valid_flag1 = value;
+    else if (field == Field::MotorRight)
+      motor_right = value;
+    else if (field == Field::MotorLeft)
+      motor_left = value;
+    else if (field == Field::HeadphoneVolume)
+      headphone_volume = value;
+    else if (field == Field::SpeakerVolume)
+      speaker_volume = value;
+    else if (field == Field::MicVolume)
+      mic_volume = value;
+    else if (field == Field::AudioRouting)
+      audio_control = value;
+    else if (field == Field::MuteButtonLed)
+      mute_button_led = value;
+    else if (field == Field::PowerSaveControl)
+      power_save_control = value;
+    else if (field == Field::RightTriggerMode)
+      right_trigger_mode = value;
+    else if (field == Field::LeftTriggerMode)
+      left_trigger_mode = value;
+    else if (field == Field::HapticVolume)
+      haptic_volume = value;
+    else if (field == Field::AudioControl2)
+      audio_control2 = value;
+    else if (field == Field::ValidFlag2)
+      valid_flag2 = value;
+    else if (field == Field::LightbarSetup)
+      lightbar_setup = value;
+    else if (field == Field::LedBrightness)
+      led_brightness = value;
+    else if (field == Field::PlayerLedsMask)
+      player_leds = value;
+    else if (field == Field::LightbarRed)
+      lightbar_red = value;
+    else if (field == Field::LightbarGreen)
+      lightbar_green = value;
+    else if (field == Field::LightbarBlue)
+      lightbar_blue = value;
+    else
+      return false;
+    return true;
+  }
+
+  constexpr bool setArray(Field field, const uint8_t *values, size_t len) {
+    PWUINT8 *dst = nullptr;
+    if (field == Field::RightTriggerParams)
+      dst = right_trigger_params;
+    else if (field == Field::LeftTriggerParams)
+      dst = left_trigger_params;
+    else
+      return false;
+    if (len > 10) return false;
+    for (size_t i = 0; i < len; i++) dst[i] = values[i];
+    return true;
+  }
+
   constexpr void setAudio(AudioControl routing) {
     valid_flag0 =
         static_cast<uint8_t>(bit(ValidFlag0::HeadphoneVolume) | bit(ValidFlag0::SpeakerVolume) |
@@ -317,33 +414,6 @@ public:
     audio_control = static_cast<uint8_t>(routing);
     audio_control2 = 0x0A;
   }
-};
-
-struct OutputBodyLayout {
-  static constexpr size_t valid_flag0 = __builtin_offsetof(OutputBody, valid_flag0);
-  static constexpr size_t valid_flag1 = __builtin_offsetof(OutputBody, valid_flag1);
-  static constexpr size_t motor_right = __builtin_offsetof(OutputBody, motor_right);
-  static constexpr size_t motor_left = __builtin_offsetof(OutputBody, motor_left);
-  static constexpr size_t headphone_volume = __builtin_offsetof(OutputBody, headphone_volume);
-  static constexpr size_t speaker_volume = __builtin_offsetof(OutputBody, speaker_volume);
-  static constexpr size_t mic_volume = __builtin_offsetof(OutputBody, mic_volume);
-  static constexpr size_t audio_control = __builtin_offsetof(OutputBody, audio_control);
-  static constexpr size_t mute_button_led = __builtin_offsetof(OutputBody, mute_button_led);
-  static constexpr size_t power_save_control = __builtin_offsetof(OutputBody, power_save_control);
-  static constexpr size_t right_trigger_mode = __builtin_offsetof(OutputBody, right_trigger_mode);
-  static constexpr size_t left_trigger_mode = __builtin_offsetof(OutputBody, left_trigger_mode);
-  static constexpr size_t right_trigger_params =
-      __builtin_offsetof(OutputBody, right_trigger_params);
-  static constexpr size_t left_trigger_params = __builtin_offsetof(OutputBody, left_trigger_params);
-  static constexpr size_t haptic_volume = __builtin_offsetof(OutputBody, haptic_volume);
-  static constexpr size_t audio_control2 = __builtin_offsetof(OutputBody, audio_control2);
-  static constexpr size_t valid_flag2 = __builtin_offsetof(OutputBody, valid_flag2);
-  static constexpr size_t lightbar_setup = __builtin_offsetof(OutputBody, lightbar_setup);
-  static constexpr size_t led_brightness = __builtin_offsetof(OutputBody, led_brightness);
-  static constexpr size_t player_leds = __builtin_offsetof(OutputBody, player_leds);
-  static constexpr size_t lightbar_red = __builtin_offsetof(OutputBody, lightbar_red);
-  static constexpr size_t lightbar_green = __builtin_offsetof(OutputBody, lightbar_green);
-  static constexpr size_t lightbar_blue = __builtin_offsetof(OutputBody, lightbar_blue);
 };
 
 static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 bytes");
@@ -1097,9 +1167,6 @@ static_assert(offsetof(padwave::AudioReport, state) == 13);
 static_assert(offsetof(padwave::AudioReport, speaker_tag) == 142);
 static_assert(offsetof(padwave::AudioReport, opus) == 144);
 static_assert(offsetof(padwave::AudioReport, crc) == 394);
-static_assert(padwave::OutputBodyLayout::valid_flag0 == 0);
-static_assert(padwave::OutputBodyLayout::headphone_volume == 4);
-static_assert(padwave::OutputBodyLayout::lightbar_setup == 0x29);
 
 static_assert(kReport.report_id == 0x36);
 static_assert(kReport.seq_tag == 0x00);
