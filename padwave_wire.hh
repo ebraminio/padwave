@@ -231,6 +231,34 @@ struct OutputBody {
     Speaker = 0x09,
   };
 
+  constexpr void setAudio(AudioControl routing) {
+    valid_flag0 |= HeadphoneVolume | SpeakerVolume | MicVolume | AudioRouting;
+    valid_flag1 |= AudioControl2;
+    headphone_volume = 0x7F;
+    speaker_volume = 0x64;
+    audio_control = routing;
+    audio_control2 = 0x0A;
+  }
+
+  constexpr void setMic(bool on) {
+    valid_flag1 |= PowerSave;
+    if (on) {
+      power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
+      mic_volume = 0x40;
+    } else {
+      power_save_control = static_cast<uint8_t>(power_save_control | 0x10);
+    }
+  }
+
+  constexpr void clearLightbar() {
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~Lightbar);
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~ColorFade);
+    lightbar_setup = 0;
+    lightbar_red = 0;
+    lightbar_green = 0;
+    lightbar_blue = 0;
+  }
+
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
@@ -684,6 +712,12 @@ struct AudioReport {
     haptics_length = HapticSize;
     speaker_tag = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
     speaker_length = OpusSize;
+  }
+
+  constexpr void setOpus(const uint8_t *data, size_t len) {
+    size_t n = len < OpusSize ? len : OpusSize;
+    for (size_t i = 0; i < n; i++) opus[i] = data[i];
+    for (size_t i = n; i < OpusSize; i++) opus[i] = 0;
   }
 
   constexpr void sign() { crc = crc_of(*this); }

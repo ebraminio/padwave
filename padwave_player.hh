@@ -513,22 +513,13 @@ private:
                     : padwave::AudioReport::EnableMask::SpeakerOnly);
 
     report.state.body = state;
-    report.state.body.valid_flag0 |=
-        padwave::OutputBody::HeadphoneVolume | padwave::OutputBody::SpeakerVolume |
-        padwave::OutputBody::MicVolume | padwave::OutputBody::AudioRouting;
-    report.state.body.valid_flag1 |= padwave::OutputBody::AudioControl2;
-    report.state.body.headphone_volume = 0x7F;
-    report.state.body.speaker_volume = 0x64;
-    report.state.body.audio_control =
-        speaker ? padwave::OutputBody::Speaker : padwave::OutputBody::Headphones;
-    report.state.body.audio_control2 = 0x0A;
+    report.state.body.setAudio(speaker ? padwave::OutputBody::Speaker
+                                       : padwave::OutputBody::Headphones);
 
     report.seq_tag = static_cast<uint8_t>(((seq & 0x0F) << 4));
     report.counter = counter;
 
-    size_t copy = len > 0 ? static_cast<size_t>(len) : 0;
-    if (copy > padwave::AudioReport::OpusSize) copy = padwave::AudioReport::OpusSize;
-    if (copy) memcpy(report.opus, opus, copy);
+    report.setOpus(opus, len > 0 ? static_cast<size_t>(len) : 0);
 
     report.sign();
 
@@ -627,12 +618,7 @@ private:
     }
 
     if (strcmp(line, "state_clear_lightbar") == 0) {
-      state.valid_flag1 &= static_cast<uint8_t>(~padwave::OutputBody::Lightbar);
-      state.valid_flag2 &= static_cast<uint8_t>(~padwave::OutputBody::ColorFade);
-      state.lightbar_setup = 0;
-      state.lightbar_red = 0;
-      state.lightbar_green = 0;
-      state.lightbar_blue = 0;
+      state.clearLightbar();
       return;
     }
 
@@ -673,13 +659,7 @@ private:
 
     if (sscanf(line, "mic %ld", &value) == 1) {
       mic = value != 0;
-      state.valid_flag1 |= padwave::OutputBody::PowerSave;
-      if (mic) {
-        state.power_save_control &= static_cast<uint8_t>(~0x10);
-        state.mic_volume = 0x40;
-      } else {
-        state.power_save_control |= 0x10;
-      }
+      state.setMic(mic != 0);
       return;
     }
 
