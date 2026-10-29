@@ -431,25 +431,32 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // ===========================================================================
 
 struct OutputReport {
+protected:
   PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
   PWUINT8 tag;           // 0x02  must be 0x10
-  OutputBody body;       // 0x03..0x31
+  OutputBody body_;      // 0x03..0x31
   PWUINT8 reserved4[24]; // 0x32..0x49
   PWUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
+public:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     Size = 78,
     CrcSeed = 0xA2,
   };
 
-  constexpr void init() {
+  constexpr void init(uint8_t seq = 0) {
     *this = OutputReport{};
     report_id = ReportId;
     tag = 0x10;
-    body.init();
+    seq_tag = seq;
+    body_.init();
   }
+
+  constexpr const OutputBody &body() const { return body_; }
+
+  constexpr OutputBody &body() { return body_; }
 
   constexpr void sign() { crc = crc_of(*this); }
 
@@ -462,10 +469,12 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
+protected:
   PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
-  OutputBody body;      // 0x01..0x2f
+  OutputBody body_;     // 0x01..0x2f
   PWUINT8 reserved[15]; // 0x30..0x3e
 
+public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
 };
 
@@ -726,14 +735,16 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // ===========================================================================
 
 struct InputReport {
+protected:
   PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
-  InputBody body;         // 0x02..0x40
+  InputBody body_;        // 0x02..0x40
   PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
                           //             distinct values in a 150 s capture), the
                           //             other eight were; unknown
   PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
 
+public:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     UsbReportId = static_cast<uint8_t>(Packet::PacketInputUsb),
@@ -741,6 +752,10 @@ struct InputReport {
     UsbSize = 64,
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
+
+  constexpr const InputBody &body() const { return body_; }
+
+  constexpr InputBody &body() { return body_; }
 
   constexpr void sign() { crc = crc_of(*this); }
 
@@ -794,6 +809,43 @@ struct AudioReportProbe;
 struct AudioReport {
   friend struct AudioReportProbe;
 
+  // The state snapshot is the 0x31 output payload plus sixteen bytes of
+  // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
+  // the trigger effect to this stream, which writes zeros to it 93 times a
+  // second. The fix for the cancelled trigger effects was clearing exactly
+  // those two bits (0xFD -> 0xF1).
+  //
+  // This nested type has to precede the field that uses it; everything else in
+  // the class can follow its fields.
+  struct State {
+    friend struct AudioReport;
+
+  protected:
+    OutputBody body;     // +0x00..0x2e
+    PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
+  };
+
+protected:
+  PWUINT8 report_id;         // 0x000  Packet::PacketAudio
+  PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
+  PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
+  PWUINT8 config_length;     // 0x003  7
+  PWUINT8 enable_mask;       // 0x004  EnableMask bits
+  PWUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
+  PWUINT8 counter;           // 0x00a  free-running 8-bit counter
+  PWUINT8 state_tag;         // 0x00b  0x10 | 0x80
+  PWUINT8 state_length;      // 0x00c  63
+  State state;               // 0x00d..0x04b
+  PWUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
+  PWUINT8 haptics_length;    // 0x04d  64
+  PWINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  PWUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  PWUINT8 speaker_length;    // 0x08f  200
+  PWUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  PWUINT8 padding[50];       // 0x158..0x189
+  PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
+
+public:
   // PCM-facing encoder: the rest of padwave never touches libopus.
   struct Encoder {
     ::OpusEncoder *encoder = nullptr;
@@ -831,39 +883,6 @@ struct AudioReport {
       encoder = nullptr;
     }
   };
-
-  // The state snapshot is the 0x31 output payload plus sixteen bytes of
-  // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
-  // the trigger effect to this stream, which writes zeros to it 93 times a
-  // second. The fix for the cancelled trigger effects was clearing exactly
-  // those two bits (0xFD -> 0xF1).
-  //
-  // This nested type has to precede the field that uses it; everything else in
-  // the class can follow its fields.
-  struct State {
-    OutputBody body;     // +0x00..0x2e
-    PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
-  };
-
-protected:
-  PWUINT8 report_id;         // 0x000  Packet::PacketAudio
-  PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
-  PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  PWUINT8 config_length;     // 0x003  7
-  PWUINT8 enable_mask;       // 0x004  EnableMask bits
-  PWUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
-  PWUINT8 counter;           // 0x00a  free-running 8-bit counter
-  PWUINT8 state_tag;         // 0x00b  0x10 | 0x80
-  PWUINT8 state_length;      // 0x00c  63
-  State state;               // 0x00d..0x04b
-  PWUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
-  PWUINT8 haptics_length;    // 0x04d  64
-  PWINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  PWUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  PWUINT8 speaker_length;    // 0x08f  200
-  PWUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  PWUINT8 padding[50];       // 0x158..0x189
-  PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
 public:
   enum : uint8_t {
@@ -952,21 +971,31 @@ static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 byte
 
 struct OutputBodyProbe {
   static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
+
   static constexpr uint8_t valid1(const OutputBody &b) { return b.valid_flag1; }
 };
 
 struct AudioReportProbe {
   static constexpr uint8_t reportId(const AudioReport &r) { return r.report_id; }
+
   static constexpr uint8_t seqTag(const AudioReport &r) { return r.seq_tag; }
+
   static constexpr uint8_t configTag(const AudioReport &r) { return r.config_tag; }
+
   static constexpr uint8_t configLength(const AudioReport &r) { return r.config_length; }
+
   static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
     return r.haptic_lengths[i];
   }
+
   static constexpr uint8_t counter(const AudioReport &r) { return r.counter; }
+
   static constexpr uint8_t stateTag(const AudioReport &r) { return r.state_tag; }
+
   static constexpr uint8_t stateLength(const AudioReport &r) { return r.state_length; }
+
   static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speaker_length; }
+
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
 };
 
@@ -995,6 +1024,7 @@ struct AudioReportProbe {
 // padwave needs.
 
 struct Calibration {
+protected:
   PWUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
@@ -1019,22 +1049,26 @@ struct Calibration {
   PWINT16 acc_z_minus;
   PWUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
 
+public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
 };
 
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
 
 struct Pairing {
+protected:
   PWUINT8 report_id;      // 0x00  Packet::PacketFeaturePairing
   PWUINT8 mac[6];         // 0x01..0x06  the controller's own address
   PWUINT8 unknown_07[13]; // 0x07..0x13
 
+public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing), Size = 20 };
 };
 
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
+protected:
   PWUINT8 report_id;       // 0x00  Packet::PacketFeatureFirmware
   PWUINT8 unknown_01[23];  // 0x01..0x17
   PWUINT32 hw_version;     // 0x18..0x1b
@@ -1043,6 +1077,7 @@ struct Firmware {
   PWUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
   PWUINT8 unknown_46[18];  // 0x2e..0x3f
 
+public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware), Size = 64 };
 };
 

@@ -503,12 +503,10 @@ private:
 
   void sendMuteLed(bool on) {
     padwave::OutputReport report{};
-    report.report_id = padwave::OutputReport::ReportId;
-    report.tag = 0x10;
-    report.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
+    report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
-    if (!padwave_fields::apply_fields(&report.body, fields)) return;
+    if (!padwave_fields::apply_fields(&report.body(), fields)) return;
     report.sign();
 
     if (hidraw < 0) openDevice();
@@ -643,11 +641,8 @@ private:
     }
 
     if (strncmp(line, "fields ", 7) == 0) {
-      memset(&out, 0, sizeof(out));
-      out.report_id = padwave::OutputReport::ReportId;
-      out.tag = 0x10;
-      out.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
-      if (!padwave_fields::apply_fields(&out.body, line + 7)) return;
+      out.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
+      if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
       out.sign();
       if (hidraw < 0) openDevice();
       bool ok = hidraw >= 0 && padwave_fields::write_all(

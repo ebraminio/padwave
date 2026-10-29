@@ -285,7 +285,7 @@ private:
         len >= padwave::InputReport::Size) {
       const padwave::InputReport *r = reinterpret_cast<const padwave::InputReport *>(buf);
       if (!r->valid()) return;
-      emitFrame(r->body, buf, padwave::InputReport::Size);
+      emitFrame(r->body(), buf, padwave::InputReport::Size);
       return;
     }
 
