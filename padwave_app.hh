@@ -331,6 +331,9 @@ private:
   int led_manual_mask = 4;
   bool led_painted = false;
   bool lightbar_on = true;
+  long led_charge_at = 0;
+  bool led_charge_phase = false;
+  static constexpr long kChargeBlinkMs = 2000;
 
   unsigned long mic_packets = 0;
   unsigned long mic_frames = 0;
@@ -783,8 +786,7 @@ public:
     if (strcmp(kind, "lightbar_fade") == 0) {
       this->lightbar_on = false;
       this->led_force = true;
-      outputFields("lightbar_setup=2");
-      playerSend("state_clear_lightbar\n");
+      setLightbarSetup(2);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=light off\n");
     }
@@ -796,9 +798,7 @@ public:
       else if (v == 2)
         this->lightbar_on = false;
       this->led_force = true;
-      snprintf(fields, sizeof(fields), "lightbar_setup=%d", v);
-      outputFields(fields);
-      playerSend("state_clear_lightbar\n");
+      setLightbarSetup(v);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
     }
@@ -1659,6 +1659,14 @@ private:
     return true;
   }
 
+  void setLightbarSetup(int value) {
+    if (value == 1) this->led_force = true;
+    char fields[32];
+    snprintf(fields, sizeof(fields), "lightbar_setup=%d", value);
+    outputFields(fields);
+    playerSend("state_clear_lightbar\n");
+  }
+
   void outputFields(const char *fields) {
     if (!this->player) return;
     char line[1200];
@@ -1731,6 +1739,20 @@ private:
       this->led_warning_at = now;
     }
 
+    bool charging_now = this->controller && strcmp(this->charging, "charging") == 0;
+    bool charge_anim = charging_now && this->lightbar_on;
+    if (charge_anim) {
+      if (this->led_charge_at == 0 || now - this->led_charge_at >= kChargeBlinkMs) {
+        this->led_charge_at = now;
+        this->led_charge_phase = !this->led_charge_phase;
+        setLightbarSetup(this->led_charge_phase ? 1 : 2);
+      }
+    } else if (this->led_charge_at != 0) {
+      this->led_charge_at = 0;
+      this->led_charge_phase = false;
+      setLightbarSetup(this->lightbar_on ? 1 : 2);
+    }
+
     int r = 0, g = 0, b = 0;
     if (state == 0) {
       // Device down / suspended / stopped: dark, even with a custom colour.
@@ -1781,8 +1803,8 @@ private:
     }
     if (this->led_manual_player) mask = this->led_manual_mask;
 
-    // Charging owns the lightbar: amber while charging, white when full. This
-    // overrides playback/custom colours (and any lab pulse).
+    // Charging owns the lightbar: the charging animation alternates setup 1/2
+    // every 2 s; full is solid white. Both override playback/custom colours.
     if (this->controller && strcmp(this->charging, "charging") == 0) {
       r = 255;
       g = 110;
@@ -1793,8 +1815,10 @@ private:
       b = 255;
     }
 
+    bool visible = this->lightbar_on;
+    if (charge_anim) visible = this->led_charge_phase;
     bool force = this->led_force;
-    bool rgb_ok = this->lightbar_on && applyLightbar(r, g, b, force);
+    bool rgb_ok = visible && applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;
