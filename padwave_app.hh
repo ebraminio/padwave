@@ -232,6 +232,7 @@ private:
 
   bool controller = false;
   bool jack = false;
+  bool usb_data = false;
   int battery = -1;
   char charging[16] = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
@@ -600,6 +601,7 @@ public:
       kvText(buf, cap, &o, "controller.battery", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.usb_data", "%s", this->usb_data ? "true" : "false");
     kvText(buf, cap, &o, "controller.buttons", this->buttons);
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
     kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
@@ -1070,6 +1072,7 @@ private:
     }
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
+    this->usb_data = false;
     this->rate = 0;
     this->rate_at = 0;
     this->rate_frames = 0;
@@ -1346,6 +1349,7 @@ private:
     this->battery = b.battery();
     bool had_jack = this->jack;
     this->jack = b.headset();
+    this->usb_data = b.usbData();
     if (!was_connected || had_jack != this->jack) applyOutputRoute();
     if (!was_connected) {
       if (this->paused_by_disconnect) {

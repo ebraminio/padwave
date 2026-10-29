@@ -736,9 +736,15 @@ public:
   enum class Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
+    // Undocumented: observed set only while a USB data host (a Mac) was
+    // attached over Bluetooth; clear with a charger-only cable. Not parsed by
+    // hid-playstation.
+    UsbData = 0x08, // bit 3
   };
 
   constexpr bool headset() const { return (status1 & static_cast<uint8_t>(Status1::Headset)) != 0; }
+
+  constexpr bool usbData() const { return (status1 & static_cast<uint8_t>(Status1::UsbData)) != 0; }
 
   constexpr bool microphone() const {
     return (status1 & static_cast<uint8_t>(Status1::Microphone)) != 0;
