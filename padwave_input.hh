@@ -32,7 +32,7 @@ struct Input {
 
 private:
   struct ActionsState {
-    padwave::internal::InputBody::Buttons prevButtons = padwave::internal::InputBody::Buttons();
+    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
     int64_t last_l2 = 0;
     int64_t last_r2 = 0;
     int64_t ps_at = 0;
@@ -41,8 +41,8 @@ private:
 
   struct SensorsState {
     bool has_prev = false;
-    padwave::internal::InputBody::Buttons prevButtons = padwave::internal::InputBody::Buttons();
-    padwave::internal::InputBody::Dpad prevDpad = padwave::internal::InputBody::Dpad::None;
+    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
+    padwave::InputBody::Dpad prevDpad = padwave::InputBody::Dpad::None;
     int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
     bool prev_jack = false;
     int64_t last_activity = 0;
@@ -55,14 +55,14 @@ private:
   };
 
   struct DpadState {
-    padwave::internal::InputBody::Dpad prev = padwave::internal::InputBody::Dpad::None;
+    padwave::InputBody::Dpad prev = padwave::InputBody::Dpad::None;
     int hold_dir = 0;
     int hold_step = 0;
     int64_t hold_at = 0;
   };
 
   struct Binding {
-    padwave::internal::InputBody::Button button;
+    padwave::InputBody::Button button;
     const char *action;
   };
 
@@ -77,36 +77,36 @@ private:
   DpadState dpad_state;
 
   static constexpr Binding kBindings[] = {
-      {padwave::internal::InputBody::Button::ButtonTriangle, "toggle_pause"},
-      {padwave::internal::InputBody::Button::ButtonCircle, "play"},
-      {padwave::internal::InputBody::Button::ButtonSquare, "shuffle_folder"},
-      {padwave::internal::InputBody::Button::L1, "previous"},
-      {padwave::internal::InputBody::Button::R1, "next"},
-      {padwave::internal::InputBody::Button::Create, "previous"},
-      {padwave::internal::InputBody::Button::Options, "next"},
-      {padwave::internal::InputBody::Button::Touchpad, "toggle_mute"},
-      {padwave::internal::InputBody::Button::Mute, "toggle_mute"},
-      {padwave::internal::InputBody::Button::L3, "next"},
-      {padwave::internal::InputBody::Button::R3, "previous"},
-      {padwave::internal::InputBody::Button::LeftPaddle, "previous"},
-      {padwave::internal::InputBody::Button::RightPaddle, "next"},
-      {padwave::internal::InputBody::Button::Fn1, "toggle_pause"},
-      {padwave::internal::InputBody::Button::Fn2, "toggle_mute"},
+      {padwave::InputBody::Button::ButtonTriangle, "toggle_pause"},
+      {padwave::InputBody::Button::ButtonCircle, "play"},
+      {padwave::InputBody::Button::ButtonSquare, "shuffle_folder"},
+      {padwave::InputBody::Button::L1, "previous"},
+      {padwave::InputBody::Button::R1, "next"},
+      {padwave::InputBody::Button::Create, "previous"},
+      {padwave::InputBody::Button::Options, "next"},
+      {padwave::InputBody::Button::Touchpad, "toggle_mute"},
+      {padwave::InputBody::Button::Mute, "toggle_mute"},
+      {padwave::InputBody::Button::L3, "next"},
+      {padwave::InputBody::Button::R3, "previous"},
+      {padwave::InputBody::Button::LeftPaddle, "previous"},
+      {padwave::InputBody::Button::RightPaddle, "next"},
+      {padwave::InputBody::Button::Fn1, "toggle_pause"},
+      {padwave::InputBody::Button::Fn2, "toggle_mute"},
   };
 
-  void trackButtons(padwave::internal::InputBody::Buttons buttons) {
-    padwave::internal::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
+  void trackButtons(padwave::InputBody::Buttons buttons) {
+    padwave::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
     actions.prevButtons = buttons;
 
     for (auto &b : kBindings)
       if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
-    if (pressed.isOn(padwave::internal::InputBody::Button::Ps)) {
+    if (pressed.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!buttons.isOn(padwave::internal::InputBody::Button::Ps)) {
+    if (!buttons.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
@@ -128,16 +128,16 @@ private:
     }
   }
 
-  void trackSensors(const padwave::internal::InputBody &b) {
+  void trackSensors(const padwave::InputBody &b) {
     int64_t now = nowMs();
     bool jack = b.headset();
-    const padwave::internal::InputBody::Stick left = b.leftStick();
-    const padwave::internal::InputBody::Stick right = b.rightStick();
-    const padwave::internal::InputBody::Triggers triggers = b.triggers();
+    const padwave::InputBody::Stick left = b.leftStick();
+    const padwave::InputBody::Stick right = b.rightStick();
+    const padwave::InputBody::Triggers triggers = b.triggers();
     int l2 = triggers.left, r2 = triggers.right;
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
-    const padwave::internal::InputBody::Buttons buttons = b.buttons();
-    padwave::internal::InputBody::Dpad dpad = b.dpad();
+    const padwave::InputBody::Buttons buttons = b.buttons();
+    padwave::InputBody::Dpad dpad = b.dpad();
     bool first = !sensors.has_prev;
 
     bool real = false, analog = false;
@@ -212,7 +212,7 @@ private:
     sensors.prev_jack = jack;
   }
 
-  void trackDpad(padwave::internal::InputBody::Dpad dpad) {
+  void trackDpad(padwave::InputBody::Dpad dpad) {
     static const int steps[] = {10, 20, 40, 60};
     static const int intervals[] = {320, 260, 190, 130};
 
@@ -222,19 +222,19 @@ private:
       dpad_state.prev = dpad;
       dpad_state.hold_dir = 0;
 
-      if (dpad == padwave::internal::InputBody::Dpad::Left) {
+      if (dpad == padwave::InputBody::Dpad::Left) {
         emitAction("seek", -6);
         dpad_state.hold_dir = -1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-      } else if (dpad == padwave::internal::InputBody::Dpad::Right) {
+      } else if (dpad == padwave::InputBody::Dpad::Right) {
         emitAction("seek", 6);
         dpad_state.hold_dir = 1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-      } else if (dpad == padwave::internal::InputBody::Dpad::Up) {
+      } else if (dpad == padwave::InputBody::Dpad::Up) {
         emitAction("next", 0);
-      } else if (dpad == padwave::internal::InputBody::Dpad::Down) {
+      } else if (dpad == padwave::InputBody::Dpad::Down) {
         emitAction("previous", 0);
       }
       return;
@@ -257,13 +257,13 @@ private:
   void emitAction(const char *name, int value);
   void emitEvent(const char *name);
   void emitMic(const int16_t *pcm, size_t samples);
-  void emitFrameToApp(const padwave::internal::InputBody &b, const uint8_t *raw, size_t len);
+  void emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len);
 
-  void emitFrame(const padwave::internal::InputBody &b, const uint8_t *raw, size_t len) {
+  void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
     trackDpad(b.dpad());
     trackButtons(b.buttons());
-    const padwave::internal::InputBody::Triggers triggers = b.triggers();
+    const padwave::InputBody::Triggers triggers = b.triggers();
     trackTriggers(triggers.left, triggers.right);
     trackSensors(b);
   }
@@ -291,7 +291,7 @@ private:
 
     if (buf[0] == static_cast<uint8_t>(padwave::Packet::PacketInputUsb) &&
         len >= padwave::InputReport::UsbSize)
-      emitFrame(*reinterpret_cast<const padwave::internal::InputBody *>((buf + 1)), buf,
+      emitFrame(*reinterpret_cast<const padwave::InputBody *>((buf + 1)), buf,
                 padwave::InputReport::UsbSize);
   }
 

@@ -315,7 +315,7 @@ private:
   };
 
   // The state-coloured lightbar and the player-LED ownership. The player's
-  // 0x36 snapshot carries whatever `fields` last merged into its output body.
+  // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
   int led_custom[3] = {0, 0, 0};
   bool led_custom_set = false;
   bool led_force = true;
@@ -1266,43 +1266,42 @@ private:
     this->playhead_dirty = true;
   }
 
-  static const char *dpadName(padwave::internal::InputBody::Dpad dpad) {
-    if (dpad == padwave::internal::InputBody::Dpad::Up) return "up";
-    if (dpad == padwave::internal::InputBody::Dpad::UpRight) return "up_right";
-    if (dpad == padwave::internal::InputBody::Dpad::Right) return "right";
-    if (dpad == padwave::internal::InputBody::Dpad::DownRight) return "down_right";
-    if (dpad == padwave::internal::InputBody::Dpad::Down) return "down";
-    if (dpad == padwave::internal::InputBody::Dpad::DownLeft) return "down_left";
-    if (dpad == padwave::internal::InputBody::Dpad::Left) return "left";
-    if (dpad == padwave::internal::InputBody::Dpad::UpLeft) return "up_left";
+  static const char *dpadName(padwave::InputBody::Dpad dpad) {
+    if (dpad == padwave::InputBody::Dpad::Up) return "up";
+    if (dpad == padwave::InputBody::Dpad::UpRight) return "up_right";
+    if (dpad == padwave::InputBody::Dpad::Right) return "right";
+    if (dpad == padwave::InputBody::Dpad::DownRight) return "down_right";
+    if (dpad == padwave::InputBody::Dpad::Down) return "down";
+    if (dpad == padwave::InputBody::Dpad::DownLeft) return "down_left";
+    if (dpad == padwave::InputBody::Dpad::Left) return "left";
+    if (dpad == padwave::InputBody::Dpad::UpLeft) return "up_left";
     return "none";
   }
 
-  static void buttonsToString(const padwave::internal::InputBody::Buttons buttons, char *out,
-                              size_t cap) {
+  static void buttonsToString(const padwave::InputBody::Buttons buttons, char *out, size_t cap) {
     struct {
-      padwave::internal::InputBody::Button button;
+      padwave::InputBody::Button button;
       const char *name;
     } names[] = {
-        {padwave::internal::InputBody::Button::ButtonSquare, "square"},
-        {padwave::internal::InputBody::Button::ButtonCross, "cross"},
-        {padwave::internal::InputBody::Button::ButtonCircle, "circle"},
-        {padwave::internal::InputBody::Button::ButtonTriangle, "triangle"},
-        {padwave::internal::InputBody::Button::L1, "l1"},
-        {padwave::internal::InputBody::Button::R1, "r1"},
-        {padwave::internal::InputBody::Button::L2, "l2"},
-        {padwave::internal::InputBody::Button::R2, "r2"},
-        {padwave::internal::InputBody::Button::Create, "create"},
-        {padwave::internal::InputBody::Button::Options, "options"},
-        {padwave::internal::InputBody::Button::L3, "l3"},
-        {padwave::internal::InputBody::Button::R3, "r3"},
-        {padwave::internal::InputBody::Button::Ps, "ps"},
-        {padwave::internal::InputBody::Button::Touchpad, "touchpad"},
-        {padwave::internal::InputBody::Button::Mute, "mute"},
-        {padwave::internal::InputBody::Button::Fn1, "fn1"},
-        {padwave::internal::InputBody::Button::Fn2, "fn2"},
-        {padwave::internal::InputBody::Button::LeftPaddle, "left_paddle"},
-        {padwave::internal::InputBody::Button::RightPaddle, "right_paddle"},
+        {padwave::InputBody::Button::ButtonSquare, "square"},
+        {padwave::InputBody::Button::ButtonCross, "cross"},
+        {padwave::InputBody::Button::ButtonCircle, "circle"},
+        {padwave::InputBody::Button::ButtonTriangle, "triangle"},
+        {padwave::InputBody::Button::L1, "l1"},
+        {padwave::InputBody::Button::R1, "r1"},
+        {padwave::InputBody::Button::L2, "l2"},
+        {padwave::InputBody::Button::R2, "r2"},
+        {padwave::InputBody::Button::Create, "create"},
+        {padwave::InputBody::Button::Options, "options"},
+        {padwave::InputBody::Button::L3, "l3"},
+        {padwave::InputBody::Button::R3, "r3"},
+        {padwave::InputBody::Button::Ps, "ps"},
+        {padwave::InputBody::Button::Touchpad, "touchpad"},
+        {padwave::InputBody::Button::Mute, "mute"},
+        {padwave::InputBody::Button::Fn1, "fn1"},
+        {padwave::InputBody::Button::Fn2, "fn2"},
+        {padwave::InputBody::Button::LeftPaddle, "left_paddle"},
+        {padwave::InputBody::Button::RightPaddle, "right_paddle"},
     };
 
     size_t o = 0;
@@ -1315,7 +1314,7 @@ private:
     }
   }
 
-  void inputFrame(const padwave::internal::InputBody &b, const uint8_t *raw_buf, size_t len) {
+  void inputFrame(const padwave::InputBody &b, const uint8_t *raw_buf, size_t len) {
     bool was_connected = this->controller;
     this->controller = true;
     if (!was_connected) {
@@ -1331,13 +1330,13 @@ private:
         }
       }
     }
-    const padwave::internal::InputBody::Stick left = b.leftStick();
-    const padwave::internal::InputBody::Stick right = b.rightStick();
+    const padwave::InputBody::Stick left = b.leftStick();
+    const padwave::InputBody::Stick right = b.rightStick();
     this->lx = left.x;
     this->ly = left.y;
     this->rx = right.x;
     this->ry = right.y;
-    const padwave::internal::InputBody::Triggers triggers = b.triggers();
+    const padwave::InputBody::Triggers triggers = b.triggers();
     this->l2 = triggers.left;
     this->r2 = triggers.right;
     this->battery = b.battery();
@@ -1350,18 +1349,18 @@ private:
     for (size_t i = 0; i < r; i++)
       snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
     {
-      using ChargingState = padwave::internal::InputBody::ChargingState;
+      using ChargingState = padwave::InputBody::ChargingState;
       ChargingState charge = b.charging();
       snprintf(this->charging, sizeof(this->charging), "%s",
                charge == ChargingState::Charging ? "charging"
                : charge == ChargingState::Full   ? "full"
                                                  : "discharging");
     }
-    const padwave::internal::InputBody::Gyro gyro = b.gyro();
+    const padwave::InputBody::Gyro gyro = b.gyro();
     this->gx = gyro.x;
     this->gy = gyro.y;
     this->gz = gyro.z;
-    const padwave::internal::InputBody::Accelerometer accel = b.accelerometer();
+    const padwave::InputBody::Accelerometer accel = b.accelerometer();
     this->ax = accel.x;
     this->ay = accel.y;
     this->az = accel.z;
@@ -1369,7 +1368,7 @@ private:
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
     for (int t = 0; t < 2; t++) {
-      const padwave::internal::InputBody::Touch touch = b.touch(t);
+      const padwave::InputBody::Touch touch = b.touch(t);
       this->touch_active[t] = touch.active ? 1 : 0;
       this->touch_id[t] = touch.id;
       this->touch_x[t] = touch.x;

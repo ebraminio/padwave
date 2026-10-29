@@ -1,21 +1,10 @@
 #pragma once
-// The wire formats: endian-safe integer wrappers and the DualSense reports.
-// Implementation details live in padwave::internal.
-// This is the only file that describes the packets.
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <opus/opus.h>
 #include <math.h>
 
-// Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
-// conversion to arithmetic types, but little-endian instead of HarfBuzz's
-// big-endian.
-//
-// The value is *stored as little-endian bytes*, not as a host integer, so a
-// struct made of these types is byte-identical to the wire on any machine —
-// big-endian hosts included. get()/set() assemble and split the bytes one at a
-// time; there is no memcpy of an integer and no host byte-order assumption.
+#include <opus/opus.h>
 
 namespace padwave {
 namespace internal {
@@ -67,15 +56,12 @@ struct NumType {
   unsigned char bytes[sizeof(Type)];
 };
 
-} // namespace internal
-} // namespace padwave
-
-typedef padwave::internal::NumType<uint8_t> PWUINT8;
-typedef padwave::internal::NumType<uint16_t> PWUINT16;
-typedef padwave::internal::NumType<uint32_t> PWUINT32;
-typedef padwave::internal::NumType<int8_t, uint8_t> PWINT8;
-typedef padwave::internal::NumType<int16_t, uint16_t> PWINT16;
-typedef padwave::internal::NumType<int32_t, uint32_t> PWINT32;
+using PWUINT8 = NumType<uint8_t>;
+using PWUINT16 = NumType<uint16_t>;
+using PWUINT32 = NumType<uint32_t>;
+using PWINT8 = NumType<int8_t, uint8_t>;
+using PWINT16 = NumType<int16_t, uint16_t>;
+using PWINT32 = NumType<int32_t, uint32_t>;
 
 static_assert(sizeof(PWUINT8) == 1, "PWUINT8 is one byte");
 static_assert(sizeof(PWUINT16) == 2, "PWUINT16 is two bytes");
@@ -83,20 +69,6 @@ static_assert(sizeof(PWUINT32) == 4, "PWUINT32 is four bytes");
 static_assert(sizeof(PWINT8) == 1, "PWINT8 is one byte");
 static_assert(sizeof(PWINT16) == 2, "PWINT16 is two bytes");
 static_assert(sizeof(PWINT32) == 4, "PWINT32 is four bytes");
-
-namespace padwave {
-
-// Report ordinals, common to every schema. 0x31 is both the input and the
-// output state report; the direction is the stream, not the id.
-enum class Packet : uint8_t {
-  PacketInputUsb = 0x01,
-  PacketOutputUsb = 0x02,
-  PacketFeatureCalibration = 0x05,
-  PacketFeaturePairing = 0x09,
-  PacketFeatureFirmware = 0x20,
-  PacketStateBluetooth = 0x31,
-  PacketAudio = 0x36,
-};
 
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
@@ -149,14 +121,27 @@ static constexpr uint32_t crc_of(const Report &report) {
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
-namespace internal {
 struct OutputBodyProbe;
 struct AudioReportProbe;
 } // namespace internal
 
-struct OutputBody {
-  friend struct internal::OutputBodyProbe;
+// Report ordinals, common to every schema. 0x31 is both the input and the
+// output state report; the direction is the stream, not the id.
 
+enum class Packet : uint8_t {
+  PacketInputUsb = 0x01,
+  PacketOutputUsb = 0x02,
+  PacketFeatureCalibration = 0x05,
+  PacketFeaturePairing = 0x09,
+  PacketFeatureFirmware = 0x20,
+  PacketStateBluetooth = 0x31,
+  PacketAudio = 0x36,
+};
+
+struct OutputBody {
+  friend struct padwave::internal::OutputBodyProbe;
+private:
+  using PWUINT8 = padwave::internal::PWUINT8;
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
@@ -438,6 +423,9 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // Implementation-only wire wrappers. Consumers use InputReport, OutputReport,
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
+private:
+  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWUINT32 = padwave::internal::PWUINT32;
 protected:
   PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
@@ -465,9 +453,9 @@ public:
 
   constexpr OutputBody &body() { return body_; }
 
-  constexpr void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = internal::crc_of(*this); }
 
-  constexpr bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
+  constexpr bool valid() const { return report_id == ReportId && crc == internal::crc_of(*this); }
 };
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
@@ -476,6 +464,8 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
+private:
+  using PWUINT8 = padwave::internal::PWUINT8;
 protected:
   PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
   OutputBody body_;     // 0x01..0x2f
@@ -512,8 +502,12 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // Every byte is named, either with what it does or with an honest reserved/
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
-namespace internal {
 struct InputBody {
+private:
+  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWUINT32 = padwave::internal::PWUINT32;
+  using PWINT16 = padwave::internal::PWINT16;
+
 protected:
   PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
   PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
@@ -560,7 +554,6 @@ protected:
 public:
   enum : uint8_t { Size = 63 };
 
-public:
   struct Stick {
     int x;
     int y;
@@ -746,13 +739,14 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // DS_INPUT_REPORT_BT_SIZE 78); the CRC covers the report with seed 0xA1.
 // ===========================================================================
 
-} // namespace internal
-
 struct InputReport {
+private:
+  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWUINT32 = padwave::internal::PWUINT32;
 protected:
   PWUINT8 report_id;         // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;           // 0x01  high nibble = sequence tag, low nibble = 0
-  internal::InputBody body_; // 0x02..0x40
+  InputBody body_; // 0x02..0x40
   PWUINT8 bt_reserved[9];    // 0x41..0x49  the first byte is not constant (30
                              //             distinct values in a 150 s capture), the
                              //             other eight were; unknown
@@ -767,13 +761,13 @@ public:
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
-  constexpr const internal::InputBody &body() const { return body_; }
+  constexpr const InputBody &body() const { return body_; }
 
-  constexpr internal::InputBody &body() { return body_; }
+  constexpr InputBody &body() { return body_; }
 
-  constexpr void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = padwave::internal::crc_of(*this); }
 
-  constexpr bool valid() const { return crc == crc_of(*this); }
+  constexpr bool valid() const { return crc == padwave::internal::crc_of(*this); }
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
@@ -822,6 +816,11 @@ struct AudioReport {
   friend struct internal::AudioReportProbe;
 
 private:
+  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWINT8 = padwave::internal::PWINT8;
+  using PWUINT32 = padwave::internal::PWUINT32;
+  using PWINT16 = padwave::internal::PWINT16;
+
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
   // the trigger effect to this stream, which writes zeros to it 93 times a
@@ -973,9 +972,9 @@ public:
     for (size_t i = n; i < OpusSize; ++i) opus[i] = 0;
   }
 
-  constexpr void sign() { crc = crc_of(*this); }
+  constexpr void sign() { crc = padwave::internal::crc_of(*this); }
 
-  constexpr bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
+  constexpr bool valid() const { return report_id == ReportId && crc == padwave::internal::crc_of(*this); }
 };
 
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
@@ -1186,14 +1185,13 @@ struct MicFrame {
   }
 };
 
-} // namespace padwave
-
 // ===========================================================================
 // Compile-time wire checks
 // ===========================================================================
 //
 // These static_asserts are part of the header, so every translation unit that
 // uses the schema validates endianness, offsets, initialized fields and CRC.
+namespace internal {
 namespace wire_test {
 
 // --- byte order ------------------------------------------------------------
@@ -1233,10 +1231,10 @@ static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
 // --- CRC-32 ----------------------------------------------------------------
 
 constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-static_assert(padwave::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+static_assert(padwave::internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
 constexpr uint32_t kChained = [] {
-  uint32_t c = padwave::crc32(0, kCheck, 4);
-  return padwave::crc32(c, kCheck + 4, 5);
+  uint32_t c = padwave::internal::crc32(0, kCheck, 4);
+  return padwave::internal::crc32(c, kCheck + 4, 5);
 }();
 static_assert(kChained == 0xCBF43926u);
 
@@ -1282,8 +1280,10 @@ constexpr padwave::AudioReport kSigned = [] {
 }();
 static_assert(kSigned.valid());
 
-constexpr auto kRaw = __builtin_bit_cast(padwave::WireBytes<padwave::AudioReport>, kSigned);
+constexpr auto kRaw = __builtin_bit_cast(padwave::internal::WireBytes<padwave::AudioReport>, kSigned);
 constexpr padwave::AudioReport kCopy = __builtin_bit_cast(padwave::AudioReport, kRaw);
 static_assert(kCopy.valid());
 
+} // namespace internal
 } // namespace wire_test
+} // namespace padwave
