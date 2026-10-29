@@ -17,17 +17,21 @@ static bool write_file(const char *dir, const char *name, const void *data, size
   return ok;
 }
 
-static padwave::InputReport report(uint32_t buttons) {
-  padwave::InputReport r{};
-  r.report_id = padwave::InputReport::ReportId;
-  r.seq_tag = 0x10;
-  r.body.lx = 128;
-  r.body.ly = 128;
-  r.body.rx = 128;
-  r.body.ry = 128;
-  r.body.status0 = 0x15;
-  r.body.temperature = 30;
-  r.body.buttons = buttons;
+static padwave::internal::InputReport report(uint32_t buttons) {
+  padwave::internal::InputReport r{};
+  auto *raw = reinterpret_cast<uint8_t *>(&r);
+  raw[0] = padwave::internal::InputReport::ReportId;
+  raw[1] = 0x10;
+  raw[2 + 0x00] = 128;
+  raw[2 + 0x01] = 128;
+  raw[2 + 0x02] = 128;
+  raw[2 + 0x03] = 128;
+  raw[2 + 0x07] = static_cast<uint8_t>(buttons);
+  raw[2 + 0x08] = static_cast<uint8_t>(buttons >> 8);
+  raw[2 + 0x09] = static_cast<uint8_t>(buttons >> 16);
+  raw[2 + 0x0a] = static_cast<uint8_t>(buttons >> 24);
+  raw[2 + 0x1f] = 30;
+  raw[2 + 0x34] = 0x15;
   r.sign();
   return r;
 }
@@ -35,11 +39,11 @@ static padwave::InputReport report(uint32_t buttons) {
 int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
-  padwave::InputReport neutral = report(0);
-  padwave::InputReport pressed = report(padwave::InputBody::ButtonCross);
-  padwave::InputReport released = report(0);
+  padwave::internal::InputReport neutral = report(0);
+  padwave::internal::InputReport pressed = report(1u << 5);
+  padwave::internal::InputReport released = report(0);
 
-  uint8_t usb[padwave::InputReport::UsbSize] = {padwave::InputReport::UsbReportId};
+  uint8_t usb[padwave::internal::InputReport::UsbSize] = {padwave::internal::InputReport::UsbReportId};
   usb[1 + 0] = 0x80;
   usb[1 + 1] = 0x80;
 

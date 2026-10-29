@@ -242,7 +242,7 @@ private:
   char manual_path[1024] = "";
   bool seek_fade = false;
 
-  padwave::OutputReport out{};
+  padwave::internal::OutputReport out{};
   uint8_t out_seq = 0;
   padwave::OutputBody state{};
   bool mic = false;
@@ -502,7 +502,7 @@ private:
   }
 
   void sendMuteLed(bool on) {
-    padwave::OutputReport report{};
+    padwave::internal::OutputReport report{};
     report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);

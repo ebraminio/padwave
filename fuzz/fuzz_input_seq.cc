@@ -10,7 +10,7 @@ extern "C" size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   Input h;
-  constexpr size_t kReport = padwave::InputReport::Size;
+  constexpr size_t kReport = padwave::internal::InputReport::Size;
   for (size_t off = 0; off + kReport <= size; off += kReport) h.parse(data + off, kReport);
   return 0;
 }
@@ -18,10 +18,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max_size,
                                           unsigned int seed) {
   size = LLVMFuzzerMutate(data, size, max_size);
-  constexpr size_t kReport = padwave::InputReport::Size;
+  constexpr size_t kReport = padwave::internal::InputReport::Size;
   for (size_t off = 0; off + kReport <= size; off += kReport) {
-    if (data[off] == padwave::InputReport::ReportId) {
-      auto *report = reinterpret_cast<padwave::InputReport *>(data + off);
+    if (data[off] == padwave::internal::InputReport::ReportId) {
+      auto *report = reinterpret_cast<padwave::internal::InputReport *>(data + off);
       report->sign();
     }
   }

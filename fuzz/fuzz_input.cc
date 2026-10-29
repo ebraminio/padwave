@@ -20,8 +20,8 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max
                                           unsigned int seed) {
   size = LLVMFuzzerMutate(data, size, max_size);
 
-  if (size == padwave::InputReport::Size && data[0] == padwave::InputReport::ReportId) {
-    auto *report = reinterpret_cast<padwave::InputReport *>(data);
+  if (size == padwave::internal::InputReport::Size && data[0] == padwave::internal::InputReport::ReportId) {
+    auto *report = reinterpret_cast<padwave::internal::InputReport *>(data);
     report->sign(); // keep the CRC in sync with the mutated body
   }
   return size;

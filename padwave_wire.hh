@@ -147,10 +147,13 @@ static constexpr uint32_t crc_of(const Report &report) {
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
+namespace internal {
 struct OutputBodyProbe;
+struct AudioReportProbe;
+} // namespace internal
 
 struct OutputBody {
-  friend struct OutputBodyProbe;
+  friend struct internal::OutputBodyProbe;
 
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
@@ -430,6 +433,9 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // Output 0x31 (Bluetooth, 78 bytes, CRC at the end)
 // ===========================================================================
 
+// Implementation-only wire wrappers. Consumers use InputBody, OutputBody,
+// AudioReport and MicFrame from padwave.
+namespace internal {
 struct OutputReport {
 protected:
   PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
@@ -479,6 +485,7 @@ public:
 };
 
 static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
+} // namespace internal
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -734,6 +741,7 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // DS_INPUT_REPORT_BT_SIZE 78); the CRC covers the report with seed 0xA1.
 // ===========================================================================
 
+namespace internal {
 struct InputReport {
 protected:
   PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
@@ -763,6 +771,7 @@ public:
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
+} // namespace internal
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -804,11 +813,10 @@ static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78
 // 0xF1 (volumes and routing only) fixed it. The lightbar was never affected
 // because the high byte (0xE3) does not claim the LED colour bit.
 
-struct AudioReportProbe;
-
 struct AudioReport {
-  friend struct AudioReportProbe;
+  friend struct internal::AudioReportProbe;
 
+private:
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
   // the trigger effect to this stream, which writes zeros to it 93 times a
@@ -965,10 +973,9 @@ public:
   constexpr bool valid() const { return report_id == ReportId && crc == crc_of(*this); }
 };
 
-static_assert(sizeof(AudioReport::State) == AudioReport::StateSize,
-              "the audio state snapshot must stay 63 bytes");
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
 
+namespace internal {
 struct OutputBodyProbe {
   static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
 
@@ -997,7 +1004,10 @@ struct AudioReportProbe {
   static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speaker_length; }
 
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
+
+  static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
 };
+} // namespace internal
 
 // ===========================================================================
 // Feature reports — the configuration channel
@@ -1023,6 +1033,7 @@ struct AudioReportProbe {
 // The Edge also exposes profile reports in the 0x60..0x7B range, beyond what
 // padwave needs.
 
+namespace internal {
 struct Calibration {
 protected:
   PWUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
@@ -1082,6 +1093,7 @@ public:
 };
 
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
+} // namespace internal
 
 // ===========================================================================
 // Microphone frames inside the 0x31 input stream
@@ -1235,26 +1247,26 @@ constexpr padwave::AudioReport kReport = [] {
 }();
 
 static_assert(sizeof(padwave::AudioReport) == 398);
-static_assert(sizeof(padwave::AudioReport::State) == 63);
+static_assert(padwave::internal::AudioReportProbe::stateSize() == 63);
 static_assert(sizeof(padwave::OutputBody) == 47);
 
-static_assert(padwave::AudioReportProbe::reportId(kReport) == 0x36);
-static_assert(padwave::AudioReportProbe::seqTag(kReport) == 0x00);
-static_assert(padwave::AudioReportProbe::configTag(kReport) == 0x91);
-static_assert(padwave::AudioReportProbe::configLength(kReport) == 7);
+static_assert(padwave::internal::AudioReportProbe::reportId(kReport) == 0x36);
+static_assert(padwave::internal::AudioReportProbe::seqTag(kReport) == 0x00);
+static_assert(padwave::internal::AudioReportProbe::configTag(kReport) == 0x91);
+static_assert(padwave::internal::AudioReportProbe::configLength(kReport) == 7);
 static_assert(kReport.enableMask() == padwave::AudioReport::EnableMask::SpeakerOnly);
-static_assert(padwave::AudioReportProbe::hapticLength(kReport, 0) == 64);
-static_assert(padwave::AudioReportProbe::hapticLength(kReport, 4) == 64);
-static_assert(padwave::AudioReportProbe::counter(kReport) == 0);
-static_assert(padwave::AudioReportProbe::stateTag(kReport) == 0x90);
-static_assert(padwave::AudioReportProbe::stateLength(kReport) == 63);
-static_assert(padwave::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
-static_assert(padwave::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
+static_assert(padwave::internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
+static_assert(padwave::internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
+static_assert(padwave::internal::AudioReportProbe::counter(kReport) == 0);
+static_assert(padwave::internal::AudioReportProbe::stateTag(kReport) == 0x90);
+static_assert(padwave::internal::AudioReportProbe::stateLength(kReport) == 63);
+static_assert(padwave::internal::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
+static_assert(padwave::internal::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
 static_assert(kReport.stateBody().headphoneVolume() == 0x7F);
 static_assert(kReport.stateBody().speakerVolume() == 0x64);
 static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
-static_assert(padwave::AudioReportProbe::speakerLength(kReport) == 200);
-static_assert(padwave::AudioReportProbe::opusByte(kReport, 0) == 0);
+static_assert(padwave::internal::AudioReportProbe::speakerLength(kReport) == 200);
+static_assert(padwave::internal::AudioReportProbe::opusByte(kReport, 0) == 0);
 
 // --- sign / validate / byte copy, all constexpr ---------------------------
 
