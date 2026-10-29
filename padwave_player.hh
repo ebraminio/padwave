@@ -507,7 +507,7 @@ private:
     report.tag = 0x10;
     report.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
     char fields[64];
-    snprintf(fields, sizeof(fields), "valid_flag1=mute_led;mute_button_led=%d", on ? 1 : 0);
+    snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
     if (!padwave_fields::apply_fields(&report.body, fields)) return;
     report.sign();
 
@@ -862,7 +862,8 @@ public:
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = use_speaker;
-    state.init(this->speaker ? padwave::OutputBody::AudioControl::Speaker : padwave::OutputBody::AudioControl::Headphones);
+    state.init(this->speaker ? padwave::OutputBody::AudioControl::Speaker
+                             : padwave::OutputBody::AudioControl::Headphones);
 
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");

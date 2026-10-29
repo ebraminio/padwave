@@ -271,6 +271,12 @@ public:
     valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(flag));
   }
 
+  constexpr void claim(ValidFlag0 f) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | bit(f)); }
+
+  constexpr void claim(ValidFlag1 f) { valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(f)); }
+
+  constexpr void claim(ValidFlag2 f) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | bit(f)); }
+
   constexpr void setValidFlag0(uint8_t v) { valid_flag0 = v; }
 
   constexpr void mergeValidFlag0(uint8_t v) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | v); }
@@ -283,47 +289,105 @@ public:
 
   constexpr void mergeValidFlag2(uint8_t v) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | v); }
 
-  constexpr void setMotorRight(uint8_t v) { motor_right = v; }
+  constexpr void setMotorRight(uint8_t v) {
+    claim(ValidFlag0::Rumble);
+    claim(ValidFlag0::Haptics);
+    motor_right = v;
+  }
 
-  constexpr void setMotorLeft(uint8_t v) { motor_left = v; }
+  constexpr void setMotorLeft(uint8_t v) {
+    claim(ValidFlag0::Rumble);
+    claim(ValidFlag0::Haptics);
+    motor_left = v;
+  }
 
-  constexpr void setHeadphoneVolume(uint8_t v) { headphone_volume = v; }
+  constexpr void setHeadphoneVolume(uint8_t v) {
+    claim(ValidFlag0::HeadphoneVolume);
+    headphone_volume = v;
+  }
 
-  constexpr void setSpeakerVolume(uint8_t v) { speaker_volume = v; }
+  constexpr void setSpeakerVolume(uint8_t v) {
+    claim(ValidFlag0::SpeakerVolume);
+    speaker_volume = v;
+  }
 
-  constexpr void setMicVolume(uint8_t v) { mic_volume = v; }
+  constexpr void setMicVolume(uint8_t v) {
+    claim(ValidFlag0::MicVolume);
+    mic_volume = v;
+  }
 
-  constexpr void setAudioRouting(uint8_t v) { audio_control = v; }
+  constexpr void setAudioRouting(uint8_t v) {
+    claim(ValidFlag0::AudioRouting);
+    audio_control = v;
+  }
 
-  constexpr void setMuteButtonLed(uint8_t v) { mute_button_led = v; }
+  constexpr void setMuteButtonLed(uint8_t v) {
+    claim(ValidFlag1::MuteLed);
+    mute_button_led = v;
+  }
 
-  constexpr void setPowerSaveControl(uint8_t v) { power_save_control = v; }
+  constexpr void setPowerSaveControl(uint8_t v) {
+    claim(ValidFlag1::PowerSave);
+    power_save_control = v;
+  }
 
-  constexpr void setRightTriggerMode(uint8_t v) { right_trigger_mode = v; }
+  constexpr void setRightTriggerMode(uint8_t v) {
+    claim(ValidFlag0::RightTrigger);
+    right_trigger_mode = v;
+  }
 
-  constexpr void setLeftTriggerMode(uint8_t v) { left_trigger_mode = v; }
+  constexpr void setLeftTriggerMode(uint8_t v) {
+    claim(ValidFlag0::LeftTrigger);
+    left_trigger_mode = v;
+  }
 
-  constexpr void setHapticVolume(uint8_t v) { haptic_volume = v; }
+  constexpr void setHapticVolume(uint8_t v) {
+    claim(ValidFlag1::HapticLpf);
+    haptic_volume = v;
+  }
 
-  constexpr void setAudioControl2(uint8_t v) { audio_control2 = v; }
+  constexpr void setAudioControl2(uint8_t v) {
+    claim(ValidFlag1::AudioControl2);
+    audio_control2 = v;
+  }
 
-  constexpr void setLightbarSetup(uint8_t v) { lightbar_setup = v; }
+  constexpr void setLightbarSetup(uint8_t v) {
+    claim(ValidFlag2::ColorFade);
+    lightbar_setup = v;
+  }
 
-  constexpr void setLedBrightness(uint8_t v) { led_brightness = v; }
+  constexpr void setLedBrightness(uint8_t v) {
+    claim(ValidFlag2::Brightness);
+    led_brightness = v;
+  }
 
-  constexpr void setPlayerLedsMask(uint8_t v) { player_leds = v; }
+  constexpr void setPlayerLedsMask(uint8_t v) {
+    claim(ValidFlag1::PlayerLeds);
+    player_leds = v;
+  }
 
-  constexpr void setLightbarRed(uint8_t v) { lightbar_red = v; }
+  constexpr void setLightbarRed(uint8_t v) {
+    claim(ValidFlag1::Lightbar);
+    lightbar_red = v;
+  }
 
-  constexpr void setLightbarGreen(uint8_t v) { lightbar_green = v; }
+  constexpr void setLightbarGreen(uint8_t v) {
+    claim(ValidFlag1::Lightbar);
+    lightbar_green = v;
+  }
 
-  constexpr void setLightbarBlue(uint8_t v) { lightbar_blue = v; }
+  constexpr void setLightbarBlue(uint8_t v) {
+    claim(ValidFlag1::Lightbar);
+    lightbar_blue = v;
+  }
 
   constexpr void setRightTriggerParams(const uint8_t *v) {
+    claim(ValidFlag0::RightTrigger);
     for (size_t i = 0; i < 10; i++) right_trigger_params[i] = v[i];
   }
 
   constexpr void setLeftTriggerParams(const uint8_t *v) {
+    claim(ValidFlag0::LeftTrigger);
     for (size_t i = 0; i < 10; i++) left_trigger_params[i] = v[i];
   }
 

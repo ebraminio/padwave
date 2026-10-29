@@ -372,10 +372,10 @@
         <button id="labBarApply">apply</button>
         <button id="labBarReset">reset</button>
         <label>brightness <input type="range" id="labBright" min="0" max="255" value="255" style="width:80px"></label>
-        <button id="labBarFade" title="valid_flag2 bit 1 + lightbar_setup 0x02: one-shot light out">light out</button>
+        <button id="labBarFade" title="lightbar_setup 0x02: one-shot light out">light out</button>
         <button id="labBarPulse" title="host-driven 1 Hz smooth pulse; lightbar_setup cannot do this">pulse 3s</button>
         <label>setup <input type="number" id="labSetup" min="0" max="255" value="2" style="width:58px" title="lightbar_setup (0x02 = light out)"></label>
-        <button id="labBarSetup" title="send lightbar_setup under valid_flag2 bit 1">send</button>
+        <button id="labBarSetup" title="send lightbar_setup">send</button>
         <span style="font-size:11px">(reset returns to cyan / amber / purple / red states)</span>
       </div>
 
@@ -396,9 +396,9 @@
         <span id="labPsMsg" style="font-family:var(--mono);font-size:11px"></span>
       </div>
       <p style="color:var(--muted);font-size:11.5px;margin:6px 0 0">
-        power_save_control (+0x09, gated by valid_flag1 bit 1). Bit 4 is documented as microphone
-        mute, bit 6 as audio mute; the rest are guesses — if one stops the motion sensors, the
-        gyro/accelerometer above will go flat.
+        power_save_control (+0x09). Bit 4 is documented as microphone mute, bit 6 as audio mute;
+        the rest are guesses — if one stops the motion sensors, the gyro/accelerometer above will
+        go flat.
       </p>
 
       <div class="lab-row">
@@ -447,10 +447,10 @@
         <summary>raw output fields · everything the report can carry</summary>
         <p style="color:var(--muted);font-size:11.5px;margin:8px 0">
           A map of field name to byte value (or array of bytes), framed and CRC-signed for you.
-          Field names and offsets live in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> (also at <code style="font-family:var(--mono)">/api/schema</code>) — try <code style="font-family:var(--mono)">{ "valid_flag2": 2, "lightbar_setup": 2 }</code>
-          or <code style="font-family:var(--mono)">{ "valid_flag1": ["lightbar"], "lightbar_red": 255, "led_brightness": 60 }</code>.
+          Field names and offsets live in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> (also at <code style="font-family:var(--mono)">/api/schema</code>) — try <code style="font-family:var(--mono)">{ "lightbar_setup": 2 }</code>
+          or <code style="font-family:var(--mono)">{ "lightbar_red": 255, "led_brightness": 60 }</code>.
         </p>
-        <textarea id="labRaw">{ "valid_flag1": ["lightbar"], "lightbar_red": 0, "lightbar_green": 160, "lightbar_blue": 255 }</textarea>
+        <textarea id="labRaw">{ "lightbar_red": 0, "lightbar_green": 160, "lightbar_blue": 255 }</textarea>
         <div class="lab-row"><button id="labRawSend">send report</button><span id="labRawMsg"></span></div>
       </details>
     </section>

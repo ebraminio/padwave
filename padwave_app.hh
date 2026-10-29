@@ -780,9 +780,9 @@ public:
 
     if (strcmp(kind, "lightbar_fade") == 0) {
       this->led_pulse_until = 0;
-      // hid-playstation: valid_flag2 bit 1 enables the setup byte, and
-      // lightbar_setup 0x02 asks the controller to fade the bar out.
-      outputFields("valid_flag2=color_fade;lightbar_setup=2");
+      // lightbar_setup 0x02 asks the controller to fade the bar out; the
+      // setter claims the ColorFade validity bit.
+      outputFields("lightbar_setup=2");
       playerSend("state_clear_lightbar\n");
       return snprintf(out, out_cap, "ok=true\nnote=light out\n");
     }
@@ -790,7 +790,7 @@ public:
     if (strcmp(kind, "lightbar_setup") == 0) {
       int v = static_cast<int>(kvNumber(body, "value", 0));
       this->led_pulse_until = 0;
-      snprintf(fields, sizeof(fields), "valid_flag2=color_fade;lightbar_setup=%d", v & 0xFF);
+      snprintf(fields, sizeof(fields), "lightbar_setup=%d", v & 0xFF);
       outputFields(fields);
       playerSend("state_clear_lightbar\n");
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v & 0xFF);
@@ -808,7 +808,7 @@ public:
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
       int v = static_cast<int>(kvNumber(body, "value", 0));
-      snprintf(fields, sizeof(fields), "valid_flag2=brightness;led_brightness=%d", v & 0xFF);
+      snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
     }
@@ -830,7 +830,7 @@ public:
         int bit = atoi(tok);
         if (bit >= 0 && bit < 8) mask |= 1 << bit;
       }
-      snprintf(fields, sizeof(fields), "valid_flag1=power_save;power_save_control=%d", mask);
+      snprintf(fields, sizeof(fields), "power_save_control=%d", mask);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n",
                       static_cast<unsigned>(mask));
@@ -845,8 +845,7 @@ public:
       // The main motors need both ValidFlag0 bits: Rumble (0x01) and Haptics
       // (0x02). DS4Windows and dualsense-tester both set the pair; bit 0 alone
       // is ignored by the controller.
-      snprintf(fields, sizeof(fields), "valid_flag0=rumble,haptics;motor_left=%d;motor_right=%d",
-               left, right);
+      snprintf(fields, sizeof(fields), "motor_left=%d;motor_right=%d", left, right);
       outputFields(fields);
       this->rumble_left = left;
       this->rumble_right = right;
@@ -901,10 +900,9 @@ public:
                params[8], params[9]);
 
       bool left = strcmp(side, "left") == 0;
-      const char *flag = left ? "left_trigger" : "right_trigger";
       const char *prefix = left ? "left" : "right";
-      snprintf(fields, sizeof(fields), "valid_flag0=%s;%s_trigger_mode=0x%02x;%s_trigger_params=%s",
-               flag, prefix, static_cast<unsigned>(mode), prefix, param_text);
+      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x%02x;%s_trigger_params=%s", prefix,
+               static_cast<unsigned>(mode), prefix, param_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
@@ -1695,8 +1693,7 @@ private:
         this->led_last_rgb[2] == b)
       return true;
     char fields[160];
-    snprintf(fields, sizeof(fields),
-             "valid_flag1=lightbar;lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+    snprintf(fields, sizeof(fields), "lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
     outputFields(fields);
     this->led_last_rgb[0] = r;
     this->led_last_rgb[1] = g;
@@ -1708,7 +1705,7 @@ private:
     if (!this->player) return false;
     if (!force && this->led_last_player == mask) return true;
     char fields[96];
-    snprintf(fields, sizeof(fields), "valid_flag1=player_leds;player_leds=%d", mask);
+    snprintf(fields, sizeof(fields), "player_leds=%d", mask);
     outputFields(fields);
     this->led_last_player = mask;
     return true;
@@ -1895,15 +1892,13 @@ private:
     if (!this->player) return;
     long now = nowMs();
     if (this->rumble_until && now >= this->rumble_until) {
-      outputFields("valid_flag0=rumble,haptics;motor_left=0;motor_right=0");
+      outputFields("motor_left=0;motor_right=0");
       this->rumble_until = 0;
     }
     if (this->trigger_until && now >= this->trigger_until) {
-      const char *flag = this->trigger_side == 1 ? "left_trigger" : "right_trigger";
-      const char *prefix = this->trigger_side == 1 ? "left" : "right";
       char fields[192];
-      snprintf(fields, sizeof(fields),
-               "valid_flag0=%s;%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0", flag,
+      const char *prefix = this->trigger_side == 1 ? "left" : "right";
+      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0",
                prefix, prefix);
       outputFields(fields);
       this->trigger_until = 0;
