@@ -46,11 +46,11 @@ PADWAVE_ROOTS=/path/to/audio ./padwave [port]
 
 `PADWAVE_ROOTS` is a colon-separated list scanned recursively; without it the
 app uses `~/Music`. `PADWAVE_HOST`/`PADWAVE_DIR` configure `deploy.sh`. The wire
-layout, field-offset and CRC assertions compile as part of `padwave_wire.hh`.
+layout, field-offset and CRC assertions compile as part of `dualsense.hh`.
 Public packet types are `InputReport`, `OutputReport`, `UsbOutputReport`,
 `AudioReport`, `MicFrame`, and the composable input/output bodies
 (`InputBody`, `OutputBody`). The endian wrappers (`NumType`), feature payloads
-and test probes live in `padwave::internal`.
+and test probes live in `dualsense::internal`.
 The build uses `-Weverything` with a short suppression list and reports the
 compile's real/user/sys time.
 
@@ -144,5 +144,5 @@ between definitions, private class fields and compact guards. Run clang-format
 
 ## Protocol
 
-`padwave_wire.hh` is the wire description; `docs/protocol.md` has the longer
+`dualsense.hh` is the wire description; `docs/protocol.md` has the longer
 notes.

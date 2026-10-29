@@ -19,7 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "padwave_wire.hh"
+#include "dualsense.hh"
 
 // padwave input — the controller's state, decoded by the C++ schema.
 // The engine is in-process; the app owns one Input and attaches itself.
@@ -32,7 +32,7 @@ struct Input {
 
 private:
   struct ActionsState {
-    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
+    dualsense::InputBody::Buttons prevButtons = dualsense::InputBody::Buttons();
     int64_t last_l2 = 0;
     int64_t last_r2 = 0;
     int64_t ps_at = 0;
@@ -41,8 +41,8 @@ private:
 
   struct SensorsState {
     bool has_prev = false;
-    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
-    padwave::InputBody::Dpad prevDpad = padwave::InputBody::Dpad::None;
+    dualsense::InputBody::Buttons prevButtons = dualsense::InputBody::Buttons();
+    dualsense::InputBody::Dpad prevDpad = dualsense::InputBody::Dpad::None;
     int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
     bool prev_jack = false;
     int64_t last_activity = 0;
@@ -55,14 +55,14 @@ private:
   };
 
   struct DpadState {
-    padwave::InputBody::Dpad prev = padwave::InputBody::Dpad::None;
+    dualsense::InputBody::Dpad prev = dualsense::InputBody::Dpad::None;
     int hold_dir = 0;
     int hold_step = 0;
     int64_t hold_at = 0;
   };
 
   struct Binding {
-    padwave::InputBody::Button button;
+    dualsense::InputBody::Button button;
     const char *action;
   };
 
@@ -70,43 +70,43 @@ private:
   char node_name[64] = "";
   char mac_[32] = "";
   App *app = nullptr;
-  padwave::MicFrame::Decoder mic_decoder;
+  dualsense::MicFrame::Decoder mic_decoder;
 
   ActionsState actions;
   SensorsState sensors;
   DpadState dpad_state;
 
   static constexpr Binding kBindings[] = {
-      {padwave::InputBody::Button::ButtonTriangle, "toggle_pause"},
-      {padwave::InputBody::Button::ButtonCircle, "play"},
-      {padwave::InputBody::Button::ButtonSquare, "shuffle_folder"},
-      {padwave::InputBody::Button::L1, "previous"},
-      {padwave::InputBody::Button::R1, "next"},
-      {padwave::InputBody::Button::Create, "previous"},
-      {padwave::InputBody::Button::Options, "next"},
-      {padwave::InputBody::Button::Touchpad, "toggle_mute"},
-      {padwave::InputBody::Button::Mute, "toggle_mute"},
-      {padwave::InputBody::Button::L3, "next"},
-      {padwave::InputBody::Button::R3, "previous"},
-      {padwave::InputBody::Button::LeftPaddle, "previous"},
-      {padwave::InputBody::Button::RightPaddle, "next"},
-      {padwave::InputBody::Button::Fn1, "toggle_pause"},
-      {padwave::InputBody::Button::Fn2, "toggle_mute"},
+      {dualsense::InputBody::Button::ButtonTriangle, "toggle_pause"},
+      {dualsense::InputBody::Button::ButtonCircle, "play"},
+      {dualsense::InputBody::Button::ButtonSquare, "shuffle_folder"},
+      {dualsense::InputBody::Button::L1, "previous"},
+      {dualsense::InputBody::Button::R1, "next"},
+      {dualsense::InputBody::Button::Create, "previous"},
+      {dualsense::InputBody::Button::Options, "next"},
+      {dualsense::InputBody::Button::Touchpad, "toggle_mute"},
+      {dualsense::InputBody::Button::Mute, "toggle_mute"},
+      {dualsense::InputBody::Button::L3, "next"},
+      {dualsense::InputBody::Button::R3, "previous"},
+      {dualsense::InputBody::Button::LeftPaddle, "previous"},
+      {dualsense::InputBody::Button::RightPaddle, "next"},
+      {dualsense::InputBody::Button::Fn1, "toggle_pause"},
+      {dualsense::InputBody::Button::Fn2, "toggle_mute"},
   };
 
-  void trackButtons(padwave::InputBody::Buttons buttons) {
-    padwave::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
+  void trackButtons(dualsense::InputBody::Buttons buttons) {
+    dualsense::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
     actions.prevButtons = buttons;
 
     for (auto &b : kBindings)
       if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
-    if (pressed.isOn(padwave::InputBody::Button::Ps)) {
+    if (pressed.isOn(dualsense::InputBody::Button::Ps)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!buttons.isOn(padwave::InputBody::Button::Ps)) {
+    if (!buttons.isOn(dualsense::InputBody::Button::Ps)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
@@ -128,16 +128,16 @@ private:
     }
   }
 
-  void trackSensors(const padwave::InputBody &b) {
+  void trackSensors(const dualsense::InputBody &b) {
     int64_t now = nowMs();
     bool jack = b.headset();
-    const padwave::InputBody::Stick left = b.leftStick();
-    const padwave::InputBody::Stick right = b.rightStick();
-    const padwave::InputBody::Triggers triggers = b.triggers();
+    const dualsense::InputBody::Stick left = b.leftStick();
+    const dualsense::InputBody::Stick right = b.rightStick();
+    const dualsense::InputBody::Triggers triggers = b.triggers();
     int l2 = triggers.left, r2 = triggers.right;
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
-    const padwave::InputBody::Buttons buttons = b.buttons();
-    padwave::InputBody::Dpad dpad = b.dpad();
+    const dualsense::InputBody::Buttons buttons = b.buttons();
+    dualsense::InputBody::Dpad dpad = b.dpad();
     bool first = !sensors.has_prev;
 
     bool real = false, analog = false;
@@ -212,7 +212,7 @@ private:
     sensors.prev_jack = jack;
   }
 
-  void trackDpad(padwave::InputBody::Dpad dpad) {
+  void trackDpad(dualsense::InputBody::Dpad dpad) {
     static const int steps[] = {10, 20, 40, 60};
     static const int intervals[] = {320, 260, 190, 130};
 
@@ -222,19 +222,19 @@ private:
       dpad_state.prev = dpad;
       dpad_state.hold_dir = 0;
 
-      if (dpad == padwave::InputBody::Dpad::Left) {
+      if (dpad == dualsense::InputBody::Dpad::Left) {
         emitAction("seek", -6);
         dpad_state.hold_dir = -1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-      } else if (dpad == padwave::InputBody::Dpad::Right) {
+      } else if (dpad == dualsense::InputBody::Dpad::Right) {
         emitAction("seek", 6);
         dpad_state.hold_dir = 1;
         dpad_state.hold_step = 0;
         dpad_state.hold_at = now + 420;
-      } else if (dpad == padwave::InputBody::Dpad::Up) {
+      } else if (dpad == dualsense::InputBody::Dpad::Up) {
         emitAction("next", 0);
-      } else if (dpad == padwave::InputBody::Dpad::Down) {
+      } else if (dpad == dualsense::InputBody::Dpad::Down) {
         emitAction("previous", 0);
       }
       return;
@@ -257,13 +257,13 @@ private:
   void emitAction(const char *name, int value);
   void emitEvent(const char *name);
   void emitMic(const int16_t *pcm, size_t samples);
-  void emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len);
+  void emitFrameToApp(const dualsense::InputBody &b, const uint8_t *raw, size_t len);
 
-  void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
+  void emitFrame(const dualsense::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
     trackDpad(b.dpad());
     trackButtons(b.buttons());
-    const padwave::InputBody::Triggers triggers = b.triggers();
+    const dualsense::InputBody::Triggers triggers = b.triggers();
     trackTriggers(triggers.left, triggers.right);
     trackSensors(b);
   }
@@ -271,28 +271,28 @@ private:
   void handleReport(const uint8_t *buf, size_t len) {
     if (!buf || len == 0) return;
 
-    if (len > 7 && padwave::MicFrame::is_frame(buf, len)) {
+    if (len > 7 && dualsense::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
-      const uint8_t *payload = padwave::MicFrame::payload(buf, len, &payload_len);
-      if (!mic_decoder.valid() && !mic_decoder.open(padwave::MicFrame::SampleRate, 1)) return;
-      int16_t pcm[padwave::MicFrame::Samples];
-      int n = mic_decoder.decode(payload, payload_len, pcm, padwave::MicFrame::Samples);
+      const uint8_t *payload = dualsense::MicFrame::payload(buf, len, &payload_len);
+      if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::SampleRate, 1)) return;
+      int16_t pcm[dualsense::MicFrame::Samples];
+      int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::Samples);
       if (n > 0) emitMic(pcm, static_cast<size_t>(n));
       return;
     }
 
-    if (buf[0] == static_cast<uint8_t>(padwave::Packet::PacketStateBluetooth) &&
-        len >= padwave::InputReport::Size) {
-      const padwave::InputReport *r = reinterpret_cast<const padwave::InputReport *>(buf);
+    if (buf[0] == static_cast<uint8_t>(dualsense::Packet::PacketStateBluetooth) &&
+        len >= dualsense::InputReport::Size) {
+      const dualsense::InputReport *r = reinterpret_cast<const dualsense::InputReport *>(buf);
       if (!r->valid()) return;
-      emitFrame(r->body(), buf, padwave::InputReport::Size);
+      emitFrame(r->body(), buf, dualsense::InputReport::Size);
       return;
     }
 
-    if (buf[0] == static_cast<uint8_t>(padwave::Packet::PacketInputUsb) &&
-        len >= padwave::InputReport::UsbSize)
-      emitFrame(*reinterpret_cast<const padwave::InputBody *>((buf + 1)), buf,
-                padwave::InputReport::UsbSize);
+    if (buf[0] == static_cast<uint8_t>(dualsense::Packet::PacketInputUsb) &&
+        len >= dualsense::InputReport::UsbSize)
+      emitFrame(*reinterpret_cast<const dualsense::InputBody *>((buf + 1)), buf,
+                dualsense::InputReport::UsbSize);
   }
 
 public:

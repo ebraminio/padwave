@@ -54,7 +54,7 @@ extern "C" {
 
 #include "padwave_fields.hh"
 #include "padwave_hid.hh"
-#include "padwave_wire.hh"
+#include "dualsense.hh"
 
 struct player_status {
   long pos_ms;
@@ -222,7 +222,7 @@ private:
   bool speaker = false;
   App *app = nullptr;
 
-  padwave::AudioReport::Encoder enc;
+  dualsense::AudioReport::Encoder enc;
   uint8_t seq = 0, counter = 0;
 
   File cur;
@@ -242,9 +242,9 @@ private:
   char manual_path[1024] = "";
   bool seek_fade = false;
 
-  padwave::OutputReport out{};
+  dualsense::OutputReport out{};
   uint8_t out_seq = 0;
-  padwave::OutputBody state{};
+  dualsense::OutputBody state{};
   bool mic = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
@@ -502,7 +502,7 @@ private:
   }
 
   void sendMuteLed(bool on) {
-    padwave::OutputReport report{};
+    dualsense::OutputReport report{};
     report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
@@ -521,16 +521,16 @@ private:
   }
 
   void sendReport(const float *pcm, int frames) {
-    padwave::AudioReport report;
+    dualsense::AudioReport report;
 
-    report.init(speaker ? padwave::AudioReport::SpeakerTag::Speaker
-                        : padwave::AudioReport::SpeakerTag::Jack,
-                mic ? padwave::AudioReport::EnableMask::SpeakerAndMic
-                    : padwave::AudioReport::EnableMask::SpeakerOnly);
+    report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
+                        : dualsense::AudioReport::SpeakerTag::Jack,
+                mic ? dualsense::AudioReport::EnableMask::SpeakerAndMic
+                    : dualsense::AudioReport::EnableMask::SpeakerOnly);
 
     report.stateBody() = state;
-    report.stateBody().setAudio(speaker ? padwave::OutputBody::AudioControl::Speaker
-                                        : padwave::OutputBody::AudioControl::Headphones);
+    report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
+                                        : dualsense::OutputBody::AudioControl::Headphones);
 
     report.setSeqTag(static_cast<uint8_t>(((seq & 0x0F) << 4)));
     report.setCounter(counter);
@@ -683,8 +683,8 @@ private:
       // immediately, and reassert the pause-only mute LED with a one-shot
       // 0x31 so mic capture cannot turn it into an activity blink.
       sendMuteLed(paused);
-      float silence[padwave::AudioReport::PcmFrames * CHANNELS] = {};
-      sendReport(silence, padwave::AudioReport::PcmFrames);
+      float silence[dualsense::AudioReport::PcmFrames * CHANNELS] = {};
+      sendReport(silence, dualsense::AudioReport::PcmFrames);
       return;
     }
 
@@ -789,12 +789,12 @@ private:
       }
     }
 
-    float pcm[padwave::AudioReport::PcmFrames * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((padwave::AudioReport::PcmFrames - 1));
+    float pcm[dualsense::AudioReport::PcmFrames * CHANNELS];
+    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::PcmFrames - 1));
     float gain = static_cast<float>((volume / 100.0));
     gain = gain * gain * gain;
 
-    for (int i = 0; i < padwave::AudioReport::PcmFrames; i++) {
+    for (int i = 0; i < dualsense::AudioReport::PcmFrames; i++) {
       double src = i * step;
       int idx = static_cast<int>(src);
       int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
@@ -806,7 +806,7 @@ private:
       }
     }
 
-    sendReport(pcm, padwave::AudioReport::PcmFrames);
+    sendReport(pcm, dualsense::AudioReport::PcmFrames);
   }
 
 public:
@@ -856,8 +856,8 @@ public:
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = use_speaker;
-    state.init(this->speaker ? padwave::OutputBody::AudioControl::Speaker
-                             : padwave::OutputBody::AudioControl::Headphones);
+    state.init(this->speaker ? dualsense::OutputBody::AudioControl::Speaker
+                             : dualsense::OutputBody::AudioControl::Headphones);
 
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");

@@ -1,5 +1,5 @@
 // padwave — one translation unit: the app, its player and input engines, and
-// the web server. The wire formats live in padwave_wire.hh.
+// the web server. The wire formats live in dualsense.hh.
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -599,7 +599,7 @@ void Player::emitTrack(const char *track_path) {
   if (app) app->playerTrack(track_path);
 }
 
-void Input::emitFrameToApp(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
+void Input::emitFrameToApp(const dualsense::InputBody &b, const uint8_t *raw, size_t len) {
   if (app) app->inputFrame(b, raw, len);
 }
 
@@ -621,7 +621,7 @@ void Input::emitMic(const int16_t *pcm, size_t samples) {
 //
 // All of it is in this translation unit; padwave_app.hh, padwave_player.hh,
 // padwave_input.hh and padwave_http.hh describe the parts. The wire format is
-// in padwave_wire.hh, and every part uses the same schema.
+// in dualsense.hh, and every part uses the same schema.
 int main(int argc, char **argv) {
   static Server server{}; // connection table in BSS; the App stays on the stack
   int port = argc > 1 ? atoi(argv[1]) : 8787;

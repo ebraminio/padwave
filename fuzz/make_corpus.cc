@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "padwave_wire.hh"
+#include "dualsense.hh"
 
 static bool write_file(const char *dir, const char *name, const void *data, size_t len) {
   char path[512];
@@ -17,10 +17,10 @@ static bool write_file(const char *dir, const char *name, const void *data, size
   return ok;
 }
 
-static padwave::InputReport report(uint32_t buttons) {
-  padwave::InputReport r{};
+static dualsense::InputReport report(uint32_t buttons) {
+  dualsense::InputReport r{};
   auto *raw = reinterpret_cast<uint8_t *>(&r);
-  raw[0] = padwave::InputReport::ReportId;
+  raw[0] = dualsense::InputReport::ReportId;
   raw[1] = 0x10;
   raw[2 + 0x00] = 128;
   raw[2 + 0x01] = 128;
@@ -39,17 +39,17 @@ static padwave::InputReport report(uint32_t buttons) {
 int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
-  padwave::InputReport neutral = report(0);
-  padwave::InputReport pressed = report(static_cast<uint32_t>(padwave::InputBody::Button::ButtonCross));
-  padwave::InputReport released = report(0);
+  dualsense::InputReport neutral = report(0);
+  dualsense::InputReport pressed = report(static_cast<uint32_t>(dualsense::InputBody::Button::ButtonCross));
+  dualsense::InputReport released = report(0);
 
-  uint8_t usb[padwave::InputReport::UsbSize] = {padwave::InputReport::UsbReportId};
+  uint8_t usb[dualsense::InputReport::UsbSize] = {dualsense::InputReport::UsbReportId};
   usb[1 + 0] = 0x80;
   usb[1 + 1] = 0x80;
 
   uint8_t mic[78] = {0};
-  mic[0] = padwave::MicFrame::ReportId;
-  mic[3] = padwave::MicFrame::Toc;
+  mic[0] = dualsense::MicFrame::ReportId;
+  mic[3] = dualsense::MicFrame::Toc;
 
   bool ok = write_file(argv[1], "bt31.bin", &neutral, sizeof(neutral)) &&
             write_file(argv[1], "press.bin", &pressed, sizeof(pressed)) &&

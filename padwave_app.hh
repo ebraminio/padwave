@@ -1266,42 +1266,42 @@ private:
     this->playhead_dirty = true;
   }
 
-  static const char *dpadName(padwave::InputBody::Dpad dpad) {
-    if (dpad == padwave::InputBody::Dpad::Up) return "up";
-    if (dpad == padwave::InputBody::Dpad::UpRight) return "up_right";
-    if (dpad == padwave::InputBody::Dpad::Right) return "right";
-    if (dpad == padwave::InputBody::Dpad::DownRight) return "down_right";
-    if (dpad == padwave::InputBody::Dpad::Down) return "down";
-    if (dpad == padwave::InputBody::Dpad::DownLeft) return "down_left";
-    if (dpad == padwave::InputBody::Dpad::Left) return "left";
-    if (dpad == padwave::InputBody::Dpad::UpLeft) return "up_left";
+  static const char *dpadName(dualsense::InputBody::Dpad dpad) {
+    if (dpad == dualsense::InputBody::Dpad::Up) return "up";
+    if (dpad == dualsense::InputBody::Dpad::UpRight) return "up_right";
+    if (dpad == dualsense::InputBody::Dpad::Right) return "right";
+    if (dpad == dualsense::InputBody::Dpad::DownRight) return "down_right";
+    if (dpad == dualsense::InputBody::Dpad::Down) return "down";
+    if (dpad == dualsense::InputBody::Dpad::DownLeft) return "down_left";
+    if (dpad == dualsense::InputBody::Dpad::Left) return "left";
+    if (dpad == dualsense::InputBody::Dpad::UpLeft) return "up_left";
     return "none";
   }
 
-  static void buttonsToString(const padwave::InputBody::Buttons buttons, char *out, size_t cap) {
+  static void buttonsToString(const dualsense::InputBody::Buttons buttons, char *out, size_t cap) {
     struct {
-      padwave::InputBody::Button button;
+      dualsense::InputBody::Button button;
       const char *name;
     } names[] = {
-        {padwave::InputBody::Button::ButtonSquare, "square"},
-        {padwave::InputBody::Button::ButtonCross, "cross"},
-        {padwave::InputBody::Button::ButtonCircle, "circle"},
-        {padwave::InputBody::Button::ButtonTriangle, "triangle"},
-        {padwave::InputBody::Button::L1, "l1"},
-        {padwave::InputBody::Button::R1, "r1"},
-        {padwave::InputBody::Button::L2, "l2"},
-        {padwave::InputBody::Button::R2, "r2"},
-        {padwave::InputBody::Button::Create, "create"},
-        {padwave::InputBody::Button::Options, "options"},
-        {padwave::InputBody::Button::L3, "l3"},
-        {padwave::InputBody::Button::R3, "r3"},
-        {padwave::InputBody::Button::Ps, "ps"},
-        {padwave::InputBody::Button::Touchpad, "touchpad"},
-        {padwave::InputBody::Button::Mute, "mute"},
-        {padwave::InputBody::Button::Fn1, "fn1"},
-        {padwave::InputBody::Button::Fn2, "fn2"},
-        {padwave::InputBody::Button::LeftPaddle, "left_paddle"},
-        {padwave::InputBody::Button::RightPaddle, "right_paddle"},
+        {dualsense::InputBody::Button::ButtonSquare, "square"},
+        {dualsense::InputBody::Button::ButtonCross, "cross"},
+        {dualsense::InputBody::Button::ButtonCircle, "circle"},
+        {dualsense::InputBody::Button::ButtonTriangle, "triangle"},
+        {dualsense::InputBody::Button::L1, "l1"},
+        {dualsense::InputBody::Button::R1, "r1"},
+        {dualsense::InputBody::Button::L2, "l2"},
+        {dualsense::InputBody::Button::R2, "r2"},
+        {dualsense::InputBody::Button::Create, "create"},
+        {dualsense::InputBody::Button::Options, "options"},
+        {dualsense::InputBody::Button::L3, "l3"},
+        {dualsense::InputBody::Button::R3, "r3"},
+        {dualsense::InputBody::Button::Ps, "ps"},
+        {dualsense::InputBody::Button::Touchpad, "touchpad"},
+        {dualsense::InputBody::Button::Mute, "mute"},
+        {dualsense::InputBody::Button::Fn1, "fn1"},
+        {dualsense::InputBody::Button::Fn2, "fn2"},
+        {dualsense::InputBody::Button::LeftPaddle, "left_paddle"},
+        {dualsense::InputBody::Button::RightPaddle, "right_paddle"},
     };
 
     size_t o = 0;
@@ -1314,7 +1314,7 @@ private:
     }
   }
 
-  void inputFrame(const padwave::InputBody &b, const uint8_t *raw_buf, size_t len) {
+  void inputFrame(const dualsense::InputBody &b, const uint8_t *raw_buf, size_t len) {
     bool was_connected = this->controller;
     this->controller = true;
     if (!was_connected) {
@@ -1330,13 +1330,13 @@ private:
         }
       }
     }
-    const padwave::InputBody::Stick left = b.leftStick();
-    const padwave::InputBody::Stick right = b.rightStick();
+    const dualsense::InputBody::Stick left = b.leftStick();
+    const dualsense::InputBody::Stick right = b.rightStick();
     this->lx = left.x;
     this->ly = left.y;
     this->rx = right.x;
     this->ry = right.y;
-    const padwave::InputBody::Triggers triggers = b.triggers();
+    const dualsense::InputBody::Triggers triggers = b.triggers();
     this->l2 = triggers.left;
     this->r2 = triggers.right;
     this->battery = b.battery();
@@ -1349,18 +1349,18 @@ private:
     for (size_t i = 0; i < r; i++)
       snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
     {
-      using ChargingState = padwave::InputBody::ChargingState;
+      using ChargingState = dualsense::InputBody::ChargingState;
       ChargingState charge = b.charging();
       snprintf(this->charging, sizeof(this->charging), "%s",
                charge == ChargingState::Charging ? "charging"
                : charge == ChargingState::Full   ? "full"
                                                  : "discharging");
     }
-    const padwave::InputBody::Gyro gyro = b.gyro();
+    const dualsense::InputBody::Gyro gyro = b.gyro();
     this->gx = gyro.x;
     this->gy = gyro.y;
     this->gz = gyro.z;
-    const padwave::InputBody::Accelerometer accel = b.accelerometer();
+    const dualsense::InputBody::Accelerometer accel = b.accelerometer();
     this->ax = accel.x;
     this->ay = accel.y;
     this->az = accel.z;
@@ -1368,7 +1368,7 @@ private:
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
     for (int t = 0; t < 2; t++) {
-      const padwave::InputBody::Touch touch = b.touch(t);
+      const dualsense::InputBody::Touch touch = b.touch(t);
       this->touch_active[t] = touch.active ? 1 : 0;
       this->touch_id[t] = touch.id;
       this->touch_x[t] = touch.x;

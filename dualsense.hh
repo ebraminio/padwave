@@ -6,7 +6,7 @@
 
 #include <opus/opus.h>
 
-namespace padwave {
+namespace dualsense {
 namespace internal {
 
 template <typename Type, typename UnsignedType = Type>
@@ -139,9 +139,9 @@ enum class Packet : uint8_t {
 };
 
 struct OutputBody {
-  friend struct padwave::internal::OutputBodyProbe;
+  friend struct internal::OutputBodyProbe;
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWUINT8 = internal::PWUINT8;
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
@@ -424,8 +424,8 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
-  using PWUINT32 = padwave::internal::PWUINT32;
+  using PWUINT8 = internal::PWUINT8;
+  using PWUINT32 = internal::PWUINT32;
 protected:
   PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
@@ -465,7 +465,7 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
+  using PWUINT8 = internal::PWUINT8;
 protected:
   PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
   OutputBody body_;     // 0x01..0x2f
@@ -504,9 +504,9 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
-  using PWUINT32 = padwave::internal::PWUINT32;
-  using PWINT16 = padwave::internal::PWINT16;
+  using PWUINT8 = internal::PWUINT8;
+  using PWUINT32 = internal::PWUINT32;
+  using PWINT16 = internal::PWINT16;
 
 protected:
   PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
@@ -741,8 +741,8 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 
 struct InputReport {
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
-  using PWUINT32 = padwave::internal::PWUINT32;
+  using PWUINT8 = internal::PWUINT8;
+  using PWUINT32 = internal::PWUINT32;
 protected:
   PWUINT8 report_id;         // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;           // 0x01  high nibble = sequence tag, low nibble = 0
@@ -765,9 +765,9 @@ public:
 
   constexpr InputBody &body() { return body_; }
 
-  constexpr void sign() { crc = padwave::internal::crc_of(*this); }
+  constexpr void sign() { crc = internal::crc_of(*this); }
 
-  constexpr bool valid() const { return crc == padwave::internal::crc_of(*this); }
+  constexpr bool valid() const { return crc == internal::crc_of(*this); }
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
@@ -816,10 +816,10 @@ struct AudioReport {
   friend struct internal::AudioReportProbe;
 
 private:
-  using PWUINT8 = padwave::internal::PWUINT8;
-  using PWINT8 = padwave::internal::PWINT8;
-  using PWUINT32 = padwave::internal::PWUINT32;
-  using PWINT16 = padwave::internal::PWINT16;
+  using PWUINT8 = internal::PWUINT8;
+  using PWINT8 = internal::PWINT8;
+  using PWUINT32 = internal::PWUINT32;
+  using PWINT16 = internal::PWINT16;
 
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
@@ -972,9 +972,9 @@ public:
     for (size_t i = n; i < OpusSize; ++i) opus[i] = 0;
   }
 
-  constexpr void sign() { crc = padwave::internal::crc_of(*this); }
+  constexpr void sign() { crc = internal::crc_of(*this); }
 
-  constexpr bool valid() const { return report_id == ReportId && crc == padwave::internal::crc_of(*this); }
+  constexpr bool valid() const { return report_id == ReportId && crc == internal::crc_of(*this); }
 };
 
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
@@ -1231,59 +1231,59 @@ static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
 // --- CRC-32 ----------------------------------------------------------------
 
 constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-static_assert(padwave::internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+static_assert(internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
 constexpr uint32_t kChained = [] {
-  uint32_t c = padwave::internal::crc32(0, kCheck, 4);
-  return padwave::internal::crc32(c, kCheck + 4, 5);
+  uint32_t c = internal::crc32(0, kCheck, 4);
+  return internal::crc32(c, kCheck + 4, 5);
 }();
 static_assert(kChained == 0xCBF43926u);
 
 // --- initialized reports and offsets --------------------------------------
 
-constexpr padwave::AudioReport kReport = [] {
-  padwave::AudioReport r{};
-  r.init(padwave::AudioReport::SpeakerTag::Jack, padwave::AudioReport::EnableMask::SpeakerOnly);
-  r.stateBody().init(padwave::OutputBody::AudioControl::Headphones);
+constexpr AudioReport kReport = [] {
+  AudioReport r{};
+  r.init(AudioReport::SpeakerTag::Jack, AudioReport::EnableMask::SpeakerOnly);
+  r.stateBody().init(OutputBody::AudioControl::Headphones);
   r.setSeqTag(0x00);
   r.setCounter(0);
   return r;
 }();
 
-static_assert(sizeof(padwave::AudioReport) == 398);
-static_assert(padwave::internal::AudioReportProbe::stateSize() == 63);
-static_assert(sizeof(padwave::OutputBody) == 47);
+static_assert(sizeof(AudioReport) == 398);
+static_assert(internal::AudioReportProbe::stateSize() == 63);
+static_assert(sizeof(OutputBody) == 47);
 
-static_assert(padwave::internal::AudioReportProbe::reportId(kReport) == 0x36);
-static_assert(padwave::internal::AudioReportProbe::seqTag(kReport) == 0x00);
-static_assert(padwave::internal::AudioReportProbe::configTag(kReport) == 0x91);
-static_assert(padwave::internal::AudioReportProbe::configLength(kReport) == 7);
-static_assert(kReport.enableMask() == padwave::AudioReport::EnableMask::SpeakerOnly);
-static_assert(padwave::internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
-static_assert(padwave::internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
-static_assert(padwave::internal::AudioReportProbe::counter(kReport) == 0);
-static_assert(padwave::internal::AudioReportProbe::stateTag(kReport) == 0x90);
-static_assert(padwave::internal::AudioReportProbe::stateLength(kReport) == 63);
-static_assert(padwave::internal::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
-static_assert(padwave::internal::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
+static_assert(internal::AudioReportProbe::reportId(kReport) == 0x36);
+static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
+static_assert(internal::AudioReportProbe::configTag(kReport) == 0x91);
+static_assert(internal::AudioReportProbe::configLength(kReport) == 7);
+static_assert(kReport.enableMask() == AudioReport::EnableMask::SpeakerOnly);
+static_assert(internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
+static_assert(internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
+static_assert(internal::AudioReportProbe::counter(kReport) == 0);
+static_assert(internal::AudioReportProbe::stateTag(kReport) == 0x90);
+static_assert(internal::AudioReportProbe::stateLength(kReport) == 63);
+static_assert(internal::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
+static_assert(internal::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
 static_assert(kReport.stateBody().headphoneVolume() == 0x7F);
 static_assert(kReport.stateBody().speakerVolume() == 0x64);
-static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
-static_assert(padwave::internal::AudioReportProbe::speakerLength(kReport) == 200);
-static_assert(padwave::internal::AudioReportProbe::opusByte(kReport, 0) == 0);
+static_assert(kReport.speakerTag() == AudioReport::SpeakerTag::Jack);
+static_assert(internal::AudioReportProbe::speakerLength(kReport) == 200);
+static_assert(internal::AudioReportProbe::opusByte(kReport, 0) == 0);
 
 // --- sign / validate / byte copy, all constexpr ---------------------------
 
-constexpr padwave::AudioReport kSigned = [] {
-  padwave::AudioReport r = kReport;
+constexpr AudioReport kSigned = [] {
+  AudioReport r = kReport;
   r.sign();
   return r;
 }();
 static_assert(kSigned.valid());
 
-constexpr auto kRaw = __builtin_bit_cast(padwave::internal::WireBytes<padwave::AudioReport>, kSigned);
-constexpr padwave::AudioReport kCopy = __builtin_bit_cast(padwave::AudioReport, kRaw);
+constexpr auto kRaw = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
+constexpr AudioReport kCopy = __builtin_bit_cast(AudioReport, kRaw);
 static_assert(kCopy.valid());
 
-} // namespace internal
 } // namespace wire_test
-} // namespace padwave
+} // namespace internal
+} // namespace dualsense

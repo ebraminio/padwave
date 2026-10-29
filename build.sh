@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build padwave: one source, one binary. The wire static_asserts are part of
-# padwave_wire.hh, so compiling the app validates them. -Weverything keeps the
+# dualsense.hh, so compiling the app validates them. -Weverything keeps the
 # remaining warnings honest; time reports the compile cost.
 set -euo pipefail
 cd "$(dirname "$0")"
