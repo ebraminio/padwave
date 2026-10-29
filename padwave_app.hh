@@ -406,7 +406,6 @@ public:
   void tick() {
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
-    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     serviceOutput();
     updateIdle();
     serviceLeds();
@@ -580,7 +579,8 @@ public:
     kvAdd(buf, cap, &o, "mic.samples", "%lu", this->mic_samples);
     kvAdd(buf, cap, &o, "mic.rms", "%d", this->mic_rms);
     kvAdd(buf, cap, &o, "mic.peak", "%d", this->mic_peak);
-    kvAdd(buf, cap, &o, "mic.running", "%s", this->input.micReady() ? "true" : "false");
+    kvAdd(buf, cap, &o, "mic.running", "%s",
+          this->mic_monitor && this->input.micReady() ? "true" : "false");
     kvAdd(buf, cap, &o, "mic.monitor", "%s", this->mic_monitor ? "true" : "false");
 
     kvAdd(buf, cap, &o, "controller.connected", "%s", this->controller ? "true" : "false");
@@ -1038,7 +1038,6 @@ private:
     playerSend(line);
     snprintf(line, sizeof(line), "speed %d\n", this->speed);
     playerSend(line);
-    applyMicLed(this->mic_monitor);
     if (this->paused) playerSend("pause 1\n");
     this->led_force = true;
     serviceLeds();
@@ -1121,7 +1120,6 @@ private:
 
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
-    stopMicForPlayback();
     ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
@@ -1175,13 +1173,11 @@ private:
 
   void togglePause() {
     if (!this->playing) {
-      stopMicForPlayback();
       ensureAudibleVolume();
       if (this->current >= 0) play(this->current, this->pos_ms);
       return;
     }
     if (this->paused) {
-      stopMicForPlayback();
       ensureAudibleVolume();
       if (this->paused) {
         this->paused = false;
@@ -1198,55 +1194,15 @@ private:
       this->paused_by_disconnect = false;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
-      if (this->player && this->controller) setMicMonitor(true);
     }
-  }
-
-  void applyMicLed(bool on) {
-    if (!this->player) return;
-    char fields[96];
-    snprintf(fields, sizeof(fields), "valid_flag1=mute_led;mute_button_led=%d", on ? 1 : 0);
-    outputFields(fields);
-  }
-
-  void stopMicForPlayback() {
-    if (!this->mic_monitor) return;
-    this->mic_monitor = false;
-    this->paused_by_mic = false;
-    playerSend("mic 0\n");
-    micReset();
-    applyMicLed(false);
   }
 
   void setMicMonitor(bool on) {
     if (on == this->mic_monitor) return;
     this->mic_monitor = on;
     playerSend(on ? "mic 1\n" : "mic 0\n");
-    applyMicLed(on);
-    if (on) {
-      // The microphone and playback are mutually exclusive. Only claim the
-      // pause if playback was actually running.
-      if (this->playing && !this->paused) {
-        this->paused = true;
-        this->paused_by_mic = true;
-        playerSend("pause 1\n");
-        this->playhead_dirty = true;
-      } else {
-        this->paused_by_mic = false;
-      }
-    } else {
-      micReset();
-      applyMicLed(false);
-      if (this->paused_by_mic) {
-        this->paused_by_mic = false;
-        ensureAudibleVolume();
-        if (this->playing && this->paused) {
-          this->paused = false;
-          playerSend("pause 0\n");
-          this->playhead_dirty = true;
-        }
-      }
-    }
+    if (!on) micReset();
+    this->paused_by_mic = false;
   }
 
   void ensureAudibleVolume() {
@@ -1280,21 +1236,14 @@ private:
     playerSend(line);
 
     if (v == 0) {
-      // Touchpad/mute is a playback control: it supersedes a mic-caused pause.
-      // Turn the mic off and remember volume as the pause cause so unmuting
-      // resumes playback.
-      bool mic_paused = this->paused_by_mic;
-      stopMicForPlayback();
       this->paused_by_disconnect = false;
-      if (this->playing && (!this->paused || mic_paused)) {
+      if (this->playing && !this->paused) {
         this->paused = true;
         this->paused_by_volume = true;
         playerSend("pause 1\n");
         this->playhead_dirty = true;
       }
-      if (this->player && this->controller && this->playing) setMicMonitor(true);
     } else if (this->paused_by_volume && this->playing) {
-      stopMicForPlayback();
       this->paused = false;
       this->paused_by_volume = false;
       playerSend("pause 0\n");
@@ -1377,7 +1326,6 @@ private:
         this->paused_by_disconnect = false;
         this->ensureAudibleVolume();
         if (this->paused) {
-          this->stopMicForPlayback();
           this->paused = false;
           this->playerSend("pause 0\n");
           this->playhead_dirty = true;
@@ -1522,7 +1470,6 @@ private:
         }
       }
     }
-    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     snprintf(this->last_action, sizeof(this->last_action), "%s", name);
   }
 
@@ -1632,7 +1579,6 @@ private:
     if (this->paused_by_idle) {
       this->paused_by_idle = false;
       if (this->paused) {
-        stopMicForPlayback();
         this->paused = false;
         playerSend("pause 0\n");
         this->playhead_dirty = true;
@@ -2007,7 +1953,6 @@ private:
       return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
     }
 
-    if (this->mic_monitor && this->playing && !this->paused) stopMicForPlayback();
     snprintf(this->last_action, sizeof(this->last_action), "%s", action);
     return snprintf(out, out_cap, "ok=true\n");
   }
