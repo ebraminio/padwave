@@ -501,6 +501,27 @@ private:
     return true;
   }
 
+  void sendMuteLed(bool on) {
+    padwave::OutputReport report{};
+    report.report_id = padwave::OutputReport::ReportId;
+    report.tag = 0x10;
+    report.seq_tag = static_cast<uint8_t>(((out_seq & 0x0F) << 4));
+    char fields[64];
+    snprintf(fields, sizeof(fields), "valid_flag1=mute_led;mute_button_led=%d", on ? 1 : 0);
+    if (!padwave_fields::apply_fields(&report.body, fields)) return;
+    report.sign();
+
+    if (hidraw < 0) openDevice();
+    if (hidraw < 0) return;
+    ssize_t n = write(hidraw, &report, sizeof(report));
+    if (n != static_cast<ssize_t>(sizeof(report))) {
+      dropDevice();
+      hidraw_retry = 5;
+      return;
+    }
+    out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
+  }
+
   void sendReport(const float *pcm, int frames) {
     padwave::AudioReport report;
 
@@ -576,10 +597,12 @@ private:
       }
 
       closeNext();
+      bool was_paused = paused;
       if (openFile(line_path)) {
         playing = true;
         paused = false;
         primed = false;
+        if (was_paused) sendMuteLed(false);
         if (value > 0) {
           int64_t ts = value * (AV_TIME_BASE / 1000);
           av_seek_frame(cur.fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
@@ -650,7 +673,11 @@ private:
     }
 
     if (sscanf(line, "pause %ld", &value) == 1) {
-      paused = value != 0;
+      bool next = value != 0;
+      if (next != paused) {
+        paused = next;
+        sendMuteLed(paused);
+      }
       return;
     }
 
@@ -841,6 +868,8 @@ public:
       dropDevice();
       return false;
     }
+
+    sendMuteLed(false);
 
     pkt = av_packet_alloc();
     frame = av_frame_alloc();
