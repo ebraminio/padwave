@@ -661,8 +661,7 @@ private:
         padwave_fields::apply_fields(&state, line + 7);
         // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
         // snapshot re-trigger them forever.
-        state.clearFlag1(padwave::OutputBody::ValidFlag1::ResetLights);
-        state.clearFlag2(padwave::OutputBody::ValidFlag2::ColorFade);
+        state.clearOneShotLightbar();
       }
       return;
     }

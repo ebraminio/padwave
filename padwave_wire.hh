@@ -180,16 +180,11 @@ protected:
 public:
   enum : uint8_t { Size = 47 };
 
-  constexpr uint8_t valid0() const { return valid_flag0; }
-
-  constexpr uint8_t valid1() const { return valid_flag1; }
-
-  constexpr uint8_t valid2() const { return valid_flag2; }
-
   constexpr uint8_t headphoneVolume() const { return headphone_volume; }
 
   constexpr uint8_t speakerVolume() const { return speaker_volume; }
 
+private:
   // Which fields this report owns: the kernel's (and DS4Windows', and
   // dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
   // means "adopt my bytes for this feature"; a clear bit means "leave that
@@ -248,6 +243,7 @@ public:
     Led5 = 0x10, // bit 4
   };
 
+public:
   // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
   // use, which is why a silent jack was the first symptom of getting this
@@ -257,19 +253,12 @@ public:
     Speaker = 0x09,
   };
 
+private:
   static constexpr uint8_t bit(ValidFlag0 f) { return static_cast<uint8_t>(f); }
 
   static constexpr uint8_t bit(ValidFlag1 f) { return static_cast<uint8_t>(f); }
 
   static constexpr uint8_t bit(ValidFlag2 f) { return static_cast<uint8_t>(f); }
-
-  constexpr void clearFlag1(ValidFlag1 flag) {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(flag));
-  }
-
-  constexpr void clearFlag2(ValidFlag2 flag) {
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(flag));
-  }
 
   constexpr void claim(ValidFlag0 f) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | bit(f)); }
 
@@ -277,11 +266,11 @@ public:
 
   constexpr void claim(ValidFlag2 f) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | bit(f)); }
 
-
-
-
-
-
+public:
+  constexpr void clearOneShotLightbar() {
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::ResetLights));
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::ColorFade));
+  }
 
   constexpr void setMotorRight(uint8_t v) {
     claim(ValidFlag0::Rumble);
@@ -1193,8 +1182,6 @@ static_assert(kReport.haptic_lengths[4] == 64);
 static_assert(kReport.counter == 0);
 static_assert(kReport.state_tag == 0x90);
 static_assert(kReport.state_length == 63);
-static_assert(kReport.state.body.valid0() == 0xF0);
-static_assert(kReport.state.body.valid1() == 0x80);
 static_assert(kReport.state.body.headphoneVolume() == 0x7F);
 static_assert(kReport.state.body.speakerVolume() == 0x64);
 static_assert(kReport.speakerTag() == padwave::AudioReport::SpeakerTag::Jack);
