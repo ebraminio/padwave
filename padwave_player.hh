@@ -657,6 +657,12 @@ private:
     if (sscanf(line, "mic %ld", &value) == 1) {
       mic = value != 0;
       state.setMic(mic != 0);
+      // The controller only starts/stops microphone capture when it sees a
+      // 0x36 report with the enable-mask bit changed. Playback may already be
+      // paused (mic and playback are mutually exclusive), so send a silent
+      // packet immediately rather than waiting for the audio tick.
+      float silence[padwave::AudioReport::PcmFrames * CHANNELS] = {};
+      sendReport(silence, padwave::AudioReport::PcmFrames);
       return;
     }
 
