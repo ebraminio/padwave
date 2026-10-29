@@ -23,7 +23,7 @@
 
 namespace padwave_fields {
 
-using Body = padwave::internal::OutputBody;
+using Body = padwave::OutputBody;
 using Setter = void (Body::*)(uint8_t);
 using ArraySetter = void (Body::*)(const uint8_t *);
 
@@ -84,7 +84,7 @@ inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
 }
 
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
-inline bool apply_fields(padwave::internal::OutputBody *body, const char *text) {
+inline bool apply_fields(padwave::OutputBody *body, const char *text) {
   char copy[4096];
   snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;

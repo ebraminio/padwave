@@ -1278,7 +1278,8 @@ private:
     return "none";
   }
 
-  static void buttonsToString(const padwave::internal::InputBody::Buttons buttons, char *out, size_t cap) {
+  static void buttonsToString(const padwave::internal::InputBody::Buttons buttons, char *out,
+                              size_t cap) {
     struct {
       padwave::internal::InputBody::Button button;
       const char *name;

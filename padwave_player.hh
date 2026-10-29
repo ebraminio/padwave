@@ -244,7 +244,7 @@ private:
 
   padwave::OutputReport out{};
   uint8_t out_seq = 0;
-  padwave::internal::OutputBody state{};
+  padwave::OutputBody state{};
   bool mic = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
@@ -529,8 +529,8 @@ private:
                     : padwave::AudioReport::EnableMask::SpeakerOnly);
 
     report.stateBody() = state;
-    report.stateBody().setAudio(speaker ? padwave::internal::OutputBody::AudioControl::Speaker
-                                        : padwave::internal::OutputBody::AudioControl::Headphones);
+    report.stateBody().setAudio(speaker ? padwave::OutputBody::AudioControl::Speaker
+                                        : padwave::OutputBody::AudioControl::Headphones);
 
     report.setSeqTag(static_cast<uint8_t>(((seq & 0x0F) << 4)));
     report.setCounter(counter);
@@ -856,8 +856,8 @@ public:
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     this->speaker = use_speaker;
-    state.init(this->speaker ? padwave::internal::OutputBody::AudioControl::Speaker
-                             : padwave::internal::OutputBody::AudioControl::Headphones);
+    state.init(this->speaker ? padwave::OutputBody::AudioControl::Speaker
+                             : padwave::OutputBody::AudioControl::Headphones);
 
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");
