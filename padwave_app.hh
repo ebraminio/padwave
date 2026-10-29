@@ -808,6 +808,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
+      if (this->usb_data) return snprintf(out, out_cap, "ok=true\nnote=external host\n");
       int v = static_cast<int>(kvNumber(body, "value", 0));
       snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
@@ -1348,8 +1349,14 @@ private:
     this->r2 = triggers.right;
     this->battery = b.battery();
     bool had_jack = this->jack;
+    bool had_usb_data = this->usb_data;
     this->jack = b.headset();
     this->usb_data = b.usbData();
+    if (this->usb_data != had_usb_data) {
+      if (this->usb_data) playerSend("state_clear_lightbar\n");
+      this->led_force = true;
+      serviceLeds();
+    }
     if (!was_connected || had_jack != this->jack) applyOutputRoute();
     if (!was_connected) {
       if (this->paused_by_disconnect) {
@@ -1422,7 +1429,14 @@ private:
     }
   }
 
-  void inputAction(const char *name, int value) { handleAction(name, value); }
+  void inputAction(const char *name, int value) {
+    // A USB data host (e.g. a Mac) also receives these reports and applies its
+    // own bindings. Keep padwave's UI state updated, but do not act twice.
+    // Jack transitions are hardware state used for our own pause/routing.
+    if (this->usb_data && strcmp(name, "jack_plugged") != 0 && strcmp(name, "jack_unplugged") != 0)
+      return;
+    handleAction(name, value);
+  }
 
   void inputEvent(const char *) { noteActivity(); }
 
@@ -1702,6 +1716,7 @@ private:
   }
 
   void setLightbarSetup(int value) {
+    if (this->usb_data) return;
     if (value == 1) this->led_force = true;
     char fields[32];
     snprintf(fields, sizeof(fields), "lightbar_setup=%d", value);
@@ -1736,7 +1751,7 @@ private:
   }
 
   bool applyLightbar(int r, int g, int b, bool force) {
-    if (!this->player) return false;
+    if (!this->player || this->usb_data) return false;
     if (!force && this->led_last_rgb[0] == r && this->led_last_rgb[1] == g &&
         this->led_last_rgb[2] == b)
       return true;
@@ -1863,7 +1878,8 @@ private:
     }
 
     bool force = this->led_force;
-    bool rgb_ok = this->lightbar_on && !charging_now && applyLightbar(r, g, b, force);
+    bool rgb_ok =
+        this->lightbar_on && !charging_now && !this->usb_data && applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;

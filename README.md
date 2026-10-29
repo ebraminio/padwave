@@ -103,6 +103,10 @@ describes the lab fields; `POST /api/output` is the controller lab.
 - **Volume:** zero is the paused state. Resume restores the last non-zero
   volume; 15% is used only when no non-zero value has ever been stored. Current
   and last non-zero volumes persist across restarts.
+- **Shared USB host:** when a USB data host is attached over Bluetooth, the
+  controller's buttons/triggers/PS bindings and all lightbar writes are
+  suppressed so they are not applied twice; input state, audio and jack routing
+  continue.
 - **Microphone:** monitoring is independent of playback. Enabling it requests
   microphone capture and reports a live PCM level; playback can continue while
   monitoring. The mute-button LED is claimed once on each pause transition:
