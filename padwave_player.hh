@@ -220,6 +220,7 @@ private:
   char node_name[64] = "";
   char controller_mac[32] = "";
   bool usb = false;
+  bool speaker = false;
   FILE *usb_audio = nullptr;
   App *app = nullptr;
 
@@ -504,7 +505,8 @@ private:
   }
 
   void sendAudioRoute() {
-    auto route = dualsense::OutputBody::AudioControl::Headphones;
+    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
+                         : dualsense::OutputBody::AudioControl::Headphones;
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
@@ -603,12 +605,14 @@ private:
     if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     dualsense::AudioReport report;
 
-    report.init(dualsense::AudioReport::SpeakerTag::Jack,
+    report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
+                        : dualsense::AudioReport::SpeakerTag::Jack,
                 mic ? dualsense::AudioReport::EnableMask::SpeakerAndMic
                     : dualsense::AudioReport::EnableMask::SpeakerOnly);
 
     report.stateBody() = state;
-    report.stateBody().setAudio(dualsense::OutputBody::AudioControl::Headphones);
+    report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
+                                        : dualsense::OutputBody::AudioControl::Headphones);
 
     audio_sequence.apply(report);
 
@@ -902,6 +906,14 @@ public:
   int timerFd() const { return tfd; }
 
   void attach(App *owner) { app = owner; }
+
+  void setSpeaker(bool on) {
+    if (on == speaker) return;
+    speaker = on;
+    sendAudioRoute();
+  }
+
+  bool speakerOutput() const { return speaker; }
 
   void setSpeed(int percent) {
     if (percent < 50) percent = 50;

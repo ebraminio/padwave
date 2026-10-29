@@ -112,9 +112,10 @@ describes the lab fields; `POST /api/output` is the controller lab.
   warning, black suspended/off. While charging, setup 2 runs for 2 s, then
   setup 1 for 2 s, repeating with no RGB frames; full is solid white. The lab
   can set a colour or use `lightbar_setup` 1/2 to turn the bar on/off.
-- **Output route:** always the controller's headphone jack. With no jack
-  plugged, playback pauses and resumes only after the jack is inserted; the
-  controller speaker is never used as a fallback. Works over USB and Bluetooth.
+- **Output route:** headphone jack when present. Pulling it pauses; plugging it
+  switches an already-playing stream back without pausing. With no jack, a
+  device power-on waits for an explicit play, and that explicit play/resume
+  uses the controller speaker. Works over USB and Bluetooth.
 - **Player LEDs:** left-to-right battery bar (45% → `11100`, full → `11111`);
   at 15% or below the first LED blinks `10000`/`00000` every 3 s while
   discharging. Charging is a solid bar.

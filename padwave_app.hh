@@ -425,6 +425,7 @@ public:
           int start = rand() % this->count;
           play(start, 0);
         }
+        if (this->controller && !this->jack) pauseIfNoJack();
       }
     }
     if (this->player && this->input.fd() >= 0 && this->input.fd() != this->player.fd()) {
@@ -555,6 +556,7 @@ public:
 
     kvAdd(buf, cap, &o, "audio.present", "%s", this->player.valid() ? "true" : "false");
     kvText(buf, cap, &o, "audio.sink", this->player.audioSink());
+    kvText(buf, cap, &o, "audio.route", this->player.speakerOutput() ? "speaker" : "headphones");
     kvText(buf, cap, &o, "audio.state",
            this->player.audioActive() ? "running" : (this->player.valid() ? "ready" : "null"));
 
@@ -1028,6 +1030,7 @@ private:
     if (!this->player.create()) return;
     this->player.attach(this);
     this->player_timer_fd = this->player.timerFd();
+    applyOutputRoute();
     char line[32];
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
@@ -1113,6 +1116,10 @@ private:
     playerSend(line);
   }
 
+  void applyOutputRoute() {
+    if (this->player) this->player.setSpeaker(!this->jack);
+  }
+
   void pauseIfNoJack() {
     if (this->controller && !this->jack && this->playing && !this->paused) {
       this->paused = true;
@@ -1140,8 +1147,6 @@ private:
     this->dur_ms = 0;
     this->idle_since = nowMs();
     this->playhead_dirty = true;
-
-    pauseIfNoJack();
 
     // Gapless: queue the next track in the sorted list for the junction.
     queueTrack(nextTrackIndex(index));
@@ -1184,11 +1189,6 @@ private:
       return;
     }
     if (this->paused) {
-      if (this->controller && !this->jack) {
-        this->paused_by_jack = true;
-        playerSend("pause 1\n");
-        return;
-      }
       ensureAudibleVolume();
       if (this->paused) {
         this->paused = false;
@@ -1333,15 +1333,6 @@ private:
     if (!was_connected) {
       this->led_force = true;
       this->serviceLeds();
-      if (this->paused_by_disconnect) {
-        this->paused_by_disconnect = false;
-        this->ensureAudibleVolume();
-        if (this->paused) {
-          this->paused = false;
-          this->playerSend("pause 0\n");
-          this->playhead_dirty = true;
-        }
-      }
     }
     const dualsense::InputBody::Stick left = b.leftStick();
     const dualsense::InputBody::Stick right = b.rightStick();
@@ -1353,9 +1344,25 @@ private:
     this->l2 = triggers.left;
     this->r2 = triggers.right;
     this->battery = b.battery();
+    bool had_jack = this->jack;
     this->jack = b.headset();
+    if (!was_connected || had_jack != this->jack) applyOutputRoute();
     if (!was_connected) {
-      if (this->jack && this->paused_by_jack) {
+      if (this->paused_by_disconnect) {
+        this->paused_by_disconnect = false;
+        if (this->jack) {
+          this->paused_by_jack = false;
+          ensureAudibleVolume();
+          if (this->paused) {
+            this->paused = false;
+            playerSend("pause 0\n");
+            this->playhead_dirty = true;
+          }
+        } else {
+          this->paused_by_jack = true;
+          pauseIfNoJack();
+        }
+      } else if (this->jack && this->paused_by_jack) {
         this->paused_by_jack = false;
         ensureAudibleVolume();
         if (this->paused) {
@@ -1477,6 +1484,7 @@ private:
       this->paused = true;
       playerSend("pause 1\n");
     } else if (strcmp(name, "jack_unplugged") == 0) {
+      applyOutputRoute();
       if (this->playing && !this->paused) {
         this->paused = true;
         this->paused_by_jack = true;
@@ -1484,6 +1492,7 @@ private:
         this->playhead_dirty = true;
       }
     } else if (strcmp(name, "jack_plugged") == 0) {
+      applyOutputRoute();
       if (this->paused_by_jack) {
         this->paused_by_jack = false;
         ensureAudibleVolume();
