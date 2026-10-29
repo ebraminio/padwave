@@ -360,15 +360,12 @@ protected:
 public:
   enum : uint8_t { Size = 63 };
 
-  static constexpr int PsHoldMs = 2000;
-
 protected:
   static constexpr int AccelCountsPerG = 8192;
   static constexpr int GyroMaxDps = 2000;
   static constexpr int GyroFullScaleCounts = 32768;
 
 public:
-
   struct Sticks {
     int lx, ly, rx, ry, l2, r2;
   };
@@ -381,11 +378,15 @@ public:
     int x, y, z;
 
     float nx() const { return static_cast<float>(x) / static_cast<float>(GyroFullScaleCounts); }
+
     float ny() const { return static_cast<float>(y) / static_cast<float>(GyroFullScaleCounts); }
+
     float nz() const { return static_cast<float>(z) / static_cast<float>(GyroFullScaleCounts); }
 
     float dpsX() const { return nx() * static_cast<float>(GyroMaxDps); }
+
     float dpsY() const { return ny() * static_cast<float>(GyroMaxDps); }
+
     float dpsZ() const { return nz() * static_cast<float>(GyroMaxDps); }
   };
 
@@ -396,8 +397,11 @@ public:
     int x, y, z;
 
     float xg() const { return static_cast<float>(x) / static_cast<float>(AccelCountsPerG); }
+
     float yg() const { return static_cast<float>(y) / static_cast<float>(AccelCountsPerG); }
+
     float zg() const { return static_cast<float>(z) / static_cast<float>(AccelCountsPerG); }
+
     float len() const { return sqrtf(xg() * xg() + yg() * yg() + zg() * zg()); }
   };
 

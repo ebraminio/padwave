@@ -27,6 +27,9 @@
 struct App;
 
 struct Input {
+  // Press-and-hold threshold for PS → suspend/power off.
+  static constexpr int PsHoldMs = 2000;
+
 private:
   struct ActionsState {
     padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
@@ -104,7 +107,7 @@ private:
 
     if (!buttons.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = false;
-    } else if (actions.ps_armed && nowMs() - actions.ps_at >= padwave::InputBody::PsHoldMs) {
+    } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
       actions.ps_armed = false;
     }

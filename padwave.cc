@@ -235,9 +235,7 @@ private:
                                "bindings.square=shuffle_folder\n"
                                "bindings.touchpad=toggle_mute\n"
                                "bindings.triangle=toggle_pause\n";
-    return snprintf(buf, cap,
-                    "%scontroller.ps_hold_ms=%d\n",
-                    text, padwave::InputBody::PsHoldMs);
+    return snprintf(buf, cap, "%scontroller.ps_hold_ms=%d\n", text, ::Input::PsHoldMs);
   }
 
   static int64_t monotonicMs() {
