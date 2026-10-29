@@ -1336,36 +1336,36 @@ private:
     return "none";
   }
 
-  static void buttonsToString(padwave::InputBody::Buttons buttons, char *out, size_t cap) {
+  static void buttonsToString(const padwave::InputBody::Buttons buttons, char *out, size_t cap) {
     struct {
-      padwave::InputBody::Buttons bit;
+      padwave::InputBody::Button button;
       const char *name;
     } names[] = {
-        {padwave::InputBody::Buttons::ButtonSquare, "square"},
-        {padwave::InputBody::Buttons::ButtonCross, "cross"},
-        {padwave::InputBody::Buttons::ButtonCircle, "circle"},
-        {padwave::InputBody::Buttons::ButtonTriangle, "triangle"},
-        {padwave::InputBody::Buttons::L1, "l1"},
-        {padwave::InputBody::Buttons::R1, "r1"},
-        {padwave::InputBody::Buttons::L2, "l2"},
-        {padwave::InputBody::Buttons::R2, "r2"},
-        {padwave::InputBody::Buttons::Create, "create"},
-        {padwave::InputBody::Buttons::Options, "options"},
-        {padwave::InputBody::Buttons::L3, "l3"},
-        {padwave::InputBody::Buttons::R3, "r3"},
-        {padwave::InputBody::Buttons::Ps, "ps"},
-        {padwave::InputBody::Buttons::Touchpad, "touchpad"},
-        {padwave::InputBody::Buttons::Mute, "mute"},
-        {padwave::InputBody::Buttons::Fn1, "fn1"},
-        {padwave::InputBody::Buttons::Fn2, "fn2"},
-        {padwave::InputBody::Buttons::LeftPaddle, "left_paddle"},
-        {padwave::InputBody::Buttons::RightPaddle, "right_paddle"},
+        {padwave::InputBody::Button::ButtonSquare, "square"},
+        {padwave::InputBody::Button::ButtonCross, "cross"},
+        {padwave::InputBody::Button::ButtonCircle, "circle"},
+        {padwave::InputBody::Button::ButtonTriangle, "triangle"},
+        {padwave::InputBody::Button::L1, "l1"},
+        {padwave::InputBody::Button::R1, "r1"},
+        {padwave::InputBody::Button::L2, "l2"},
+        {padwave::InputBody::Button::R2, "r2"},
+        {padwave::InputBody::Button::Create, "create"},
+        {padwave::InputBody::Button::Options, "options"},
+        {padwave::InputBody::Button::L3, "l3"},
+        {padwave::InputBody::Button::R3, "r3"},
+        {padwave::InputBody::Button::Ps, "ps"},
+        {padwave::InputBody::Button::Touchpad, "touchpad"},
+        {padwave::InputBody::Button::Mute, "mute"},
+        {padwave::InputBody::Button::Fn1, "fn1"},
+        {padwave::InputBody::Button::Fn2, "fn2"},
+        {padwave::InputBody::Button::LeftPaddle, "left_paddle"},
+        {padwave::InputBody::Button::RightPaddle, "right_paddle"},
     };
 
     size_t o = 0;
     out[0] = 0;
     for (auto &n : names) {
-      if (!(static_cast<uint32_t>(buttons) & static_cast<uint32_t>(n.bit))) continue;
+      if (!buttons.isOn(n.button)) continue;
       int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
       if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
       o += static_cast<size_t>(w);
@@ -1395,21 +1395,24 @@ private:
     this->ry = b.ry;
     this->l2 = b.l2;
     this->r2 = b.r2;
-    this->battery = (b.status0 & 0x0F) * 10 + 5;
+    this->battery = b.battery();
     if (this->battery > 100) this->battery = 100;
     this->jack = b.headset();
-    this->temp = b.temperature;
-    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.get_dpad()));
+    this->temp = b.temperature();
+    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.dpad()));
     buttonsToString(b.buttons(), this->buttons, sizeof(this->buttons));
-    unsigned charge = b.status0 >> 4;
     this->raw[0] = 0;
     size_t r = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;
     for (size_t i = 0; i < r; i++)
       snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
-    snprintf(this->charging, sizeof(this->charging), "%s",
-             charge == 1   ? "charging"
-             : charge == 2 ? "full"
-                           : "discharging");
+    {
+      using ChargingState = padwave::InputBody::ChargingState;
+      ChargingState charge = b.charging();
+      snprintf(this->charging, sizeof(this->charging), "%s",
+              charge == ChargingState::Charging ? "charging"
+              : charge == ChargingState::Full   ? "full"
+                                                : "discharging");
+    }
     this->gx = b.gyro_x;
     this->gy = b.gyro_y;
     this->gz = b.gyro_z;

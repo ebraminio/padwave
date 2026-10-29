@@ -29,7 +29,7 @@ struct App;
 struct Input {
 private:
   struct ActionsState {
-    uint32_t prev_buttons = 0;
+    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
     int64_t last_l2 = 0;
     int64_t last_r2 = 0;
     int64_t ps_at = 0;
@@ -38,8 +38,8 @@ private:
 
   struct SensorsState {
     bool has_prev = false;
-    uint32_t prev_buttons = 0;
-    uint8_t prev_dpad = 0;
+    padwave::InputBody::Buttons prevButtons = padwave::InputBody::Buttons();
+    padwave::InputBody::Dpad prevDpad = padwave::InputBody::Dpad::None;
     int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
     bool prev_jack = false;
     int64_t last_activity = 0;
@@ -59,7 +59,7 @@ private:
   };
 
   struct Binding {
-    padwave::InputBody::Buttons bit;
+    padwave::InputBody::Button button;
     const char *action;
   };
 
@@ -73,37 +73,36 @@ private:
   DpadState dpad_state;
 
   static constexpr Binding kBindings[] = {
-      {padwave::InputBody::Buttons::ButtonTriangle, "toggle_pause"},
-      {padwave::InputBody::Buttons::ButtonCircle, "play"},
-      {padwave::InputBody::Buttons::ButtonSquare, "shuffle_folder"},
-      {padwave::InputBody::Buttons::L1, "previous"},
-      {padwave::InputBody::Buttons::R1, "next"},
-      {padwave::InputBody::Buttons::Create, "previous"},
-      {padwave::InputBody::Buttons::Options, "next"},
-      {padwave::InputBody::Buttons::Touchpad, "toggle_mute"},
-      {padwave::InputBody::Buttons::Mute, "toggle_mute"},
-      {padwave::InputBody::Buttons::L3, "next"},
-      {padwave::InputBody::Buttons::R3, "previous"},
-      {padwave::InputBody::Buttons::LeftPaddle, "previous"},
-      {padwave::InputBody::Buttons::RightPaddle, "next"},
-      {padwave::InputBody::Buttons::Fn1, "toggle_pause"},
-      {padwave::InputBody::Buttons::Fn2, "toggle_mute"},
+      {padwave::InputBody::Button::ButtonTriangle, "toggle_pause"},
+      {padwave::InputBody::Button::ButtonCircle, "play"},
+      {padwave::InputBody::Button::ButtonSquare, "shuffle_folder"},
+      {padwave::InputBody::Button::L1, "previous"},
+      {padwave::InputBody::Button::R1, "next"},
+      {padwave::InputBody::Button::Create, "previous"},
+      {padwave::InputBody::Button::Options, "next"},
+      {padwave::InputBody::Button::Touchpad, "toggle_mute"},
+      {padwave::InputBody::Button::Mute, "toggle_mute"},
+      {padwave::InputBody::Button::L3, "next"},
+      {padwave::InputBody::Button::R3, "previous"},
+      {padwave::InputBody::Button::LeftPaddle, "previous"},
+      {padwave::InputBody::Button::RightPaddle, "next"},
+      {padwave::InputBody::Button::Fn1, "toggle_pause"},
+      {padwave::InputBody::Button::Fn2, "toggle_mute"},
   };
 
   void trackButtons(padwave::InputBody::Buttons buttons) {
-    uint32_t raw = static_cast<uint32_t>(buttons);
-    uint32_t pressed = raw & ~actions.prev_buttons;
-    actions.prev_buttons = raw;
+    padwave::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
+    actions.prevButtons = buttons;
 
     for (auto &b : kBindings)
-      if (pressed & static_cast<uint32_t>(b.bit)) emitAction(b.action, 0);
+      if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
-    if (pressed & static_cast<uint32_t>(padwave::InputBody::Buttons::Ps)) {
+    if (pressed.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!(raw & static_cast<uint32_t>(padwave::InputBody::Buttons::Ps))) {
+    if (!buttons.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= 2000) {
       emitAction("suspend", 0);
@@ -130,24 +129,21 @@ private:
     bool jack = b.headset();
     int l2 = b.l2, r2 = b.r2;
     int lx = b.lx, ly = b.ly, rx = b.rx, ry = b.ry;
-    uint32_t buttons = static_cast<uint32_t>(b.buttons());
-    uint8_t dpad = static_cast<uint8_t>((buttons & 0x0F));
+    const padwave::InputBody::Buttons buttons = b.buttons();
+    padwave::InputBody::Dpad dpad = b.dpad();
     bool first = !sensors.has_prev;
 
     bool real = false, analog = false;
     if (!first) {
-      real = buttons != sensors.prev_buttons || dpad != sensors.prev_dpad ||
+      real = buttons != sensors.prevButtons || dpad != sensors.prevDpad ||
              jack != sensors.prev_jack || abs(l2 - sensors.prev_l2) > 10 ||
              abs(r2 - sensors.prev_r2) > 10;
       analog = abs(lx - sensors.prev_lx) > 24 || abs(ly - sensors.prev_ly) > 24 ||
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
 
-    double g = sqrt(static_cast<double>(b.accel_x) * b.accel_x +
-                    static_cast<double>(b.accel_y) * b.accel_y +
-                    static_cast<double>(b.accel_z) * b.accel_z) /
-               8192.0;
-    if (g >= 2.25 && now - sensors.last_shake > 1500) {
+    float g = b.accelerometer().len();
+    if (g >= 2.25f && now - sensors.last_shake > 1500) {
       emitEvent("shake");
       sensors.last_shake = now;
       real = true;
@@ -198,8 +194,8 @@ private:
     }
 
     sensors.has_prev = true;
-    sensors.prev_buttons = buttons;
-    sensors.prev_dpad = dpad;
+    sensors.prevButtons = buttons;
+    sensors.prevDpad = dpad;
     sensors.prev_lx = lx;
     sensors.prev_ly = ly;
     sensors.prev_rx = rx;
@@ -258,7 +254,7 @@ private:
 
   void emitFrame(const padwave::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
-    trackDpad(b.get_dpad());
+    trackDpad(b.dpad());
     trackButtons(b.buttons());
     trackTriggers(b.l2, b.r2);
     trackSensors(b);

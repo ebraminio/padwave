@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 // Similar to HarfBuzz's hb-open-type.hh: wire integer types with implicit
 // conversion to arithmetic types, but little-endian instead of HarfBuzz's
@@ -320,9 +321,7 @@ struct InputBody {
   PWUINT8 l2;  // +0x04  L2 analogue
   PWUINT8 r2;  // +0x05  R2 analogue
   PWUINT8 seq; // +0x06  report sequence number
-private:
   PWUINT32 buttons_; // +0x07  Buttons bits (d-pad in bits 0-3)
-public:
   PWUINT8 incremental;        // +0x0b  increments every report, wraps at 256
   PWUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
@@ -333,13 +332,16 @@ public:
   PWINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
   PWINT16 accel_y;            // +0x17
   PWINT16 accel_z;            // +0x19
+protected:
   PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
-  PWUINT8 temperature;        // +0x1f  controller temperature, degrees C
+  PWUINT8 temperature_;       // +0x1f  controller temperature, degrees C
+public:
   PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low),
                               //        y high; bit 7 of contact = not touching
   PWUINT8 touch2[4];          // +0x24
   PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
   PWUINT8 trigger_feedback_r; // +0x29
+protected:
   PWUINT32 host_time;         // +0x2a  community calls it the echoed host
                               //        timestamp; a constant 9 for a whole
                               //        session, so unverified
@@ -349,15 +351,28 @@ public:
                               //        behaves like a second device clock
   PWUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
   PWUINT8 status0;            // +0x34  battery (low nibble) + charging (high)
-private:
-  PWUINT8 status1_; // +0x35  Status1 bits
-public:
-  PWUINT8 status2;     // +0x36  constant 1 in every capture so far
-  PWUINT8 aes_cmac[8]; // +0x37  high entropy in every report, like a
-                       //        per-report MAC/nonce; not verified
-                       //        against the pairing handshake
+  PWUINT8 status1;            // +0x35  Status1 bits
+  PWUINT8 status2;            // +0x36  constant 1 in every capture so far
+  PWUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
+                              //        per-report MAC/nonce; not verified
+                              //        against the pairing handshake
 
+  static constexpr uint32_t DPAD_MASK = 0x0F;
+public:
   enum : uint8_t { Size = 63 };
+
+  // Accelerometer data structures, ~8192 counts per g
+  struct Accelerometer {
+    constexpr Accelerometer(PWINT16 x, PWINT16 y, PWINT16 z) : x_(x / 8192.f), y_(y / 8192.f), z_(z / 8192.f) {}
+    float len() const { return sqrtf(x_ * x_ + y_ * y_ + z_ * z_); }
+  protected:
+    float x_, y_, z_;
+  };
+
+  const Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
+
+  // Controller temperature in degrees C
+  PWUINT8 temperature() const { return temperature_; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -373,7 +388,7 @@ public:
     None = 8,
   };
 
-  Dpad get_dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttons_) & 0x0F); }
+  Dpad dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttons_) & DPAD_MASK); }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
@@ -382,7 +397,7 @@ public:
   //   +0x09  bits 0 ps, 1 touchpad, 2 mute, 3 reserved, 4 fn1, 5 fn2,
   //          6 left_paddle, 7 right_paddle
   //   +0x0a  eight bits the kernel does not read; maybe L5/R5
-  enum class Buttons : uint32_t {
+  enum class Button : uint32_t {
     // +0x07
     ButtonSquare = 1u << 4,
     ButtonCross = 1u << 5,
@@ -409,26 +424,46 @@ public:
     // +0x0a: unread by the kernel; maybe L5/R5
   };
 
+  struct Buttons {
+    friend struct InputBody;
+    constexpr Buttons() : buttons(0) {}
+    constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
+    constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
+    const Buttons pressed(const Buttons &prev) const {
+      return Buttons(static_cast<uint32_t>(buttons) & ~static_cast<uint32_t>(prev.buttons));
+    }
+  private:
+    constexpr Buttons(uint32_t v) : buttons(v) {}
+    uint32_t buttons;
+  };
+
+  constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
+
+  // Battery status percentage
+  constexpr bool battery() const {
+    return (status0 & 0x0F) * 10 + 5;
+  }
+
+  enum class ChargingState {
+    Discharging = 0,
+    Charging = 1,
+    Full = 2,
+  };
+
+  constexpr ChargingState charging() const { return static_cast<ChargingState>(status0 >> 4); }
+
   // +0x35. Bits 2-7 are reserved; bit 2 happens to be set on this pad.
   enum class Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
   };
 
-  constexpr Buttons buttons() const {
-    return static_cast<Buttons>(static_cast<uint32_t>(buttons_));
-  }
-
-  constexpr bool has(Buttons b) const {
-    return (static_cast<uint32_t>(buttons_) & static_cast<uint32_t>(b)) != 0;
-  }
-
   constexpr bool headset() const {
-    return (static_cast<uint8_t>(status1_) & static_cast<uint8_t>(Status1::Headset)) != 0;
+    return (status1 & static_cast<uint8_t>(Status1::Headset)) != 0;
   }
 
   constexpr bool microphone() const {
-    return (static_cast<uint8_t>(status1_) & static_cast<uint8_t>(Status1::Microphone)) != 0;
+    return (status1 & static_cast<uint8_t>(Status1::Microphone)) != 0;
   }
 };
 
