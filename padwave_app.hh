@@ -602,6 +602,7 @@ public:
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_data", "%s", this->usb_data ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
     kvText(buf, cap, &o, "controller.buttons", this->buttons);
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
     kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
@@ -808,7 +809,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
-      if (this->usb_data) return snprintf(out, out_cap, "ok=true\nnote=external host\n");
+      if (this->externalHost()) return snprintf(out, out_cap, "ok=true\nnote=external host\n");
       int v = static_cast<int>(kvNumber(body, "value", 0));
       snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
@@ -1120,6 +1121,8 @@ private:
     playerSend(line);
   }
 
+  bool externalHost() const { return this->usb_data && !this->player.isUsb(); }
+
   void applyOutputRoute() {
     if (this->player) this->player.setSpeaker(!this->jack);
   }
@@ -1349,11 +1352,11 @@ private:
     this->r2 = triggers.right;
     this->battery = b.battery();
     bool had_jack = this->jack;
-    bool had_usb_data = this->usb_data;
+    bool had_external = this->externalHost();
     this->jack = b.headset();
     this->usb_data = b.usbData();
-    if (this->usb_data != had_usb_data) {
-      if (this->usb_data) playerSend("state_clear_lightbar\n");
+    if (this->externalHost() != had_external) {
+      if (this->externalHost()) playerSend("state_clear_lightbar\n");
       this->led_force = true;
       serviceLeds();
     }
@@ -1433,7 +1436,8 @@ private:
     // A USB data host (e.g. a Mac) also receives these reports and applies its
     // own bindings. Keep padwave's UI state updated, but do not act twice.
     // Jack transitions are hardware state used for our own pause/routing.
-    if (this->usb_data && strcmp(name, "jack_plugged") != 0 && strcmp(name, "jack_unplugged") != 0)
+    if (this->externalHost() && strcmp(name, "jack_plugged") != 0 &&
+        strcmp(name, "jack_unplugged") != 0)
       return;
     handleAction(name, value);
   }
@@ -1716,7 +1720,7 @@ private:
   }
 
   void setLightbarSetup(int value) {
-    if (this->usb_data) return;
+    if (this->externalHost()) return;
     if (value == 1) this->led_force = true;
     char fields[32];
     snprintf(fields, sizeof(fields), "lightbar_setup=%d", value);
@@ -1751,7 +1755,7 @@ private:
   }
 
   bool applyLightbar(int r, int g, int b, bool force) {
-    if (!this->player || this->usb_data) return false;
+    if (!this->player || this->externalHost()) return false;
     if (!force && this->led_last_rgb[0] == r && this->led_last_rgb[1] == g &&
         this->led_last_rgb[2] == b)
       return true;
@@ -1797,7 +1801,7 @@ private:
     }
 
     bool charging_now = this->controller && strcmp(this->charging, "charging") == 0;
-    if (charging_now && this->lightbar_on) {
+    if (charging_now && this->lightbar_on && !this->externalHost()) {
       if (this->led_charge_at == 0) {
         // Start the charging loop with setup 2, then 1 two seconds later.
         this->led_charge_at = now;
@@ -1878,8 +1882,8 @@ private:
     }
 
     bool force = this->led_force;
-    bool rgb_ok =
-        this->lightbar_on && !charging_now && !this->usb_data && applyLightbar(r, g, b, force);
+    bool rgb_ok = this->lightbar_on && !charging_now && !this->externalHost() &&
+                  applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;

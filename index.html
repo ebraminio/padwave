@@ -610,7 +610,7 @@ function render(s) {
   $("#battText").textContent =
     c.battery != null ? `${c.battery}%${chargeMark}` : "—";
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
-  $("#usbHostChip").style.display = c.usb_data ? "inline-flex" : "none";
+  $("#usbHostChip").style.display = c.usb_host ? "inline-flex" : "none";
 
   const audio = s.audio || {};
   $("#audioDot").className = "dot " + (audio.present ? (audio.state === "RUNNING" ? "on" : "warn") : "off");
