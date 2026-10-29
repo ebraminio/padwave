@@ -1416,13 +1416,13 @@ private:
                                                  : "discharging");
     }
     const padwave::InputBody::Gyro gyro = b.gyro();
-    this->gx = gyro.nx();
-    this->gy = gyro.ny();
-    this->gz = gyro.nz();
+    this->gx = gyro.x;
+    this->gy = gyro.y;
+    this->gz = gyro.z;
     const padwave::InputBody::Accelerometer accel = b.accelerometer();
-    this->ax = accel.xg();
-    this->ay = accel.yg();
-    this->az = accel.zg();
+    this->ax = accel.x;
+    this->ay = accel.y;
+    this->az = accel.z;
     this->seq = static_cast<unsigned>(b.sequence());
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());

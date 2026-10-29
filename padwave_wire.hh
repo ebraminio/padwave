@@ -360,11 +360,6 @@ protected:
 public:
   enum : uint8_t { Size = 63 };
 
-protected:
-  static constexpr int AccelCountsPerG = 8192;
-  static constexpr int GyroMaxDps = 2000;
-  static constexpr int GyroFullScaleCounts = 32768;
-
 public:
   struct Sticks {
     int lx, ly, rx, ry, l2, r2;
@@ -374,35 +369,33 @@ public:
 
   int sequence() const { return seq; }
 
+  // Normalized full-scale angular rate: -1..1.
   struct Gyro {
-    int x, y, z;
+    float x, y, z;
 
-    float nx() const { return static_cast<float>(x) / static_cast<float>(GyroFullScaleCounts); }
+    constexpr Gyro(int raw_x, int raw_y, int raw_z)
+        : x(static_cast<float>(raw_x) / CountsPerFullScale),
+          y(static_cast<float>(raw_y) / CountsPerFullScale),
+          z(static_cast<float>(raw_z) / CountsPerFullScale) {}
 
-    float ny() const { return static_cast<float>(y) / static_cast<float>(GyroFullScaleCounts); }
-
-    float nz() const { return static_cast<float>(z) / static_cast<float>(GyroFullScaleCounts); }
-
-    float dpsX() const { return nx() * static_cast<float>(GyroMaxDps); }
-
-    float dpsY() const { return ny() * static_cast<float>(GyroMaxDps); }
-
-    float dpsZ() const { return nz() * static_cast<float>(GyroMaxDps); }
+  private:
+    static constexpr float CountsPerFullScale = 32768.f;
   };
 
   Gyro gyro() const { return {gyro_x, gyro_y, gyro_z}; }
 
-  // Raw accelerometer counts, ~8192 per g.
+  // Acceleration in g: ~8192 raw counts per g.
   struct Accelerometer {
-    int x, y, z;
+    float x, y, z;
 
-    float xg() const { return static_cast<float>(x) / static_cast<float>(AccelCountsPerG); }
+    constexpr Accelerometer(int raw_x, int raw_y, int raw_z)
+        : x(static_cast<float>(raw_x) / CountsPerG), y(static_cast<float>(raw_y) / CountsPerG),
+          z(static_cast<float>(raw_z) / CountsPerG) {}
 
-    float yg() const { return static_cast<float>(y) / static_cast<float>(AccelCountsPerG); }
+    float len() const { return sqrtf(x * x + y * y + z * z); }
 
-    float zg() const { return static_cast<float>(z) / static_cast<float>(AccelCountsPerG); }
-
-    float len() const { return sqrtf(xg() * xg() + yg() * yg() + zg() * zg()); }
+  private:
+    static constexpr float CountsPerG = 8192.f;
   };
 
   Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
