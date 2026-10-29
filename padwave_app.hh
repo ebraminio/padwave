@@ -1389,14 +1389,14 @@ private:
         }
       }
     }
-    this->lx = b.lx;
-    this->ly = b.ly;
-    this->rx = b.rx;
-    this->ry = b.ry;
-    this->l2 = b.l2;
-    this->r2 = b.r2;
+    const padwave::InputBody::Sticks sticks = b.sticks();
+    this->lx = sticks.lx;
+    this->ly = sticks.ly;
+    this->rx = sticks.rx;
+    this->ry = sticks.ry;
+    this->l2 = sticks.l2;
+    this->r2 = sticks.r2;
     this->battery = b.battery();
-    if (this->battery > 100) this->battery = 100;
     this->jack = b.headset();
     this->temp = b.temperature();
     snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.dpad()));
@@ -1409,27 +1409,27 @@ private:
       using ChargingState = padwave::InputBody::ChargingState;
       ChargingState charge = b.charging();
       snprintf(this->charging, sizeof(this->charging), "%s",
-              charge == ChargingState::Charging ? "charging"
-              : charge == ChargingState::Full   ? "full"
-                                                : "discharging");
+               charge == ChargingState::Charging ? "charging"
+               : charge == ChargingState::Full   ? "full"
+                                                 : "discharging");
     }
-    this->gx = b.gyro_x;
-    this->gy = b.gyro_y;
-    this->gz = b.gyro_z;
-    this->ax = b.accel_x;
-    this->ay = b.accel_y;
-    this->az = b.accel_z;
-    this->seq = b.seq;
-    this->tfl = b.trigger_feedback_l;
-    this->tfr = b.trigger_feedback_r;
+    const padwave::InputBody::Gyro gyro = b.gyro();
+    this->gx = gyro.x;
+    this->gy = gyro.y;
+    this->gz = gyro.z;
+    const padwave::InputBody::Accelerometer accel = b.accelerometer();
+    this->ax = accel.x;
+    this->ay = accel.y;
+    this->az = accel.z;
+    this->seq = static_cast<unsigned>(b.sequence());
+    this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
+    this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
     for (int t = 0; t < 2; t++) {
-      const PWUINT8 *touch = t == 0 ? b.touch1 : b.touch2;
-      unsigned contact = touch[0];
-      unsigned middle = touch[2];
-      this->touch_active[t] = (contact & 0x80) ? 0 : 1;
-      this->touch_id[t] = contact & 0x7F;
-      this->touch_x[t] = touch[1] | ((middle & 0x0F) << 8);
-      this->touch_y[t] = (middle >> 4) | (static_cast<unsigned>(touch[3]) << 4);
+      const padwave::InputBody::Touch touch = b.touch(t);
+      this->touch_active[t] = touch.active ? 1 : 0;
+      this->touch_id[t] = touch.id;
+      this->touch_x[t] = touch.x;
+      this->touch_y[t] = touch.y;
     }
 
     long now = nowMs();

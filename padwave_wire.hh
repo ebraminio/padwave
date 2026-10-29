@@ -314,14 +314,15 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
-  PWUINT8 lx;  // +0x00  left stick X, 0..255 (128 = centre)
-  PWUINT8 ly;  // +0x01  left stick Y, 0 = up
-  PWUINT8 rx;  // +0x02  right stick X
-  PWUINT8 ry;  // +0x03  right stick Y
-  PWUINT8 l2;  // +0x04  L2 analogue
-  PWUINT8 r2;  // +0x05  R2 analogue
-  PWUINT8 seq; // +0x06  report sequence number
-  PWUINT32 buttons_; // +0x07  Buttons bits (d-pad in bits 0-3)
+protected:
+  PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
+  PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
+  PWUINT8 rx;                 // +0x02  right stick X
+  PWUINT8 ry;                 // +0x03  right stick Y
+  PWUINT8 l2;                 // +0x04  L2 analogue
+  PWUINT8 r2;                 // +0x05  R2 analogue
+  PWUINT8 seq;                // +0x06  report sequence number
+  PWUINT32 buttons_;          // +0x07  Buttons bits (d-pad in bits 0-3)
   PWUINT8 incremental;        // +0x0b  increments every report, wraps at 256
   PWUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
@@ -332,16 +333,13 @@ struct InputBody {
   PWINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
   PWINT16 accel_y;            // +0x17
   PWINT16 accel_z;            // +0x19
-protected:
   PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
   PWUINT8 temperature_;       // +0x1f  controller temperature, degrees C
-public:
   PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low),
                               //        y high; bit 7 of contact = not touching
   PWUINT8 touch2[4];          // +0x24
   PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
   PWUINT8 trigger_feedback_r; // +0x29
-protected:
   PWUINT32 host_time;         // +0x2a  community calls it the echoed host
                               //        timestamp; a constant 9 for a whole
                               //        session, so unverified
@@ -358,21 +356,38 @@ protected:
                               //        against the pairing handshake
 
   static constexpr uint32_t DPAD_MASK = 0x0F;
+
 public:
   enum : uint8_t { Size = 63 };
 
-  // Accelerometer data structures, ~8192 counts per g
-  struct Accelerometer {
-    constexpr Accelerometer(PWINT16 x, PWINT16 y, PWINT16 z) : x_(x / 8192.f), y_(y / 8192.f), z_(z / 8192.f) {}
-    float len() const { return sqrtf(x_ * x_ + y_ * y_ + z_ * z_); }
-  protected:
-    float x_, y_, z_;
+  struct Sticks {
+    int lx, ly, rx, ry, l2, r2;
   };
 
-  const Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
+  Sticks sticks() const { return {lx, ly, rx, ry, l2, r2}; }
 
-  // Controller temperature in degrees C
-  PWUINT8 temperature() const { return temperature_; }
+  int sequence() const { return seq; }
+
+  struct Gyro {
+    int x, y, z;
+  };
+
+  Gyro gyro() const { return {gyro_x, gyro_y, gyro_z}; }
+
+  // Raw accelerometer counts, ~8192 per g.
+  struct Accelerometer {
+    int x, y, z;
+
+    float len() const { return sqrtf(static_cast<float>(x * x + y * y + z * z)) / 8192.f; }
+  };
+
+  Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
+
+  int triggerFeedbackLeft() const { return trigger_feedback_l; }
+
+  int triggerFeedbackRight() const { return trigger_feedback_r; }
+
+  uint8_t temperature() const { return temperature_; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -426,25 +441,32 @@ public:
 
   struct Buttons {
     friend struct InputBody;
+
     constexpr Buttons() : buttons(0) {}
+
     constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
+
     constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
+
     const Buttons pressed(const Buttons &prev) const {
       return Buttons(static_cast<uint32_t>(buttons) & ~static_cast<uint32_t>(prev.buttons));
     }
+
   private:
     constexpr Buttons(uint32_t v) : buttons(v) {}
+
     uint32_t buttons;
   };
 
   constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
 
-  // Battery status percentage
-  constexpr bool battery() const {
-    return (status0 & 0x0F) * 10 + 5;
+  // Battery status percentage, clamped to 100.
+  constexpr int battery() const {
+    int percent = (status0 & 0x0F) * 10 + 5;
+    return percent > 100 ? 100 : percent;
   }
 
-  enum class ChargingState {
+  enum class ChargingState : uint8_t {
     Discharging = 0,
     Charging = 1,
     Full = 2,
@@ -458,12 +480,27 @@ public:
     Microphone = 0x02, // bit 1
   };
 
-  constexpr bool headset() const {
-    return (status1 & static_cast<uint8_t>(Status1::Headset)) != 0;
-  }
+  constexpr bool headset() const { return (status1 & static_cast<uint8_t>(Status1::Headset)) != 0; }
 
   constexpr bool microphone() const {
     return (status1 & static_cast<uint8_t>(Status1::Microphone)) != 0;
+  }
+
+  struct Touch {
+    bool active;
+    unsigned id;
+    unsigned x;
+    unsigned y;
+  };
+
+  Touch touch(int index) const {
+    const PWUINT8 *raw = index == 0 ? touch1 : touch2;
+    unsigned contact = raw[0];
+    unsigned middle = raw[2];
+    return {.active = (contact & 0x80) == 0,
+            .id = contact & 0x7F,
+            .x = raw[1] | ((middle & 0x0F) << 8),
+            .y = (middle >> 4) | (static_cast<unsigned>(raw[3]) << 4)};
   }
 };
 
