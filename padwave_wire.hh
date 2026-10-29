@@ -360,6 +360,10 @@ protected:
 public:
   enum : uint8_t { Size = 63 };
 
+  static constexpr int AccelCountsPerG = 8192;
+  static constexpr int GyroMaxDps = 2000;
+  static constexpr int PsHoldMs = 2000;
+
   struct Sticks {
     int lx, ly, rx, ry, l2, r2;
   };
@@ -378,7 +382,7 @@ public:
   struct Accelerometer {
     int x, y, z;
 
-    float len() const { return sqrtf(static_cast<float>(x * x + y * y + z * z)) / 8192.f; }
+    float len() const { return sqrtf(static_cast<float>(x * x + y * y + z * z)) / static_cast<float>(AccelCountsPerG); }
   };
 
   Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }

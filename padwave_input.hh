@@ -104,7 +104,7 @@ private:
 
     if (!buttons.isOn(padwave::InputBody::Button::Ps)) {
       actions.ps_armed = false;
-    } else if (actions.ps_armed && nowMs() - actions.ps_at >= 2000) {
+    } else if (actions.ps_armed && nowMs() - actions.ps_at >= padwave::InputBody::PsHoldMs) {
       emitAction("suspend", 0);
       actions.ps_armed = false;
     }

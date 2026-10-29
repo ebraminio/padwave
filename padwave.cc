@@ -235,13 +235,11 @@ private:
                                "bindings.square=shuffle_folder\n"
                                "bindings.touchpad=toggle_mute\n"
                                "bindings.triangle=toggle_pause\n";
-    size_t n = strlen(text);
-    if (n >= cap) n = cap ? cap - 1 : 0;
-    if (cap) {
-      memcpy(buf, text, n);
-      buf[n] = 0;
-    }
-    return static_cast<int>(n);
+    return snprintf(buf, cap,
+                    "%scontroller.accel_per_g=%d\ncontroller.gyro_max_dps=%d\n"
+                    "controller.ps_hold_ms=%d\n",
+                    text, padwave::InputBody::AccelCountsPerG, padwave::InputBody::GyroMaxDps,
+                    padwave::InputBody::PsHoldMs);
   }
 
   static int64_t monotonicMs() {
