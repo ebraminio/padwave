@@ -140,8 +140,10 @@ enum class Packet : uint8_t {
 
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
+
 private:
   using PWUINT8 = internal::PWUINT8;
+
 protected:
   PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
   PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
@@ -426,6 +428,7 @@ struct OutputReport {
 private:
   using PWUINT8 = internal::PWUINT8;
   using PWUINT32 = internal::PWUINT32;
+
 protected:
   PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
   PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
@@ -441,12 +444,32 @@ public:
     CrcSeed = 0xA2,
   };
 
-  constexpr void init(uint8_t seq = 0) {
+  // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
+  // The class owns the shift and wrap; callers just hold a Sequence.
+  struct Sequence {
+    constexpr uint8_t next() {
+      uint8_t next_tag = static_cast<uint8_t>((value & Mask) << Shift);
+      value = static_cast<uint8_t>((value + 1) & Mask);
+      return next_tag;
+    }
+
+  private:
+    uint8_t value = 0;
+    static constexpr uint8_t Mask = 0x0F;
+    static constexpr uint8_t Shift = 4;
+  };
+
+  constexpr void init() {
     *this = OutputReport{};
     report_id = ReportId;
     tag = 0x10;
-    seq_tag = seq;
+    seq_tag = 0;
     body_.init();
+  }
+
+  constexpr void init(Sequence &sequence) {
+    init();
+    seq_tag = sequence.next();
   }
 
   constexpr const OutputBody &body() const { return body_; }
@@ -466,6 +489,7 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 struct UsbOutputReport {
 private:
   using PWUINT8 = internal::PWUINT8;
+
 protected:
   PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
   OutputBody body_;     // 0x01..0x2f
@@ -749,14 +773,15 @@ struct InputReport {
 private:
   using PWUINT8 = internal::PWUINT8;
   using PWUINT32 = internal::PWUINT32;
+
 protected:
-  PWUINT8 report_id;         // 0x00  Packet::PacketStateBluetooth
-  PWUINT8 seq_tag;           // 0x01  high nibble = sequence tag, low nibble = 0
-  InputBody body_; // 0x02..0x40
-  PWUINT8 bt_reserved[9];    // 0x41..0x49  the first byte is not constant (30
-                             //             distinct values in a 150 s capture), the
-                             //             other eight were; unknown
-  PWUINT32 crc;              // 0x4a  CRC-32 over the report, seed 0xA1
+  PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
+  PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
+  InputBody body_;        // 0x02..0x40
+  PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
+                          //             distinct values in a 150 s capture), the
+                          //             other eight were; unknown
+  PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
 
 public:
   enum : uint8_t {
@@ -938,6 +963,23 @@ public:
   constexpr void setSeqTag(uint8_t value) { seq_tag = value; }
 
   constexpr void setCounter(uint8_t value) { counter = value; }
+
+  // 0x36 sequence tag: high nibble counts 0..15, low nibble stays zero;
+  // the counter is a separate free-running byte.
+  struct Sequence {
+    constexpr void apply(AudioReport &report) {
+      report.setSeqTag(static_cast<uint8_t>((seq & Mask) << Shift));
+      report.setCounter(counter);
+      seq = static_cast<uint8_t>((seq + 1) & Mask);
+      counter++;
+    }
+
+  private:
+    uint8_t seq = 0;
+    uint8_t counter = 0;
+    static constexpr uint8_t Mask = 0x0F;
+    static constexpr uint8_t Shift = 4;
+  };
 
   constexpr EnableMask enableMask() const {
     return static_cast<EnableMask>(static_cast<uint8_t>(enable_mask));

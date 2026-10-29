@@ -224,7 +224,7 @@ private:
   App *app = nullptr;
 
   dualsense::AudioReport::Encoder enc;
-  uint8_t seq = 0, counter = 0;
+  dualsense::AudioReport::Sequence audio_sequence;
 
   File cur;
   File nxt;
@@ -244,7 +244,7 @@ private:
   bool seek_fade = false;
 
   dualsense::OutputReport out{};
-  uint8_t out_seq = 0;
+  dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
   bool mic = false;
 
@@ -533,11 +533,10 @@ private:
     }
 
     dualsense::OutputReport report{};
-    report.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
+    report.init(output_sequence);
     if (!padwave_fields::apply_fields(&report.body(), fields)) return;
     report.sign();
     if (!writeDevice(&report, sizeof(report))) return;
-    out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
   }
 
   void sendReport(const float *pcm, int frames) {
@@ -553,8 +552,7 @@ private:
     report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
                                         : dualsense::OutputBody::AudioControl::Headphones);
 
-    report.setSeqTag(static_cast<uint8_t>(((seq & 0x0F) << 4)));
-    report.setCounter(counter);
+    audio_sequence.apply(report);
 
     report.setPcm(pcm, frames, enc);
 
@@ -576,8 +574,6 @@ private:
       }
     }
 
-    seq = static_cast<uint8_t>(((seq + 1) & 0x0F));
-    counter++;
     sent++;
   }
 
@@ -668,11 +664,10 @@ private:
         if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
         if (!writeDevice(&report, sizeof(report))) return;
       } else {
-        out.init(static_cast<uint8_t>(((out_seq & 0x0F) << 4)));
+        out.init(output_sequence);
         if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
         out.sign();
         if (!writeDevice(&out, sizeof(out))) return;
-        out_seq = static_cast<uint8_t>(((out_seq + 1) & 0x0F));
       }
       padwave_fields::apply_fields(&state, line + 7);
       // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
