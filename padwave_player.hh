@@ -679,7 +679,7 @@ private:
     int8_t haptics[dualsense::AudioReport::HapticSize];
     buildHaptics(pcm, frames, haptics);
     report.setHaptics(haptics, dualsense::AudioReport::HapticSize);
-    if (haptic_subwoofer) report.stateBody().setHapticVolume(0x64);
+    if (haptic_subwoofer) report.stateBody().setHapticLowPassFilter(true);
 
     audio_sequence.apply(report);
 

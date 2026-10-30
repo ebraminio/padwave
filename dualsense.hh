@@ -520,6 +520,7 @@ public:
 
 private:
   using DSUINT8 = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
 
 protected:
   DSUINT8 valid_flag0;         // +0x00  ValidFlag0 bits
@@ -534,11 +535,12 @@ protected:
   DSUINT8 power_save_control;  // +0x09  PowerSave bits
   TriggerEffect right_trigger; // +0x0a  11-byte effect block
   TriggerEffect left_trigger;  // +0x15  11-byte effect block
-  DSUINT8 reserved_32[4];      // +0x20..0x23
-  DSUINT8 haptic_volume;       // +0x24
+  DSUINT32 host_timestamp;     // +0x20  mirrored input sensor timestamp
+  DSUINT8 motor_power_level;   // +0x24  trigger:rumble reduction nibbles
   DSUINT8 audio_control2;      // +0x25  speaker preamp gain
   DSUINT8 valid_flag2;         // +0x26  ValidFlag2 bits
-  DSUINT8 reserved_39[2];      // +0x27..0x28
+  DSUINT8 haptic_low_pass_filter; // +0x27  hardware haptic LPF enable
+  DSUINT8 reserved_40;            // +0x28
   DSUINT8 lightbar_setup;      // +0x29  valid_flag2 bit 1; 0x02 fades out
   DSUINT8 led_brightness;      // +0x2a
   DSUINT8 player_leds;         // +0x2b  PlayerLeds bits
@@ -599,8 +601,14 @@ private:
   // the other six are in the panel's power save row so they can be probed: if
   // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
   enum PowerSave : uint8_t {
-    MicrophoneMute = 1u << 4, // bit 4  documented
-    AudioMute = 1u << 6,      // bit 6  documented
+    TouchPowerSave = 1u << 0,     // bit 0
+    MotionPowerSave = 1u << 1,    // bit 1
+    HapticPowerSave = 1u << 2,    // bit 2
+    AudioPowerSave = 1u << 3,     // bit 3
+    MicMute = 1u << 4,            // bit 4
+    SpeakerMute = 1u << 5,        // bit 5
+    HeadphoneMute = 1u << 6,      // bit 6
+    HapticMute = 1u << 7,         // bit 7
   };
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
@@ -624,9 +632,16 @@ public:
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
   // use, which is why a silent jack was the first symptom of getting this
   // wrong.
+  enum class AudioOutputPath : uint8_t {
+    L_R_X = 0,
+    L_L_X = 1,
+    L_L_R = 2,
+    X_X_R = 3,
+  };
+
   enum class AudioControl : uint8_t {
     Headphones = 0x00,
-    Speaker = 0x09,
+    Speaker = static_cast<uint8_t>(AudioOutputPath::X_X_R) << 4,
   };
 
 private:
@@ -700,10 +715,19 @@ public:
     left_trigger.block[0] = v;
   }
 
-  constexpr void setHapticVolume(uint8_t v) {
-    claim(ValidFlag1::HapticLowPassFilterEnable);
-    haptic_volume = v;
+  constexpr void setMotorPowerLevel(uint8_t v) {
+    claim(ValidFlag1::VibrationAttenuationEnable);
+    motor_power_level = v;
   }
+
+  constexpr void setHapticLowPassFilter(bool on) {
+    claim(ValidFlag1::HapticLowPassFilterEnable);
+    haptic_low_pass_filter = on ? 1 : 0;
+  }
+
+  constexpr void setHapticLowPassFilter(uint8_t v) { setHapticLowPassFilter(v != 0); }
+
+  constexpr void setHostTimestamp(uint32_t v) { host_timestamp = v; }
 
   constexpr void setAudioControl2(uint8_t v) {
     claim(ValidFlag1::AudioControl2Enable);
@@ -1070,6 +1094,19 @@ public:
     }
   };
 
+  struct TouchData {
+    TouchPoint fingers[2];
+    uint8_t timestamp;
+  };
+
+  struct TriggerFeedback {
+    uint8_t value;
+
+    constexpr unsigned stopLocation() const { return value & 0x0F; }
+
+    constexpr unsigned status() const { return value >> 4; }
+  };
+
 protected:
   DSUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
   DSUINT8 ly;                 // +0x01  left stick Y, 0 = up
@@ -1091,21 +1128,15 @@ protected:
   DSINT16 accel_z;            // +0x19
   DSUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
   DSUINT8 temperature_;       // +0x1f  controller temperature, degrees C
-  TouchPoint touch1;          // +0x20
-  TouchPoint touch2;          // +0x24
-  DSUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
-  DSUINT8 trigger_feedback_r; // +0x29
-  DSUINT32 host_time;         // +0x2a  community calls it the echoed host
-                              //        timestamp; a constant 9 for a whole
-                              //        session, so unverified
-  DSUINT8 device_feedback[4]; // +0x2e  labelled "device feedback", but the low
-                              //        bytes change every report and 0x31
-                              //        tracks sensor_time's high byte: it
-                              //        behaves like a second device clock
-  DSUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
-  DSUINT8 status0;            // +0x34  low nibble: battery 0..10; high: charging
-  DSUINT8 status1;            // +0x35  Status1 bits
-  DSUINT8 status2;            // +0x36  constant 1 in every capture so far
+  TouchData touch_data;          // +0x20  two contacts + timestamp
+  TriggerFeedback trigger_right; // +0x29  stop location + status
+  TriggerFeedback trigger_left;  // +0x2a
+  DSUINT32 host_timestamp;       // +0x2b  echoed host timestamp
+  DSUINT8 trigger_effect;        // +0x2f  low nibble right, high nibble left
+  DSUINT32 device_timestamp;     // +0x30  device clock
+  DSUINT8 status0;               // +0x34  low nibble battery, high power state
+  DSUINT8 status1;               // +0x35  Status1 bits
+  DSUINT8 status2;               // +0x36  Status2 bits
   DSUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
                               //        per-report MAC/nonce; not verified
                               //        against the pairing handshake
@@ -1166,10 +1197,6 @@ public:
   };
 
   Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
-
-  int triggerFeedbackLeft() const { return trigger_feedback_l; }
-
-  int triggerFeedbackRight() const { return trigger_feedback_r; }
 
   uint8_t temperature() const { return temperature_; }
 
@@ -1245,48 +1272,52 @@ public:
   constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
 
   // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
-  // high nibble is ChargingState. The controller can report Full before the
+  // high nibble is PowerState. The controller can report Complete before the
   // level reaches 10, especially on an aged pack.
   constexpr int battery() const {
     int percent = (status0 & 0x0F) * 10;
     return percent > 100 ? 100 : percent;
   }
 
-  enum class ChargingState : uint8_t {
-    Discharging = 0,
-    Charging = 1,
-    Full = 2,
+  enum class PowerState : uint8_t {
+    Discharging = 0x00,
+    Charging = 0x01,
+    Complete = 0x02,
+    AbnormalVoltage = 0x0A,
+    AbnormalTemperature = 0x0B,
+    ChargingError = 0x0F,
   };
 
-  constexpr ChargingState charging() const { return static_cast<ChargingState>(status0 >> 4); }
+  constexpr PowerState powerState() const { return static_cast<PowerState>(status0 >> 4); }
 
-  // +0x35. Bits 0-2 are documented; bits 3-4 are observed; bits 5-7 are
-  // reserved and still unlabelled.
+  constexpr PowerState charging() const { return powerState(); }
+
+  // +0x35. PluggedUsbData/Power are the two bits observed during USB/charger
+  // testing; the kernel only documents the headset/mic/mute bits.
   enum class Status1 : uint8_t {
     HeadphoneDetect = 1u << 0, // bit 0
     MicDetect = 1u << 1,       // bit 1
     MicMute = 1u << 2,         // bit 2
-    // Undocumented: observed set whenever a USB data link is present,
-    // including USB-only operation. Clear with a charger-only cable or no USB.
-    // Combined with the active Bluetooth transport, it means another USB host
-    // is also attached. Not parsed by hid-playstation.
-    UsbDataLink = 1u << 3, // bit 3
-    // Undocumented: observed set while external power is supplied - charger
-    // only, or a USB host (which also turns on UsbDataLink). Clear over plain
-    // Bluetooth. Not parsed by hid-playstation.
-    ChargerConnected = 1u << 4, // bit 4
+    PluggedUsbData = 1u << 3,  // bit 3
+    PluggedUsbPower = 1u << 4, // bit 4
+  };
+
+  // +0x36. duaLib names these two; the remaining bits are still unknown.
+  enum class Status2 : uint8_t {
+    PluggedExternalMic = 1u << 0,  // bit 0
+    HapticLowPassFilter = 1u << 1, // bit 1
   };
 
   constexpr bool headset() const {
     return (status1 & static_cast<uint8_t>(Status1::HeadphoneDetect)) != 0;
   }
 
-  constexpr bool usbDataLink() const {
-    return (status1 & static_cast<uint8_t>(Status1::UsbDataLink)) != 0;
+  constexpr bool pluggedUsbData() const {
+    return (status1 & static_cast<uint8_t>(Status1::PluggedUsbData)) != 0;
   }
 
-  constexpr bool chargerConnected() const {
-    return (status1 & static_cast<uint8_t>(Status1::ChargerConnected)) != 0;
+  constexpr bool pluggedUsbPower() const {
+    return (status1 & static_cast<uint8_t>(Status1::PluggedUsbPower)) != 0;
   }
 
   constexpr bool microphone() const {
@@ -1295,10 +1326,42 @@ public:
 
   constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
 
-  TouchPoint touch(int index) const { return index == 0 ? touch1 : touch2; }
+  constexpr bool pluggedExternalMic() const {
+    return (status2 & static_cast<uint8_t>(Status2::PluggedExternalMic)) != 0;
+  }
+
+  constexpr bool hapticLowPassFilter() const {
+    return (status2 & static_cast<uint8_t>(Status2::HapticLowPassFilter)) != 0;
+  }
+
+  TouchPoint touch(int index) const { return touch_data.fingers[index == 0 ? 0 : 1]; }
+
+  uint8_t touchTimestamp() const { return touch_data.timestamp; }
+
+  unsigned triggerFeedbackLeft() const { return trigger_left.value; }
+
+  unsigned triggerFeedbackRight() const { return trigger_right.value; }
+
+  unsigned triggerStopLocationLeft() const { return trigger_left.stopLocation(); }
+
+  unsigned triggerStatusLeft() const { return trigger_left.status(); }
+
+  unsigned triggerStopLocationRight() const { return trigger_right.stopLocation(); }
+
+  unsigned triggerStatusRight() const { return trigger_right.status(); }
+
+  unsigned triggerEffectLeft() const { return trigger_effect >> 4; }
+
+  unsigned triggerEffectRight() const { return trigger_effect & 0x0F; }
+
+  uint32_t hostTimestamp() const { return host_timestamp; }
+
+  uint32_t deviceTimestamp() const { return device_timestamp; }
 };
 
 static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes");
+static_assert(sizeof(InputBody::TouchData) == 9, "touch data must stay 9 bytes");
+static_assert(sizeof(InputBody::TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
 
 static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 bytes");
 
@@ -1736,13 +1799,21 @@ static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  DSUINT8 report_id;       // 0x00  Packet::PacketFeatureFirmware
-  DSUINT8 unknown_01[23];  // 0x01..0x17
-  DSUINT32 hw_version;     // 0x18..0x1b
-  DSUINT32 fw_version;     // 0x1c..0x1f
-  DSUINT8 unknown_32[12];  // 0x20..0x2b
-  DSUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
-  DSUINT8 unknown_46[18];  // 0x2e..0x3f
+  DSUINT8 report_id;        // 0x00  Packet::PacketFeatureFirmware
+  char build_date[11];      // 0x01..0x0b
+  char build_time[8];       // 0x0c..0x13
+  DSUINT16 fw_type;         // 0x14..0x15
+  DSUINT16 sw_series;       // 0x16..0x17
+  DSUINT32 hardware_info;   // 0x18..0x1b  variation/generation
+  DSUINT32 firmware_version; // 0x1c..0x1f
+  char device_info[12];     // 0x20..0x2b
+  DSUINT16 update_version;  // 0x2c..0x2d
+  DSUINT8 update_image_info; // 0x2e
+  DSUINT8 update_unk;       // 0x2f
+  DSUINT32 fw_version1;     // 0x30..0x33  SBL
+  DSUINT32 fw_version2;     // 0x34..0x37  Venom
+  DSUINT32 fw_version3;     // 0x38..0x3b  Spider DSP
+  DSUINT8 padding[4];       // 0x3c..0x3f
 
 public:
   enum : uint8_t {
@@ -1751,6 +1822,12 @@ public:
   };
 
   static constexpr uint16_t VibrationV2MinimumVersion = (2 << 8) | 21;
+
+  constexpr uint32_t hardwareInfo() const { return hardware_info; }
+
+  constexpr uint32_t firmwareVersion() const { return firmware_version; }
+
+  constexpr uint16_t updateVersion() const { return update_version; }
 
   constexpr bool usesVibrationV2() const { return update_version >= VibrationV2MinimumVersion; }
 };

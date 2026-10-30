@@ -232,7 +232,7 @@ private:
 
   bool controller = false;
   bool jack = false;
-  bool usb_data_link = false;
+  bool plugged_usb_data = false;
   // Runtime-only fallback for a shared USB host. Never persisted; cleared
   // whenever the USB data link goes away.
   bool controller_disabled = false;
@@ -246,6 +246,11 @@ private:
   unsigned seq = 0;
   int rate = 0;
   unsigned tfl = 0, tfr = 0;
+  unsigned touch_timestamp = 0;
+  unsigned host_timestamp = 0;
+  unsigned device_timestamp = 0;
+  unsigned trigger_effect_r = 0;
+  unsigned trigger_effect_l = 0;
   unsigned touch_active[2] = {};
   unsigned touch_id[2] = {};
   unsigned touch_x[2] = {};
@@ -611,7 +616,7 @@ public:
       kvText(buf, cap, &o, "controller.battery", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
-    kvAdd(buf, cap, &o, "controller.usb_data_link", "%s", this->usb_data_link ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.plugged_usb_data", "%s", this->plugged_usb_data ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.padwave_disabled", "%s",
           this->padwaveDisabled() ? "true" : "false");
@@ -621,6 +626,11 @@ public:
     kvAdd(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
     kvAdd(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
     kvAdd(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
+    kvAdd(buf, cap, &o, "controller.fields.touch_timestamp", "%u", this->touch_timestamp);
+    kvAdd(buf, cap, &o, "controller.fields.host_timestamp", "%u", this->host_timestamp);
+    kvAdd(buf, cap, &o, "controller.fields.device_timestamp", "%u", this->device_timestamp);
+    kvAdd(buf, cap, &o, "controller.fields.trigger_effect_right", "%u", this->trigger_effect_r);
+    kvAdd(buf, cap, &o, "controller.fields.trigger_effect_left", "%u", this->trigger_effect_l);
     for (int t = 0; t < 2; t++) {
       char key[48];
       snprintf(key, sizeof(key), "controller.touches.%d.active", t);
@@ -872,7 +882,7 @@ public:
     }
 
     if (strcmp(kind, "controller_input") == 0) {
-      if (!this->usb_data_link) return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
+      if (!this->plugged_usb_data) return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
       int enabled = static_cast<int>(kvNumber(body, "enabled", 1));
       this->controller_disabled = enabled == 0;
       if (this->controller_disabled) playerSend("state_clear_lightbar\n");
@@ -1205,7 +1215,7 @@ private:
     }
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
-    this->usb_data_link = false;
+    this->plugged_usb_data = false;
     this->controller_disabled = false;
     this->rate = 0;
     this->rate_at = 0;
@@ -1253,9 +1263,9 @@ private:
     playerSend(line);
   }
 
-  bool externalHost() const { return this->usb_data_link && !this->player.isUsb(); }
+  bool externalHost() const { return this->plugged_usb_data && !this->player.isUsb(); }
 
-  bool padwaveDisabled() const { return this->usb_data_link && this->controller_disabled; }
+  bool padwaveDisabled() const { return this->plugged_usb_data && this->controller_disabled; }
 
   void applyOutputRoute() {
     if (this->player) this->player.setSpeaker(!this->jack);
@@ -1486,11 +1496,11 @@ private:
     this->r2 = triggers.right;
     this->battery = b.battery();
     bool had_jack = this->jack;
-    bool had_link = this->usb_data_link;
+    bool had_link = this->plugged_usb_data;
     this->jack = b.headset();
-    this->usb_data_link = b.usbDataLink();
-    if (!this->usb_data_link) this->controller_disabled = false;
-    if (this->usb_data_link != had_link) {
+    this->plugged_usb_data = b.pluggedUsbData();
+    if (!this->plugged_usb_data) this->controller_disabled = false;
+    if (this->plugged_usb_data != had_link) {
       this->led_force = true;
       serviceLeds();
     }
@@ -1530,12 +1540,13 @@ private:
     for (size_t i = 0; i < r; i++)
       snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
     {
-      using ChargingState = dualsense::InputBody::ChargingState;
-      ChargingState charge = b.charging();
+      using PowerState = dualsense::InputBody::PowerState;
+      PowerState power = b.powerState();
       snprintf(this->charging, sizeof(this->charging), "%s",
-               charge == ChargingState::Charging ? "charging"
-               : charge == ChargingState::Full   ? "full"
-                                                 : "discharging");
+               power == PowerState::Charging    ? "charging"
+               : power == PowerState::Complete  ? "full"
+               : power == PowerState::Discharging ? "discharging"
+                                                  : "unknown");
     }
     const dualsense::InputBody::Gyro gyro = b.gyro();
     this->gx = gyro.x;
@@ -1548,6 +1559,11 @@ private:
     this->seq = static_cast<unsigned>(b.sequence());
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
+    this->touch_timestamp = b.touchTimestamp();
+    this->host_timestamp = b.hostTimestamp();
+    this->device_timestamp = b.deviceTimestamp();
+    this->trigger_effect_r = b.triggerEffectRight();
+    this->trigger_effect_l = b.triggerEffectLeft();
     for (int t = 0; t < 2; t++) {
       const dualsense::InputBody::TouchPoint touch = b.touch(t);
       this->touch_active[t] = touch.active() ? 1 : 0;
