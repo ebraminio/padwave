@@ -285,12 +285,12 @@ private:
   int idle_timeout_ms = 900000;
   int idle_warn_grace_ms = 10000;
   int poweroff_when_idle_ms = 60000;
-  int trigger_effect_amplitude = 6;
+  int trigger_effect_amplitude = 2;
   int trigger_effect_position = 2;
   int trigger_effect_frequency = 25;
-  int trigger_effect_end = 9;
+  int trigger_effect_end = 8;
   int trigger_effect_period = 10;
-  int trigger_effect_amplitude_b = 0;
+  int trigger_effect_amplitude_b = 4;
   bool trigger_effects = false;
   char trigger_effect_preset[32] = "none";
   bool haptic_subwoofer = false;
@@ -925,7 +925,7 @@ public:
     if (strcmp(kind, "trigger") == 0) {
       char side[16] = "right";
       char preset[32] = "";
-      char effect[16] = "vibration";
+      char effect[32] = "vibration";
       kvGet(body, "side", side, sizeof(side));
       kvGet(body, "preset", preset, sizeof(preset));
       kvGet(body, "effect", effect, sizeof(effect));
@@ -952,26 +952,74 @@ public:
         mode = 0x05;
       } else {
         dualsense::TriggerEffect fx;
+        bool applied = false;
+        const uint8_t level8 = static_cast<uint8_t>(level);
+        const uint8_t frequency8 = static_cast<uint8_t>(frequency);
         if (strcmp(effect, "feedback") == 0) {
           uint8_t levels[10] = {};
           int last = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
-            levels[zone] = static_cast<uint8_t>(level);
-          fx.feedback(levels);
+            levels[zone] = level8;
+          applied = fx.multiplePositionFeedback(levels);
         } else if (strcmp(effect, "weapon") == 0) {
-          fx.weapon(start, end, static_cast<uint8_t>(level));
+          applied = fx.weapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "vibration") == 0) {
           uint8_t amplitudes[10] = {};
           int last = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
-            amplitudes[zone] = static_cast<uint8_t>(level);
-          fx.vibration(amplitudes, static_cast<uint8_t>(frequency));
+            amplitudes[zone] = level8;
+          applied = fx.multiplePositionVibration(frequency8, amplitudes);
         } else if (strcmp(effect, "machine") == 0) {
-          fx.machine(start, end, static_cast<uint8_t>(level), static_cast<uint8_t>(amplitude_b),
-                     static_cast<uint8_t>(frequency), static_cast<uint8_t>(period));
+          applied = fx.machine(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+                               static_cast<uint8_t>(amplitude_b), frequency8,
+                               static_cast<uint8_t>(period));
+        } else if (strcmp(effect, "bow") == 0) {
+          applied = fx.bow(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+                           static_cast<uint8_t>(amplitude_b));
+        } else if (strcmp(effect, "galloping") == 0) {
+          applied = fx.galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+                                 static_cast<uint8_t>(amplitude_b), frequency8);
+        } else if (strcmp(effect, "slope") == 0) {
+          applied = fx.slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                     level8, static_cast<uint8_t>(amplitude_b));
+        } else if (strcmp(effect, "simple-feedback") == 0) {
+          applied = fx.simpleFeedback(static_cast<uint8_t>(start), level8);
+        } else if (strcmp(effect, "simple-weapon") == 0) {
+          applied = fx.simpleWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+        } else if (strcmp(effect, "simple-vibration") == 0) {
+          applied = fx.simpleVibration(static_cast<uint8_t>(start), level8, frequency8);
+        } else if (strcmp(effect, "limited-feedback") == 0) {
+          applied = fx.limitedFeedback(static_cast<uint8_t>(start), level8);
+        } else if (strcmp(effect, "limited-weapon") == 0) {
+          applied = fx.limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+        } else if (strcmp(effect, "rewasd-full") == 0) {
+          applied = fx.rewasdFullPress();
+        } else if (strcmp(effect, "rewasd-soft") == 0) {
+          applied = fx.rewasdSoftPress();
+        } else if (strcmp(effect, "rewasd-medium") == 0) {
+          applied = fx.rewasdMediumPress();
+        } else if (strcmp(effect, "rewasd-hard") == 0) {
+          applied = fx.rewasdHardPress();
+        } else if (strcmp(effect, "rewasd-pulse") == 0) {
+          applied = fx.rewasdPulse();
+        } else if (strcmp(effect, "rewasd-choppy") == 0) {
+          applied = fx.rewasdChoppy();
+        } else if (strcmp(effect, "rewasd-soft-rigidity") == 0) {
+          applied = fx.rewasdSoftRigidity();
+        } else if (strcmp(effect, "rewasd-medium-rigidity") == 0) {
+          applied = fx.rewasdMediumRigidity();
+        } else if (strcmp(effect, "rewasd-max-rigidity") == 0) {
+          applied = fx.rewasdMaxRigidity();
+        } else if (strcmp(effect, "rewasd-half-press") == 0) {
+          applied = fx.rewasdHalfPress();
+        } else if (strcmp(effect, "rewasd-rifle") == 0) {
+          applied = fx.rewasdRifle(frequency8);
+        } else if (strcmp(effect, "rewasd-vibration") == 0) {
+          applied = fx.rewasdVibration(level8, frequency8);
         } else {
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
+        if (!applied) fx.off();
         mode = fx.block[0];
         for (size_t i = 0; i < 10; ++i) params[i] = fx.block[i + 1];
         snprintf(label, sizeof(label), "%s", effect);

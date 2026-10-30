@@ -140,13 +140,48 @@ enum class Packet : uint8_t {
 
 // Canonical 11-byte adaptive-trigger block: type byte followed by ten
 // parameters. Mirrors DSTriggerEffect/DualSenseProtocol from the Swift schema.
+// Adaptive-trigger encoders ported from ExtendInput.DataTools.DualSense
+// TriggerEffectGenerator (revision 6, MIT License).
+//
+// Copyright (c) 2021-2022 John "Nielk1" Klein
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 struct TriggerEffect {
+  // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
+  // values are firmware leftovers; keep them for completeness but prefer the
+  // official factories.
   enum class Type : uint8_t {
     Off = 0x05,
     Feedback = 0x21,
     Weapon = 0x25,
     Vibration = 0x26,
+    Bow = 0x22,
+    Galloping = 0x23,
     Machine = 0x27,
+    SimpleFeedback = 0x01,
+    SimpleWeapon = 0x02,
+    SimpleVibration = 0x06,
+    LimitedFeedback = 0x11,
+    LimitedWeapon = 0x12,
+    DebugFc = 0xFC,
+    DebugFd = 0xFD,
+    DebugFe = 0xFE,
   };
 
   static constexpr size_t BlockSize = 11;
@@ -157,86 +192,184 @@ struct TriggerEffect {
 
   constexpr TriggerEffect() { off(); }
 
-  constexpr void off() {
-    block[0] = static_cast<uint8_t>(Type::Off);
+  constexpr void zero() {
     for (size_t i = 1; i < BlockSize; i++) block[i] = 0;
   }
 
-  constexpr void feedback(const uint8_t *levels) {
+  constexpr bool off() {
+    block[0] = static_cast<uint8_t>(Type::Off);
+    zero();
+    return true;
+  }
+
+  // Official: constant resistance from `position` to the end.
+  constexpr bool feedback(uint8_t position, uint8_t strength) {
+    if (position > 9 || strength > 8) return false;
+    if (strength == 0) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Feedback);
     uint16_t active = 0;
     uint32_t force = 0;
-    bool any = false;
-    for (int zone = 0; zone < ZoneCount; zone++) {
-      if (levels[zone] == 0) continue;
-      any = true;
-      active = static_cast<uint16_t>(active | (uint16_t{1} << zone));
-      force |= static_cast<uint32_t>((levels[zone] - 1) & 0x07) << (3 * zone);
+    uint8_t value = static_cast<uint8_t>((strength - 1) & 0x07);
+    for (int i = position; i < 10; i++) {
+      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+      force |= static_cast<uint32_t>(value) << (3 * i);
     }
-    if (!any) {
-      off();
-      return;
-    }
-    block[0] = static_cast<uint8_t>(Type::Feedback);
     block[1] = static_cast<uint8_t>(active & 0xFF);
     block[2] = static_cast<uint8_t>(active >> 8);
     block[3] = static_cast<uint8_t>(force & 0xFF);
     block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
     block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
     block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
-    for (size_t i = 7; i < BlockSize; i++) block[i] = 0;
+    return true;
   }
 
-  constexpr void weapon(int start_zone, int end_zone, uint8_t level) {
-    if (level == 0) {
-      off();
-      return;
-    }
-    int start = start_zone < 2 ? 2 : (start_zone > 7 ? 7 : start_zone);
-    int end = end_zone < start + 1 ? start + 1 : (end_zone > 8 ? 8 : end_zone);
+  // Official: resistance between start and end, releasing past the end.
+  constexpr bool weapon(uint8_t start, uint8_t end, uint8_t strength) {
+    if (start > 7 || start < 2 || end > 8 || end <= start || strength > 8) return false;
+    if (strength == 0) return off();
+    zero();
     uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-    if (level > MaxLevel) level = MaxLevel;
     block[0] = static_cast<uint8_t>(Type::Weapon);
     block[1] = static_cast<uint8_t>(zones & 0xFF);
     block[2] = static_cast<uint8_t>(zones >> 8);
-    block[3] = static_cast<uint8_t>(level - 1);
-    for (size_t i = 4; i < BlockSize; i++) block[i] = 0;
+    block[3] = static_cast<uint8_t>(strength - 1);
+    return true;
   }
 
-  constexpr void vibration(const uint8_t *amplitudes, uint8_t frequency) {
-    uint16_t active = 0;
-    uint32_t amplitude_zones = 0;
-    bool any = false;
-    for (int zone = 0; zone < ZoneCount; zone++) {
-      if (amplitudes[zone] == 0) continue;
-      any = true;
-      active = static_cast<uint16_t>(active | (uint16_t{1} << zone));
-      amplitude_zones |= static_cast<uint32_t>((amplitudes[zone] - 1) & 0x07) << (3 * zone);
-    }
-    if (!any || frequency == 0) {
-      off();
-      return;
-    }
+  // Official: vibration from `position` onward.
+  constexpr bool vibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
+    if (position > 9 || amplitude > 8) return false;
+    if (amplitude == 0 || frequency == 0) return off();
+    zero();
     block[0] = static_cast<uint8_t>(Type::Vibration);
+    uint16_t active = 0;
+    uint32_t levels = 0;
+    uint8_t value = static_cast<uint8_t>((amplitude - 1) & 0x07);
+    for (int i = position; i < 10; i++) {
+      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+      levels |= static_cast<uint32_t>(value) << (3 * i);
+    }
     block[1] = static_cast<uint8_t>(active & 0xFF);
     block[2] = static_cast<uint8_t>(active >> 8);
-    block[3] = static_cast<uint8_t>(amplitude_zones & 0xFF);
-    block[4] = static_cast<uint8_t>((amplitude_zones >> 8) & 0xFF);
-    block[5] = static_cast<uint8_t>((amplitude_zones >> 16) & 0xFF);
-    block[6] = static_cast<uint8_t>((amplitude_zones >> 24) & 0xFF);
-    block[7] = 0;
-    block[8] = 0;
+    block[3] = static_cast<uint8_t>(levels & 0xFF);
+    block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+    block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+    block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
     block[9] = frequency;
-    block[10] = 0;
+    return true;
   }
 
-  constexpr void machine(int start_zone, int end_zone, uint8_t amplitude_a, uint8_t amplitude_b,
-                         uint8_t frequency, uint8_t period) {
-    if (frequency == 0) {
-      off();
-      return;
+  // Official: per-zone resistance levels (0..8).
+  constexpr bool multiplePositionFeedback(const uint8_t *strength) {
+    bool any = false;
+    for (int i = 0; i < 10; i++)
+      if (strength[i] > 0) any = true;
+    if (!any) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Feedback);
+    uint16_t active = 0;
+    uint32_t force = 0;
+    for (int i = 0; i < 10; i++) {
+      if (strength[i] == 0) continue;
+      uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
+      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+      force |= static_cast<uint32_t>(value) << (3 * i);
     }
-    int start = start_zone < 0 ? 0 : (start_zone > 8 ? 8 : start_zone);
-    int end = end_zone < start + 1 ? start + 1 : (end_zone > 9 ? 9 : end_zone);
+    block[1] = static_cast<uint8_t>(active & 0xFF);
+    block[2] = static_cast<uint8_t>(active >> 8);
+    block[3] = static_cast<uint8_t>(force & 0xFF);
+    block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
+    block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
+    block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+    return true;
+  }
+
+  // Official: linearly changing resistance between two positions.
+  constexpr bool slopeFeedback(uint8_t start, uint8_t end, uint8_t start_strength,
+                               uint8_t end_strength) {
+    if (start > 8 || end > 9 || end <= start) return false;
+    if (start_strength < 1 || start_strength > 8 || end_strength < 1 || end_strength > 8)
+      return false;
+    uint8_t strength[10] = {};
+    float slope = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
+                  static_cast<float>(end - start);
+    for (int i = start; i < 10; i++) {
+      int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
+                                               slope * static_cast<float>(i - start) + 0.5f)
+                           : end_strength;
+      if (value < 0) value = 0;
+      if (value > 8) value = 8;
+      strength[i] = static_cast<uint8_t>(value);
+    }
+    return multiplePositionFeedback(strength);
+  }
+
+  // Official: per-zone vibration amplitudes with one frequency.
+  constexpr bool multiplePositionVibration(uint8_t frequency, const uint8_t *amplitude) {
+    bool any = false;
+    for (int i = 0; i < 10; i++)
+      if (amplitude[i] > 0) any = true;
+    if (frequency == 0 || !any) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Vibration);
+    uint16_t active = 0;
+    uint32_t levels = 0;
+    for (int i = 0; i < 10; i++) {
+      if (amplitude[i] == 0) continue;
+      uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
+      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+      levels |= static_cast<uint32_t>(value) << (3 * i);
+    }
+    block[1] = static_cast<uint8_t>(active & 0xFF);
+    block[2] = static_cast<uint8_t>(active >> 8);
+    block[3] = static_cast<uint8_t>(levels & 0xFF);
+    block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+    block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+    block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
+    block[9] = frequency;
+    return true;
+  }
+
+  // Unofficial firmware effects.
+  constexpr bool bow(uint8_t start, uint8_t end, uint8_t strength, uint8_t snap) {
+    if (start > 8 || end > 8 || start >= end || strength > 8 || snap > 8) return false;
+    if (end == 0 || strength == 0 || snap == 0) return off();
+    zero();
+    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+    uint32_t pair = static_cast<uint32_t>((strength - 1) & 0x07) |
+                    (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
+    block[0] = static_cast<uint8_t>(Type::Bow);
+    block[1] = static_cast<uint8_t>(zones & 0xFF);
+    block[2] = static_cast<uint8_t>(zones >> 8);
+    block[3] = static_cast<uint8_t>(pair & 0xFF);
+    block[4] = static_cast<uint8_t>((pair >> 8) & 0xFF);
+    return true;
+  }
+
+  constexpr bool galloping(uint8_t start, uint8_t end, uint8_t first_foot, uint8_t second_foot,
+                           uint8_t frequency) {
+    if (start > 8 || end > 9 || start >= end || second_foot > 7 || first_foot > 6 ||
+        first_foot >= second_foot)
+      return false;
+    if (frequency == 0) return off();
+    zero();
+    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+    uint32_t ratio = static_cast<uint32_t>(second_foot & 0x07) |
+                     (static_cast<uint32_t>(first_foot & 0x07) << 3);
+    block[0] = static_cast<uint8_t>(Type::Galloping);
+    block[1] = static_cast<uint8_t>(zones & 0xFF);
+    block[2] = static_cast<uint8_t>(zones >> 8);
+    block[3] = static_cast<uint8_t>(ratio & 0xFF);
+    block[4] = frequency;
+    return true;
+  }
+
+  constexpr bool machine(uint8_t start, uint8_t end, uint8_t amplitude_a, uint8_t amplitude_b,
+                         uint8_t frequency, uint8_t period) {
+    if (start > 8 || end > 9 || end <= start || amplitude_a > 7 || amplitude_b > 7) return false;
+    if (frequency == 0) return off();
+    zero();
     uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
     uint8_t pair = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
     block[0] = static_cast<uint8_t>(Type::Machine);
@@ -245,7 +378,150 @@ struct TriggerEffect {
     block[3] = pair;
     block[4] = frequency;
     block[5] = period;
-    for (size_t i = 6; i < BlockSize; i++) block[i] = 0;
+    return true;
+  }
+
+  // Firmware leftovers with simpler logic and no parameter validation.
+  constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
+    zero();
+    block[0] = static_cast<uint8_t>(Type::SimpleFeedback);
+    block[1] = position;
+    block[2] = strength;
+    return true;
+  }
+
+  constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
+    zero();
+    block[0] = static_cast<uint8_t>(Type::SimpleWeapon);
+    block[1] = start;
+    block[2] = end;
+    block[3] = strength;
+    return true;
+  }
+
+  constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
+    if (frequency == 0 || amplitude == 0) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::SimpleVibration);
+    block[1] = frequency;
+    block[2] = amplitude;
+    block[3] = position;
+    return true;
+  }
+
+  // Firmware leftovers with narrower validation ranges.
+  constexpr bool limitedFeedback(uint8_t position, uint8_t strength) {
+    if (strength > 10) return false;
+    if (strength == 0) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::LimitedFeedback);
+    block[1] = position;
+    block[2] = strength;
+    return true;
+  }
+
+  constexpr bool limitedWeapon(uint8_t start, uint8_t end, uint8_t strength) {
+    if (start < 0x10 || end < start || static_cast<int>(end) > static_cast<int>(start) + 100 ||
+        strength > 10)
+      return false;
+    if (strength == 0) return off();
+    zero();
+    block[0] = static_cast<uint8_t>(Type::LimitedWeapon);
+    block[1] = start;
+    block[2] = end;
+    block[3] = strength;
+    return true;
+  }
+
+  // Apple-style normalized [0,1] adapters from the same generator.
+  static constexpr uint8_t normalize(float value, float scale) {
+    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+    if (value < 0) value = 0;
+    if (value > 1) value = 1;
+    int scaled = static_cast<int>(value * scale + 0.5f);
+    return static_cast<uint8_t>(scaled);
+  }
+
+  constexpr bool appleFeedbackWithStartPosition(float start, float strength) {
+    return feedback(normalize(start, 9.0f), normalize(strength, 8.0f));
+  }
+
+  constexpr bool appleWeaponWithStartPosition(float start, float end, float strength) {
+    return weapon(normalize(start, 9.0f), normalize(end, 9.0f), normalize(strength, 8.0f));
+  }
+
+  constexpr bool appleVibrationWithStartPosition(float start, float amplitude, float frequency) {
+    return vibration(normalize(start, 9.0f), normalize(amplitude, 8.0f),
+                     normalize(frequency, 255.0f));
+  }
+
+  constexpr bool appleFeedback(const float *strengths) {
+    uint8_t levels[10];
+    for (int i = 0; i < 10; i++) levels[i] = normalize(strengths[i], 8.0f);
+    return multiplePositionFeedback(levels);
+  }
+
+  constexpr bool appleSlopeFeedback(float start, float end, float start_strength,
+                                    float end_strength) {
+    return slopeFeedback(normalize(start, 9.0f), normalize(end, 9.0f),
+                         normalize(start_strength, 8.0f), normalize(end_strength, 8.0f));
+  }
+
+  constexpr bool appleVibration(const float *amplitudes, float frequency) {
+    uint8_t levels[10];
+    for (int i = 0; i < 10; i++) levels[i] = normalize(amplitudes[i], 8.0f);
+    return multiplePositionVibration(normalize(frequency, 255.0f), levels);
+  }
+
+  // reWASD traffic captures, including its intentionally non-standard values.
+  constexpr bool rewasdFullPress() { return simpleWeapon(0x90, 0xA0, 0xFF); }
+
+  constexpr bool rewasdSoftPress() { return simpleWeapon(0x70, 0xA0, 0xFF); }
+
+  constexpr bool rewasdMediumPress() { return simpleWeapon(0x45, 0xA0, 0xFF); }
+
+  constexpr bool rewasdHardPress() { return simpleWeapon(0x20, 0xA0, 0xFF); }
+
+  constexpr bool rewasdPulse() { return simpleWeapon(0x00, 0x00, 0x00); }
+
+  constexpr bool rewasdChoppy() {
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Feedback);
+    block[1] = 0x02;
+    block[2] = 0x27;
+    block[3] = 0x18;
+    block[4] = 0x00;
+    block[5] = 0x00;
+    block[6] = 0x26;
+    return true;
+  }
+
+  constexpr bool rewasdSoftRigidity() { return simpleFeedback(0x00, 0x00); }
+
+  constexpr bool rewasdMediumRigidity() { return simpleFeedback(0x00, 0x64); }
+
+  constexpr bool rewasdMaxRigidity() { return simpleFeedback(0x00, 0xDC); }
+
+  constexpr bool rewasdHalfPress() { return simpleFeedback(0x55, 0x64); }
+
+  constexpr bool rewasdRifle(uint8_t frequency = 10) {
+    if (frequency < 2 || frequency > 20) return false;
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Vibration);
+    block[2] = 0x03;
+    block[6] = 0x3F;
+    block[9] = frequency;
+    return true;
+  }
+
+  constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
+    if (strength < 1 || frequency < 1) return false;
+    zero();
+    block[0] = static_cast<uint8_t>(Type::Vibration);
+    block[2] = 0x03;
+    block[6] = strength;
+    block[9] = frequency;
+    return true;
   }
 };
 
@@ -254,7 +530,7 @@ static_assert(sizeof(TriggerEffect) == TriggerEffect::BlockSize);
 constexpr TriggerEffect kFeedbackEffect = [] {
   TriggerEffect effect;
   const uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  effect.feedback(levels);
+  effect.multiplePositionFeedback(levels);
   return effect;
 }();
 static_assert(kFeedbackEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Feedback));
@@ -273,11 +549,36 @@ static_assert(kWeaponEffect.block[3] == 7);
 constexpr TriggerEffect kVibrationEffect = [] {
   TriggerEffect effect;
   const uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  effect.vibration(amplitudes, 25);
+  effect.multiplePositionVibration(25, amplitudes);
   return effect;
 }();
 static_assert(kVibrationEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Vibration));
 static_assert(kVibrationEffect.block[1] == 0x01 && kVibrationEffect.block[9] == 25);
+
+constexpr TriggerEffect kBowEffect = [] {
+  TriggerEffect effect;
+  effect.bow(2, 8, 6, 4);
+  return effect;
+}();
+static_assert(kBowEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Bow));
+static_assert(kBowEffect.block[1] == 0x04 && kBowEffect.block[2] == 0x01);
+static_assert(kBowEffect.block[3] == 0x1D);
+
+constexpr TriggerEffect kGallopingEffect = [] {
+  TriggerEffect effect;
+  effect.galloping(2, 8, 2, 4, 25);
+  return effect;
+}();
+static_assert(kGallopingEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Galloping));
+static_assert(kGallopingEffect.block[4] == 25);
+
+constexpr TriggerEffect kMachineEffect = [] {
+  TriggerEffect effect;
+  effect.machine(2, 8, 6, 4, 25, 10);
+  return effect;
+}();
+static_assert(kMachineEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Machine));
+static_assert(kMachineEffect.block[4] == 25 && kMachineEffect.block[5] == 10);
 
 // Saturating conversions used by the Swift schema when moving normalized UI
 // values onto the byte/zone/level wire fields.

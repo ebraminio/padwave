@@ -451,17 +451,47 @@
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
         <select id="labTrigPreset" title="TriggerEffect type">
           <option value="off" selected>off</option>
-          <option value="feedback">feedback</option>
-          <option value="weapon">weapon</option>
-          <option value="vibration">vibration</option>
-          <option value="machine">machine</option>
+          <optgroup label="official">
+            <option value="feedback">feedback</option>
+            <option value="weapon">weapon</option>
+            <option value="vibration">vibration</option>
+            <option value="slope">slope feedback</option>
+          </optgroup>
+          <optgroup label="unofficial">
+            <option value="bow">bow</option>
+            <option value="galloping">galloping</option>
+            <option value="machine">machine</option>
+          </optgroup>
+          <optgroup label="simple">
+            <option value="simple-feedback">simple feedback</option>
+            <option value="simple-weapon">simple weapon</option>
+            <option value="simple-vibration">simple vibration</option>
+          </optgroup>
+          <optgroup label="limited">
+            <option value="limited-feedback">limited feedback</option>
+            <option value="limited-weapon">limited weapon</option>
+          </optgroup>
+          <optgroup label="reWASD">
+            <option value="rewasd-full">full press</option>
+            <option value="rewasd-soft">soft press</option>
+            <option value="rewasd-medium">medium press</option>
+            <option value="rewasd-hard">hard press</option>
+            <option value="rewasd-pulse">pulse</option>
+            <option value="rewasd-choppy">choppy</option>
+            <option value="rewasd-soft-rigidity">soft rigidity</option>
+            <option value="rewasd-medium-rigidity">medium rigidity</option>
+            <option value="rewasd-max-rigidity">max rigidity</option>
+            <option value="rewasd-half-press">half press</option>
+            <option value="rewasd-rifle">rifle</option>
+            <option value="rewasd-vibration">vibration</option>
+          </optgroup>
         </select>
         <label>start <input type="number" id="labP0" value="2" min="0" max="9" style="width:52px"></label>
-        <label>end <input type="number" id="labTrigEnd" value="9" min="0" max="9" style="width:52px"></label>
-        <label>level <input type="number" id="labP1" value="6" min="0" max="8" style="width:52px"></label>
+        <label>end <input type="number" id="labTrigEnd" value="8" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" id="labP1" value="2" min="0" max="8" style="width:52px"></label>
         <label>Hz <input type="number" id="labP2" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" id="labTrigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-        <label>B <input type="number" id="labTrigAmpB" value="0" min="0" max="7" style="width:48px"></label>
+        <label>B <input type="number" id="labTrigAmpB" value="4" min="0" max="7" style="width:48px"></label>
         <span id="labTrigHint" style="font-size:11px">off</span>
         <button id="labTrigFire">fire 900ms</button>
         <label title="apply this trigger effect while R2/L2 changes the volume"><input type="checkbox" id="teOn"> on volume</label>
@@ -714,7 +744,8 @@ function render(s) {
   if (document.activeElement !== $("#labTrigPreset")) {
     let effect = cfg.trigger_effect_preset || "off";
     if (effect === "none") effect = "off";
-    if (![..."off feedback weapon vibration machine".split(" ")].includes(effect)) effect = "off";
+    const effects = [...$("#labTrigPreset").options].map(o => o.value);
+    if (!effects.includes(effect)) effect = "off";
     $("#labTrigPreset").value = effect;
     syncTriggerControls();
   }
@@ -1156,19 +1187,51 @@ $("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms
 
 function syncTriggerControls() {
   const effect = $("#labTrigPreset").value;
-  const off = effect === "off" || effect === "none";
-  for (const id of ["labP0", "labTrigEnd", "labP1"]) {
-    $("#" + id).disabled = off;
-  }
-  $("#labP2").disabled = off || !(effect === "vibration" || effect === "machine");
-  $("#labTrigPeriod").disabled = effect !== "machine";
-  $("#labTrigAmpB").disabled = effect !== "machine";
+  const rewasdPreset = effect.startsWith("rewasd-") &&
+                       !["rewasd-rifle", "rewasd-vibration"].includes(effect);
+  const noParams = effect === "off" || effect === "none" || rewasdPreset;
+  const usesStart = !noParams && !["rewasd-rifle", "rewasd-vibration"].includes(effect);
+  const usesEnd = usesStart && !["simple-feedback", "limited-feedback", "simple-vibration"].includes(effect);
+  const usesLevel = !noParams && effect !== "rewasd-rifle";
+  const usesFreq = ["vibration", "machine", "galloping", "simple-vibration",
+                     "rewasd-rifle", "rewasd-vibration"].includes(effect);
+  const usesPeriod = effect === "machine";
+  const usesB = ["bow", "galloping", "slope", "machine"].includes(effect);
+  $("#labP0").disabled = !usesStart;
+  $("#labTrigEnd").disabled = !usesEnd;
+  $("#labP1").disabled = !usesLevel;
+  $("#labP2").disabled = !usesFreq;
+  $("#labTrigPeriod").disabled = !usesPeriod;
+  $("#labTrigAmpB").disabled = !usesB;
+  $("#labP0").max = effect === "limited-weapon" ? 255 : 9;
+  $("#labTrigEnd").max = effect === "limited-weapon" ? 255 : 9;
+  $("#labP1").max = ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
   const hints = {
     off: "off",
     feedback: "feedback: start..end, level",
-    weapon: "weapon: start/end, level",
+    weapon: "weapon: start 2..7, end start+1..8, level",
     vibration: "vibration: start..end, level, Hz",
+    slope: "slope: start/end, start level, end level in B",
     machine: "machine: start/end, levels A/B, Hz, period",
+    bow: "bow: start/end, level, snap force in B",
+    galloping: "galloping: start/end, foot A/B, Hz",
+    "simple-feedback": "simple feedback: start, level (unchecked)",
+    "simple-weapon": "simple weapon: start/end, level (unchecked)",
+    "simple-vibration": "simple vibration: start, level, Hz (unchecked)",
+    "limited-feedback": "limited feedback: start, level 0..10",
+    "limited-weapon": "limited weapon: start >=16, end, level 0..10",
+    "rewasd-rifle": "reWASD rifle: Hz 2..20",
+    "rewasd-vibration": "reWASD vibration: level, Hz",
+    "rewasd-full": "reWASD full press preset",
+    "rewasd-soft": "reWASD soft press preset",
+    "rewasd-medium": "reWASD medium press preset",
+    "rewasd-hard": "reWASD hard press preset",
+    "rewasd-pulse": "reWASD pulse preset",
+    "rewasd-choppy": "reWASD choppy preset",
+    "rewasd-soft-rigidity": "reWASD soft rigidity preset",
+    "rewasd-medium-rigidity": "reWASD medium rigidity preset",
+    "rewasd-max-rigidity": "reWASD max rigidity preset",
+    "rewasd-half-press": "reWASD half-press preset",
   };
   $("#labTrigHint").textContent = hints[effect] || "off";
 }
