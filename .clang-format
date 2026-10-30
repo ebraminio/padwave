@@ -33,3 +33,6 @@ MaxEmptyLinesToKeep: 1
 SeparateDefinitionBlocks: Always
 SpaceAfterCStyleCast: false
 SpacesBeforeTrailingComments: 1
+
+# Keep enum/table assignments aligned, including across separating comments.
+AlignConsecutiveAssignments: AcrossComments

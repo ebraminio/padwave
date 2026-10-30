@@ -146,6 +146,7 @@ public:
   // parameters. Encoders adapted from ExtendInput.DataTools.DualSense
   // TriggerEffectGenerator (revision 6) by John "Nielk1" Klein, MIT License.
   struct TriggerEffect {
+  public:
     // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
     // values are firmware leftovers; keep them for completeness but prefer the
     // official factories.
@@ -171,9 +172,18 @@ public:
     static constexpr int ZoneCount = 10;
     static constexpr uint8_t MaxLevel = 8;
 
+  private:
+    friend struct internal::OutputBodyProbe;
+    friend struct OutputBody;
+
     uint8_t block[BlockSize] = {static_cast<uint8_t>(Type::Off)};
 
+  public:
     constexpr TriggerEffect() { off(); }
+
+    constexpr uint8_t mode() const { return block[0]; }
+
+    constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
     constexpr void zero() {
       for (size_t i = 1; i < BlockSize; i++) block[i] = 0;
@@ -808,6 +818,19 @@ public:
 
 static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 bytes");
 
+namespace internal {
+struct OutputBodyProbe {
+  static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
+
+  static constexpr uint8_t valid1(const OutputBody &b) { return b.valid_flag1; }
+
+  static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
+    return e.block[i];
+  }
+};
+} // namespace internal
+
+
 static_assert(sizeof(OutputBody::TriggerEffect) == OutputBody::TriggerEffect::BlockSize);
 
 constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
@@ -816,20 +839,20 @@ constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
   effect.multiplePositionFeedback(levels);
   return effect;
 }();
-static_assert(kFeedbackEffect.block[0] ==
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Feedback));
-static_assert(kFeedbackEffect.block[1] == 0xFF && kFeedbackEffect.block[2] == 0x03);
-static_assert(kFeedbackEffect.block[3] == 0 && kFeedbackEffect.block[6] == 0);
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF && internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 2) == 0x03);
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 3) == 0 && internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 6) == 0);
 
 constexpr OutputBody::TriggerEffect kWeaponEffect = [] {
   OutputBody::TriggerEffect effect;
   effect.weapon(2, 8, 8);
   return effect;
 }();
-static_assert(kWeaponEffect.block[0] ==
+static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Weapon));
-static_assert(kWeaponEffect.block[1] == 0x04 && kWeaponEffect.block[2] == 0x01);
-static_assert(kWeaponEffect.block[3] == 7);
+static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 1) == 0x04 && internal::OutputBodyProbe::triggerByte(kWeaponEffect, 2) == 0x01);
+static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 3) == 7);
 
 constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
   OutputBody::TriggerEffect effect;
@@ -837,36 +860,36 @@ constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
   effect.multiplePositionVibration(25, amplitudes);
   return effect;
 }();
-static_assert(kVibrationEffect.block[0] ==
+static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Vibration));
-static_assert(kVibrationEffect.block[1] == 0x01 && kVibrationEffect.block[9] == 25);
+static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 1) == 0x01 && internal::OutputBodyProbe::triggerByte(kVibrationEffect, 9) == 25);
 
 constexpr OutputBody::TriggerEffect kBowEffect = [] {
   OutputBody::TriggerEffect effect;
   effect.bow(2, 8, 6, 4);
   return effect;
 }();
-static_assert(kBowEffect.block[0] == static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
-static_assert(kBowEffect.block[1] == 0x04 && kBowEffect.block[2] == 0x01);
-static_assert(kBowEffect.block[3] == 0x1D);
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) == static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 1) == 0x04 && internal::OutputBodyProbe::triggerByte(kBowEffect, 2) == 0x01);
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 3) == 0x1D);
 
 constexpr OutputBody::TriggerEffect kGallopingEffect = [] {
   OutputBody::TriggerEffect effect;
   effect.galloping(2, 8, 2, 4, 25);
   return effect;
 }();
-static_assert(kGallopingEffect.block[0] ==
+static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Galloping));
-static_assert(kGallopingEffect.block[4] == 25);
+static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 4) == 25);
 
 constexpr OutputBody::TriggerEffect kMachineEffect = [] {
   OutputBody::TriggerEffect effect;
   effect.machine(2, 8, 6, 4, 25, 10);
   return effect;
 }();
-static_assert(kMachineEffect.block[0] ==
+static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Machine));
-static_assert(kMachineEffect.block[4] == 25 && kMachineEffect.block[5] == 10);
+static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 && internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
 
 // Saturating conversions used by the Swift schema when moving normalized UI
 // values onto the byte/zone/level wire fields.
@@ -1557,12 +1580,6 @@ public:
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
 
 namespace internal {
-struct OutputBodyProbe {
-  static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
-
-  static constexpr uint8_t valid1(const OutputBody &b) { return b.valid_flag1; }
-};
-
 struct AudioReportProbe {
   static constexpr uint8_t reportId(const AudioReport &r) { return r.report_id; }
 

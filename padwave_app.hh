@@ -1021,8 +1021,8 @@ public:
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
         if (!applied) fx.off();
-        mode = fx.block[0];
-        for (size_t i = 0; i < 10; ++i) params[i] = fx.block[i + 1];
+        mode = fx.mode();
+        for (size_t i = 0; i < 10; ++i) params[i] = fx.parameter(i);
         snprintf(label, sizeof(label), "%s", effect);
       }
 
