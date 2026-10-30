@@ -733,8 +733,10 @@ private:
         if (!writeDevice(&out, sizeof(out))) return;
       }
       padwave_fields::apply_fields(&state, line + 7);
-      // Reset/fade are one-shot in the 0x31 report; do not let the 0x36 state
-      // snapshot re-trigger them forever.
+      // One-shot 0x31 features must not be re-claimed by the 0x36 snapshot.
+      // In particular, a repeated player-LED claim restarts the firmware's
+      // fade-in every 10.7 ms, so only the instant bit appeared to work.
+      state.clearPlayerLeds();
       state.clearOneShotLightbar();
       return;
     }

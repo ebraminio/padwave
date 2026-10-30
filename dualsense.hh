@@ -610,6 +610,10 @@ public:
     }
   }
 
+  constexpr void clearPlayerLeds() {
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::PlayerLeds));
+  }
+
   constexpr void clearLightbar() {
     valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::Lightbar));
     valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::ColorFade));
