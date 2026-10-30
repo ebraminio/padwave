@@ -969,9 +969,10 @@ public:
 
     HeadphoneDetect = Headset,
     MicDetect = Microphone,
-    // Undocumented: observed set only while a USB data host (a Mac) was
-    // attached over Bluetooth; clear with a charger-only cable. Not parsed by
-    // hid-playstation.
+    // Undocumented: observed set whenever a USB data link is present,
+    // including USB-only operation. Clear with a charger-only cable or no USB.
+    // Combined with the active Bluetooth transport, it means another USB host
+    // is also attached. Not parsed by hid-playstation.
     UsbData = 0x08, // bit 3
   };
 
