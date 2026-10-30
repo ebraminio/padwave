@@ -799,8 +799,7 @@ public:
 
     if (strcmp(kind, "lightbar_setup") == 0) {
       int v = static_cast<int>(kvNumber(body, "value", 0));
-      if (v != 1 && v != 2)
-        return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
+      if (v != 1 && v != 2) return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
       auto setup = static_cast<dualsense::OutputBody::LightbarSetup>(v);
       this->lightbar_on = setup == dualsense::OutputBody::LightbarSetup::LightOn;
       this->led_force = true;
@@ -818,7 +817,7 @@ public:
     }
 
     if (strcmp(kind, "player_leds") == 0) {
-      int mask = static_cast<int>(kvNumber(body, "mask", 0)) & 0x1F;
+      int mask = static_cast<int>(kvNumber(body, "mask", 0)) & 0x3F;
       this->led_manual_player = true;
       this->led_manual_mask = mask;
       serviceLeds();

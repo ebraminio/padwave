@@ -389,6 +389,9 @@
         <button class="led" data-led="4">4</button>
         <button class="led" data-led="5">5</button>
         <button id="labLedsReset">reset</button>
+        <label title="suppress the slow fade-in (player_leds bit 5)">
+          <input type="checkbox" id="labLedInstant"> instant
+        </label>
       </div>
 
       <div class="lab-row">
@@ -909,7 +912,13 @@ async function labSend(payload) {
 }
 
 const kernelLedMask = 0b00100; // the kernel's default: the middle LED
+const kLedInstant = 0x20;
 let labLedMask = kernelLedMask;
+let labLedInstant = false;
+
+function labLedPayload() {
+  return labLedMask | (labLedInstant ? kLedInstant : 0);
+}
 
 // Eight toggles for power_save_control; the value is persistent and comes back
 // from the server, so a reload shows what the controller is actually set to.
@@ -973,9 +982,14 @@ document.querySelectorAll("[data-led]").forEach(btn => {
   btn.onclick = () => {
     labLedMask ^= (1 << bit);
     btn.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
-    labSend({ kind: "player_leds", mask: labLedMask });
+    labSend({ kind: "player_leds", mask: labLedPayload() });
   };
 });
+
+$("#labLedInstant").onchange = (e) => {
+  labLedInstant = e.target.checked;
+  labSend({ kind: "player_leds", mask: labLedPayload() });
+};
 
 $("#labBarApply").onclick = () => {
   const hex = $("#labColor").value;
@@ -990,11 +1004,13 @@ $("#labBarSetup").onclick = () => labSend({ kind: "lightbar_setup", value: Numbe
 $("#labBright").onchange = (e) => labSend({ kind: "lightbar_brightness", value: Number(e.target.value) });
 $("#labLedsReset").onclick = () => {
   labLedMask = kernelLedMask;
+  labLedInstant = false;
+  $("#labLedInstant").checked = false;
   document.querySelectorAll("[data-led]").forEach(b => {
     const bit = Number(b.dataset.led) - 1;
     b.classList.toggle("on", (labLedMask & (1 << bit)) !== 0);
   });
-  labSend({ kind: "player_leds", mask: labLedMask });
+  labSend({ kind: "player_leds", mask: labLedPayload() });
 };
 
 $("#micMonitor").onchange = async (e) => {
