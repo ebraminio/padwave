@@ -77,21 +77,21 @@ private:
   DpadState dpad_state;
 
   static constexpr Binding kBindings[] = {
-      {dualsense::InputBody::Button::ButtonTriangle, "toggle_pause"},
-      {dualsense::InputBody::Button::ButtonCircle, "play"},
-      {dualsense::InputBody::Button::ButtonSquare, "shuffle_folder"},
+      {dualsense::InputBody::Button::BUTTON_TRIANGLE, "toggle_pause"},
+      {dualsense::InputBody::Button::BUTTON_CIRCLE, "play"},
+      {dualsense::InputBody::Button::BUTTON_SQUARE, "shuffle_folder"},
       {dualsense::InputBody::Button::L1, "previous"},
       {dualsense::InputBody::Button::R1, "next"},
-      {dualsense::InputBody::Button::Create, "previous"},
-      {dualsense::InputBody::Button::Options, "next"},
-      {dualsense::InputBody::Button::Touchpad, "toggle_mute"},
-      {dualsense::InputBody::Button::MicMute, "toggle_mute"},
+      {dualsense::InputBody::Button::CREATE, "previous"},
+      {dualsense::InputBody::Button::OPTIONS, "next"},
+      {dualsense::InputBody::Button::TOUCHPAD, "toggle_mute"},
+      {dualsense::InputBody::Button::MIC_MUTE, "toggle_mute"},
       {dualsense::InputBody::Button::L3, "next"},
       {dualsense::InputBody::Button::R3, "previous"},
-      {dualsense::InputBody::Button::EdgeLeftPaddle, "previous"},
-      {dualsense::InputBody::Button::EdgeRightPaddle, "next"},
-      {dualsense::InputBody::Button::EdgeFn1, "toggle_pause"},
-      {dualsense::InputBody::Button::EdgeFn2, "toggle_mute"},
+      {dualsense::InputBody::Button::EDGE_LEFT_PADDLE, "previous"},
+      {dualsense::InputBody::Button::EDGE_RIGHT_PADDLE, "next"},
+      {dualsense::InputBody::Button::EDGE_FN1, "toggle_pause"},
+      {dualsense::InputBody::Button::EDGE_FN2, "toggle_mute"},
   };
 
   void trackButtons(dualsense::InputBody::Buttons buttons) {
@@ -101,12 +101,12 @@ private:
     for (auto &b : kBindings)
       if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
-    if (pressed.isOn(dualsense::InputBody::Button::PsHome)) {
+    if (pressed.isOn(dualsense::InputBody::Button::PS_HOME)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!buttons.isOn(dualsense::InputBody::Button::PsHome)) {
+    if (!buttons.isOn(dualsense::InputBody::Button::PS_HOME)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
