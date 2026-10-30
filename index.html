@@ -62,6 +62,8 @@
   }
   .card h2 { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .controller-toggle { padding: 5px 9px; font-size: 11px; border-radius: 7px; }
+  .controller-toggle.off { border-color: var(--warn); color: var(--warn); background: #2a2113; }
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
@@ -252,7 +254,7 @@
       <span class="chip">temp <b id="tempHead">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
       <span class="chip" id="usbHostChip" style="display:none"
-            title="another USB data host is attached; controller bindings and lightbar are suppressed">💻 USB host</span>
+            title="another USB data host is attached; use the controller toggle if it also controls the other host">💻 USB host</span>
       <span class="chip" id="muteChip" style="display:none;border-color:rgba(251,191,36,.5);color:var(--warn)">🔇 muted</span>
       <span class="chip"><i class="dot" id="audioDot"></i><b>audio</b></span>
       <span class="chip" id="idleChip">idle <b>—</b></span>
@@ -308,7 +310,12 @@
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>controller</h2><span class="chip" id="lastAction">—</span></div>
+      <div class="card-head">
+        <h2>controller</h2>
+        <button id="controllerToggle" class="controller-toggle" disabled
+                title="disable controller input and lightbar while a USB data link is connected; not saved">controller: active</button>
+        <span class="chip" id="lastAction">—</span>
+      </div>
       <div class="pad-grid" id="padGrid"></div>
       <div class="triggers">
         <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div></div>
@@ -639,6 +646,16 @@ function render(s) {
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
   $("#usbHostChip").style.display = c.usb_host ? "inline-flex" : "none";
 
+  const controllerToggle = $("#controllerToggle");
+  const canToggle = c.connected === true && c.usb_data_link === true;
+  const ignored = c.padwave_disabled === true;
+  controllerToggle.disabled = !canToggle;
+  controllerToggle.textContent = ignored ? "controller: ignored" : "controller: active";
+  controllerToggle.classList.toggle("off", ignored);
+  controllerToggle.title = canToggle
+    ? "disable controller input and lightbar while the USB data link is connected; not saved"
+    : "available only while a USB data link is connected";
+
   const audio = s.audio || {};
   $("#audioDot").className = "dot " + (audio.present ? (audio.state === "RUNNING" ? "on" : "warn") : "off");
 
@@ -960,6 +977,18 @@ $("#volume").addEventListener("change", () => {
 $("#speed").addEventListener("change", (e) => {
   send("speed", { value: Number(e.target.value) });
 });
+
+$("#controllerToggle").onclick = async () => {
+  const c = (last && last.controller) || {};
+  const disabled = c.padwave_disabled !== true;
+  try {
+    await fetch("/api/output", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: `kind=controller_input\nenabled=${disabled ? 0 : 1}`
+    });
+  } catch (e) { toast("network: " + e.message); }
+};
 
 $("#filter").addEventListener("input", (e) => {
   filterText = e.target.value.toLowerCase();

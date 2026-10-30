@@ -233,6 +233,9 @@ private:
   bool controller = false;
   bool jack = false;
   bool usb_data_link = false;
+  // Runtime-only fallback for a shared USB host. Never persisted; cleared
+  // whenever the USB data link goes away.
+  bool controller_disabled = false;
   int battery = -1;
   char charging[16] = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
@@ -610,6 +613,8 @@ public:
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_data_link", "%s", this->usb_data_link ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.padwave_disabled", "%s",
+          this->padwaveDisabled() ? "true" : "false");
     kvText(buf, cap, &o, "controller.buttons", this->buttons);
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
     kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
@@ -858,11 +863,23 @@ public:
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
-      if (this->externalHost()) return snprintf(out, out_cap, "ok=true\nnote=external host\n");
+      if (this->padwaveDisabled()) return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
       int v = static_cast<int>(kvNumber(body, "value", 0));
       snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
+    }
+
+    if (strcmp(kind, "controller_input") == 0) {
+      if (!this->usb_data_link)
+        return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
+      int enabled = static_cast<int>(kvNumber(body, "enabled", 1));
+      this->controller_disabled = enabled == 0;
+      if (this->controller_disabled) playerSend("state_clear_lightbar\n");
+      this->led_force = true;
+      serviceLeds();
+      return snprintf(out, out_cap, "ok=true\nnote=controller %s\n",
+                      this->controller_disabled ? "ignored" : "active");
     }
 
     if (strcmp(kind, "player_leds") == 0) {
@@ -1140,6 +1157,7 @@ private:
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
     this->usb_data_link = false;
+    this->controller_disabled = false;
     this->rate = 0;
     this->rate_at = 0;
     this->rate_frames = 0;
@@ -1187,6 +1205,8 @@ private:
   }
 
   bool externalHost() const { return this->usb_data_link && !this->player.isUsb(); }
+
+  bool padwaveDisabled() const { return this->usb_data_link && this->controller_disabled; }
 
   void applyOutputRoute() {
     if (this->player) this->player.setSpeaker(!this->jack);
@@ -1417,11 +1437,11 @@ private:
     this->r2 = triggers.right;
     this->battery = b.battery();
     bool had_jack = this->jack;
-    bool had_external = this->externalHost();
+    bool had_link = this->usb_data_link;
     this->jack = b.headset();
     this->usb_data_link = b.usbDataLink();
-    if (this->externalHost() != had_external) {
-      if (this->externalHost()) playerSend("state_clear_lightbar\n");
+    if (!this->usb_data_link) this->controller_disabled = false;
+    if (this->usb_data_link != had_link) {
       this->led_force = true;
       serviceLeds();
     }
@@ -1498,16 +1518,16 @@ private:
   }
 
   void inputAction(const char *name, int value) {
-    // A USB data host (e.g. a Mac) also receives these reports and applies its
-    // own bindings. Keep padwave's UI state updated, but do not act twice.
-    // Jack transitions are hardware state used for our own pause/routing.
-    if (this->externalHost() && strcmp(name, "jack_plugged") != 0 &&
-        strcmp(name, "jack_unplugged") != 0)
-      return;
+    // Manual shared-host fallback: ignore bindings while the user has disabled
+    // controller input. The flag is only meaningful with a USB data link.
+    if (this->padwaveDisabled()) return;
     handleAction(name, value);
   }
 
-  void inputEvent(const char *) { noteActivity(); }
+  void inputEvent(const char *) {
+    if (this->padwaveDisabled()) return;
+    noteActivity();
+  }
 
   void inputMic(const int16_t *pcm, size_t samples) {
     if (!this->mic_monitor || samples == 0) return;
@@ -1800,7 +1820,7 @@ private:
   }
 
   void setLightbarSetup(dualsense::OutputBody::LightbarSetup setup) {
-    if (this->externalHost()) return;
+    if (this->padwaveDisabled()) return;
     if (setup == dualsense::OutputBody::LightbarSetup::LightOn) this->led_force = true;
     char fields[32];
     snprintf(fields, sizeof(fields), "lightbar_setup=%d", static_cast<int>(setup));
@@ -1835,7 +1855,7 @@ private:
   }
 
   bool applyLightbar(int r, int g, int b, bool force) {
-    if (!this->player || this->externalHost()) return false;
+    if (!this->player || this->padwaveDisabled()) return false;
     if (!force && this->led_last_rgb[0] == r && this->led_last_rgb[1] == g &&
         this->led_last_rgb[2] == b)
       return true;
@@ -1881,7 +1901,7 @@ private:
     }
 
     bool charging_now = this->controller && strcmp(this->charging, "charging") == 0;
-    if (charging_now && this->lightbar_on && !this->externalHost()) {
+    if (charging_now && this->lightbar_on && !this->padwaveDisabled()) {
       if (this->led_charge_at == 0) {
         // Start the charging loop with setup 2, then 1 two seconds later.
         this->led_charge_at = now;
@@ -1966,7 +1986,7 @@ private:
     }
 
     bool force = this->led_force;
-    bool rgb_ok = this->lightbar_on && !charging_now && !this->externalHost() &&
+    bool rgb_ok = this->lightbar_on && !charging_now && !this->padwaveDisabled() &&
                   applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
