@@ -934,17 +934,21 @@ public:
 
   constexpr ChargingState charging() const { return static_cast<ChargingState>(status0 >> 4); }
 
-  // +0x35. Bits 0-1 are jack/mic detection, bit 2 is mic mute, bit 3 is the
-  // observed USB data-link flag; bits 4-7 are reserved.
+  // +0x35. Bits 0-2 are documented; bits 3-4 are observed; bits 5-7 are
+  // reserved and still unlabelled.
   enum class Status1 : uint8_t {
-    HeadphoneDetect = 1u << 0, // bit 0
-    MicDetect       = 1u << 1, // bit 1
-    MicMute         = 1u << 2, // bit 2
+    HeadphoneDetect  = 1u << 0, // bit 0
+    MicDetect        = 1u << 1, // bit 1
+    MicMute          = 1u << 2, // bit 2
     // Undocumented: observed set whenever a USB data link is present,
     // including USB-only operation. Clear with a charger-only cable or no USB.
     // Combined with the active Bluetooth transport, it means another USB host
     // is also attached. Not parsed by hid-playstation.
-    UsbDataLink     = 1u << 3, // bit 3
+    UsbDataLink      = 1u << 3, // bit 3
+    // Undocumented: observed set while external power is supplied - charger
+    // only, or a USB host (which also turns on UsbDataLink). Clear over plain
+    // Bluetooth. Not parsed by hid-playstation.
+    ChargerConnected = 1u << 4, // bit 4
   };
 
   constexpr bool headset() const {
@@ -953,6 +957,10 @@ public:
 
   constexpr bool usbDataLink() const {
     return (status1 & static_cast<uint8_t>(Status1::UsbDataLink)) != 0;
+  }
+
+  constexpr bool chargerConnected() const {
+    return (status1 & static_cast<uint8_t>(Status1::ChargerConnected)) != 0;
   }
 
   constexpr bool microphone() const {

@@ -825,7 +825,7 @@ function renderBitWatch(raw) {
     return `<div class="bitrow"><span class="name">${title} 0x${value.toString(16).padStart(2, "0")}</span>${cells.join("")}</div>`;
   };
   const html = [
-    row("status1", status1, ["HP", "MIC", "MUTE", "USB", null, null, null, null]),
+    row("status1", status1, ["HP", "MIC", "MUTE", "USB", "CHG", null, null, null]),
     row("status2", status2, [null, null, null, null, null, null, null, null]),
     row("buttons3", buttons3, [null, null, null, null, null, null, null, null]),
     `<div class="note">${unknown.length
