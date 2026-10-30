@@ -199,6 +199,11 @@
   .bit.unknown { border-style: dashed; }
   .bit.on.unknown { background: #3a2a14; border-color: var(--warn); color: #ffd18a; }
   .bitwatch .note { color: var(--muted); font-size: 11px; }
+  .rawbytes { display: grid; grid-template-columns: 120px 1fr; gap: 4px 8px; align-items: center;
+              margin-top: 2px; font-size: 11px; }
+  .rawbytes .name { color: var(--muted); font-family: var(--mono); }
+  .rawbytes code { color: var(--accent-2); font-family: var(--mono); background: #0f1219;
+                   border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
 
   .setting { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--muted); }
   .setting label { display: inline-flex; align-items: center; gap: 6px; }
@@ -825,11 +830,20 @@ function renderBitWatch(raw) {
     }
     return `<div class="bitrow"><span class="name">${title} 0x${value.toString(16).padStart(2, "0")}</span>${cells.join("")}</div>`;
   };
+  const rawBytes = (offset, count) => bytes.slice(body + offset, body + offset + count)
+    .map(x => x.toString(16).padStart(2, "0")).join(" ");
+  const rawRows = [
+    ["reserved_14", 0x0c, 3],
+    ["device_feedback", 0x2e, 4],
+    ["reserved_52", 0x32, 2],
+  ].map(([name, offset, count]) =>
+    `<div class="rawbytes"><span class="name">${name}</span><code>${rawBytes(offset, count)}</code></div>`);
   const html = [
     row("status0", status0, ["B0", "B1", "B2", "B3", "C0", "C1", "C2", "C3"]),
     row("status1", status1, ["HP", "MIC", "MUTE", "USB", "CHG", null, null, null]),
     row("status2", status2, [null, null, null, null, null, null, null, null]),
     row("buttons3", buttons3, [null, null, null, null, null, null, null, null]),
+    ...rawRows,
     `<div class="note">${unknown.length
       ? "unexplained set: " + unknown.join(", ")
       : "no unexplained bits set"}</div>`,
