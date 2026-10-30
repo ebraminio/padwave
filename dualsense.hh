@@ -532,12 +532,10 @@ public:
     audio_control2 = v;
   }
 
-  constexpr void setLightbarSetup(uint8_t v) {
+  constexpr void setLightbarSetup(LightbarSetup v) {
     claim(ValidFlag2::ColorFade);
-    lightbar_setup = v;
+    lightbar_setup = static_cast<uint8_t>(v);
   }
-
-  constexpr void setLightbarSetup(LightbarSetup v) { setLightbarSetup(static_cast<uint8_t>(v)); }
 
   constexpr void setLedBrightness(uint8_t v) {
     claim(ValidFlag2::Brightness);

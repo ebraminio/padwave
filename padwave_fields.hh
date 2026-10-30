@@ -49,7 +49,7 @@ inline const u8_field kU8Fields[] = {
     {"left_trigger_mode", &Body::setLeftTriggerMode},
     {"haptic_volume", &Body::setHapticVolume},
     {"audio_control2", &Body::setAudioControl2},
-    {"lightbar_setup", &Body::setLightbarSetup},
+    {"lightbar_setup", nullptr},
     {"led_brightness", &Body::setLedBrightness},
     {"player_leds", &Body::setPlayerLedsMask},
     {"lightbar_red", &Body::setLightbarRed},
@@ -88,7 +88,11 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     bool found = false;
     for (size_t i = 0; i < sizeof(kU8Fields) / sizeof(kU8Fields[0]); i++) {
       if (strcmp(kU8Fields[i].name, name) != 0) continue;
-      (body->*(kU8Fields[i].set))(static_cast<uint8_t>(strtoul(value, nullptr, 0)));
+      uint8_t byte = static_cast<uint8_t>(strtoul(value, nullptr, 0));
+      if (kU8Fields[i].set)
+        (body->*(kU8Fields[i].set))(byte);
+      else
+        body->setLightbarSetup(static_cast<Body::LightbarSetup>(byte));
       found = true;
       break;
     }

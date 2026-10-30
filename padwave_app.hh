@@ -333,7 +333,8 @@ private:
   bool led_painted = false;
   bool lightbar_on = true;
   long led_charge_at = 0;
-  int led_charge_setup = 0;
+  dualsense::OutputBody::LightbarSetup led_charge_setup =
+      dualsense::OutputBody::LightbarSetup::LightOut;
   static constexpr long kChargeBlinkMs = 1000;
 
   unsigned long mic_packets = 0;
@@ -791,19 +792,19 @@ public:
     if (strcmp(kind, "lightbar_fade") == 0) {
       this->lightbar_on = false;
       this->led_force = true;
-      setLightbarSetup(2);
+      setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=light off\n");
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
-      int v = static_cast<int>(kvNumber(body, "value", 0)) & 0xFF;
-      if (v == 1)
-        this->lightbar_on = true;
-      else if (v == 2)
-        this->lightbar_on = false;
+      int v = static_cast<int>(kvNumber(body, "value", 0));
+      if (v != 1 && v != 2)
+        return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
+      auto setup = static_cast<dualsense::OutputBody::LightbarSetup>(v);
+      this->lightbar_on = setup == dualsense::OutputBody::LightbarSetup::LightOn;
       this->led_force = true;
-      setLightbarSetup(v);
+      setLightbarSetup(setup);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
     }
@@ -1719,11 +1720,11 @@ private:
     return true;
   }
 
-  void setLightbarSetup(int value) {
+  void setLightbarSetup(dualsense::OutputBody::LightbarSetup setup) {
     if (this->externalHost()) return;
-    if (value == 1) this->led_force = true;
+    if (setup == dualsense::OutputBody::LightbarSetup::LightOn) this->led_force = true;
     char fields[32];
-    snprintf(fields, sizeof(fields), "lightbar_setup=%d", value);
+    snprintf(fields, sizeof(fields), "lightbar_setup=%d", static_cast<int>(setup));
     outputFields(fields);
     playerSend("state_clear_lightbar\n");
   }
@@ -1805,18 +1806,22 @@ private:
       if (this->led_charge_at == 0) {
         // Start the charging loop with setup 2, then 1 two seconds later.
         this->led_charge_at = now;
-        this->led_charge_setup = 2;
-        setLightbarSetup(2);
+        this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
+        setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       } else if (now - this->led_charge_at >= kChargeBlinkMs) {
         this->led_charge_at = now;
-        this->led_charge_setup = this->led_charge_setup == 2 ? 1 : 2;
+        this->led_charge_setup =
+            this->led_charge_setup == dualsense::OutputBody::LightbarSetup::LightOut
+                ? dualsense::OutputBody::LightbarSetup::LightOn
+                : dualsense::OutputBody::LightbarSetup::LightOut;
         setLightbarSetup(this->led_charge_setup);
       }
     } else if (this->led_charge_at != 0) {
       this->led_charge_at = 0;
-      this->led_charge_setup = 0;
+      this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
       this->led_force = this->lightbar_on;
-      setLightbarSetup(this->lightbar_on ? 1 : 2);
+      setLightbarSetup(this->lightbar_on ? dualsense::OutputBody::LightbarSetup::LightOn
+                                         : dualsense::OutputBody::LightbarSetup::LightOut);
     }
 
     int r = 0, g = 0, b = 0;
