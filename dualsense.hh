@@ -138,6 +138,180 @@ enum class Packet : uint8_t {
   PacketAudio = 0x36,
 };
 
+// Canonical 11-byte adaptive-trigger block: type byte followed by ten
+// parameters. Mirrors DSTriggerEffect/DualSenseProtocol from the Swift schema.
+struct TriggerEffect {
+  enum class Type : uint8_t {
+    Off = 0x05,
+    Feedback = 0x21,
+    Weapon = 0x25,
+    Vibration = 0x26,
+    Machine = 0x27,
+  };
+
+  static constexpr size_t BlockSize = 11;
+  static constexpr int ZoneCount = 10;
+  static constexpr uint8_t MaxLevel = 8;
+
+  uint8_t block[BlockSize] = {static_cast<uint8_t>(Type::Off)};
+
+  constexpr TriggerEffect() { off(); }
+
+  constexpr void off() {
+    block[0] = static_cast<uint8_t>(Type::Off);
+    for (size_t i = 1; i < BlockSize; i++) block[i] = 0;
+  }
+
+  constexpr void feedback(const uint8_t *levels) {
+    uint16_t active = 0;
+    uint32_t force = 0;
+    bool any = false;
+    for (int zone = 0; zone < ZoneCount; zone++) {
+      if (levels[zone] == 0) continue;
+      any = true;
+      active = static_cast<uint16_t>(active | (uint16_t{1} << zone));
+      force |= static_cast<uint32_t>((levels[zone] - 1) & 0x07) << (3 * zone);
+    }
+    if (!any) {
+      off();
+      return;
+    }
+    block[0] = static_cast<uint8_t>(Type::Feedback);
+    block[1] = static_cast<uint8_t>(active & 0xFF);
+    block[2] = static_cast<uint8_t>(active >> 8);
+    block[3] = static_cast<uint8_t>(force & 0xFF);
+    block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
+    block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
+    block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+    for (size_t i = 7; i < BlockSize; i++) block[i] = 0;
+  }
+
+  constexpr void weapon(int start_zone, int end_zone, uint8_t level) {
+    if (level == 0) {
+      off();
+      return;
+    }
+    int start = start_zone < 2 ? 2 : (start_zone > 7 ? 7 : start_zone);
+    int end = end_zone < start + 1 ? start + 1 : (end_zone > 8 ? 8 : end_zone);
+    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+    if (level > MaxLevel) level = MaxLevel;
+    block[0] = static_cast<uint8_t>(Type::Weapon);
+    block[1] = static_cast<uint8_t>(zones & 0xFF);
+    block[2] = static_cast<uint8_t>(zones >> 8);
+    block[3] = static_cast<uint8_t>(level - 1);
+    for (size_t i = 4; i < BlockSize; i++) block[i] = 0;
+  }
+
+  constexpr void vibration(const uint8_t *amplitudes, uint8_t frequency) {
+    uint16_t active = 0;
+    uint32_t amplitude_zones = 0;
+    bool any = false;
+    for (int zone = 0; zone < ZoneCount; zone++) {
+      if (amplitudes[zone] == 0) continue;
+      any = true;
+      active = static_cast<uint16_t>(active | (uint16_t{1} << zone));
+      amplitude_zones |= static_cast<uint32_t>((amplitudes[zone] - 1) & 0x07) << (3 * zone);
+    }
+    if (!any || frequency == 0) {
+      off();
+      return;
+    }
+    block[0] = static_cast<uint8_t>(Type::Vibration);
+    block[1] = static_cast<uint8_t>(active & 0xFF);
+    block[2] = static_cast<uint8_t>(active >> 8);
+    block[3] = static_cast<uint8_t>(amplitude_zones & 0xFF);
+    block[4] = static_cast<uint8_t>((amplitude_zones >> 8) & 0xFF);
+    block[5] = static_cast<uint8_t>((amplitude_zones >> 16) & 0xFF);
+    block[6] = static_cast<uint8_t>((amplitude_zones >> 24) & 0xFF);
+    block[7] = 0;
+    block[8] = 0;
+    block[9] = frequency;
+    block[10] = 0;
+  }
+
+  constexpr void machine(int start_zone, int end_zone, uint8_t amplitude_a, uint8_t amplitude_b,
+                         uint8_t frequency, uint8_t period) {
+    if (frequency == 0) {
+      off();
+      return;
+    }
+    int start = start_zone < 0 ? 0 : (start_zone > 8 ? 8 : start_zone);
+    int end = end_zone < start + 1 ? start + 1 : (end_zone > 9 ? 9 : end_zone);
+    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+    uint8_t pair = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
+    block[0] = static_cast<uint8_t>(Type::Machine);
+    block[1] = static_cast<uint8_t>(zones & 0xFF);
+    block[2] = static_cast<uint8_t>(zones >> 8);
+    block[3] = pair;
+    block[4] = frequency;
+    block[5] = period;
+    for (size_t i = 6; i < BlockSize; i++) block[i] = 0;
+  }
+};
+
+static_assert(sizeof(TriggerEffect) == TriggerEffect::BlockSize);
+
+constexpr TriggerEffect kFeedbackEffect = [] {
+  TriggerEffect effect;
+  const uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  effect.feedback(levels);
+  return effect;
+}();
+static_assert(kFeedbackEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Feedback));
+static_assert(kFeedbackEffect.block[1] == 0xFF && kFeedbackEffect.block[2] == 0x03);
+static_assert(kFeedbackEffect.block[3] == 0 && kFeedbackEffect.block[6] == 0);
+
+constexpr TriggerEffect kWeaponEffect = [] {
+  TriggerEffect effect;
+  effect.weapon(2, 8, 8);
+  return effect;
+}();
+static_assert(kWeaponEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Weapon));
+static_assert(kWeaponEffect.block[1] == 0x04 && kWeaponEffect.block[2] == 0x01);
+static_assert(kWeaponEffect.block[3] == 7);
+
+constexpr TriggerEffect kVibrationEffect = [] {
+  TriggerEffect effect;
+  const uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  effect.vibration(amplitudes, 25);
+  return effect;
+}();
+static_assert(kVibrationEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Vibration));
+static_assert(kVibrationEffect.block[1] == 0x01 && kVibrationEffect.block[9] == 25);
+
+// Saturating conversions used by the Swift schema when moving normalized UI
+// values onto the byte/zone/level wire fields.
+struct DSScale {
+  static constexpr float clamp01(float value) {
+    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+    return value < 0 ? 0 : (value > 1 ? 1 : value);
+  }
+
+  static constexpr uint8_t byte(float value) {
+    float v = clamp01(value);
+    int scaled = static_cast<int>(v * 255.0f + 0.5f);
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
+  }
+
+  static constexpr uint8_t rawByte(float value) {
+    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+    int scaled = static_cast<int>(value + (value >= 0 ? 0.5f : -0.5f));
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
+  }
+
+  static constexpr int zone(float value) {
+    float v = clamp01(value) * 9.0f;
+    int scaled = static_cast<int>(v + 0.5f);
+    return scaled < 0 ? 0 : (scaled > 9 ? 9 : scaled);
+  }
+
+  static constexpr uint8_t level(float value) {
+    float v = clamp01(value) * 8.0f;
+    int scaled = static_cast<int>(v + 0.5f);
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 8 ? 8 : scaled));
+  }
+};
+
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
 
@@ -197,6 +371,15 @@ private:
     SpeakerVolume = 0x20,   //       bit 5
     MicVolume = 0x40,       //       bit 6
     AudioRouting = 0x80,    //       bit 7
+
+    CompatibleVibration = Rumble,
+    HapticsSelect = Haptics,
+    RightTriggerMotorEnable = RightTrigger,
+    LeftTriggerMotorEnable = LeftTrigger,
+    HeadphoneVolumeEnable = HeadphoneVolume,
+    SpeakerVolumeEnable = SpeakerVolume,
+    MicVolumeEnable = MicVolume,
+    AudioControlEnable = AudioRouting,
   };
 
   enum class ValidFlag1 : uint8_t {
@@ -208,6 +391,15 @@ private:
     HapticLpf = 0x20,       //       bit 5
     MotorPowerLevel = 0x40, //       bit 6
     AudioControl2 = 0x80,   //       bit 7
+
+    MicMuteLedControlEnable = MuteLed,
+    PowerSaveControlEnable = PowerSave,
+    LightbarControlEnable = Lightbar,
+    ReleaseLEDs = ResetLights,
+    PlayerIndicatorControlEnable = PlayerLeds,
+    HapticLowPassFilterEnable = HapticLpf,
+    VibrationAttenuationEnable = MotorPowerLevel,
+    AudioControl2Enable = AudioControl2,
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
@@ -217,6 +409,10 @@ private:
     Brightness = 0x01,     // bit 0
     ColorFade = 0x02,      // bit 1: enables the lightbar_setup fade control
     ImprovedRumble = 0x04, // bit 2
+
+    LedBrightnessControlEnable = Brightness,
+    LightbarSetupControlEnable = ColorFade,
+    CompatibleVibration2 = ImprovedRumble,
   };
 
   // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
@@ -232,14 +428,20 @@ private:
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
   // Bits 5-7 are reserved.
   enum class PlayerLeds : uint8_t {
-    Led1 = 0x01, // bit 0
-    Led2 = 0x02, // bit 1
-    Led3 = 0x04, // bit 2
-    Led4 = 0x08, // bit 3
-    Led5 = 0x10, // bit 4
+    Led1 = 0x01,    // bit 0
+    Led2 = 0x02,    // bit 1
+    Led3 = 0x04,    // bit 2
+    Led4 = 0x08,    // bit 3
+    Led5 = 0x10,    // bit 4
+    Instant = 0x20, // bit 5: suppress the slow fade-in
   };
 
 public:
+  enum class LightbarSetup : uint8_t {
+    LightOn = 0x01,
+    LightOut = 0x02,
+  };
+
   // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
   // use, which is why a silent jack was the first symptom of getting this
@@ -335,6 +537,8 @@ public:
     lightbar_setup = v;
   }
 
+  constexpr void setLightbarSetup(LightbarSetup v) { setLightbarSetup(static_cast<uint8_t>(v)); }
+
   constexpr void setLedBrightness(uint8_t v) {
     claim(ValidFlag2::Brightness);
     led_brightness = v;
@@ -368,6 +572,18 @@ public:
   constexpr void setLeftTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::LeftTrigger);
     for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = v[i];
+  }
+
+  constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
+    claim(ValidFlag0::RightTrigger);
+    right_trigger_mode = effect.block[0];
+    for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = effect.block[i + 1];
+  }
+
+  constexpr void setLeftTriggerEffect(const TriggerEffect &effect) {
+    claim(ValidFlag0::LeftTrigger);
+    left_trigger_mode = effect.block[0];
+    for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = effect.block[i + 1];
   }
 
   constexpr void setAudioRoute(AudioControl routing) {
@@ -447,6 +663,7 @@ public:
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     Size = 78,
     CrcSeed = 0xA2,
+    Tag = 0x10,
   };
 
   // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
@@ -467,7 +684,7 @@ public:
   constexpr void init() {
     *this = OutputReport{};
     report_id = ReportId;
-    tag = 0x10;
+    tag = Tag;
     seq_tag = 0;
     body_.init();
   }
@@ -600,6 +817,9 @@ public:
     int right;
   };
 
+  static constexpr int TouchpadWidth = 1920;
+  static constexpr int TouchpadHeight = 1080;
+
   Stick leftStick() const { return {lx, ly}; }
 
   Stick rightStick() const { return {rx, ry}; }
@@ -693,6 +913,13 @@ public:
     LeftPaddle = 1u << 22,  // Edge only
     RightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
+
+    PsHome = Ps,
+    MicMute = Mute,
+    EdgeFn1 = Fn1,
+    EdgeFn2 = Fn2,
+    EdgeLeftPaddle = LeftPaddle,
+    EdgeRightPaddle = RightPaddle,
   };
 
   struct Buttons {
@@ -736,6 +963,10 @@ public:
   enum class Status1 : uint8_t {
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
+    MicMute = 0x04,    // bit 2
+
+    HeadphoneDetect = Headset,
+    MicDetect = Microphone,
     // Undocumented: observed set only while a USB data host (a Mac) was
     // attached over Bluetooth; clear with a charger-only cable. Not parsed by
     // hid-playstation.
@@ -749,6 +980,8 @@ public:
   constexpr bool microphone() const {
     return (status1 & static_cast<uint8_t>(Status1::Microphone)) != 0;
   }
+
+  constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
 
   struct Touch {
     bool active;
@@ -1097,6 +1330,32 @@ struct AudioReportProbe {
 // The Edge also exposes profile reports in the 0x60..0x7B range, beyond what
 // padwave needs.
 
+// Calibration math from the Swift schema. The feature report stores raw
+// per-axis bias and plus/minus endpoints; converting them to the coefficients
+// below is what turns raw IMU counts into usable units.
+struct AxisCalibration {
+  int bias = 0;
+  int numerator = 0;
+  int denominator = 1;
+
+  constexpr int apply(int raw) const {
+    if (denominator == 0) return 0;
+    return numerator * (raw - bias) / denominator;
+  }
+
+  static constexpr AxisCalibration fallback(int range) { return {0, range, 32767}; }
+};
+
+struct ImuCalibration {
+  static constexpr int GyroResolutionPerDps = 1024;
+  static constexpr int AccelResolutionPerG = 8192;
+  static constexpr int AccelRange = 4 * AccelResolutionPerG;
+  static constexpr int GyroRange = 2048 * GyroResolutionPerDps;
+
+  AxisCalibration gyro[3];
+  AxisCalibration accel[3];
+};
+
 namespace internal {
 struct Calibration {
 protected:
@@ -1126,6 +1385,38 @@ protected:
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
+
+  constexpr ImuCalibration imu() const {
+    ImuCalibration result{};
+    int speed_2x = static_cast<int>(gyro_speed_plus) + static_cast<int>(gyro_speed_minus);
+    int gyro_numerator = speed_2x * ImuCalibration::GyroResolutionPerDps;
+
+    int pitch_bias = static_cast<int>(gyro_pitch_bias);
+    int yaw_bias = static_cast<int>(gyro_yaw_bias);
+    int roll_bias = static_cast<int>(gyro_roll_bias);
+    result.gyro[0] = {0, gyro_numerator,
+                      static_cast<int>(gyro_pitch_plus) - pitch_bias +
+                          static_cast<int>(gyro_pitch_minus) - pitch_bias};
+    result.gyro[1] = {0, gyro_numerator,
+                      static_cast<int>(gyro_yaw_plus) - yaw_bias +
+                          static_cast<int>(gyro_yaw_minus) - yaw_bias};
+    result.gyro[2] = {0, gyro_numerator,
+                      static_cast<int>(gyro_roll_plus) - roll_bias +
+                          static_cast<int>(gyro_roll_minus) - roll_bias};
+    for (auto &axis : result.gyro)
+      if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::GyroRange);
+
+    auto accel_axis = [](int plus, int minus) {
+      int range_2g = plus - minus;
+      if (range_2g == 0) return AxisCalibration::fallback(ImuCalibration::AccelRange);
+      return AxisCalibration{plus - range_2g / 2, 2 * ImuCalibration::AccelResolutionPerG,
+                             range_2g};
+    };
+    result.accel[0] = accel_axis(acc_x_plus, acc_x_minus);
+    result.accel[1] = accel_axis(acc_y_plus, acc_y_minus);
+    result.accel[2] = accel_axis(acc_z_plus, acc_z_minus);
+    return result;
+  }
 };
 
 static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes");
@@ -1153,7 +1444,14 @@ protected:
   PWUINT8 unknown_46[18];  // 0x2e..0x3f
 
 public:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware), Size = 64 };
+  enum : uint8_t {
+    ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware),
+    Size = 64,
+  };
+
+  static constexpr uint16_t VibrationV2MinimumVersion = (2 << 8) | 21;
+
+  constexpr bool usesVibrationV2() const { return update_version >= VibrationV2MinimumVersion; }
 };
 
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
