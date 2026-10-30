@@ -426,22 +426,20 @@
       <div class="lab-row">
         <b>trigger effect</b>
         <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
-        <select id="labTrigPreset" title="DS4Windows Trigger Lab presets">
-          <option value="none" selected>none</option>
-          <option value="custom">custom 0x26</option>
-          <option value="balanced-weapon">balanced weapon</option>
-          <option value="soft-resistance">soft resistance</option>
-          <option value="firm-resistance">firm resistance</option>
-          <option value="hair-trigger">hair trigger</option>
-          <option value="pistol-break">pistol break</option>
-          <option value="rifle-break">rifle break</option>
-          <option value="machine-gun">machine gun</option>
-          <option value="road-texture">road texture</option>
+        <select id="labTrigPreset" title="TriggerEffect type">
+          <option value="off" selected>off</option>
+          <option value="feedback">feedback</option>
+          <option value="weapon">weapon</option>
+          <option value="vibration">vibration</option>
+          <option value="machine">machine</option>
         </select>
-        <input type="number" id="labP0" value="2" min="0" max="9" title="custom position / zone 0-9">
-        <input type="number" id="labP1" value="6" min="0" max="8" title="custom amplitude 0-8">
-        <input type="number" id="labP2" value="25" min="1" max="255" title="custom frequency in Hz">
-        <span id="labTrigHint" style="font-size:11px">custom: position / amplitude / frequency</span>
+        <label>start <input type="number" id="labP0" value="2" min="0" max="9" style="width:52px"></label>
+        <label>end <input type="number" id="labTrigEnd" value="9" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" id="labP1" value="6" min="0" max="8" style="width:52px"></label>
+        <label>Hz <input type="number" id="labP2" value="25" min="1" max="255" style="width:58px"></label>
+        <label>period <input type="number" id="labTrigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+        <label>B <input type="number" id="labTrigAmpB" value="0" min="0" max="7" style="width:48px"></label>
+        <span id="labTrigHint" style="font-size:11px">off</span>
         <button id="labTrigFire">fire 900ms</button>
         <label title="apply this trigger effect while R2/L2 changes the volume"><input type="checkbox" id="teOn"> on volume</label>
         <button id="teTestL" title="apply the selected effect to the left trigger">test L</button>
@@ -655,9 +653,17 @@ function render(s) {
     $("#labP1").value = cfg.trigger_effect_amplitude;
   if (document.activeElement !== $("#labP2") && cfg.trigger_effect_frequency != null)
     $("#labP2").value = cfg.trigger_effect_frequency;
+  if (document.activeElement !== $("#labTrigEnd") && cfg.trigger_effect_end != null)
+    $("#labTrigEnd").value = cfg.trigger_effect_end;
+  if (document.activeElement !== $("#labTrigPeriod") && cfg.trigger_effect_period != null)
+    $("#labTrigPeriod").value = cfg.trigger_effect_period;
+  if (document.activeElement !== $("#labTrigAmpB") && cfg.trigger_effect_amplitude_b != null)
+    $("#labTrigAmpB").value = cfg.trigger_effect_amplitude_b;
   if (document.activeElement !== $("#labTrigPreset")) {
-    $("#labTrigPreset").value = cfg.trigger_effect_preset || "none";
-    if (!$("#labTrigPreset").value) $("#labTrigPreset").value = "none";
+    let effect = cfg.trigger_effect_preset || "off";
+    if (effect === "none") effect = "off";
+    if (![..."off feedback weapon vibration machine".split(" ")].includes(effect)) effect = "off";
+    $("#labTrigPreset").value = effect;
     syncTriggerControls();
   }
   if (document.activeElement !== $("#teOn"))
@@ -1034,29 +1040,39 @@ $("#labRumBuzz").onclick = () => labSend({
 $("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms: 0 });
 
 function syncTriggerControls() {
-  const custom = $("#labTrigPreset").value === "custom";
-  for (const id of ["labP0", "labP1", "labP2"]) {
-    $("#" + id).disabled = !custom;
+  const effect = $("#labTrigPreset").value;
+  const off = effect === "off" || effect === "none";
+  for (const id of ["labP0", "labTrigEnd", "labP1"]) {
+    $("#" + id).disabled = off;
   }
-  $("#labTrigHint").textContent = $("#labTrigPreset").value === "none"
-    ? "off"
-    : (custom ? "custom: position / amplitude / frequency" : "preset");
+  $("#labP2").disabled = off || !(effect === "vibration" || effect === "machine");
+  $("#labTrigPeriod").disabled = effect !== "machine";
+  $("#labTrigAmpB").disabled = effect !== "machine";
+  const hints = {
+    off: "off",
+    feedback: "feedback: start..end, level",
+    weapon: "weapon: start/end, level",
+    vibration: "vibration: start..end, level, Hz",
+    machine: "machine: start/end, levels A/B, Hz, period",
+  };
+  $("#labTrigHint").textContent = hints[effect] || "off";
 }
 
 function triggerPayload(side, ms) {
-  const payload = { kind: "trigger", side, ms };
-  const preset = $("#labTrigPreset").value;
-  if (preset === "none") {
-    payload.effect = "off";
-    payload.ms = 0;
-  } else if (preset === "custom") {
-    payload.effect = "vibration";
-    payload.position = Number($("#labP0").value);
-    payload.amplitude = Number($("#labP1").value);
-    payload.frequency = Number($("#labP2").value);
-  } else {
-    payload.preset = preset;
-  }
+  const effect = $("#labTrigPreset").value;
+  const payload = {
+    kind: "trigger",
+    side,
+    effect: effect === "none" ? "off" : effect,
+    start: Number($("#labP0").value),
+    end: Number($("#labTrigEnd").value),
+    level: Number($("#labP1").value),
+    frequency: Number($("#labP2").value),
+    period: Number($("#labTrigPeriod").value),
+    amplitude_b: Number($("#labTrigAmpB").value),
+    ms,
+  };
+  if (payload.effect === "off") payload.ms = 0;
   return payload;
 }
 
@@ -1073,7 +1089,10 @@ for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
 
 for (const [id, key] of [["labP0", "trigger_effect_position"],
                          ["labP1", "trigger_effect_amplitude"],
-                         ["labP2", "trigger_effect_frequency"]]) {
+                         ["labP2", "trigger_effect_frequency"],
+                         ["labTrigEnd", "trigger_effect_end"],
+                         ["labTrigPeriod", "trigger_effect_period"],
+                         ["labTrigAmpB", "trigger_effect_amplitude_b"]]) {
   $(`#${id}`).addEventListener("input", (e) => {
     pushTriggerConfig({ [key]: Number(e.target.value) });
   });

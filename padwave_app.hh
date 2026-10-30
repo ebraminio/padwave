@@ -285,6 +285,9 @@ private:
   int trigger_effect_amplitude = 6;
   int trigger_effect_position = 2;
   int trigger_effect_frequency = 25;
+  int trigger_effect_end = 9;
+  int trigger_effect_period = 10;
+  int trigger_effect_amplitude_b = 0;
   bool trigger_effects = false;
   char trigger_effect_preset[32] = "none";
 
@@ -641,6 +644,10 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvAdd(buf, cap, &o, "config.trigger_effect_end", "%d", this->trigger_effect_end);
+    kvAdd(buf, cap, &o, "config.trigger_effect_period", "%d", this->trigger_effect_period);
+    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude_b", "%d",
+          this->trigger_effect_amplitude_b);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
@@ -684,6 +691,10 @@ public:
     kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
     kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
     kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
+    kvAdd(buf, cap, &o, "config.trigger_effect_end", "%d", this->trigger_effect_end);
+    kvAdd(buf, cap, &o, "config.trigger_effect_period", "%d", this->trigger_effect_period);
+    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude_b", "%d",
+          this->trigger_effect_amplitude_b);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
@@ -729,6 +740,18 @@ public:
     if (kvGet(body, "trigger_effect_frequency", value, sizeof(value))) {
       int v = atoi(value);
       this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+    }
+    if (kvGet(body, "trigger_effect_end", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_end = v < 0 ? 0 : (v > 9 ? 9 : v);
+    }
+    if (kvGet(body, "trigger_effect_period", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_period = v < 0 ? 0 : (v > 255 ? 255 : v);
+    }
+    if (kvGet(body, "trigger_effect_amplitude_b", value, sizeof(value))) {
+      int v = atoi(value);
+      this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
     }
     if (kvGet(body, "trigger_effect_preset", value, sizeof(value))) {
       snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
@@ -867,6 +890,11 @@ public:
       int amplitude = static_cast<int>(kvNumber(body, "amplitude", 6));
       int frequency = static_cast<int>(kvNumber(body, "frequency", 25));
       int wall = static_cast<int>(kvNumber(body, "wall", 8));
+      int start = static_cast<int>(kvNumber(body, "start", position));
+      int end = static_cast<int>(kvNumber(body, "end", wall));
+      int level = static_cast<int>(kvNumber(body, "level", amplitude));
+      int amplitude_b = static_cast<int>(kvNumber(body, "amplitude_b", 0));
+      int period = static_cast<int>(kvNumber(body, "period", 0));
       long ms = kvNumber(body, "ms", 0);
 
       uint8_t params[10] = {};
@@ -877,23 +905,33 @@ public:
         if (!found) return snprintf(out, out_cap, "ok=false\nerror=unknown trigger preset\n");
         mode = encodeTriggerPreset(*found, params);
         snprintf(label, sizeof(label), "%s", found->id);
-      } else if (strcmp(effect, "off") == 0) {
+      } else if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
         mode = 0x05;
-      } else if (strcmp(effect, "feedback") == 0) {
-        mode = 0x21;
-        if (!encodeTriggerZones(params, position, amplitude, 0)) mode = 0x05;
-        snprintf(label, sizeof(label), "feedback");
-      } else if (strcmp(effect, "weapon") == 0) {
-        mode = 0x25;
-        if (!encodeTriggerWeapon(params, position, wall, amplitude)) mode = 0x05;
-        snprintf(label, sizeof(label), "weapon");
-      } else if (strcmp(effect, "vibration") == 0) {
-        mode = 0x26;
-        if (frequency <= 0 || !encodeTriggerZones(params, position, amplitude, frequency))
-          mode = 0x05;
-        snprintf(label, sizeof(label), "vibration");
       } else {
-        return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
+        dualsense::TriggerEffect fx;
+        if (strcmp(effect, "feedback") == 0) {
+          uint8_t levels[10] = {};
+          int last = end < start ? 9 : (end > 9 ? 9 : end);
+          for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
+            levels[zone] = static_cast<uint8_t>(level);
+          fx.feedback(levels);
+        } else if (strcmp(effect, "weapon") == 0) {
+          fx.weapon(start, end, static_cast<uint8_t>(level));
+        } else if (strcmp(effect, "vibration") == 0) {
+          uint8_t amplitudes[10] = {};
+          int last = end < start ? 9 : (end > 9 ? 9 : end);
+          for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
+            amplitudes[zone] = static_cast<uint8_t>(level);
+          fx.vibration(amplitudes, static_cast<uint8_t>(frequency));
+        } else if (strcmp(effect, "machine") == 0) {
+          fx.machine(start, end, static_cast<uint8_t>(level), static_cast<uint8_t>(amplitude_b),
+                     static_cast<uint8_t>(frequency), static_cast<uint8_t>(period));
+        } else {
+          return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
+        }
+        mode = fx.block[0];
+        for (size_t i = 0; i < 10; ++i) params[i] = fx.block[i + 1];
+        snprintf(label, sizeof(label), "%s", effect);
       }
 
       if (mode == 0x05) memset(params, 0, sizeof(params));
@@ -932,19 +970,17 @@ public:
   }
 
   int triggerTest(const char *side, long ms, char *out, size_t cap) {
-    if (strcmp(this->trigger_effect_preset, "none") == 0)
-      return snprintf(out, cap, "ok=true\nnote=trigger none\n");
-    char request[192];
-    if (strcmp(this->trigger_effect_preset, "custom") != 0 &&
-        findTriggerPreset(this->trigger_effect_preset))
-      snprintf(request, sizeof(request), "kind=trigger\nside=%s\npreset=%s\nms=%ld", side,
-               this->trigger_effect_preset, ms);
-    else
-      snprintf(request, sizeof(request),
-               "kind=trigger\nside=%s\neffect=vibration\nposition=%d\namplitude=%d\n"
-               "frequency=%d\nms=%ld",
-               side, this->trigger_effect_position, this->trigger_effect_amplitude,
-               this->trigger_effect_frequency, ms);
+    if (strcmp(this->trigger_effect_preset, "none") == 0 ||
+        strcmp(this->trigger_effect_preset, "off") == 0)
+      return snprintf(out, cap, "ok=true\nnote=trigger off\n");
+    char request[256];
+    snprintf(request, sizeof(request),
+             "kind=trigger\nside=%s\neffect=%s\nstart=%d\nend=%d\nlevel=%d\n"
+             "amplitude_b=%d\nfrequency=%d\nperiod=%d\nms=%ld",
+             side, this->trigger_effect_preset, this->trigger_effect_position,
+             this->trigger_effect_end, this->trigger_effect_amplitude,
+             this->trigger_effect_amplitude_b, this->trigger_effect_frequency,
+             this->trigger_effect_period, ms);
     return output(request, out, cap);
   }
 
@@ -1561,6 +1597,15 @@ private:
       } else if (strcmp(line, "trigger_effect_frequency") == 0) {
         int v = atoi(value);
         this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
+      } else if (strcmp(line, "trigger_effect_end") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_end = v < 0 ? 0 : (v > 9 ? 9 : v);
+      } else if (strcmp(line, "trigger_effect_period") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_period = v < 0 ? 0 : (v > 255 ? 255 : v);
+      } else if (strcmp(line, "trigger_effect_amplitude_b") == 0) {
+        int v = atoi(value);
+        this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
       } else if (strcmp(line, "trigger_effect_preset") == 0) {
         snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
                  value[0] ? value : "custom");
@@ -1604,6 +1649,9 @@ private:
     fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
     fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
     fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
+    fprintf(f, "trigger_effect_end=%d\n", this->trigger_effect_end);
+    fprintf(f, "trigger_effect_period=%d\n", this->trigger_effect_period);
+    fprintf(f, "trigger_effect_amplitude_b=%d\n", this->trigger_effect_amplitude_b);
     fprintf(f, "trigger_effect_preset=%s\n", this->trigger_effect_preset);
     fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
     const char *play_path = this->current >= 0 ? this->tracks[this->current].path : "";
