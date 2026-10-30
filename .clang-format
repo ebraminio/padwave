@@ -36,3 +36,6 @@ SpacesBeforeTrailingComments: 1
 
 # Keep enum/table assignments aligned, including across separating comments.
 AlignConsecutiveAssignments: AcrossComments
+
+# Align comments on consecutive declarations/fields.
+AlignTrailingComments: true

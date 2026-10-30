@@ -21,7 +21,7 @@ struct NumType {
     UnsignedType v = static_cast<UnsignedType>(value);
     for (unsigned int i = 0; i < sizeof(Type); ++i) {
       bytes[i] = static_cast<unsigned char>((v & 0xFF));
-      v = static_cast<UnsignedType>((v >> 8));
+      v        = static_cast<UnsignedType>((v >> 8));
     }
     return *this;
   }
@@ -56,12 +56,12 @@ struct NumType {
   unsigned char bytes[sizeof(Type)];
 };
 
-using DSUINT8 = NumType<uint8_t>;
+using DSUINT8  = NumType<uint8_t>;
 using DSUINT16 = NumType<uint16_t>;
 using DSUINT32 = NumType<uint32_t>;
-using DSINT8 = NumType<int8_t, uint8_t>;
-using DSINT16 = NumType<int16_t, uint16_t>;
-using DSINT32 = NumType<int32_t, uint32_t>;
+using DSINT8   = NumType<int8_t, uint8_t>;
+using DSINT16  = NumType<int16_t, uint16_t>;
+using DSINT32  = NumType<int32_t, uint32_t>;
 
 static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
 static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
@@ -106,8 +106,8 @@ struct WireBytes {
 template <typename Report>
 static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
-  uint32_t c = crc32(0, &seed, 1);
-  auto raw = __builtin_bit_cast(WireBytes<Report>, report);
+  uint32_t c   = crc32(0, &seed, 1);
+  auto raw     = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
 }
 
@@ -129,13 +129,13 @@ struct AudioReportProbe;
 // output state report; the direction is the stream, not the id.
 
 enum class Packet : uint8_t {
-  PacketInputUsb = 0x01,
-  PacketOutputUsb = 0x02,
+  PacketInputUsb           = 0x01,
+  PacketOutputUsb          = 0x02,
   PacketFeatureCalibration = 0x05,
-  PacketFeaturePairing = 0x09,
-  PacketFeatureFirmware = 0x20,
-  PacketStateBluetooth = 0x31,
-  PacketAudio = 0x36,
+  PacketFeaturePairing     = 0x09,
+  PacketFeatureFirmware    = 0x20,
+  PacketStateBluetooth     = 0x31,
+  PacketAudio              = 0x36,
 };
 
 struct OutputBody {
@@ -151,25 +151,25 @@ public:
     // values are firmware leftovers; keep them for completeness but prefer the
     // official factories.
     enum class Type : uint8_t {
-      Off = 0x05,
-      Feedback = 0x21,
-      Weapon = 0x25,
-      Vibration = 0x26,
-      Bow = 0x22,
-      Galloping = 0x23,
-      Machine = 0x27,
-      SimpleFeedback = 0x01,
-      SimpleWeapon = 0x02,
+      Off             = 0x05,
+      Feedback        = 0x21,
+      Weapon          = 0x25,
+      Vibration       = 0x26,
+      Bow             = 0x22,
+      Galloping       = 0x23,
+      Machine         = 0x27,
+      SimpleFeedback  = 0x01,
+      SimpleWeapon    = 0x02,
       SimpleVibration = 0x06,
       LimitedFeedback = 0x11,
-      LimitedWeapon = 0x12,
-      DebugFc = 0xFC,
-      DebugFd = 0xFD,
-      DebugFe = 0xFE,
+      LimitedWeapon   = 0x12,
+      DebugFc         = 0xFC,
+      DebugFd         = 0xFD,
+      DebugFe         = 0xFE,
     };
 
     static constexpr size_t BlockSize = 11;
-    static constexpr int ZoneCount = 10;
+    static constexpr int ZoneCount    = 10;
     static constexpr uint8_t MaxLevel = 8;
 
   private:
@@ -200,10 +200,10 @@ public:
       if (position > 9 || strength > 8) return false;
       if (strength == 0) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::Feedback);
+      block[0]        = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
-      uint32_t force = 0;
-      uint8_t value = static_cast<uint8_t>((strength - 1) & 0x07);
+      uint32_t force  = 0;
+      uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
       for (int i = position; i < 10; i++) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
@@ -223,10 +223,10 @@ public:
       if (strength == 0) return off();
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      block[0] = static_cast<uint8_t>(Type::Weapon);
-      block[1] = static_cast<uint8_t>(zones & 0xFF);
-      block[2] = static_cast<uint8_t>(zones >> 8);
-      block[3] = static_cast<uint8_t>(strength - 1);
+      block[0]       = static_cast<uint8_t>(Type::Weapon);
+      block[1]       = static_cast<uint8_t>(zones & 0xFF);
+      block[2]       = static_cast<uint8_t>(zones >> 8);
+      block[3]       = static_cast<uint8_t>(strength - 1);
       return true;
     }
 
@@ -235,10 +235,10 @@ public:
       if (position > 9 || amplitude > 8) return false;
       if (amplitude == 0 || frequency == 0) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::Vibration);
+      block[0]        = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
-      uint8_t value = static_cast<uint8_t>((amplitude - 1) & 0x07);
+      uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
       for (int i = position; i < 10; i++) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
@@ -260,13 +260,13 @@ public:
         if (strength[i] > 0) any = true;
       if (!any) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::Feedback);
+      block[0]        = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
-      uint32_t force = 0;
+      uint32_t force  = 0;
       for (int i = 0; i < 10; i++) {
         if (strength[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
-        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
       block[1] = static_cast<uint8_t>(active & 0xFF);
@@ -285,7 +285,7 @@ public:
       if (start_strength < 1 || start_strength > 8 || end_strength < 1 || end_strength > 8)
         return false;
       uint8_t strength[10] = {};
-      float slope = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
+      float slope          = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
                     static_cast<float>(end - start);
       for (int i = start; i < 10; i++) {
         int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
@@ -305,13 +305,13 @@ public:
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::Vibration);
+      block[0]        = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       for (int i = 0; i < 10; i++) {
         if (amplitude[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
-        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
       block[1] = static_cast<uint8_t>(active & 0xFF);
@@ -330,7 +330,7 @@ public:
       if (end == 0 || strength == 0 || snap == 0) return off();
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      uint32_t pair = static_cast<uint32_t>((strength - 1) & 0x07) |
+      uint32_t pair  = static_cast<uint32_t>((strength - 1) & 0x07) |
                       (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
       block[0] = static_cast<uint8_t>(Type::Bow);
       block[1] = static_cast<uint8_t>(zones & 0xFF);
@@ -364,13 +364,13 @@ public:
       if (frequency == 0) return off();
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      uint8_t pair = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
-      block[0] = static_cast<uint8_t>(Type::Machine);
-      block[1] = static_cast<uint8_t>(zones & 0xFF);
-      block[2] = static_cast<uint8_t>(zones >> 8);
-      block[3] = pair;
-      block[4] = frequency;
-      block[5] = period;
+      uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
+      block[0]       = static_cast<uint8_t>(Type::Machine);
+      block[1]       = static_cast<uint8_t>(zones & 0xFF);
+      block[2]       = static_cast<uint8_t>(zones >> 8);
+      block[3]       = pair;
+      block[4]       = frequency;
+      block[5]       = period;
       return true;
     }
 
@@ -519,34 +519,34 @@ public:
   };
 
 private:
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 validFlag0;         // +0x00  ValidFlag0 bits
-  DSUINT8 validFlag1;         // +0x01  ValidFlag1 bits
-  DSUINT8 motorRight;         // +0x02  DS4-compatible rumble
-  DSUINT8 motorLeft;          // +0x03
-  DSUINT8 volumeHeadphones;   // +0x04  0x00..0x7f
-  DSUINT8 volumeSpeaker;      // +0x05  0x00..0xff
-  DSUINT8 micVolume;          // +0x06  0x00..0x40 (claimed by MicVolume)
-  DSUINT8 audioControl;       // +0x07  AudioControl; claimed by AudioRouting
-  DSUINT8 muteButtonLed;     // +0x08
-  DSUINT8 powerSaveControl;  // +0x09  PowerSave bits
-  TriggerEffect rightTrigger; // +0x0a  11-byte effect block
-  TriggerEffect leftTrigger;  // +0x15  11-byte effect block
-  DSUINT32 hostTimestamp;     // +0x20  mirrored input sensor timestamp
-  DSUINT8 motorPowerLevel;   // +0x24  trigger:rumble reduction nibbles
-  DSUINT8 audioControl2;      // +0x25  speaker preamp gain
-  DSUINT8 validFlag2;         // +0x26  ValidFlag2 bits
+  DSUINT8 validFlag0;          // +0x00  ValidFlag0 bits
+  DSUINT8 validFlag1;          // +0x01  ValidFlag1 bits
+  DSUINT8 motorRight;          // +0x02  DS4-compatible rumble
+  DSUINT8 motorLeft;           // +0x03
+  DSUINT8 volumeHeadphones;    // +0x04  0x00..0x7f
+  DSUINT8 volumeSpeaker;       // +0x05  0x00..0xff
+  DSUINT8 micVolume;           // +0x06  0x00..0x40 (claimed by MicVolume)
+  DSUINT8 audioControl;        // +0x07  AudioControl; claimed by AudioRouting
+  DSUINT8 muteButtonLed;       // +0x08
+  DSUINT8 powerSaveControl;    // +0x09  PowerSave bits
+  TriggerEffect rightTrigger;  // +0x0a  11-byte effect block
+  TriggerEffect leftTrigger;   // +0x15  11-byte effect block
+  DSUINT32 hostTimestamp;      // +0x20  mirrored input sensor timestamp
+  DSUINT8 motorPowerLevel;     // +0x24  trigger:rumble reduction nibbles
+  DSUINT8 audioControl2;       // +0x25  speaker preamp gain
+  DSUINT8 validFlag2;          // +0x26  ValidFlag2 bits
   DSUINT8 hapticLowPassFilter; // +0x27  hardware haptic LPF enable
-  DSUINT8 reserved40;            // +0x28
-  DSUINT8 lightbarSetup;      // +0x29  validFlag2 bit 1; 0x02 fades out
-  DSUINT8 ledBrightness;      // +0x2a
-  DSUINT8 playerLeds;         // +0x2b  PlayerLeds bits
-  DSUINT8 lightbarRed;        // +0x2c
-  DSUINT8 lightbarGreen;      // +0x2d
-  DSUINT8 lightbarBlue;       // +0x2e
+  DSUINT8 reserved40;          // +0x28
+  DSUINT8 lightbarSetup;       // +0x29  validFlag2 bit 1; 0x02 fades out
+  DSUINT8 ledBrightness;       // +0x2a
+  DSUINT8 playerLeds;          // +0x2b  PlayerLeds bits
+  DSUINT8 lightbarRed;         // +0x2c
+  DSUINT8 lightbarGreen;       // +0x2d
+  DSUINT8 lightbarBlue;        // +0x2e
 
 public:
   enum : uint8_t { Size = 47 };
@@ -565,25 +565,25 @@ private:
   // trigger blocks,
   // leaving volumes, LEDs and rumble untouched.
   enum class ValidFlag0 : uint8_t {
-    CompatibleVibration = 1u << 0,     // +0x00 bit 0; main motors also need HapticsSelect
-    HapticsSelect = 1u << 1,           //       bit 1; paired with CompatibleVibration
+    CompatibleVibration     = 1u << 0, // +0x00 bit 0; main motors also need HapticsSelect
+    HapticsSelect           = 1u << 1, //       bit 1; paired with CompatibleVibration
     RightTriggerMotorEnable = 1u << 2, //       bit 2
-    LeftTriggerMotorEnable = 1u << 3,  //       bit 3
-    HeadphoneVolumeEnable = 1u << 4,   //       bit 4
-    SpeakerVolumeEnable = 1u << 5,     //       bit 5
-    MicVolumeEnable = 1u << 6,         //       bit 6
-    AudioControlEnable = 1u << 7,      //       bit 7
+    LeftTriggerMotorEnable  = 1u << 3, //       bit 3
+    HeadphoneVolumeEnable   = 1u << 4, //       bit 4
+    SpeakerVolumeEnable     = 1u << 5, //       bit 5
+    MicVolumeEnable         = 1u << 6, //       bit 6
+    AudioControlEnable      = 1u << 7, //       bit 7
   };
 
   enum class ValidFlag1 : uint8_t {
-    MicMuteLedControlEnable = 1u << 0,      // +0x01 bit 0
-    PowerSaveControlEnable = 1u << 1,       //       bit 1  enables powerSaveControl
-    LightbarControlEnable = 1u << 2,        //       bit 2
-    ReleaseLEDs = 1u << 3,                  //       bit 3
+    MicMuteLedControlEnable      = 1u << 0, // +0x01 bit 0
+    PowerSaveControlEnable       = 1u << 1, //       bit 1  enables powerSaveControl
+    LightbarControlEnable        = 1u << 2, //       bit 2
+    ReleaseLEDs                  = 1u << 3, //       bit 3
     PlayerIndicatorControlEnable = 1u << 4, //       bit 4
-    HapticLowPassFilterEnable = 1u << 5,    //       bit 5
-    VibrationAttenuationEnable = 1u << 6,   //       bit 6
-    AudioControl2Enable = 1u << 7,          //       bit 7
+    HapticLowPassFilterEnable    = 1u << 5, //       bit 5
+    VibrationAttenuationEnable   = 1u << 6, //       bit 6
+    AudioControl2Enable          = 1u << 7, //       bit 7
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
@@ -592,7 +592,7 @@ private:
   enum class ValidFlag2 : uint8_t {
     LedBrightnessControlEnable = 1u << 0, // bit 0
     LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbarSetup fade control
-    CompatibleVibration2 = 1u << 2,       // bit 2
+    CompatibleVibration2       = 1u << 2, // bit 2
   };
 
   // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
@@ -601,30 +601,30 @@ private:
   // the other six are in the panel's power save row so they can be probed: if
   // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
   enum PowerSave : uint8_t {
-    TouchPowerSave = 1u << 0,     // bit 0
-    MotionPowerSave = 1u << 1,    // bit 1
-    HapticPowerSave = 1u << 2,    // bit 2
-    AudioPowerSave = 1u << 3,     // bit 3
-    MicMute = 1u << 4,            // bit 4
-    SpeakerMute = 1u << 5,        // bit 5
-    HeadphoneMute = 1u << 6,      // bit 6
-    HapticMute = 1u << 7,         // bit 7
+    TouchPowerSave  = 1u << 0, // bit 0
+    MotionPowerSave = 1u << 1, // bit 1
+    HapticPowerSave = 1u << 2, // bit 2
+    AudioPowerSave  = 1u << 3, // bit 3
+    MicMute         = 1u << 4, // bit 4
+    SpeakerMute     = 1u << 5, // bit 5
+    HeadphoneMute   = 1u << 6, // bit 6
+    HapticMute      = 1u << 7, // bit 7
   };
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
   // Bits 5-7 are reserved.
   enum class PlayerLeds : uint8_t {
-    Led1 = 1u << 0,    // bit 0
-    Led2 = 1u << 1,    // bit 1
-    Led3 = 1u << 2,    // bit 2
-    Led4 = 1u << 3,    // bit 3
-    Led5 = 1u << 4,    // bit 4
+    Led1    = 1u << 0, // bit 0
+    Led2    = 1u << 1, // bit 1
+    Led3    = 1u << 2, // bit 2
+    Led4    = 1u << 3, // bit 3
+    Led5    = 1u << 4, // bit 4
     Instant = 1u << 5, // bit 5: suppress the slow fade-in
   };
 
 public:
   enum class LightbarSetup : uint8_t {
-    LightOn = 1u << 0,
+    LightOn  = 1u << 0,
     LightOut = 1u << 1,
   };
 
@@ -641,7 +641,7 @@ public:
 
   enum class AudioControl : uint8_t {
     Headphones = 0x00,
-    Speaker = static_cast<uint8_t>(AudioOutputPath::X_X_R) << 4,
+    Speaker    = static_cast<uint8_t>(AudioOutputPath::X_X_R) << 4,
   };
 
 private:
@@ -793,50 +793,49 @@ public:
     validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
+    validFlag1       = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
     volumeHeadphones = 0x7F;
-    volumeSpeaker = 0x64;
-    audioControl = static_cast<uint8_t>(routing);
-    audioControl2 = 0x0A;
+    volumeSpeaker    = 0x64;
+    audioControl     = static_cast<uint8_t>(routing);
+    audioControl2    = 0x0A;
   }
 
   constexpr void setMic(bool on) {
     validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::PowerSaveControlEnable));
     if (on) {
       powerSaveControl = static_cast<uint8_t>(powerSaveControl & ~0x10);
-      micVolume = 0x40;
+      micVolume        = 0x40;
     } else {
       powerSaveControl = static_cast<uint8_t>(powerSaveControl | 0x10);
     }
   }
 
   constexpr void clearPlayerLeds() {
-    validFlag1 =
-        static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
+    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
   }
 
   constexpr void clearLightbar() {
-    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::LightbarControlEnable));
-    validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
+    validFlag1    = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::LightbarControlEnable));
+    validFlag2    = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
     lightbarSetup = 0;
-    lightbarRed = 0;
+    lightbarRed   = 0;
     lightbarGreen = 0;
-    lightbarBlue = 0;
+    lightbarBlue  = 0;
   }
 
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
   constexpr void init(AudioControl routing = AudioControl::Headphones) {
-    *this = OutputBody{};
+    *this      = OutputBody{};
     validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    validFlag1 = bit(ValidFlag1::AudioControl2Enable);
+    validFlag1       = bit(ValidFlag1::AudioControl2Enable);
     volumeHeadphones = 0x7F;
-    volumeSpeaker = 0x64;
-    audioControl = static_cast<uint8_t>(routing);
-    audioControl2 = 0x0A;
+    volumeSpeaker    = 0x64;
+    audioControl     = static_cast<uint8_t>(routing);
+    audioControl2    = 0x0A;
   }
 };
 
@@ -854,7 +853,6 @@ struct OutputBodyProbe {
 };
 } // namespace internal
 
-
 static_assert(sizeof(OutputBody::TriggerEffect) == OutputBody::TriggerEffect::BlockSize);
 
 constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
@@ -865,8 +863,10 @@ constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
 }();
 static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Feedback));
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF && internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 2) == 0x03);
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 3) == 0 && internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 6) == 0);
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF &&
+              internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 2) == 0x03);
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 3) == 0 &&
+              internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 6) == 0);
 
 constexpr OutputBody::TriggerEffect kWeaponEffect = [] {
   OutputBody::TriggerEffect effect;
@@ -875,7 +875,8 @@ constexpr OutputBody::TriggerEffect kWeaponEffect = [] {
 }();
 static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Weapon));
-static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 1) == 0x04 && internal::OutputBodyProbe::triggerByte(kWeaponEffect, 2) == 0x01);
+static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 1) == 0x04 &&
+              internal::OutputBodyProbe::triggerByte(kWeaponEffect, 2) == 0x01);
 static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 3) == 7);
 
 constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
@@ -886,15 +887,18 @@ constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
 }();
 static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Vibration));
-static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 1) == 0x01 && internal::OutputBodyProbe::triggerByte(kVibrationEffect, 9) == 25);
+static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 1) == 0x01 &&
+              internal::OutputBodyProbe::triggerByte(kVibrationEffect, 9) == 25);
 
 constexpr OutputBody::TriggerEffect kBowEffect = [] {
   OutputBody::TriggerEffect effect;
   effect.bow(2, 8, 6, 4);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) == static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 1) == 0x04 && internal::OutputBodyProbe::triggerByte(kBowEffect, 2) == 0x01);
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 1) == 0x04 &&
+              internal::OutputBodyProbe::triggerByte(kBowEffect, 2) == 0x01);
 static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 3) == 0x1D);
 
 constexpr OutputBody::TriggerEffect kGallopingEffect = [] {
@@ -913,7 +917,8 @@ constexpr OutputBody::TriggerEffect kMachineEffect = [] {
 }();
 static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) ==
               static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Machine));
-static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 && internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
+static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 &&
+              internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
 
 // Saturating conversions used by the Swift schema when moving normalized UI
 // values onto the byte/zone/level wire fields.
@@ -924,7 +929,7 @@ struct DSScale {
   }
 
   static constexpr uint8_t byte(float value) {
-    float v = clamp01(value);
+    float v    = clamp01(value);
     int scaled = static_cast<int>(v * 255.0f + 0.5f);
     return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
   }
@@ -936,13 +941,13 @@ struct DSScale {
   }
 
   static constexpr int zone(float value) {
-    float v = clamp01(value) * 9.0f;
+    float v    = clamp01(value) * 9.0f;
     int scaled = static_cast<int>(v + 0.5f);
     return scaled < 0 ? 0 : (scaled > 9 ? 9 : scaled);
   }
 
   static constexpr uint8_t level(float value) {
-    float v = clamp01(value) * 8.0f;
+    float v    = clamp01(value) * 8.0f;
     int scaled = static_cast<int>(v + 0.5f);
     return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 8 ? 8 : scaled));
   }
@@ -956,23 +961,23 @@ struct DSScale {
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
 private:
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportId;     // 0x00  Packet::PacketStateBluetooth
-  DSUINT8 seqTag;       // 0x01  high nibble = counter 0..15, low nibble = 0
+  DSUINT8 reportId;      // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 seqTag;        // 0x01  high nibble = counter 0..15, low nibble = 0
   DSUINT8 tag;           // 0x02  must be 0x10
-  OutputBody bodyData;      // 0x03..0x31
+  OutputBody bodyData;   // 0x03..0x31
   DSUINT8 reserved4[24]; // 0x32..0x49
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 public:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
-    Size = 78,
-    CrcSeed = 0xA2,
-    Tag = 0x10,
+    Size     = 78,
+    CrcSeed  = 0xA2,
+    Tag      = 0x10,
   };
 
   // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
@@ -980,21 +985,21 @@ public:
   struct Sequence {
     constexpr uint8_t next() {
       uint8_t next_tag = static_cast<uint8_t>((value & Mask) << Shift);
-      value = static_cast<uint8_t>((value + 1) & Mask);
+      value            = static_cast<uint8_t>((value + 1) & Mask);
       return next_tag;
     }
 
   private:
-    uint8_t value = 0;
-    static constexpr uint8_t Mask = 0x0F;
+    uint8_t value                  = 0;
+    static constexpr uint8_t Mask  = 0x0F;
     static constexpr uint8_t Shift = 4;
   };
 
   constexpr void init() {
-    *this = OutputReport{};
+    *this    = OutputReport{};
     reportId = ReportId;
-    tag = Tag;
-    seqTag = 0;
+    tag      = Tag;
+    seqTag   = 0;
     bodyData.init();
   }
 
@@ -1022,15 +1027,15 @@ private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 reportId;    // 0x00  Packet::PacketOutputUsb
-  OutputBody bodyData;     // 0x01..0x2f
+  DSUINT8 reportId;     // 0x00  Packet::PacketOutputUsb
+  OutputBody bodyData;  // 0x01..0x2f
   DSUINT8 reserved[15]; // 0x30..0x3e
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
 
   constexpr void init() {
-    *this = UsbOutputReport{};
+    *this    = UsbOutputReport{};
     reportId = ReportId;
     // USB field reports must not claim the audio defaults.
     bodyData = OutputBody{};
@@ -1066,9 +1071,9 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
 private:
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
-  using DSINT16 = internal::DSINT16;
+  using DSINT16  = internal::DSINT16;
 
 public:
   // One 4-byte touch contact on the wire. The high nibble of `xyHigh` is
@@ -1108,38 +1113,38 @@ public:
   };
 
 protected:
-  DSUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
-  DSUINT8 ly;                 // +0x01  left stick Y, 0 = up
-  DSUINT8 rx;                 // +0x02  right stick X
-  DSUINT8 ry;                 // +0x03  right stick Y
-  DSUINT8 l2;                 // +0x04  L2 analogue
-  DSUINT8 r2;                 // +0x05  R2 analogue
-  DSUINT8 seq;                // +0x06  report sequence number
-  DSUINT32 buttonsData;          // +0x07  Buttons bits (d-pad in bits 0-3)
-  DSUINT8 incremental;        // +0x0b  increments every report, wraps at 256
-  DSUINT8 reserved14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
-                              //        middle byte ticks up by one every few
-                              //        minutes — a slow counter
-  DSINT16 gyroX;             // +0x0f  angular velocity, little-endian
-  DSINT16 gyroY;             // +0x11
-  DSINT16 gyroZ;             // +0x13
-  DSINT16 accelX;            // +0x15  acceleration, ~8192 counts per g
-  DSINT16 accelY;            // +0x17
-  DSINT16 accelZ;            // +0x19
-  DSUINT32 sensorTime;       // +0x1b  timestamp, 0.33 us units
-  DSUINT8 temperatureC;       // +0x1f  controller temperature, degrees C
+  DSUINT8 lx;                   // +0x00  left stick X, 0..255 (128 = centre)
+  DSUINT8 ly;                   // +0x01  left stick Y, 0 = up
+  DSUINT8 rx;                   // +0x02  right stick X
+  DSUINT8 ry;                   // +0x03  right stick Y
+  DSUINT8 l2;                   // +0x04  L2 analogue
+  DSUINT8 r2;                   // +0x05  R2 analogue
+  DSUINT8 seq;                  // +0x06  report sequence number
+  DSUINT32 buttonsData;         // +0x07  Buttons bits (d-pad in bits 0-3)
+  DSUINT8 incremental;          // +0x0b  increments every report, wraps at 256
+  DSUINT8 reserved14[3];        // +0x0c  constant (0x84, ?, 0x85) except that the
+                                //        middle byte ticks up by one every few
+                                //        minutes — a slow counter
+  DSINT16 gyroX;                // +0x0f  angular velocity, little-endian
+  DSINT16 gyroY;                // +0x11
+  DSINT16 gyroZ;                // +0x13
+  DSINT16 accelX;               // +0x15  acceleration, ~8192 counts per g
+  DSINT16 accelY;               // +0x17
+  DSINT16 accelZ;               // +0x19
+  DSUINT32 sensorTime;          // +0x1b  timestamp, 0.33 us units
+  DSUINT8 temperatureC;         // +0x1f  controller temperature, degrees C
   TouchData touchData;          // +0x20  two contacts + timestamp
   TriggerFeedback triggerRight; // +0x29  stop location + status
   TriggerFeedback triggerLeft;  // +0x2a
   DSUINT32 hostTimestamp;       // +0x2b  echoed host timestamp
   DSUINT8 triggerEffect;        // +0x2f  low nibble right, high nibble left
   DSUINT32 deviceTimestamp;     // +0x30  device clock
-  DSUINT8 status0;               // +0x34  low nibble battery, high power state
-  DSUINT8 status1;               // +0x35  Status1 bits
-  DSUINT8 status2;               // +0x36  Status2 bits
-  DSUINT8 aesCmac[8];        // +0x37  high entropy in every report, like a
-                              //        per-report MAC/nonce; not verified
-                              //        against the pairing handshake
+  DSUINT8 status0;              // +0x34  low nibble battery, high power state
+  DSUINT8 status1;              // +0x35  Status1 bits
+  DSUINT8 status2;              // +0x36  Status2 bits
+  DSUINT8 aesCmac[8];           // +0x37  high entropy in every report, like a
+                                //        per-report MAC/nonce; not verified
+                                //        against the pairing handshake
 
   static constexpr uint32_t DPAD_MASK = 0x0F;
 
@@ -1156,7 +1161,7 @@ public:
     int right;
   };
 
-  static constexpr int TouchpadWidth = 1920;
+  static constexpr int TouchpadWidth  = 1920;
   static constexpr int TouchpadHeight = 1080;
 
   Stick leftStick() const { return {lx, ly}; }
@@ -1203,15 +1208,15 @@ public:
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
   enum class Dpad : uint8_t {
-    Up = 0,
-    UpRight = 1,
-    Right = 2,
+    Up        = 0,
+    UpRight   = 1,
+    Right     = 2,
     DownRight = 3,
-    Down = 4,
-    DownLeft = 5,
-    Left = 6,
-    UpLeft = 7,
-    None = 8,
+    Down      = 4,
+    DownLeft  = 5,
+    Left      = 6,
+    UpLeft    = 7,
+    None      = 8,
   };
 
   Dpad dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttonsData) & DPAD_MASK); }
@@ -1225,27 +1230,27 @@ public:
   //   +0x0a  eight bits the kernel does not read; maybe L5/R5
   enum class Button : uint32_t {
     // +0x07
-    ButtonSquare = 1u << 4,
-    ButtonCross = 1u << 5,
-    ButtonCircle = 1u << 6,
-    ButtonTriangle = 1u << 7,
+    ButtonSquare    = 1u << 4,
+    ButtonCross     = 1u << 5,
+    ButtonCircle    = 1u << 6,
+    ButtonTriangle  = 1u << 7,
     // +0x08
-    L1 = 1u << 8,
-    R1 = 1u << 9,
-    L2 = 1u << 10,
-    R2 = 1u << 11,
-    Create = 1u << 12,
-    Options = 1u << 13,
-    L3 = 1u << 14,
-    R3 = 1u << 15,
+    L1              = 1u << 8,
+    R1              = 1u << 9,
+    L2              = 1u << 10,
+    R2              = 1u << 11,
+    Create          = 1u << 12,
+    Options         = 1u << 13,
+    L3              = 1u << 14,
+    R3              = 1u << 15,
     // +0x09
-    PsHome = 1u << 16,
-    Touchpad = 1u << 17,
-    MicMute = 1u << 18,
+    PsHome          = 1u << 16,
+    Touchpad        = 1u << 17,
+    MicMute         = 1u << 18,
     // bit 19 reserved
-    EdgeFn1 = 1u << 20,         // Edge only
-    EdgeFn2 = 1u << 21,         // Edge only
-    EdgeLeftPaddle = 1u << 22,  // Edge only
+    EdgeFn1         = 1u << 20, // Edge only
+    EdgeFn2         = 1u << 21, // Edge only
+    EdgeLeftPaddle  = 1u << 22, // Edge only
     EdgeRightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
   };
@@ -1280,12 +1285,12 @@ public:
   }
 
   enum class PowerState : uint8_t {
-    Discharging = 0x00,
-    Charging = 0x01,
-    Complete = 0x02,
-    AbnormalVoltage = 0x0A,
+    Discharging         = 0x00,
+    Charging            = 0x01,
+    Complete            = 0x02,
+    AbnormalVoltage     = 0x0A,
     AbnormalTemperature = 0x0B,
-    ChargingError = 0x0F,
+    ChargingError       = 0x0F,
   };
 
   constexpr PowerState powerState() const { return static_cast<PowerState>(status0 >> 4); }
@@ -1296,15 +1301,15 @@ public:
   // testing; the kernel only documents the headset/mic/mute bits.
   enum class Status1 : uint8_t {
     HeadphoneDetect = 1u << 0, // bit 0
-    MicDetect = 1u << 1,       // bit 1
-    MicMute = 1u << 2,         // bit 2
-    PluggedUsbData = 1u << 3,  // bit 3
+    MicDetect       = 1u << 1, // bit 1
+    MicMute         = 1u << 2, // bit 2
+    PluggedUsbData  = 1u << 3, // bit 3
     PluggedUsbPower = 1u << 4, // bit 4
   };
 
   // +0x36. duaLib names these two; the remaining bits are still unknown.
   enum class Status2 : uint8_t {
-    PluggedExternalMic = 1u << 0,  // bit 0
+    PluggedExternalMic  = 1u << 0, // bit 0
     HapticLowPassFilter = 1u << 1, // bit 1
   };
 
@@ -1378,25 +1383,25 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 
 struct InputReport {
 private:
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
 
 protected:
   DSUINT8 reportId;      // 0x00  Packet::PacketStateBluetooth
   DSUINT8 seqTag;        // 0x01  high nibble = sequence tag, low nibble = 0
-  InputBody bodyData;        // 0x02..0x40
+  InputBody bodyData;    // 0x02..0x40
   DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
-                          //             distinct values in a 150 s capture), the
-                          //             other eight were; unknown
-  DSUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+                         //             distinct values in a 150 s capture), the
+                         //             other eight were; unknown
+  DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 public:
   enum : uint8_t {
-    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
+    ReportId    = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     UsbReportId = static_cast<uint8_t>(Packet::PacketInputUsb),
-    Size = 78,
-    UsbSize = 64,
-    CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
+    Size        = 78,
+    UsbSize     = 64,
+    CrcSeed     = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
   constexpr const InputBody &body() const { return bodyData; }
@@ -1454,10 +1459,10 @@ struct AudioReport {
   friend struct internal::AudioReportProbe;
 
 private:
-  using DSUINT8 = internal::DSUINT8;
-  using DSINT8 = internal::DSINT8;
+  using DSUINT8  = internal::DSUINT8;
+  using DSINT8   = internal::DSINT8;
   using DSUINT32 = internal::DSUINT32;
-  using DSINT16 = internal::DSINT16;
+  using DSINT16  = internal::DSINT16;
 
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note validFlag0: claiming RightTrigger or LeftTrigger here hands
@@ -1482,18 +1487,18 @@ protected:
   DSUINT8 configLength;     // 0x003  7
   DSUINT8 enableMaskValue;  // 0x004  EnableMask bits
   DSUINT8 hapticLengths[5]; // 0x005..0x009  64 each
-  DSUINT8 counter;           // 0x00a  free-running 8-bit counter
+  DSUINT8 counter;          // 0x00a  free-running 8-bit counter
   DSUINT8 stateTag;         // 0x00b  0x10 | 0x80
   DSUINT8 stateLength;      // 0x00c  63
-  State state;               // 0x00d..0x04b
+  State state;              // 0x00d..0x04b
   DSUINT8 hapticsTag;       // 0x04c  0x12 | 0x80
   DSUINT8 hapticsLength;    // 0x04d  64
   DSINT8 hapticsPcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  DSUINT8 speakerTagValue;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerTagValue;  // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
   DSUINT8 speakerLength;    // 0x08f  200
-  DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  DSUINT8 padding[50];       // 0x158..0x189
-  DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
+  DSUINT8 opus[200];        // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  DSUINT8 padding[50];      // 0x158..0x189
+  DSUINT32 crc;             // 0x18a..0x18d  seed 0xA2
 
 public:
   // PCM-facing encoder: the rest of padwave never touches libopus.
@@ -1504,7 +1509,7 @@ public:
 
     ~Encoder() { close(); }
 
-    Encoder(const Encoder &) = delete;
+    Encoder(const Encoder &)            = delete;
     Encoder &operator=(const Encoder &) = delete;
 
     bool valid() const { return encoder != nullptr; }
@@ -1536,11 +1541,11 @@ public:
 
 public:
   enum : uint8_t {
-    ReportId = static_cast<uint8_t>(Packet::PacketAudio),
-    StateSize = 63,
+    ReportId   = static_cast<uint8_t>(Packet::PacketAudio),
+    StateSize  = 63,
     HapticSize = 64,
-    OpusSize = 200,
-    CrcSeed = 0xA2,
+    OpusSize   = 200,
+    CrcSeed    = 0xA2,
   };
 
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
@@ -1553,14 +1558,14 @@ public:
   // opens it and the input stream then also carries 0xD4 frames.
   enum class EnableMask : uint8_t {
     MicrophoneCapture = 0x01,
-    SpeakerOnly = 0xFE,
-    SpeakerAndMic = 0xFF,
+    SpeakerOnly       = 0xFE,
+    SpeakerAndMic     = 0xFF,
   };
 
   // +0x08e: 0x13 for the membrane speaker, 0x16 for the headphone jack.
   enum class SpeakerTag : uint8_t {
     Speaker = 0x13,
-    Jack = 0x16,
+    Jack    = 0x16,
   };
 
   constexpr OutputBody &stateBody() { return state.body; }
@@ -1582,9 +1587,9 @@ public:
     }
 
   private:
-    uint8_t seq = 0;
-    uint8_t counter = 0;
-    static constexpr uint8_t Mask = 0x0F;
+    uint8_t seq                    = 0;
+    uint8_t counter                = 0;
+    static constexpr uint8_t Mask  = 0x0F;
     static constexpr uint8_t Shift = 4;
   };
 
@@ -1599,18 +1604,18 @@ public:
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
   constexpr void init(SpeakerTag tag, EnableMask mask = EnableMask::SpeakerOnly) {
-    *this = AudioReport{};
-    reportId = ReportId;
-    configTag = 0x11 | 0x80;
-    configLength = 7;
+    *this           = AudioReport{};
+    reportId        = ReportId;
+    configTag       = 0x11 | 0x80;
+    configLength    = 7;
     enableMaskValue = static_cast<uint8_t>(mask);
     for (int i = 0; i < 5; ++i) hapticLengths[i] = HapticSize;
-    stateTag = 0x10 | 0x80;
-    stateLength = StateSize;
-    hapticsTag = 0x12 | 0x80;
-    hapticsLength = HapticSize;
+    stateTag        = 0x10 | 0x80;
+    stateLength     = StateSize;
+    hapticsTag      = 0x12 | 0x80;
+    hapticsLength   = HapticSize;
     speakerTagValue = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
-    speakerLength = OpusSize;
+    speakerLength   = OpusSize;
   }
 
   bool setPcm(const float *pcm, int frames, Encoder &encoder) {
@@ -1698,8 +1703,8 @@ struct AudioReportProbe {
 // per-axis bias and plus/minus endpoints; converting them to the coefficients
 // below is what turns raw IMU counts into usable units.
 struct AxisCalibration {
-  int bias = 0;
-  int numerator = 0;
+  int bias        = 0;
+  int numerator   = 0;
   int denominator = 1;
 
   constexpr int apply(int raw) const {
@@ -1712,9 +1717,9 @@ struct AxisCalibration {
 
 struct ImuCalibration {
   static constexpr int GyroResolutionPerDps = 1024;
-  static constexpr int AccelResolutionPerG = 8192;
-  static constexpr int AccelRange = 4 * AccelResolutionPerG;
-  static constexpr int GyroRange = 2048 * GyroResolutionPerDps;
+  static constexpr int AccelResolutionPerG  = 8192;
+  static constexpr int AccelRange           = 4 * AccelResolutionPerG;
+  static constexpr int GyroRange            = 2048 * GyroResolutionPerDps;
 
   AxisCalibration gyro[3];
   AxisCalibration accel[3];
@@ -1752,21 +1757,21 @@ public:
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
-    int speed_2x = static_cast<int>(gyroSpeedPlus) + static_cast<int>(gyroSpeedMinus);
+    int speed_2x       = static_cast<int>(gyroSpeedPlus) + static_cast<int>(gyroSpeedMinus);
     int gyro_numerator = speed_2x * ImuCalibration::GyroResolutionPerDps;
 
     int pitch_bias = static_cast<int>(gyroPitchBias);
-    int yaw_bias = static_cast<int>(gyroYawBias);
-    int roll_bias = static_cast<int>(gyroRollBias);
+    int yaw_bias   = static_cast<int>(gyroYawBias);
+    int roll_bias  = static_cast<int>(gyroRollBias);
     result.gyro[0] = {0, gyro_numerator,
                       static_cast<int>(gyroPitchPlus) - pitch_bias +
                           static_cast<int>(gyroPitchMinus) - pitch_bias};
     result.gyro[1] = {0, gyro_numerator,
-                      static_cast<int>(gyroYawPlus) - yaw_bias +
-                          static_cast<int>(gyroYawMinus) - yaw_bias};
+                      static_cast<int>(gyroYawPlus) - yaw_bias + static_cast<int>(gyroYawMinus) -
+                          yaw_bias};
     result.gyro[2] = {0, gyro_numerator,
-                      static_cast<int>(gyroRollPlus) - roll_bias +
-                          static_cast<int>(gyroRollMinus) - roll_bias};
+                      static_cast<int>(gyroRollPlus) - roll_bias + static_cast<int>(gyroRollMinus) -
+                          roll_bias};
     for (auto &axis : result.gyro)
       if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::GyroRange);
 
@@ -1788,7 +1793,7 @@ static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes
 struct Pairing {
 protected:
   DSUINT8 reportId;      // 0x00  Packet::PacketFeaturePairing
-  DSUINT8 mac[6];         // 0x01..0x06  the controller's own address
+  DSUINT8 mac[6];        // 0x01..0x06  the controller's own address
   DSUINT8 unknown07[13]; // 0x07..0x13
 
 public:
@@ -1799,26 +1804,26 @@ static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  DSUINT8 reportId;        // 0x00  Packet::PacketFeatureFirmware
-  char buildDate[11];      // 0x01..0x0b
-  char buildTime[8];       // 0x0c..0x13
-  DSUINT16 fwType;         // 0x14..0x15
-  DSUINT16 swSeries;       // 0x16..0x17
-  DSUINT32 hardwareInfo;   // 0x18..0x1b  variation/generation
+  DSUINT8 reportId;         // 0x00  Packet::PacketFeatureFirmware
+  char buildDate[11];       // 0x01..0x0b
+  char buildTime[8];        // 0x0c..0x13
+  DSUINT16 fwType;          // 0x14..0x15
+  DSUINT16 swSeries;        // 0x16..0x17
+  DSUINT32 hardwareInfo;    // 0x18..0x1b  variation/generation
   DSUINT32 firmwareVersion; // 0x1c..0x1f
-  char deviceInfo[12];     // 0x20..0x2b
-  DSUINT16 updateVersion;  // 0x2c..0x2d
-  DSUINT8 updateImageInfo; // 0x2e
-  DSUINT8 updateUnk;       // 0x2f
-  DSUINT32 fwVersion1;     // 0x30..0x33  SBL
-  DSUINT32 fwVersion2;     // 0x34..0x37  Venom
-  DSUINT32 fwVersion3;     // 0x38..0x3b  Spider DSP
+  char deviceInfo[12];      // 0x20..0x2b
+  DSUINT16 updateVersion;   // 0x2c..0x2d
+  DSUINT8 updateImageInfo;  // 0x2e
+  DSUINT8 updateUnk;        // 0x2f
+  DSUINT32 fwVersion1;      // 0x30..0x33  SBL
+  DSUINT32 fwVersion2;      // 0x34..0x37  Venom
+  DSUINT32 fwVersion3;      // 0x38..0x3b  Spider DSP
   DSUINT8 padding[4];       // 0x3c..0x3f
 
 public:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware),
-    Size = 64,
+    Size     = 64,
   };
 
   static constexpr uint16_t VibrationV2MinimumVersion = (2 << 8) | 21;
@@ -1864,7 +1869,7 @@ struct MicFrame {
 
     ~Decoder() { close(); }
 
-    Decoder(const Decoder &) = delete;
+    Decoder(const Decoder &)            = delete;
     Decoder &operator=(const Decoder &) = delete;
 
     bool valid() const { return decoder != nullptr; }
@@ -1893,14 +1898,14 @@ struct MicFrame {
 
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
-    Toc = 0xD4,
+    Toc      = 0xD4,
     CrcBytes = 4,
   };
 
   enum : uint32_t {
     SampleRate = 48000,
-    Samples = 480,
-    FrameMs = 10,
+    Samples    = 480,
+    FrameMs    = 10,
   };
 
   static bool is_frame(const uint8_t *buf, size_t len) {
@@ -2010,7 +2015,7 @@ constexpr AudioReport kSigned = [] {
 }();
 static_assert(kSigned.valid());
 
-constexpr auto kRaw = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
+constexpr auto kRaw         = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
 constexpr AudioReport kCopy = __builtin_bit_cast(AudioReport, kRaw);
 static_assert(kCopy.valid());
 
