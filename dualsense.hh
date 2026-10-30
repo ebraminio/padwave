@@ -738,6 +738,30 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
+public:
+  // One 4-byte touch contact on the wire. The high nibble of `xy_high` is
+  // y-low; the low nibble is x-high. Bit 7 of `contact` means "not touching".
+  struct TouchPoint {
+    uint8_t contact;
+    uint8_t x_low;
+    uint8_t xy_high;
+    uint8_t y_high;
+
+    constexpr bool active() const { return (contact & 0x80) == 0; }
+
+    constexpr unsigned id() const { return contact & 0x7F; }
+
+    constexpr unsigned x() const {
+      return static_cast<unsigned>(x_low) |
+             (static_cast<unsigned>(xy_high & 0x0F) << 8);
+    }
+
+    constexpr unsigned y() const {
+      return static_cast<unsigned>(xy_high >> 4) |
+             (static_cast<unsigned>(y_high) << 4);
+    }
+  };
+
 private:
   using PWUINT8 = internal::PWUINT8;
   using PWUINT32 = internal::PWUINT32;
@@ -764,9 +788,8 @@ protected:
   PWINT16 accel_z;            // +0x19
   PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
   PWUINT8 temperature_;       // +0x1f  controller temperature, degrees C
-  PWUINT8 touch1[4];          // +0x20  contact/id, x low, (x high | y low),
-                              //        y high; bit 7 of contact = not touching
-  PWUINT8 touch2[4];          // +0x24
+  TouchPoint touch1;          // +0x20
+  TouchPoint touch2;          // +0x24
   PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
   PWUINT8 trigger_feedback_r; // +0x29
   PWUINT32 host_time;         // +0x2a  community calls it the echoed host
@@ -977,15 +1000,12 @@ public:
   };
 
   Touch touch(int index) const {
-    const PWUINT8 *raw = index == 0 ? touch1 : touch2;
-    unsigned contact = raw[0];
-    unsigned middle = raw[2];
-    return {.active = (contact & 0x80) == 0,
-            .id = contact & 0x7F,
-            .x = raw[1] | ((middle & 0x0F) << 8),
-            .y = (middle >> 4) | (static_cast<unsigned>(raw[3]) << 4)};
+    const TouchPoint &raw = index == 0 ? touch1 : touch2;
+    return {.active = raw.active(), .id = raw.id(), .x = raw.x(), .y = raw.y()};
   }
 };
+
+static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes");
 
 static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 bytes");
 
