@@ -238,6 +238,7 @@ private:
   bool controller_disabled = false;
   int battery = -1;
   char charging[16] = "unknown";
+  char powerState[32] = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
   char dpad[16] = "none";
   char buttons[256] = "";
@@ -615,6 +616,7 @@ public:
     else
       kvText(buf, cap, &o, "controller.battery", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
+    kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.plugged_usb_data", "%s", this->plugged_usb_data ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
@@ -1543,10 +1545,18 @@ private:
       using PowerState = dualsense::InputBody::PowerState;
       PowerState power = b.powerState();
       snprintf(this->charging, sizeof(this->charging), "%s",
-               power == PowerState::Charging    ? "charging"
-               : power == PowerState::Complete  ? "full"
+               power == PowerState::Charging      ? "charging"
+               : power == PowerState::Complete    ? "full"
                : power == PowerState::Discharging ? "discharging"
                                                   : "unknown");
+      snprintf(this->powerState, sizeof(this->powerState), "%s",
+               power == PowerState::Discharging         ? "discharging"
+               : power == PowerState::Charging          ? "charging"
+               : power == PowerState::Complete          ? "complete"
+               : power == PowerState::AbnormalVoltage   ? "abnormalVoltage"
+               : power == PowerState::AbnormalTemperature ? "abnormalTemperature"
+               : power == PowerState::ChargingError     ? "chargingError"
+                                                        : "unknown");
     }
     const dualsense::InputBody::Gyro gyro = b.gyro();
     this->gx = gyro.x;

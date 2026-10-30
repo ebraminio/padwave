@@ -418,6 +418,15 @@
       </div>
 
       <div class="lab-row">
+        <b>power state</b>
+        <span class="chip" id="powerState">—</span>
+        <span style="font-size:11px;color:var(--muted)">
+          0 discharging · 1 charging · 2 complete · A abnormal voltage · B abnormal temperature ·
+          F charging error
+        </span>
+      </div>
+
+      <div class="lab-row">
         <b>power save</b>
         <span id="psBits" style="display:flex;gap:4px"></span>
         <button id="labPsReset">reset</button>
@@ -673,6 +682,16 @@ function render(s) {
   const chargeMark = c.charging === "charging" ? " ⚡" : c.charging === "full" ? " ✓" : "";
   $("#battText").textContent =
     c.battery != null ? `${c.battery}%${chargeMark}` : "—";
+  const powerNames = {
+    discharging: "discharging",
+    charging: "charging",
+    complete: "complete",
+    abnormalVoltage: "abnormal voltage",
+    abnormalTemperature: "abnormal temperature",
+    chargingError: "charging error",
+    unknown: "unknown",
+  };
+  $("#powerState").textContent = powerNames[c.power_state] || c.power_state || "unknown";
   $("#jackChip").style.display = c.jack ? "inline-flex" : "none";
   $("#usbHostChip").style.display = c.usb_host ? "inline-flex" : "none";
 
