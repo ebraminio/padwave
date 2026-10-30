@@ -138,515 +138,403 @@ enum class Packet : uint8_t {
   PacketAudio = 0x36,
 };
 
-// Canonical 11-byte adaptive-trigger block: type byte followed by ten
-// parameters. Mirrors DSTriggerEffect/DualSenseProtocol from the Swift schema.
-// Adaptive-trigger encoders ported from ExtendInput.DataTools.DualSense
-// TriggerEffectGenerator (revision 6, MIT License).
-//
-// Copyright (c) 2021-2022 John "Nielk1" Klein
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-struct TriggerEffect {
-  // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
-  // values are firmware leftovers; keep them for completeness but prefer the
-  // official factories.
-  enum class Type : uint8_t {
-    Off = 0x05,
-    Feedback = 0x21,
-    Weapon = 0x25,
-    Vibration = 0x26,
-    Bow = 0x22,
-    Galloping = 0x23,
-    Machine = 0x27,
-    SimpleFeedback = 0x01,
-    SimpleWeapon = 0x02,
-    SimpleVibration = 0x06,
-    LimitedFeedback = 0x11,
-    LimitedWeapon = 0x12,
-    DebugFc = 0xFC,
-    DebugFd = 0xFD,
-    DebugFe = 0xFE,
-  };
-
-  static constexpr size_t BlockSize = 11;
-  static constexpr int ZoneCount = 10;
-  static constexpr uint8_t MaxLevel = 8;
-
-  uint8_t block[BlockSize] = {static_cast<uint8_t>(Type::Off)};
-
-  constexpr TriggerEffect() { off(); }
-
-  constexpr void zero() {
-    for (size_t i = 1; i < BlockSize; i++) block[i] = 0;
-  }
-
-  constexpr bool off() {
-    block[0] = static_cast<uint8_t>(Type::Off);
-    zero();
-    return true;
-  }
-
-  // Official: constant resistance from `position` to the end.
-  constexpr bool feedback(uint8_t position, uint8_t strength) {
-    if (position > 9 || strength > 8) return false;
-    if (strength == 0) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Feedback);
-    uint16_t active = 0;
-    uint32_t force = 0;
-    uint8_t value = static_cast<uint8_t>((strength - 1) & 0x07);
-    for (int i = position; i < 10; i++) {
-      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
-      force |= static_cast<uint32_t>(value) << (3 * i);
-    }
-    block[1] = static_cast<uint8_t>(active & 0xFF);
-    block[2] = static_cast<uint8_t>(active >> 8);
-    block[3] = static_cast<uint8_t>(force & 0xFF);
-    block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
-    block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
-    block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
-    return true;
-  }
-
-  // Official: resistance between start and end, releasing past the end.
-  constexpr bool weapon(uint8_t start, uint8_t end, uint8_t strength) {
-    if (start > 7 || start < 2 || end > 8 || end <= start || strength > 8) return false;
-    if (strength == 0) return off();
-    zero();
-    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-    block[0] = static_cast<uint8_t>(Type::Weapon);
-    block[1] = static_cast<uint8_t>(zones & 0xFF);
-    block[2] = static_cast<uint8_t>(zones >> 8);
-    block[3] = static_cast<uint8_t>(strength - 1);
-    return true;
-  }
-
-  // Official: vibration from `position` onward.
-  constexpr bool vibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
-    if (position > 9 || amplitude > 8) return false;
-    if (amplitude == 0 || frequency == 0) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Vibration);
-    uint16_t active = 0;
-    uint32_t levels = 0;
-    uint8_t value = static_cast<uint8_t>((amplitude - 1) & 0x07);
-    for (int i = position; i < 10; i++) {
-      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
-      levels |= static_cast<uint32_t>(value) << (3 * i);
-    }
-    block[1] = static_cast<uint8_t>(active & 0xFF);
-    block[2] = static_cast<uint8_t>(active >> 8);
-    block[3] = static_cast<uint8_t>(levels & 0xFF);
-    block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
-    block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
-    block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
-    block[9] = frequency;
-    return true;
-  }
-
-  // Official: per-zone resistance levels (0..8).
-  constexpr bool multiplePositionFeedback(const uint8_t *strength) {
-    bool any = false;
-    for (int i = 0; i < 10; i++)
-      if (strength[i] > 0) any = true;
-    if (!any) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Feedback);
-    uint16_t active = 0;
-    uint32_t force = 0;
-    for (int i = 0; i < 10; i++) {
-      if (strength[i] == 0) continue;
-      uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
-      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
-      force |= static_cast<uint32_t>(value) << (3 * i);
-    }
-    block[1] = static_cast<uint8_t>(active & 0xFF);
-    block[2] = static_cast<uint8_t>(active >> 8);
-    block[3] = static_cast<uint8_t>(force & 0xFF);
-    block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
-    block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
-    block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
-    return true;
-  }
-
-  // Official: linearly changing resistance between two positions.
-  constexpr bool slopeFeedback(uint8_t start, uint8_t end, uint8_t start_strength,
-                               uint8_t end_strength) {
-    if (start > 8 || end > 9 || end <= start) return false;
-    if (start_strength < 1 || start_strength > 8 || end_strength < 1 || end_strength > 8)
-      return false;
-    uint8_t strength[10] = {};
-    float slope = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
-                  static_cast<float>(end - start);
-    for (int i = start; i < 10; i++) {
-      int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
-                                               slope * static_cast<float>(i - start) + 0.5f)
-                           : end_strength;
-      if (value < 0) value = 0;
-      if (value > 8) value = 8;
-      strength[i] = static_cast<uint8_t>(value);
-    }
-    return multiplePositionFeedback(strength);
-  }
-
-  // Official: per-zone vibration amplitudes with one frequency.
-  constexpr bool multiplePositionVibration(uint8_t frequency, const uint8_t *amplitude) {
-    bool any = false;
-    for (int i = 0; i < 10; i++)
-      if (amplitude[i] > 0) any = true;
-    if (frequency == 0 || !any) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Vibration);
-    uint16_t active = 0;
-    uint32_t levels = 0;
-    for (int i = 0; i < 10; i++) {
-      if (amplitude[i] == 0) continue;
-      uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
-      active = static_cast<uint16_t>(active | (uint16_t{1} << i));
-      levels |= static_cast<uint32_t>(value) << (3 * i);
-    }
-    block[1] = static_cast<uint8_t>(active & 0xFF);
-    block[2] = static_cast<uint8_t>(active >> 8);
-    block[3] = static_cast<uint8_t>(levels & 0xFF);
-    block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
-    block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
-    block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
-    block[9] = frequency;
-    return true;
-  }
-
-  // Unofficial firmware effects.
-  constexpr bool bow(uint8_t start, uint8_t end, uint8_t strength, uint8_t snap) {
-    if (start > 8 || end > 8 || start >= end || strength > 8 || snap > 8) return false;
-    if (end == 0 || strength == 0 || snap == 0) return off();
-    zero();
-    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-    uint32_t pair = static_cast<uint32_t>((strength - 1) & 0x07) |
-                    (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
-    block[0] = static_cast<uint8_t>(Type::Bow);
-    block[1] = static_cast<uint8_t>(zones & 0xFF);
-    block[2] = static_cast<uint8_t>(zones >> 8);
-    block[3] = static_cast<uint8_t>(pair & 0xFF);
-    block[4] = static_cast<uint8_t>((pair >> 8) & 0xFF);
-    return true;
-  }
-
-  constexpr bool galloping(uint8_t start, uint8_t end, uint8_t first_foot, uint8_t second_foot,
-                           uint8_t frequency) {
-    if (start > 8 || end > 9 || start >= end || second_foot > 7 || first_foot > 6 ||
-        first_foot >= second_foot)
-      return false;
-    if (frequency == 0) return off();
-    zero();
-    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-    uint32_t ratio = static_cast<uint32_t>(second_foot & 0x07) |
-                     (static_cast<uint32_t>(first_foot & 0x07) << 3);
-    block[0] = static_cast<uint8_t>(Type::Galloping);
-    block[1] = static_cast<uint8_t>(zones & 0xFF);
-    block[2] = static_cast<uint8_t>(zones >> 8);
-    block[3] = static_cast<uint8_t>(ratio & 0xFF);
-    block[4] = frequency;
-    return true;
-  }
-
-  constexpr bool machine(uint8_t start, uint8_t end, uint8_t amplitude_a, uint8_t amplitude_b,
-                         uint8_t frequency, uint8_t period) {
-    if (start > 8 || end > 9 || end <= start || amplitude_a > 7 || amplitude_b > 7) return false;
-    if (frequency == 0) return off();
-    zero();
-    uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-    uint8_t pair = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
-    block[0] = static_cast<uint8_t>(Type::Machine);
-    block[1] = static_cast<uint8_t>(zones & 0xFF);
-    block[2] = static_cast<uint8_t>(zones >> 8);
-    block[3] = pair;
-    block[4] = frequency;
-    block[5] = period;
-    return true;
-  }
-
-  // Firmware leftovers with simpler logic and no parameter validation.
-  constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
-    zero();
-    block[0] = static_cast<uint8_t>(Type::SimpleFeedback);
-    block[1] = position;
-    block[2] = strength;
-    return true;
-  }
-
-  constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
-    zero();
-    block[0] = static_cast<uint8_t>(Type::SimpleWeapon);
-    block[1] = start;
-    block[2] = end;
-    block[3] = strength;
-    return true;
-  }
-
-  constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
-    if (frequency == 0 || amplitude == 0) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::SimpleVibration);
-    block[1] = frequency;
-    block[2] = amplitude;
-    block[3] = position;
-    return true;
-  }
-
-  // Firmware leftovers with narrower validation ranges.
-  constexpr bool limitedFeedback(uint8_t position, uint8_t strength) {
-    if (strength > 10) return false;
-    if (strength == 0) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::LimitedFeedback);
-    block[1] = position;
-    block[2] = strength;
-    return true;
-  }
-
-  constexpr bool limitedWeapon(uint8_t start, uint8_t end, uint8_t strength) {
-    if (start < 0x10 || end < start || static_cast<int>(end) > static_cast<int>(start) + 100 ||
-        strength > 10)
-      return false;
-    if (strength == 0) return off();
-    zero();
-    block[0] = static_cast<uint8_t>(Type::LimitedWeapon);
-    block[1] = start;
-    block[2] = end;
-    block[3] = strength;
-    return true;
-  }
-
-  // Apple-style normalized [0,1] adapters from the same generator.
-  static constexpr uint8_t normalize(float value, float scale) {
-    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-    if (value < 0) value = 0;
-    if (value > 1) value = 1;
-    int scaled = static_cast<int>(value * scale + 0.5f);
-    return static_cast<uint8_t>(scaled);
-  }
-
-  constexpr bool appleFeedbackWithStartPosition(float start, float strength) {
-    return feedback(normalize(start, 9.0f), normalize(strength, 8.0f));
-  }
-
-  constexpr bool appleWeaponWithStartPosition(float start, float end, float strength) {
-    return weapon(normalize(start, 9.0f), normalize(end, 9.0f), normalize(strength, 8.0f));
-  }
-
-  constexpr bool appleVibrationWithStartPosition(float start, float amplitude, float frequency) {
-    return vibration(normalize(start, 9.0f), normalize(amplitude, 8.0f),
-                     normalize(frequency, 255.0f));
-  }
-
-  constexpr bool appleFeedback(const float *strengths) {
-    uint8_t levels[10];
-    for (int i = 0; i < 10; i++) levels[i] = normalize(strengths[i], 8.0f);
-    return multiplePositionFeedback(levels);
-  }
-
-  constexpr bool appleSlopeFeedback(float start, float end, float start_strength,
-                                    float end_strength) {
-    return slopeFeedback(normalize(start, 9.0f), normalize(end, 9.0f),
-                         normalize(start_strength, 8.0f), normalize(end_strength, 8.0f));
-  }
-
-  constexpr bool appleVibration(const float *amplitudes, float frequency) {
-    uint8_t levels[10];
-    for (int i = 0; i < 10; i++) levels[i] = normalize(amplitudes[i], 8.0f);
-    return multiplePositionVibration(normalize(frequency, 255.0f), levels);
-  }
-
-  // reWASD traffic captures, including its intentionally non-standard values.
-  constexpr bool rewasdFullPress() { return simpleWeapon(0x90, 0xA0, 0xFF); }
-
-  constexpr bool rewasdSoftPress() { return simpleWeapon(0x70, 0xA0, 0xFF); }
-
-  constexpr bool rewasdMediumPress() { return simpleWeapon(0x45, 0xA0, 0xFF); }
-
-  constexpr bool rewasdHardPress() { return simpleWeapon(0x20, 0xA0, 0xFF); }
-
-  constexpr bool rewasdPulse() { return simpleWeapon(0x00, 0x00, 0x00); }
-
-  constexpr bool rewasdChoppy() {
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Feedback);
-    block[1] = 0x02;
-    block[2] = 0x27;
-    block[3] = 0x18;
-    block[4] = 0x00;
-    block[5] = 0x00;
-    block[6] = 0x26;
-    return true;
-  }
-
-  constexpr bool rewasdSoftRigidity() { return simpleFeedback(0x00, 0x00); }
-
-  constexpr bool rewasdMediumRigidity() { return simpleFeedback(0x00, 0x64); }
-
-  constexpr bool rewasdMaxRigidity() { return simpleFeedback(0x00, 0xDC); }
-
-  constexpr bool rewasdHalfPress() { return simpleFeedback(0x55, 0x64); }
-
-  constexpr bool rewasdRifle(uint8_t frequency = 10) {
-    if (frequency < 2 || frequency > 20) return false;
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Vibration);
-    block[2] = 0x03;
-    block[6] = 0x3F;
-    block[9] = frequency;
-    return true;
-  }
-
-  constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
-    if (strength < 1 || frequency < 1) return false;
-    zero();
-    block[0] = static_cast<uint8_t>(Type::Vibration);
-    block[2] = 0x03;
-    block[6] = strength;
-    block[9] = frequency;
-    return true;
-  }
-};
-
-static_assert(sizeof(TriggerEffect) == TriggerEffect::BlockSize);
-
-constexpr TriggerEffect kFeedbackEffect = [] {
-  TriggerEffect effect;
-  const uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  effect.multiplePositionFeedback(levels);
-  return effect;
-}();
-static_assert(kFeedbackEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Feedback));
-static_assert(kFeedbackEffect.block[1] == 0xFF && kFeedbackEffect.block[2] == 0x03);
-static_assert(kFeedbackEffect.block[3] == 0 && kFeedbackEffect.block[6] == 0);
-
-constexpr TriggerEffect kWeaponEffect = [] {
-  TriggerEffect effect;
-  effect.weapon(2, 8, 8);
-  return effect;
-}();
-static_assert(kWeaponEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Weapon));
-static_assert(kWeaponEffect.block[1] == 0x04 && kWeaponEffect.block[2] == 0x01);
-static_assert(kWeaponEffect.block[3] == 7);
-
-constexpr TriggerEffect kVibrationEffect = [] {
-  TriggerEffect effect;
-  const uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  effect.multiplePositionVibration(25, amplitudes);
-  return effect;
-}();
-static_assert(kVibrationEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Vibration));
-static_assert(kVibrationEffect.block[1] == 0x01 && kVibrationEffect.block[9] == 25);
-
-constexpr TriggerEffect kBowEffect = [] {
-  TriggerEffect effect;
-  effect.bow(2, 8, 6, 4);
-  return effect;
-}();
-static_assert(kBowEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Bow));
-static_assert(kBowEffect.block[1] == 0x04 && kBowEffect.block[2] == 0x01);
-static_assert(kBowEffect.block[3] == 0x1D);
-
-constexpr TriggerEffect kGallopingEffect = [] {
-  TriggerEffect effect;
-  effect.galloping(2, 8, 2, 4, 25);
-  return effect;
-}();
-static_assert(kGallopingEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Galloping));
-static_assert(kGallopingEffect.block[4] == 25);
-
-constexpr TriggerEffect kMachineEffect = [] {
-  TriggerEffect effect;
-  effect.machine(2, 8, 6, 4, 25, 10);
-  return effect;
-}();
-static_assert(kMachineEffect.block[0] == static_cast<uint8_t>(TriggerEffect::Type::Machine));
-static_assert(kMachineEffect.block[4] == 25 && kMachineEffect.block[5] == 10);
-
-// Saturating conversions used by the Swift schema when moving normalized UI
-// values onto the byte/zone/level wire fields.
-struct DSScale {
-  static constexpr float clamp01(float value) {
-    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-    return value < 0 ? 0 : (value > 1 ? 1 : value);
-  }
-
-  static constexpr uint8_t byte(float value) {
-    float v = clamp01(value);
-    int scaled = static_cast<int>(v * 255.0f + 0.5f);
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
-  }
-
-  static constexpr uint8_t rawByte(float value) {
-    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-    int scaled = static_cast<int>(value + (value >= 0 ? 0.5f : -0.5f));
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
-  }
-
-  static constexpr int zone(float value) {
-    float v = clamp01(value) * 9.0f;
-    int scaled = static_cast<int>(v + 0.5f);
-    return scaled < 0 ? 0 : (scaled > 9 ? 9 : scaled);
-  }
-
-  static constexpr uint8_t level(float value) {
-    float v = clamp01(value) * 8.0f;
-    int scaled = static_cast<int>(v + 0.5f);
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 8 ? 8 : scaled));
-  }
-};
-
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
+
+public:
+  // Canonical 11-byte adaptive-trigger block: type byte followed by ten
+  // parameters. Encoders adapted from ExtendInput.DataTools.DualSense
+  // TriggerEffectGenerator (revision 6) by John "Nielk1" Klein, MIT License.
+  struct TriggerEffect {
+    // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
+    // values are firmware leftovers; keep them for completeness but prefer the
+    // official factories.
+    enum class Type : uint8_t {
+      Off = 0x05,
+      Feedback = 0x21,
+      Weapon = 0x25,
+      Vibration = 0x26,
+      Bow = 0x22,
+      Galloping = 0x23,
+      Machine = 0x27,
+      SimpleFeedback = 0x01,
+      SimpleWeapon = 0x02,
+      SimpleVibration = 0x06,
+      LimitedFeedback = 0x11,
+      LimitedWeapon = 0x12,
+      DebugFc = 0xFC,
+      DebugFd = 0xFD,
+      DebugFe = 0xFE,
+    };
+
+    static constexpr size_t BlockSize = 11;
+    static constexpr int ZoneCount = 10;
+    static constexpr uint8_t MaxLevel = 8;
+
+    uint8_t block[BlockSize] = {static_cast<uint8_t>(Type::Off)};
+
+    constexpr TriggerEffect() { off(); }
+
+    constexpr void zero() {
+      for (size_t i = 1; i < BlockSize; i++) block[i] = 0;
+    }
+
+    constexpr bool off() {
+      block[0] = static_cast<uint8_t>(Type::Off);
+      zero();
+      return true;
+    }
+
+    // Official: constant resistance from `position` to the end.
+    constexpr bool feedback(uint8_t position, uint8_t strength) {
+      if (position > 9 || strength > 8) return false;
+      if (strength == 0) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Feedback);
+      uint16_t active = 0;
+      uint32_t force = 0;
+      uint8_t value = static_cast<uint8_t>((strength - 1) & 0x07);
+      for (int i = position; i < 10; i++) {
+        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        force |= static_cast<uint32_t>(value) << (3 * i);
+      }
+      block[1] = static_cast<uint8_t>(active & 0xFF);
+      block[2] = static_cast<uint8_t>(active >> 8);
+      block[3] = static_cast<uint8_t>(force & 0xFF);
+      block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
+      block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
+      block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+      return true;
+    }
+
+    // Official: resistance between start and end, releasing past the end.
+    constexpr bool weapon(uint8_t start, uint8_t end, uint8_t strength) {
+      if (start > 7 || start < 2 || end > 8 || end <= start || strength > 8) return false;
+      if (strength == 0) return off();
+      zero();
+      uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+      block[0] = static_cast<uint8_t>(Type::Weapon);
+      block[1] = static_cast<uint8_t>(zones & 0xFF);
+      block[2] = static_cast<uint8_t>(zones >> 8);
+      block[3] = static_cast<uint8_t>(strength - 1);
+      return true;
+    }
+
+    // Official: vibration from `position` onward.
+    constexpr bool vibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
+      if (position > 9 || amplitude > 8) return false;
+      if (amplitude == 0 || frequency == 0) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Vibration);
+      uint16_t active = 0;
+      uint32_t levels = 0;
+      uint8_t value = static_cast<uint8_t>((amplitude - 1) & 0x07);
+      for (int i = position; i < 10; i++) {
+        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        levels |= static_cast<uint32_t>(value) << (3 * i);
+      }
+      block[1] = static_cast<uint8_t>(active & 0xFF);
+      block[2] = static_cast<uint8_t>(active >> 8);
+      block[3] = static_cast<uint8_t>(levels & 0xFF);
+      block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+      block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+      block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
+      block[9] = frequency;
+      return true;
+    }
+
+    // Official: per-zone resistance levels (0..8).
+    constexpr bool multiplePositionFeedback(const uint8_t *strength) {
+      bool any = false;
+      for (int i = 0; i < 10; i++)
+        if (strength[i] > 0) any = true;
+      if (!any) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Feedback);
+      uint16_t active = 0;
+      uint32_t force = 0;
+      for (int i = 0; i < 10; i++) {
+        if (strength[i] == 0) continue;
+        uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
+        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        force |= static_cast<uint32_t>(value) << (3 * i);
+      }
+      block[1] = static_cast<uint8_t>(active & 0xFF);
+      block[2] = static_cast<uint8_t>(active >> 8);
+      block[3] = static_cast<uint8_t>(force & 0xFF);
+      block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
+      block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
+      block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+      return true;
+    }
+
+    // Official: linearly changing resistance between two positions.
+    constexpr bool slopeFeedback(uint8_t start, uint8_t end, uint8_t start_strength,
+                                 uint8_t end_strength) {
+      if (start > 8 || end > 9 || end <= start) return false;
+      if (start_strength < 1 || start_strength > 8 || end_strength < 1 || end_strength > 8)
+        return false;
+      uint8_t strength[10] = {};
+      float slope = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
+                    static_cast<float>(end - start);
+      for (int i = start; i < 10; i++) {
+        int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
+                                                slope * static_cast<float>(i - start) + 0.5f)
+                             : end_strength;
+        if (value < 0) value = 0;
+        if (value > 8) value = 8;
+        strength[i] = static_cast<uint8_t>(value);
+      }
+      return multiplePositionFeedback(strength);
+    }
+
+    // Official: per-zone vibration amplitudes with one frequency.
+    constexpr bool multiplePositionVibration(uint8_t frequency, const uint8_t *amplitude) {
+      bool any = false;
+      for (int i = 0; i < 10; i++)
+        if (amplitude[i] > 0) any = true;
+      if (frequency == 0 || !any) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Vibration);
+      uint16_t active = 0;
+      uint32_t levels = 0;
+      for (int i = 0; i < 10; i++) {
+        if (amplitude[i] == 0) continue;
+        uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
+        active = static_cast<uint16_t>(active | (uint16_t{1} << i));
+        levels |= static_cast<uint32_t>(value) << (3 * i);
+      }
+      block[1] = static_cast<uint8_t>(active & 0xFF);
+      block[2] = static_cast<uint8_t>(active >> 8);
+      block[3] = static_cast<uint8_t>(levels & 0xFF);
+      block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+      block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+      block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
+      block[9] = frequency;
+      return true;
+    }
+
+    // Unofficial firmware effects.
+    constexpr bool bow(uint8_t start, uint8_t end, uint8_t strength, uint8_t snap) {
+      if (start > 8 || end > 8 || start >= end || strength > 8 || snap > 8) return false;
+      if (end == 0 || strength == 0 || snap == 0) return off();
+      zero();
+      uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+      uint32_t pair = static_cast<uint32_t>((strength - 1) & 0x07) |
+                      (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
+      block[0] = static_cast<uint8_t>(Type::Bow);
+      block[1] = static_cast<uint8_t>(zones & 0xFF);
+      block[2] = static_cast<uint8_t>(zones >> 8);
+      block[3] = static_cast<uint8_t>(pair & 0xFF);
+      block[4] = static_cast<uint8_t>((pair >> 8) & 0xFF);
+      return true;
+    }
+
+    constexpr bool galloping(uint8_t start, uint8_t end, uint8_t first_foot, uint8_t second_foot,
+                             uint8_t frequency) {
+      if (start > 8 || end > 9 || start >= end || second_foot > 7 || first_foot > 6 ||
+          first_foot >= second_foot)
+        return false;
+      if (frequency == 0) return off();
+      zero();
+      uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+      uint32_t ratio = static_cast<uint32_t>(second_foot & 0x07) |
+                       (static_cast<uint32_t>(first_foot & 0x07) << 3);
+      block[0] = static_cast<uint8_t>(Type::Galloping);
+      block[1] = static_cast<uint8_t>(zones & 0xFF);
+      block[2] = static_cast<uint8_t>(zones >> 8);
+      block[3] = static_cast<uint8_t>(ratio & 0xFF);
+      block[4] = frequency;
+      return true;
+    }
+
+    constexpr bool machine(uint8_t start, uint8_t end, uint8_t amplitude_a, uint8_t amplitude_b,
+                           uint8_t frequency, uint8_t period) {
+      if (start > 8 || end > 9 || end <= start || amplitude_a > 7 || amplitude_b > 7) return false;
+      if (frequency == 0) return off();
+      zero();
+      uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+      uint8_t pair = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
+      block[0] = static_cast<uint8_t>(Type::Machine);
+      block[1] = static_cast<uint8_t>(zones & 0xFF);
+      block[2] = static_cast<uint8_t>(zones >> 8);
+      block[3] = pair;
+      block[4] = frequency;
+      block[5] = period;
+      return true;
+    }
+
+    // Firmware leftovers with simpler logic and no parameter validation.
+    constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
+      zero();
+      block[0] = static_cast<uint8_t>(Type::SimpleFeedback);
+      block[1] = position;
+      block[2] = strength;
+      return true;
+    }
+
+    constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
+      zero();
+      block[0] = static_cast<uint8_t>(Type::SimpleWeapon);
+      block[1] = start;
+      block[2] = end;
+      block[3] = strength;
+      return true;
+    }
+
+    constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
+      if (frequency == 0 || amplitude == 0) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::SimpleVibration);
+      block[1] = frequency;
+      block[2] = amplitude;
+      block[3] = position;
+      return true;
+    }
+
+    // Firmware leftovers with narrower validation ranges.
+    constexpr bool limitedFeedback(uint8_t position, uint8_t strength) {
+      if (strength > 10) return false;
+      if (strength == 0) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::LimitedFeedback);
+      block[1] = position;
+      block[2] = strength;
+      return true;
+    }
+
+    constexpr bool limitedWeapon(uint8_t start, uint8_t end, uint8_t strength) {
+      if (start < 0x10 || end < start || static_cast<int>(end) > static_cast<int>(start) + 100 ||
+          strength > 10)
+        return false;
+      if (strength == 0) return off();
+      zero();
+      block[0] = static_cast<uint8_t>(Type::LimitedWeapon);
+      block[1] = start;
+      block[2] = end;
+      block[3] = strength;
+      return true;
+    }
+
+    // Apple-style normalized [0,1] adapters from the same generator.
+    static constexpr uint8_t normalize(float value, float scale) {
+      if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+      if (value < 0) value = 0;
+      if (value > 1) value = 1;
+      int scaled = static_cast<int>(value * scale + 0.5f);
+      return static_cast<uint8_t>(scaled);
+    }
+
+    constexpr bool appleFeedbackWithStartPosition(float start, float strength) {
+      return feedback(normalize(start, 9.0f), normalize(strength, 8.0f));
+    }
+
+    constexpr bool appleWeaponWithStartPosition(float start, float end, float strength) {
+      return weapon(normalize(start, 9.0f), normalize(end, 9.0f), normalize(strength, 8.0f));
+    }
+
+    constexpr bool appleVibrationWithStartPosition(float start, float amplitude, float frequency) {
+      return vibration(normalize(start, 9.0f), normalize(amplitude, 8.0f),
+                       normalize(frequency, 255.0f));
+    }
+
+    constexpr bool appleFeedback(const float *strengths) {
+      uint8_t levels[10];
+      for (int i = 0; i < 10; i++) levels[i] = normalize(strengths[i], 8.0f);
+      return multiplePositionFeedback(levels);
+    }
+
+    constexpr bool appleSlopeFeedback(float start, float end, float start_strength,
+                                      float end_strength) {
+      return slopeFeedback(normalize(start, 9.0f), normalize(end, 9.0f),
+                           normalize(start_strength, 8.0f), normalize(end_strength, 8.0f));
+    }
+
+    constexpr bool appleVibration(const float *amplitudes, float frequency) {
+      uint8_t levels[10];
+      for (int i = 0; i < 10; i++) levels[i] = normalize(amplitudes[i], 8.0f);
+      return multiplePositionVibration(normalize(frequency, 255.0f), levels);
+    }
+
+    // reWASD traffic captures, including its intentionally non-standard values.
+    constexpr bool rewasdFullPress() { return simpleWeapon(0x90, 0xA0, 0xFF); }
+
+    constexpr bool rewasdSoftPress() { return simpleWeapon(0x70, 0xA0, 0xFF); }
+
+    constexpr bool rewasdMediumPress() { return simpleWeapon(0x45, 0xA0, 0xFF); }
+
+    constexpr bool rewasdHardPress() { return simpleWeapon(0x20, 0xA0, 0xFF); }
+
+    constexpr bool rewasdPulse() { return simpleWeapon(0x00, 0x00, 0x00); }
+
+    constexpr bool rewasdChoppy() {
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Feedback);
+      block[1] = 0x02;
+      block[2] = 0x27;
+      block[3] = 0x18;
+      block[4] = 0x00;
+      block[5] = 0x00;
+      block[6] = 0x26;
+      return true;
+    }
+
+    constexpr bool rewasdSoftRigidity() { return simpleFeedback(0x00, 0x00); }
+
+    constexpr bool rewasdMediumRigidity() { return simpleFeedback(0x00, 0x64); }
+
+    constexpr bool rewasdMaxRigidity() { return simpleFeedback(0x00, 0xDC); }
+
+    constexpr bool rewasdHalfPress() { return simpleFeedback(0x55, 0x64); }
+
+    constexpr bool rewasdRifle(uint8_t frequency = 10) {
+      if (frequency < 2 || frequency > 20) return false;
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Vibration);
+      block[2] = 0x03;
+      block[6] = 0x3F;
+      block[9] = frequency;
+      return true;
+    }
+
+    constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
+      if (strength < 1 || frequency < 1) return false;
+      zero();
+      block[0] = static_cast<uint8_t>(Type::Vibration);
+      block[2] = 0x03;
+      block[6] = strength;
+      block[9] = frequency;
+      return true;
+    }
+  };
 
 private:
   using PWUINT8 = internal::PWUINT8;
 
 protected:
-  PWUINT8 valid_flag0;              // +0x00  ValidFlag0 bits
-  PWUINT8 valid_flag1;              // +0x01  ValidFlag1 bits
-  PWUINT8 motor_right;              // +0x02  DS4-compatible rumble
-  PWUINT8 motor_left;               // +0x03
-  PWUINT8 headphone_volume;         // +0x04  0x00..0x7f
-  PWUINT8 speaker_volume;           // +0x05  0x00..0xff
-  PWUINT8 mic_volume;               // +0x06  0x00..0x40 (claimed by MicVolume)
-  PWUINT8 audio_control;            // +0x07  AudioControl; claimed by AudioRouting
-  PWUINT8 mute_button_led;          // +0x08
-  PWUINT8 power_save_control;       // +0x09  PowerSave bits
-  PWUINT8 right_trigger_mode;       // +0x0a  0x05 off, 0x21 feedback, 0x25 weapon,
-                                    //        0x26 vibration (0x22/0x23/0x27 unofficial)
-  PWUINT8 right_trigger_params[10]; // +0x0b  zones + 3-bit strength,
-                                    //        vibration frequency at byte 9
-  PWUINT8 left_trigger_mode;        // +0x15
-  PWUINT8 left_trigger_params[10];  // +0x16
-  PWUINT8 reserved_32[4];           // +0x20..0x23
-  PWUINT8 haptic_volume;            // +0x24
-  PWUINT8 audio_control2;           // +0x25  speaker preamp gain
-  PWUINT8 valid_flag2;              // +0x26  ValidFlag2 bits
-  PWUINT8 reserved_39[2];           // +0x27..0x28
-  PWUINT8 lightbar_setup;           // +0x29  valid_flag2 bit 1; 0x02 fades out
-  PWUINT8 led_brightness;           // +0x2a
-  PWUINT8 player_leds;              // +0x2b  PlayerLeds bits
-  PWUINT8 lightbar_red;             // +0x2c
-  PWUINT8 lightbar_green;           // +0x2d
-  PWUINT8 lightbar_blue;            // +0x2e
+  PWUINT8 valid_flag0;         // +0x00  ValidFlag0 bits
+  PWUINT8 valid_flag1;         // +0x01  ValidFlag1 bits
+  PWUINT8 motor_right;         // +0x02  DS4-compatible rumble
+  PWUINT8 motor_left;          // +0x03
+  PWUINT8 headphone_volume;    // +0x04  0x00..0x7f
+  PWUINT8 speaker_volume;      // +0x05  0x00..0xff
+  PWUINT8 mic_volume;          // +0x06  0x00..0x40 (claimed by MicVolume)
+  PWUINT8 audio_control;       // +0x07  AudioControl; claimed by AudioRouting
+  PWUINT8 mute_button_led;     // +0x08
+  PWUINT8 power_save_control;  // +0x09  PowerSave bits
+  TriggerEffect right_trigger; // +0x0a  11-byte effect block
+  TriggerEffect left_trigger;  // +0x15  11-byte effect block
+  PWUINT8 reserved_32[4];      // +0x20..0x23
+  PWUINT8 haptic_volume;       // +0x24
+  PWUINT8 audio_control2;      // +0x25  speaker preamp gain
+  PWUINT8 valid_flag2;         // +0x26  ValidFlag2 bits
+  PWUINT8 reserved_39[2];      // +0x27..0x28
+  PWUINT8 lightbar_setup;      // +0x29  valid_flag2 bit 1; 0x02 fades out
+  PWUINT8 led_brightness;      // +0x2a
+  PWUINT8 player_leds;         // +0x2b  PlayerLeds bits
+  PWUINT8 lightbar_red;        // +0x2c
+  PWUINT8 lightbar_green;      // +0x2d
+  PWUINT8 lightbar_blue;       // +0x2e
 
 public:
   enum : uint8_t { Size = 47 };
@@ -665,25 +553,25 @@ private:
   // trigger blocks,
   // leaving volumes, LEDs and rumble untouched.
   enum class ValidFlag0 : uint8_t {
-    CompatibleVibration     = 1u << 0, // +0x00 bit 0; main motors also need HapticsSelect
-    HapticsSelect           = 1u << 1, //       bit 1; paired with CompatibleVibration
+    CompatibleVibration = 1u << 0,     // +0x00 bit 0; main motors also need HapticsSelect
+    HapticsSelect = 1u << 1,           //       bit 1; paired with CompatibleVibration
     RightTriggerMotorEnable = 1u << 2, //       bit 2
-    LeftTriggerMotorEnable  = 1u << 3, //       bit 3
-    HeadphoneVolumeEnable   = 1u << 4, //       bit 4
-    SpeakerVolumeEnable     = 1u << 5, //       bit 5
-    MicVolumeEnable         = 1u << 6, //       bit 6
-    AudioControlEnable      = 1u << 7, //       bit 7
+    LeftTriggerMotorEnable = 1u << 3,  //       bit 3
+    HeadphoneVolumeEnable = 1u << 4,   //       bit 4
+    SpeakerVolumeEnable = 1u << 5,     //       bit 5
+    MicVolumeEnable = 1u << 6,         //       bit 6
+    AudioControlEnable = 1u << 7,      //       bit 7
   };
 
   enum class ValidFlag1 : uint8_t {
-    MicMuteLedControlEnable      = 1u << 0, // +0x01 bit 0
-    PowerSaveControlEnable       = 1u << 1, //       bit 1  enables power_save_control
-    LightbarControlEnable        = 1u << 2, //       bit 2
-    ReleaseLEDs                  = 1u << 3, //       bit 3
+    MicMuteLedControlEnable = 1u << 0,      // +0x01 bit 0
+    PowerSaveControlEnable = 1u << 1,       //       bit 1  enables power_save_control
+    LightbarControlEnable = 1u << 2,        //       bit 2
+    ReleaseLEDs = 1u << 3,                  //       bit 3
     PlayerIndicatorControlEnable = 1u << 4, //       bit 4
-    HapticLowPassFilterEnable    = 1u << 5, //       bit 5
-    VibrationAttenuationEnable   = 1u << 6, //       bit 6
-    AudioControl2Enable          = 1u << 7, //       bit 7
+    HapticLowPassFilterEnable = 1u << 5,    //       bit 5
+    VibrationAttenuationEnable = 1u << 6,   //       bit 6
+    AudioControl2Enable = 1u << 7,          //       bit 7
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
@@ -692,7 +580,7 @@ private:
   enum class ValidFlag2 : uint8_t {
     LedBrightnessControlEnable = 1u << 0, // bit 0
     LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbar_setup fade control
-    CompatibleVibration2       = 1u << 2, // bit 2
+    CompatibleVibration2 = 1u << 2,       // bit 2
   };
 
   // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
@@ -702,23 +590,23 @@ private:
   // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
   enum PowerSave : uint8_t {
     MicrophoneMute = 1u << 4, // bit 4  documented
-    AudioMute      = 1u << 6, // bit 6  documented
+    AudioMute = 1u << 6,      // bit 6  documented
   };
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
   // Bits 5-7 are reserved.
   enum class PlayerLeds : uint8_t {
-    Led1    = 1u << 0, // bit 0
-    Led2    = 1u << 1, // bit 1
-    Led3    = 1u << 2, // bit 2
-    Led4    = 1u << 3, // bit 3
-    Led5    = 1u << 4, // bit 4
+    Led1 = 1u << 0,    // bit 0
+    Led2 = 1u << 1,    // bit 1
+    Led3 = 1u << 2,    // bit 2
+    Led4 = 1u << 3,    // bit 3
+    Led5 = 1u << 4,    // bit 4
     Instant = 1u << 5, // bit 5: suppress the slow fade-in
   };
 
 public:
   enum class LightbarSetup : uint8_t {
-    LightOn  = 1u << 0,
+    LightOn = 1u << 0,
     LightOut = 1u << 1,
   };
 
@@ -794,12 +682,12 @@ public:
 
   constexpr void setRightTriggerMode(uint8_t v) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    right_trigger_mode = v;
+    right_trigger.block[0] = v;
   }
 
   constexpr void setLeftTriggerMode(uint8_t v) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    left_trigger_mode = v;
+    left_trigger.block[0] = v;
   }
 
   constexpr void setHapticVolume(uint8_t v) {
@@ -844,24 +732,22 @@ public:
 
   constexpr void setRightTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = v[i];
+    for (size_t i = 0; i < 10; ++i) right_trigger.block[i + 1] = v[i];
   }
 
   constexpr void setLeftTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = v[i];
+    for (size_t i = 0; i < 10; ++i) left_trigger.block[i + 1] = v[i];
   }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    right_trigger_mode = effect.block[0];
-    for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = effect.block[i + 1];
+    right_trigger = effect;
   }
 
   constexpr void setLeftTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    left_trigger_mode = effect.block[0];
-    for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = effect.block[i + 1];
+    left_trigger = effect;
   }
 
   constexpr void setAudioRoute(AudioControl routing) {
@@ -921,6 +807,99 @@ public:
 };
 
 static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 bytes");
+
+static_assert(sizeof(OutputBody::TriggerEffect) == OutputBody::TriggerEffect::BlockSize);
+
+constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
+  OutputBody::TriggerEffect effect;
+  const uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  effect.multiplePositionFeedback(levels);
+  return effect;
+}();
+static_assert(kFeedbackEffect.block[0] ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Feedback));
+static_assert(kFeedbackEffect.block[1] == 0xFF && kFeedbackEffect.block[2] == 0x03);
+static_assert(kFeedbackEffect.block[3] == 0 && kFeedbackEffect.block[6] == 0);
+
+constexpr OutputBody::TriggerEffect kWeaponEffect = [] {
+  OutputBody::TriggerEffect effect;
+  effect.weapon(2, 8, 8);
+  return effect;
+}();
+static_assert(kWeaponEffect.block[0] ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Weapon));
+static_assert(kWeaponEffect.block[1] == 0x04 && kWeaponEffect.block[2] == 0x01);
+static_assert(kWeaponEffect.block[3] == 7);
+
+constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
+  OutputBody::TriggerEffect effect;
+  const uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  effect.multiplePositionVibration(25, amplitudes);
+  return effect;
+}();
+static_assert(kVibrationEffect.block[0] ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Vibration));
+static_assert(kVibrationEffect.block[1] == 0x01 && kVibrationEffect.block[9] == 25);
+
+constexpr OutputBody::TriggerEffect kBowEffect = [] {
+  OutputBody::TriggerEffect effect;
+  effect.bow(2, 8, 6, 4);
+  return effect;
+}();
+static_assert(kBowEffect.block[0] == static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
+static_assert(kBowEffect.block[1] == 0x04 && kBowEffect.block[2] == 0x01);
+static_assert(kBowEffect.block[3] == 0x1D);
+
+constexpr OutputBody::TriggerEffect kGallopingEffect = [] {
+  OutputBody::TriggerEffect effect;
+  effect.galloping(2, 8, 2, 4, 25);
+  return effect;
+}();
+static_assert(kGallopingEffect.block[0] ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Galloping));
+static_assert(kGallopingEffect.block[4] == 25);
+
+constexpr OutputBody::TriggerEffect kMachineEffect = [] {
+  OutputBody::TriggerEffect effect;
+  effect.machine(2, 8, 6, 4, 25, 10);
+  return effect;
+}();
+static_assert(kMachineEffect.block[0] ==
+              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Machine));
+static_assert(kMachineEffect.block[4] == 25 && kMachineEffect.block[5] == 10);
+
+// Saturating conversions used by the Swift schema when moving normalized UI
+// values onto the byte/zone/level wire fields.
+struct DSScale {
+  static constexpr float clamp01(float value) {
+    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+    return value < 0 ? 0 : (value > 1 ? 1 : value);
+  }
+
+  static constexpr uint8_t byte(float value) {
+    float v = clamp01(value);
+    int scaled = static_cast<int>(v * 255.0f + 0.5f);
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
+  }
+
+  static constexpr uint8_t rawByte(float value) {
+    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+    int scaled = static_cast<int>(value + (value >= 0 ? 0.5f : -0.5f));
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
+  }
+
+  static constexpr int zone(float value) {
+    float v = clamp01(value) * 9.0f;
+    int scaled = static_cast<int>(v + 0.5f);
+    return scaled < 0 ? 0 : (scaled > 9 ? 9 : scaled);
+  }
+
+  static constexpr uint8_t level(float value) {
+    float v = clamp01(value) * 8.0f;
+    int scaled = static_cast<int>(v + 0.5f);
+    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 8 ? 8 : scaled));
+  }
+};
 
 // ===========================================================================
 // Output 0x31 (Bluetooth, 78 bytes, CRC at the end)
@@ -1060,13 +1039,11 @@ public:
     constexpr unsigned id() const { return contact & 0x7F; }
 
     constexpr unsigned x() const {
-      return static_cast<unsigned>(x_low) |
-             (static_cast<unsigned>(xy_high & 0x0F) << 8);
+      return static_cast<unsigned>(x_low) | (static_cast<unsigned>(xy_high & 0x0F) << 8);
     }
 
     constexpr unsigned y() const {
-      return static_cast<unsigned>(xy_high >> 4) |
-             (static_cast<unsigned>(y_high) << 4);
+      return static_cast<unsigned>(xy_high >> 4) | (static_cast<unsigned>(y_high) << 4);
     }
   };
 
@@ -1198,27 +1175,27 @@ public:
   //   +0x0a  eight bits the kernel does not read; maybe L5/R5
   enum class Button : uint32_t {
     // +0x07
-    ButtonSquare    = 1u << 4,
-    ButtonCross     = 1u << 5,
-    ButtonCircle    = 1u << 6,
-    ButtonTriangle  = 1u << 7,
+    ButtonSquare = 1u << 4,
+    ButtonCross = 1u << 5,
+    ButtonCircle = 1u << 6,
+    ButtonTriangle = 1u << 7,
     // +0x08
-    L1              = 1u << 8,
-    R1              = 1u << 9,
-    L2              = 1u << 10,
-    R2              = 1u << 11,
-    Create          = 1u << 12,
-    Options         = 1u << 13,
-    L3              = 1u << 14,
-    R3              = 1u << 15,
+    L1 = 1u << 8,
+    R1 = 1u << 9,
+    L2 = 1u << 10,
+    R2 = 1u << 11,
+    Create = 1u << 12,
+    Options = 1u << 13,
+    L3 = 1u << 14,
+    R3 = 1u << 15,
     // +0x09
-    PsHome          = 1u << 16,
-    Touchpad        = 1u << 17,
-    MicMute         = 1u << 18,
+    PsHome = 1u << 16,
+    Touchpad = 1u << 17,
+    MicMute = 1u << 18,
     // bit 19 reserved
-    EdgeFn1         = 1u << 20, // Edge only
-    EdgeFn2         = 1u << 21, // Edge only
-    EdgeLeftPaddle  = 1u << 22, // Edge only
+    EdgeFn1 = 1u << 20,         // Edge only
+    EdgeFn2 = 1u << 21,         // Edge only
+    EdgeLeftPaddle = 1u << 22,  // Edge only
     EdgeRightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
   };
@@ -1263,14 +1240,14 @@ public:
   // +0x35. Bits 0-2 are documented; bits 3-4 are observed; bits 5-7 are
   // reserved and still unlabelled.
   enum class Status1 : uint8_t {
-    HeadphoneDetect  = 1u << 0, // bit 0
-    MicDetect        = 1u << 1, // bit 1
-    MicMute          = 1u << 2, // bit 2
+    HeadphoneDetect = 1u << 0, // bit 0
+    MicDetect = 1u << 1,       // bit 1
+    MicMute = 1u << 2,         // bit 2
     // Undocumented: observed set whenever a USB data link is present,
     // including USB-only operation. Clear with a charger-only cable or no USB.
     // Combined with the active Bluetooth transport, it means another USB host
     // is also attached. Not parsed by hid-playstation.
-    UsbDataLink      = 1u << 3, // bit 3
+    UsbDataLink = 1u << 3, // bit 3
     // Undocumented: observed set while external power is supplied - charger
     // only, or a USB host (which also turns on UsbDataLink). Clear over plain
     // Bluetooth. Not parsed by hid-playstation.

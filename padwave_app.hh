@@ -863,7 +863,8 @@ public:
     }
 
     if (strcmp(kind, "lightbar_brightness") == 0) {
-      if (this->padwaveDisabled()) return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
+      if (this->padwaveDisabled())
+        return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
       int v = static_cast<int>(kvNumber(body, "value", 0));
       snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
@@ -871,8 +872,7 @@ public:
     }
 
     if (strcmp(kind, "controller_input") == 0) {
-      if (!this->usb_data_link)
-        return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
+      if (!this->usb_data_link) return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
       int enabled = static_cast<int>(kvNumber(body, "enabled", 1));
       this->controller_disabled = enabled == 0;
       if (this->controller_disabled) playerSend("state_clear_lightbar\n");
@@ -951,7 +951,7 @@ public:
       } else if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
         mode = 0x05;
       } else {
-        dualsense::TriggerEffect fx;
+        dualsense::OutputBody::TriggerEffect fx;
         bool applied = false;
         const uint8_t level8 = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
@@ -980,8 +980,8 @@ public:
           applied = fx.galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
                                  static_cast<uint8_t>(amplitude_b), frequency8);
         } else if (strcmp(effect, "slope") == 0) {
-          applied = fx.slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
-                                     level8, static_cast<uint8_t>(amplitude_b));
+          applied = fx.slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+                                     static_cast<uint8_t>(amplitude_b));
         } else if (strcmp(effect, "simple-feedback") == 0) {
           applied = fx.simpleFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "simple-weapon") == 0) {
@@ -991,7 +991,8 @@ public:
         } else if (strcmp(effect, "limited-feedback") == 0) {
           applied = fx.limitedFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "limited-weapon") == 0) {
-          applied = fx.limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          applied =
+              fx.limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "rewasd-full") == 0) {
           applied = fx.rewasdFullPress();
         } else if (strcmp(effect, "rewasd-soft") == 0) {
