@@ -371,15 +371,6 @@ private:
     SpeakerVolume = 0x20,   //       bit 5
     MicVolume = 0x40,       //       bit 6
     AudioRouting = 0x80,    //       bit 7
-
-    CompatibleVibration = Rumble,
-    HapticsSelect = Haptics,
-    RightTriggerMotorEnable = RightTrigger,
-    LeftTriggerMotorEnable = LeftTrigger,
-    HeadphoneVolumeEnable = HeadphoneVolume,
-    SpeakerVolumeEnable = SpeakerVolume,
-    MicVolumeEnable = MicVolume,
-    AudioControlEnable = AudioRouting,
   };
 
   enum class ValidFlag1 : uint8_t {
@@ -391,15 +382,6 @@ private:
     HapticLpf = 0x20,       //       bit 5
     MotorPowerLevel = 0x40, //       bit 6
     AudioControl2 = 0x80,   //       bit 7
-
-    MicMuteLedControlEnable = MuteLed,
-    PowerSaveControlEnable = PowerSave,
-    LightbarControlEnable = Lightbar,
-    ReleaseLEDs = ResetLights,
-    PlayerIndicatorControlEnable = PlayerLeds,
-    HapticLowPassFilterEnable = HapticLpf,
-    VibrationAttenuationEnable = MotorPowerLevel,
-    AudioControl2Enable = AudioControl2,
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
@@ -409,10 +391,6 @@ private:
     Brightness = 0x01,     // bit 0
     ColorFade = 0x02,      // bit 1: enables the lightbar_setup fade control
     ImprovedRumble = 0x04, // bit 2
-
-    LedBrightnessControlEnable = Brightness,
-    LightbarSetupControlEnable = ColorFade,
-    CompatibleVibration2 = ImprovedRumble,
   };
 
   // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
@@ -915,13 +893,6 @@ public:
     LeftPaddle = 1u << 22,  // Edge only
     RightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
-
-    PsHome = Ps,
-    MicMute = Mute,
-    EdgeFn1 = Fn1,
-    EdgeFn2 = Fn2,
-    EdgeLeftPaddle = LeftPaddle,
-    EdgeRightPaddle = RightPaddle,
   };
 
   struct Buttons {
@@ -966,19 +937,18 @@ public:
     Headset = 0x01,    // bit 0
     Microphone = 0x02, // bit 1
     MicMute = 0x04,    // bit 2
-
-    HeadphoneDetect = Headset,
-    MicDetect = Microphone,
     // Undocumented: observed set whenever a USB data link is present,
     // including USB-only operation. Clear with a charger-only cable or no USB.
     // Combined with the active Bluetooth transport, it means another USB host
     // is also attached. Not parsed by hid-playstation.
-    UsbData = 0x08, // bit 3
+    UsbDataLink = 0x08, // bit 3
   };
 
   constexpr bool headset() const { return (status1 & static_cast<uint8_t>(Status1::Headset)) != 0; }
 
-  constexpr bool usbData() const { return (status1 & static_cast<uint8_t>(Status1::UsbData)) != 0; }
+  constexpr bool usbDataLink() const {
+    return (status1 & static_cast<uint8_t>(Status1::UsbDataLink)) != 0;
+  }
 
   constexpr bool microphone() const {
     return (status1 & static_cast<uint8_t>(Status1::Microphone)) != 0;

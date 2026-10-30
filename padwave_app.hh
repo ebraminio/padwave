@@ -232,7 +232,7 @@ private:
 
   bool controller = false;
   bool jack = false;
-  bool usb_data = false;
+  bool usb_data_link = false;
   int battery = -1;
   char charging[16] = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
@@ -605,7 +605,7 @@ public:
       kvText(buf, cap, &o, "controller.battery", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
-    kvAdd(buf, cap, &o, "controller.usb_data", "%s", this->usb_data ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.usb_data_link", "%s", this->usb_data_link ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
     kvText(buf, cap, &o, "controller.buttons", this->buttons);
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
@@ -1110,7 +1110,7 @@ private:
     }
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
-    this->usb_data = false;
+    this->usb_data_link = false;
     this->rate = 0;
     this->rate_at = 0;
     this->rate_frames = 0;
@@ -1157,7 +1157,7 @@ private:
     playerSend(line);
   }
 
-  bool externalHost() const { return this->usb_data && !this->player.isUsb(); }
+  bool externalHost() const { return this->usb_data_link && !this->player.isUsb(); }
 
   void applyOutputRoute() {
     if (this->player) this->player.setSpeaker(!this->jack);
@@ -1390,7 +1390,7 @@ private:
     bool had_jack = this->jack;
     bool had_external = this->externalHost();
     this->jack = b.headset();
-    this->usb_data = b.usbData();
+    this->usb_data_link = b.usbDataLink();
     if (this->externalHost() != had_external) {
       if (this->externalHost()) playerSend("state_clear_lightbar\n");
       this->led_force = true;
