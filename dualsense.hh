@@ -56,19 +56,19 @@ struct NumType {
   unsigned char bytes[sizeof(Type)];
 };
 
-using PWUINT8 = NumType<uint8_t>;
-using PWUINT16 = NumType<uint16_t>;
-using PWUINT32 = NumType<uint32_t>;
-using PWINT8 = NumType<int8_t, uint8_t>;
-using PWINT16 = NumType<int16_t, uint16_t>;
-using PWINT32 = NumType<int32_t, uint32_t>;
+using DSUINT8 = NumType<uint8_t>;
+using DSUINT16 = NumType<uint16_t>;
+using DSUINT32 = NumType<uint32_t>;
+using DSINT8 = NumType<int8_t, uint8_t>;
+using DSINT16 = NumType<int16_t, uint16_t>;
+using DSINT32 = NumType<int32_t, uint32_t>;
 
-static_assert(sizeof(PWUINT8) == 1, "PWUINT8 is one byte");
-static_assert(sizeof(PWUINT16) == 2, "PWUINT16 is two bytes");
-static_assert(sizeof(PWUINT32) == 4, "PWUINT32 is four bytes");
-static_assert(sizeof(PWINT8) == 1, "PWINT8 is one byte");
-static_assert(sizeof(PWINT16) == 2, "PWINT16 is two bytes");
-static_assert(sizeof(PWINT32) == 4, "PWINT32 is four bytes");
+static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
+static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
+static_assert(sizeof(DSUINT32) == 4, "DSUINT32 is four bytes");
+static_assert(sizeof(DSINT8) == 1, "DSINT8 is one byte");
+static_assert(sizeof(DSINT16) == 2, "DSINT16 is two bytes");
+static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
 
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
@@ -108,7 +108,7 @@ static constexpr uint32_t crc_of(const Report &report) {
   uint8_t seed = static_cast<uint8_t>(Report::CrcSeed);
   uint32_t c = crc32(0, &seed, 1);
   auto raw = __builtin_bit_cast(WireBytes<Report>, report);
-  return crc32(c, raw.data, sizeof(Report) - sizeof(PWUINT32));
+  return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
 }
 
 // ===========================================================================
@@ -519,32 +519,32 @@ public:
   };
 
 private:
-  using PWUINT8 = internal::PWUINT8;
+  using DSUINT8 = internal::DSUINT8;
 
 protected:
-  PWUINT8 valid_flag0;         // +0x00  ValidFlag0 bits
-  PWUINT8 valid_flag1;         // +0x01  ValidFlag1 bits
-  PWUINT8 motor_right;         // +0x02  DS4-compatible rumble
-  PWUINT8 motor_left;          // +0x03
-  PWUINT8 headphone_volume;    // +0x04  0x00..0x7f
-  PWUINT8 speaker_volume;      // +0x05  0x00..0xff
-  PWUINT8 mic_volume;          // +0x06  0x00..0x40 (claimed by MicVolume)
-  PWUINT8 audio_control;       // +0x07  AudioControl; claimed by AudioRouting
-  PWUINT8 mute_button_led;     // +0x08
-  PWUINT8 power_save_control;  // +0x09  PowerSave bits
+  DSUINT8 valid_flag0;         // +0x00  ValidFlag0 bits
+  DSUINT8 valid_flag1;         // +0x01  ValidFlag1 bits
+  DSUINT8 motor_right;         // +0x02  DS4-compatible rumble
+  DSUINT8 motor_left;          // +0x03
+  DSUINT8 headphone_volume;    // +0x04  0x00..0x7f
+  DSUINT8 speaker_volume;      // +0x05  0x00..0xff
+  DSUINT8 mic_volume;          // +0x06  0x00..0x40 (claimed by MicVolume)
+  DSUINT8 audio_control;       // +0x07  AudioControl; claimed by AudioRouting
+  DSUINT8 mute_button_led;     // +0x08
+  DSUINT8 power_save_control;  // +0x09  PowerSave bits
   TriggerEffect right_trigger; // +0x0a  11-byte effect block
   TriggerEffect left_trigger;  // +0x15  11-byte effect block
-  PWUINT8 reserved_32[4];      // +0x20..0x23
-  PWUINT8 haptic_volume;       // +0x24
-  PWUINT8 audio_control2;      // +0x25  speaker preamp gain
-  PWUINT8 valid_flag2;         // +0x26  ValidFlag2 bits
-  PWUINT8 reserved_39[2];      // +0x27..0x28
-  PWUINT8 lightbar_setup;      // +0x29  valid_flag2 bit 1; 0x02 fades out
-  PWUINT8 led_brightness;      // +0x2a
-  PWUINT8 player_leds;         // +0x2b  PlayerLeds bits
-  PWUINT8 lightbar_red;        // +0x2c
-  PWUINT8 lightbar_green;      // +0x2d
-  PWUINT8 lightbar_blue;       // +0x2e
+  DSUINT8 reserved_32[4];      // +0x20..0x23
+  DSUINT8 haptic_volume;       // +0x24
+  DSUINT8 audio_control2;      // +0x25  speaker preamp gain
+  DSUINT8 valid_flag2;         // +0x26  ValidFlag2 bits
+  DSUINT8 reserved_39[2];      // +0x27..0x28
+  DSUINT8 lightbar_setup;      // +0x29  valid_flag2 bit 1; 0x02 fades out
+  DSUINT8 led_brightness;      // +0x2a
+  DSUINT8 player_leds;         // +0x2b  PlayerLeds bits
+  DSUINT8 lightbar_red;        // +0x2c
+  DSUINT8 lightbar_green;      // +0x2d
+  DSUINT8 lightbar_blue;       // +0x2e
 
 public:
   enum : uint8_t { Size = 47 };
@@ -932,16 +932,16 @@ struct DSScale {
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
 private:
-  using PWUINT8 = internal::PWUINT8;
-  using PWUINT32 = internal::PWUINT32;
+  using DSUINT8 = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
 
 protected:
-  PWUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
-  PWUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
-  PWUINT8 tag;           // 0x02  must be 0x10
+  DSUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
+  DSUINT8 tag;           // 0x02  must be 0x10
   OutputBody body_;      // 0x03..0x31
-  PWUINT8 reserved4[24]; // 0x32..0x49
-  PWUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
+  DSUINT8 reserved4[24]; // 0x32..0x49
+  DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 public:
   enum : uint8_t {
@@ -995,12 +995,12 @@ static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 byt
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
 private:
-  using PWUINT8 = internal::PWUINT8;
+  using DSUINT8 = internal::DSUINT8;
 
 protected:
-  PWUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
+  DSUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
   OutputBody body_;     // 0x01..0x2f
-  PWUINT8 reserved[15]; // 0x30..0x3e
+  DSUINT8 reserved[15]; // 0x30..0x3e
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
@@ -1042,19 +1042,19 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
 private:
-  using PWUINT8 = internal::PWUINT8;
-  using PWUINT32 = internal::PWUINT32;
-  using PWINT16 = internal::PWINT16;
+  using DSUINT8 = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
+  using DSINT16 = internal::DSINT16;
 
 public:
   // One 4-byte touch contact on the wire. The high nibble of `xy_high` is
   // y-low; the low nibble is x-high. Bit 7 of `contact` means "not touching".
   struct TouchPoint {
   private:
-    PWUINT8 contact;
-    PWUINT8 x_low;
-    PWUINT8 xy_high;
-    PWUINT8 y_high;
+    DSUINT8 contact;
+    DSUINT8 x_low;
+    DSUINT8 xy_high;
+    DSUINT8 y_high;
 
   public:
     constexpr bool active() const { return (contact & 0x80) == 0; }
@@ -1071,42 +1071,42 @@ public:
   };
 
 protected:
-  PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
-  PWUINT8 ly;                 // +0x01  left stick Y, 0 = up
-  PWUINT8 rx;                 // +0x02  right stick X
-  PWUINT8 ry;                 // +0x03  right stick Y
-  PWUINT8 l2;                 // +0x04  L2 analogue
-  PWUINT8 r2;                 // +0x05  R2 analogue
-  PWUINT8 seq;                // +0x06  report sequence number
-  PWUINT32 buttons_;          // +0x07  Buttons bits (d-pad in bits 0-3)
-  PWUINT8 incremental;        // +0x0b  increments every report, wraps at 256
-  PWUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
+  DSUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
+  DSUINT8 ly;                 // +0x01  left stick Y, 0 = up
+  DSUINT8 rx;                 // +0x02  right stick X
+  DSUINT8 ry;                 // +0x03  right stick Y
+  DSUINT8 l2;                 // +0x04  L2 analogue
+  DSUINT8 r2;                 // +0x05  R2 analogue
+  DSUINT8 seq;                // +0x06  report sequence number
+  DSUINT32 buttons_;          // +0x07  Buttons bits (d-pad in bits 0-3)
+  DSUINT8 incremental;        // +0x0b  increments every report, wraps at 256
+  DSUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
                               //        minutes — a slow counter
-  PWINT16 gyro_x;             // +0x0f  angular velocity, little-endian
-  PWINT16 gyro_y;             // +0x11
-  PWINT16 gyro_z;             // +0x13
-  PWINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
-  PWINT16 accel_y;            // +0x17
-  PWINT16 accel_z;            // +0x19
-  PWUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
-  PWUINT8 temperature_;       // +0x1f  controller temperature, degrees C
+  DSINT16 gyro_x;             // +0x0f  angular velocity, little-endian
+  DSINT16 gyro_y;             // +0x11
+  DSINT16 gyro_z;             // +0x13
+  DSINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
+  DSINT16 accel_y;            // +0x17
+  DSINT16 accel_z;            // +0x19
+  DSUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
+  DSUINT8 temperature_;       // +0x1f  controller temperature, degrees C
   TouchPoint touch1;          // +0x20
   TouchPoint touch2;          // +0x24
-  PWUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
-  PWUINT8 trigger_feedback_r; // +0x29
-  PWUINT32 host_time;         // +0x2a  community calls it the echoed host
+  DSUINT8 trigger_feedback_l; // +0x28  L2 adaptive-trigger status
+  DSUINT8 trigger_feedback_r; // +0x29
+  DSUINT32 host_time;         // +0x2a  community calls it the echoed host
                               //        timestamp; a constant 9 for a whole
                               //        session, so unverified
-  PWUINT8 device_feedback[4]; // +0x2e  labelled "device feedback", but the low
+  DSUINT8 device_feedback[4]; // +0x2e  labelled "device feedback", but the low
                               //        bytes change every report and 0x31
                               //        tracks sensor_time's high byte: it
                               //        behaves like a second device clock
-  PWUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
-  PWUINT8 status0;            // +0x34  low nibble: battery 0..10; high: charging
-  PWUINT8 status1;            // +0x35  Status1 bits
-  PWUINT8 status2;            // +0x36  constant 1 in every capture so far
-  PWUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
+  DSUINT8 reserved_52[2];     // +0x32  second byte also tracks sensor_time
+  DSUINT8 status0;            // +0x34  low nibble: battery 0..10; high: charging
+  DSUINT8 status1;            // +0x35  Status1 bits
+  DSUINT8 status2;            // +0x36  constant 1 in every capture so far
+  DSUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
                               //        per-report MAC/nonce; not verified
                               //        against the pairing handshake
 
@@ -1315,17 +1315,17 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 
 struct InputReport {
 private:
-  using PWUINT8 = internal::PWUINT8;
-  using PWUINT32 = internal::PWUINT32;
+  using DSUINT8 = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
 
 protected:
-  PWUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
-  PWUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
+  DSUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
   InputBody body_;        // 0x02..0x40
-  PWUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
+  DSUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
                           //             distinct values in a 150 s capture), the
                           //             other eight were; unknown
-  PWUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+  DSUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
 
 public:
   enum : uint8_t {
@@ -1391,10 +1391,10 @@ struct AudioReport {
   friend struct internal::AudioReportProbe;
 
 private:
-  using PWUINT8 = internal::PWUINT8;
-  using PWINT8 = internal::PWINT8;
-  using PWUINT32 = internal::PWUINT32;
-  using PWINT16 = internal::PWINT16;
+  using DSUINT8 = internal::DSUINT8;
+  using DSINT8 = internal::DSINT8;
+  using DSUINT32 = internal::DSUINT32;
+  using DSINT16 = internal::DSINT16;
 
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
@@ -1409,28 +1409,28 @@ private:
 
   protected:
     OutputBody body;     // +0x00..0x2e
-    PWUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
+    DSUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
   };
 
 protected:
-  PWUINT8 report_id;         // 0x000  Packet::PacketAudio
-  PWUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
-  PWUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  PWUINT8 config_length;     // 0x003  7
-  PWUINT8 enable_mask;       // 0x004  EnableMask bits
-  PWUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
-  PWUINT8 counter;           // 0x00a  free-running 8-bit counter
-  PWUINT8 state_tag;         // 0x00b  0x10 | 0x80
-  PWUINT8 state_length;      // 0x00c  63
+  DSUINT8 report_id;         // 0x000  Packet::PacketAudio
+  DSUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
+  DSUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
+  DSUINT8 config_length;     // 0x003  7
+  DSUINT8 enable_mask;       // 0x004  EnableMask bits
+  DSUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
+  DSUINT8 counter;           // 0x00a  free-running 8-bit counter
+  DSUINT8 state_tag;         // 0x00b  0x10 | 0x80
+  DSUINT8 state_length;      // 0x00c  63
   State state;               // 0x00d..0x04b
-  PWUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
-  PWUINT8 haptics_length;    // 0x04d  64
-  PWINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  PWUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  PWUINT8 speaker_length;    // 0x08f  200
-  PWUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  PWUINT8 padding[50];       // 0x158..0x189
-  PWUINT32 crc;              // 0x18a..0x18d  seed 0xA2
+  DSUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
+  DSUINT8 haptics_length;    // 0x04d  64
+  DSINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  DSUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speaker_length;    // 0x08f  200
+  DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  DSUINT8 padding[50];       // 0x158..0x189
+  DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
 public:
   // PCM-facing encoder: the rest of padwave never touches libopus.
@@ -1660,29 +1660,29 @@ struct ImuCalibration {
 namespace internal {
 struct Calibration {
 protected:
-  PWUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
+  DSUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
   // plus/minus at 1 g per axis.
-  PWINT16 gyro_pitch_bias;
-  PWINT16 gyro_yaw_bias;
-  PWINT16 gyro_roll_bias;
-  PWINT16 gyro_pitch_plus;
-  PWINT16 gyro_pitch_minus;
-  PWINT16 gyro_yaw_plus;
-  PWINT16 gyro_yaw_minus;
-  PWINT16 gyro_roll_plus;
-  PWINT16 gyro_roll_minus;
-  PWINT16 gyro_speed_plus;
-  PWINT16 gyro_speed_minus;
-  PWINT16 acc_x_plus;
-  PWINT16 acc_x_minus;
-  PWINT16 acc_y_plus;
-  PWINT16 acc_y_minus;
-  PWINT16 acc_z_plus;
-  PWINT16 acc_z_minus;
-  PWUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
+  DSINT16 gyro_pitch_bias;
+  DSINT16 gyro_yaw_bias;
+  DSINT16 gyro_roll_bias;
+  DSINT16 gyro_pitch_plus;
+  DSINT16 gyro_pitch_minus;
+  DSINT16 gyro_yaw_plus;
+  DSINT16 gyro_yaw_minus;
+  DSINT16 gyro_roll_plus;
+  DSINT16 gyro_roll_minus;
+  DSINT16 gyro_speed_plus;
+  DSINT16 gyro_speed_minus;
+  DSINT16 acc_x_plus;
+  DSINT16 acc_x_minus;
+  DSINT16 acc_y_plus;
+  DSINT16 acc_y_minus;
+  DSINT16 acc_z_plus;
+  DSINT16 acc_z_minus;
+  DSUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
@@ -1724,9 +1724,9 @@ static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes
 
 struct Pairing {
 protected:
-  PWUINT8 report_id;      // 0x00  Packet::PacketFeaturePairing
-  PWUINT8 mac[6];         // 0x01..0x06  the controller's own address
-  PWUINT8 unknown_07[13]; // 0x07..0x13
+  DSUINT8 report_id;      // 0x00  Packet::PacketFeaturePairing
+  DSUINT8 mac[6];         // 0x01..0x06  the controller's own address
+  DSUINT8 unknown_07[13]; // 0x07..0x13
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing), Size = 20 };
@@ -1736,13 +1736,13 @@ static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  PWUINT8 report_id;       // 0x00  Packet::PacketFeatureFirmware
-  PWUINT8 unknown_01[23];  // 0x01..0x17
-  PWUINT32 hw_version;     // 0x18..0x1b
-  PWUINT32 fw_version;     // 0x1c..0x1f
-  PWUINT8 unknown_32[12];  // 0x20..0x2b
-  PWUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
-  PWUINT8 unknown_46[18];  // 0x2e..0x3f
+  DSUINT8 report_id;       // 0x00  Packet::PacketFeatureFirmware
+  DSUINT8 unknown_01[23];  // 0x01..0x17
+  DSUINT32 hw_version;     // 0x18..0x1b
+  DSUINT32 fw_version;     // 0x1c..0x1f
+  DSUINT8 unknown_32[12];  // 0x20..0x2b
+  DSUINT16 update_version; // 0x2c..0x2d  feature/PCB revision, varies by model
+  DSUINT8 unknown_46[18];  // 0x2e..0x3f
 
 public:
   enum : uint8_t {
@@ -1855,16 +1855,16 @@ namespace wire_test {
 
 // --- byte order ------------------------------------------------------------
 
-constexpr PWUINT16 kU16 = [] {
-  PWUINT16 v;
+constexpr DSUINT16 kU16 = [] {
+  DSUINT16 v;
   v = 0x1234;
   return v;
 }();
 static_assert(kU16.bytes[0] == 0x34 && kU16.bytes[1] == 0x12);
 static_assert(kU16 == 0x1234);
 
-constexpr PWUINT32 kU32 = [] {
-  PWUINT32 v;
+constexpr DSUINT32 kU32 = [] {
+  DSUINT32 v;
   v = 0x01020304;
   return v;
 }();
@@ -1872,16 +1872,16 @@ static_assert(kU32.bytes[0] == 0x04 && kU32.bytes[1] == 0x03 && kU32.bytes[2] ==
               kU32.bytes[3] == 0x01);
 static_assert(kU32 == 0x01020304);
 
-constexpr PWINT16 kS16 = [] {
-  PWINT16 v;
+constexpr DSINT16 kS16 = [] {
+  DSINT16 v;
   v = -2;
   return v;
 }();
 static_assert(kS16.bytes[0] == 0xFE && kS16.bytes[1] == 0xFF);
 static_assert(kS16 == -2);
 
-constexpr PWINT32 kS32 = [] {
-  PWINT32 v;
+constexpr DSINT32 kS32 = [] {
+  DSINT32 v;
   v = -1;
   return v;
 }();
