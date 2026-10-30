@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
   dualsense::InputReport neutral = report(0);
-  dualsense::InputReport pressed = report(static_cast<uint32_t>(dualsense::InputBody::Button::BUTTON_CROSS));
+  dualsense::InputReport pressed = report(static_cast<uint32_t>(dualsense::InputBody::Button::ButtonCross));
   dualsense::InputReport released = report(0);
 
   uint8_t usb[dualsense::InputReport::UsbSize] = {dualsense::InputReport::UsbReportId};

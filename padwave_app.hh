@@ -340,7 +340,7 @@ private:
   bool lightbar_on = true;
   long led_charge_at = 0;
   dualsense::OutputBody::LightbarSetup led_charge_setup =
-      dualsense::OutputBody::LightbarSetup::LIGHT_OUT;
+      dualsense::OutputBody::LightbarSetup::LightOut;
   static constexpr long kChargeBlinkMs = 1000;
 
   unsigned long mic_packets = 0;
@@ -841,7 +841,7 @@ public:
     if (strcmp(kind, "lightbar_fade") == 0) {
       this->lightbar_on = false;
       this->led_force = true;
-      setLightbarSetup(dualsense::OutputBody::LightbarSetup::LIGHT_OUT);
+      setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=light off\n");
     }
@@ -850,7 +850,7 @@ public:
       int v = static_cast<int>(kvNumber(body, "value", 0));
       if (v != 1 && v != 2) return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
       auto setup = static_cast<dualsense::OutputBody::LightbarSetup>(v);
-      this->lightbar_on = setup == dualsense::OutputBody::LightbarSetup::LIGHT_ON;
+      this->lightbar_on = setup == dualsense::OutputBody::LightbarSetup::LightOn;
       this->led_force = true;
       setLightbarSetup(setup);
       serviceLeds();
@@ -1368,25 +1368,25 @@ private:
       dualsense::InputBody::Button button;
       const char *name;
     } names[] = {
-        {dualsense::InputBody::Button::BUTTON_SQUARE, "square"},
-        {dualsense::InputBody::Button::BUTTON_CROSS, "cross"},
-        {dualsense::InputBody::Button::BUTTON_CIRCLE, "circle"},
-        {dualsense::InputBody::Button::BUTTON_TRIANGLE, "triangle"},
+        {dualsense::InputBody::Button::ButtonSquare, "square"},
+        {dualsense::InputBody::Button::ButtonCross, "cross"},
+        {dualsense::InputBody::Button::ButtonCircle, "circle"},
+        {dualsense::InputBody::Button::ButtonTriangle, "triangle"},
         {dualsense::InputBody::Button::L1, "l1"},
         {dualsense::InputBody::Button::R1, "r1"},
         {dualsense::InputBody::Button::L2, "l2"},
         {dualsense::InputBody::Button::R2, "r2"},
-        {dualsense::InputBody::Button::CREATE, "create"},
-        {dualsense::InputBody::Button::OPTIONS, "options"},
+        {dualsense::InputBody::Button::Create, "create"},
+        {dualsense::InputBody::Button::Options, "options"},
         {dualsense::InputBody::Button::L3, "l3"},
         {dualsense::InputBody::Button::R3, "r3"},
-        {dualsense::InputBody::Button::PS_HOME, "ps"},
-        {dualsense::InputBody::Button::TOUCHPAD, "touchpad"},
-        {dualsense::InputBody::Button::MIC_MUTE, "mute"},
-        {dualsense::InputBody::Button::EDGE_FN1, "fn1"},
-        {dualsense::InputBody::Button::EDGE_FN2, "fn2"},
-        {dualsense::InputBody::Button::EDGE_LEFT_PADDLE, "left_paddle"},
-        {dualsense::InputBody::Button::EDGE_RIGHT_PADDLE, "right_paddle"},
+        {dualsense::InputBody::Button::PsHome, "ps"},
+        {dualsense::InputBody::Button::Touchpad, "touchpad"},
+        {dualsense::InputBody::Button::MicMute, "mute"},
+        {dualsense::InputBody::Button::EdgeFn1, "fn1"},
+        {dualsense::InputBody::Button::EdgeFn2, "fn2"},
+        {dualsense::InputBody::Button::EdgeLeftPaddle, "left_paddle"},
+        {dualsense::InputBody::Button::EdgeRightPaddle, "right_paddle"},
     };
 
     size_t o = 0;
@@ -1801,7 +1801,7 @@ private:
 
   void setLightbarSetup(dualsense::OutputBody::LightbarSetup setup) {
     if (this->externalHost()) return;
-    if (setup == dualsense::OutputBody::LightbarSetup::LIGHT_ON) this->led_force = true;
+    if (setup == dualsense::OutputBody::LightbarSetup::LightOn) this->led_force = true;
     char fields[32];
     snprintf(fields, sizeof(fields), "lightbar_setup=%d", static_cast<int>(setup));
     outputFields(fields);
@@ -1885,22 +1885,22 @@ private:
       if (this->led_charge_at == 0) {
         // Start the charging loop with setup 2, then 1 two seconds later.
         this->led_charge_at = now;
-        this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LIGHT_OUT;
-        setLightbarSetup(dualsense::OutputBody::LightbarSetup::LIGHT_OUT);
+        this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
+        setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       } else if (now - this->led_charge_at >= kChargeBlinkMs) {
         this->led_charge_at = now;
         this->led_charge_setup =
-            this->led_charge_setup == dualsense::OutputBody::LightbarSetup::LIGHT_OUT
-                ? dualsense::OutputBody::LightbarSetup::LIGHT_ON
-                : dualsense::OutputBody::LightbarSetup::LIGHT_OUT;
+            this->led_charge_setup == dualsense::OutputBody::LightbarSetup::LightOut
+                ? dualsense::OutputBody::LightbarSetup::LightOn
+                : dualsense::OutputBody::LightbarSetup::LightOut;
         setLightbarSetup(this->led_charge_setup);
       }
     } else if (this->led_charge_at != 0) {
       this->led_charge_at = 0;
-      this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LIGHT_OUT;
+      this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
       this->led_force = this->lightbar_on;
-      setLightbarSetup(this->lightbar_on ? dualsense::OutputBody::LightbarSetup::LIGHT_ON
-                                         : dualsense::OutputBody::LightbarSetup::LIGHT_OUT);
+      setLightbarSetup(this->lightbar_on ? dualsense::OutputBody::LightbarSetup::LightOn
+                                         : dualsense::OutputBody::LightbarSetup::LightOut);
     }
 
     int r = 0, g = 0, b = 0;

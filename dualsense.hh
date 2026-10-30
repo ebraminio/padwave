@@ -360,38 +360,38 @@ private:
   // means "adopt my bytes for this feature"; a clear bit means "leave that
   // feature as it is" — a claim, not a change notification.
   //
-  // Example: RIGHT_TRIGGER_MOTOR_ENABLE | LEFT_TRIGGER_MOTOR_ENABLE claims only
-  // the two trigger blocks,
+  // Example: RightTriggerMotorEnable | LeftTriggerMotorEnable claims only the two
+  // trigger blocks,
   // leaving volumes, LEDs and rumble untouched.
   enum class ValidFlag0 : uint8_t {
-    COMPATIBLE_VIBRATION       = 1u << 0, // +0x00 bit 0; main motors also need HAPTICS_SELECT
-    HAPTICS_SELECT             = 1u << 1, //       bit 1; paired with COMPATIBLE_VIBRATION
-    RIGHT_TRIGGER_MOTOR_ENABLE = 1u << 2, //       bit 2
-    LEFT_TRIGGER_MOTOR_ENABLE  = 1u << 3, //       bit 3
-    HEADPHONE_VOLUME_ENABLE    = 1u << 4, //       bit 4
-    SPEAKER_VOLUME_ENABLE      = 1u << 5, //       bit 5
-    MIC_VOLUME_ENABLE          = 1u << 6, //       bit 6
-    AUDIO_CONTROL_ENABLE       = 1u << 7, //       bit 7
+    CompatibleVibration     = 1u << 0, // +0x00 bit 0; main motors also need HapticsSelect
+    HapticsSelect           = 1u << 1, //       bit 1; paired with CompatibleVibration
+    RightTriggerMotorEnable = 1u << 2, //       bit 2
+    LeftTriggerMotorEnable  = 1u << 3, //       bit 3
+    HeadphoneVolumeEnable   = 1u << 4, //       bit 4
+    SpeakerVolumeEnable     = 1u << 5, //       bit 5
+    MicVolumeEnable         = 1u << 6, //       bit 6
+    AudioControlEnable      = 1u << 7, //       bit 7
   };
 
   enum class ValidFlag1 : uint8_t {
-    MIC_MUTE_LED_CONTROL_ENABLE     = 1u << 0, // +0x01 bit 0
-    POWER_SAVE_CONTROL_ENABLE       = 1u << 1, //       bit 1  enables power_save_control
-    LIGHTBAR_CONTROL_ENABLE         = 1u << 2, //       bit 2
-    RELEASE_LEDS                    = 1u << 3, //       bit 3
-    PLAYER_INDICATOR_CONTROL_ENABLE = 1u << 4, //       bit 4
-    HAPTIC_LOW_PASS_FILTER_ENABLE   = 1u << 5, //       bit 5
-    VIBRATION_ATTENUATION_ENABLE    = 1u << 6, //       bit 6
-    AUDIO_CONTROL2_ENABLE           = 1u << 7, //       bit 7
+    MicMuteLedControlEnable      = 1u << 0, // +0x01 bit 0
+    PowerSaveControlEnable       = 1u << 1, //       bit 1  enables power_save_control
+    LightbarControlEnable        = 1u << 2, //       bit 2
+    ReleaseLEDs                  = 1u << 3, //       bit 3
+    PlayerIndicatorControlEnable = 1u << 4, //       bit 4
+    HapticLowPassFilterEnable    = 1u << 5, //       bit 5
+    VibrationAttenuationEnable   = 1u << 6, //       bit 6
+    AudioControl2Enable          = 1u << 7, //       bit 7
   };
 
   // +0x26. Only two bits are documented anywhere in the references: bit 0
   // changes the LED brightness and bit 1 enables the fade-out control. Bits
   // 3-7 are reserved.
   enum class ValidFlag2 : uint8_t {
-    LED_BRIGHTNESS_CONTROL_ENABLE = 1u << 0, // bit 0
-    LIGHTBAR_SETUP_CONTROL_ENABLE = 1u << 1, // bit 1: enables the lightbar_setup fade control
-    COMPATIBLE_VIBRATION2         = 1u << 2, // bit 2
+    LedBrightnessControlEnable = 1u << 0, // bit 0
+    LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbar_setup fade control
+    CompatibleVibration2       = 1u << 2, // bit 2
   };
 
   // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
@@ -400,25 +400,25 @@ private:
   // the other six are in the panel's power save row so they can be probed: if
   // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
   enum PowerSave : uint8_t {
-    MICROPHONE_MUTE = 1u << 4, // bit 4  documented
-    AUDIO_MUTE      = 1u << 6, // bit 6  documented
+    MicrophoneMute = 1u << 4, // bit 4  documented
+    AudioMute      = 1u << 6, // bit 6  documented
   };
 
   // +0x2b: the five player LEDs, the same pattern the charging sweep animates.
   // Bits 5-7 are reserved.
   enum class PlayerLeds : uint8_t {
-    LED_1   = 1u << 0, // bit 0
-    LED_2   = 1u << 1, // bit 1
-    LED_3   = 1u << 2, // bit 2
-    LED_4   = 1u << 3, // bit 3
-    LED_5   = 1u << 4, // bit 4
-    INSTANT = 1u << 5, // bit 5: suppress the slow fade-in
+    Led1    = 1u << 0, // bit 0
+    Led2    = 1u << 1, // bit 1
+    Led3    = 1u << 2, // bit 2
+    Led4    = 1u << 3, // bit 3
+    Led5    = 1u << 4, // bit 4
+    Instant = 1u << 5, // bit 5: suppress the slow fade-in
   };
 
 public:
   enum class LightbarSetup : uint8_t {
-    LIGHT_ON  = 1u << 0,
-    LIGHT_OUT = 1u << 1,
+    LightOn  = 1u << 0,
+    LightOut = 1u << 1,
   };
 
   // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
@@ -445,134 +445,134 @@ private:
 
 public:
   constexpr void clearOneShotLightbar() {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::RELEASE_LEDS));
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LIGHTBAR_SETUP_CONTROL_ENABLE));
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::ReleaseLEDs));
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
   }
 
   constexpr void setMotorRight(uint8_t v) {
-    claim(ValidFlag0::COMPATIBLE_VIBRATION);
-    claim(ValidFlag0::HAPTICS_SELECT);
+    claim(ValidFlag0::CompatibleVibration);
+    claim(ValidFlag0::HapticsSelect);
     motor_right = v;
   }
 
   constexpr void setMotorLeft(uint8_t v) {
-    claim(ValidFlag0::COMPATIBLE_VIBRATION);
-    claim(ValidFlag0::HAPTICS_SELECT);
+    claim(ValidFlag0::CompatibleVibration);
+    claim(ValidFlag0::HapticsSelect);
     motor_left = v;
   }
 
   constexpr void setHeadphoneVolume(uint8_t v) {
-    claim(ValidFlag0::HEADPHONE_VOLUME_ENABLE);
+    claim(ValidFlag0::HeadphoneVolumeEnable);
     headphone_volume = v;
   }
 
   constexpr void setSpeakerVolume(uint8_t v) {
-    claim(ValidFlag0::SPEAKER_VOLUME_ENABLE);
+    claim(ValidFlag0::SpeakerVolumeEnable);
     speaker_volume = v;
   }
 
   constexpr void setMicVolume(uint8_t v) {
-    claim(ValidFlag0::MIC_VOLUME_ENABLE);
+    claim(ValidFlag0::MicVolumeEnable);
     mic_volume = v;
   }
 
   constexpr void setAudioRouting(uint8_t v) {
-    claim(ValidFlag0::AUDIO_CONTROL_ENABLE);
+    claim(ValidFlag0::AudioControlEnable);
     audio_control = v;
   }
 
   constexpr void setMuteButtonLed(uint8_t v) {
-    claim(ValidFlag1::MIC_MUTE_LED_CONTROL_ENABLE);
+    claim(ValidFlag1::MicMuteLedControlEnable);
     mute_button_led = v;
   }
 
   constexpr void setPowerSaveControl(uint8_t v) {
-    claim(ValidFlag1::POWER_SAVE_CONTROL_ENABLE);
+    claim(ValidFlag1::PowerSaveControlEnable);
     power_save_control = v;
   }
 
   constexpr void setRightTriggerMode(uint8_t v) {
-    claim(ValidFlag0::RIGHT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::RightTriggerMotorEnable);
     right_trigger_mode = v;
   }
 
   constexpr void setLeftTriggerMode(uint8_t v) {
-    claim(ValidFlag0::LEFT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::LeftTriggerMotorEnable);
     left_trigger_mode = v;
   }
 
   constexpr void setHapticVolume(uint8_t v) {
-    claim(ValidFlag1::HAPTIC_LOW_PASS_FILTER_ENABLE);
+    claim(ValidFlag1::HapticLowPassFilterEnable);
     haptic_volume = v;
   }
 
   constexpr void setAudioControl2(uint8_t v) {
-    claim(ValidFlag1::AUDIO_CONTROL2_ENABLE);
+    claim(ValidFlag1::AudioControl2Enable);
     audio_control2 = v;
   }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
-    claim(ValidFlag2::LIGHTBAR_SETUP_CONTROL_ENABLE);
+    claim(ValidFlag2::LightbarSetupControlEnable);
     lightbar_setup = static_cast<uint8_t>(v);
   }
 
   constexpr void setLedBrightness(uint8_t v) {
-    claim(ValidFlag2::LED_BRIGHTNESS_CONTROL_ENABLE);
+    claim(ValidFlag2::LedBrightnessControlEnable);
     led_brightness = v;
   }
 
   constexpr void setPlayerLedsMask(uint8_t v) {
-    claim(ValidFlag1::PLAYER_INDICATOR_CONTROL_ENABLE);
+    claim(ValidFlag1::PlayerIndicatorControlEnable);
     player_leds = v;
   }
 
   constexpr void setLightbarRed(uint8_t v) {
-    claim(ValidFlag1::LIGHTBAR_CONTROL_ENABLE);
+    claim(ValidFlag1::LightbarControlEnable);
     lightbar_red = v;
   }
 
   constexpr void setLightbarGreen(uint8_t v) {
-    claim(ValidFlag1::LIGHTBAR_CONTROL_ENABLE);
+    claim(ValidFlag1::LightbarControlEnable);
     lightbar_green = v;
   }
 
   constexpr void setLightbarBlue(uint8_t v) {
-    claim(ValidFlag1::LIGHTBAR_CONTROL_ENABLE);
+    claim(ValidFlag1::LightbarControlEnable);
     lightbar_blue = v;
   }
 
   constexpr void setRightTriggerParams(const uint8_t *v) {
-    claim(ValidFlag0::RIGHT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::RightTriggerMotorEnable);
     for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = v[i];
   }
 
   constexpr void setLeftTriggerParams(const uint8_t *v) {
-    claim(ValidFlag0::LEFT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::LeftTriggerMotorEnable);
     for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = v[i];
   }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
-    claim(ValidFlag0::RIGHT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::RightTriggerMotorEnable);
     right_trigger_mode = effect.block[0];
     for (size_t i = 0; i < 10; ++i) right_trigger_params[i] = effect.block[i + 1];
   }
 
   constexpr void setLeftTriggerEffect(const TriggerEffect &effect) {
-    claim(ValidFlag0::LEFT_TRIGGER_MOTOR_ENABLE);
+    claim(ValidFlag0::LeftTriggerMotorEnable);
     left_trigger_mode = effect.block[0];
     for (size_t i = 0; i < 10; ++i) left_trigger_params[i] = effect.block[i + 1];
   }
 
   constexpr void setAudioRoute(AudioControl routing) {
-    claim(ValidFlag0::AUDIO_CONTROL_ENABLE);
+    claim(ValidFlag0::AudioControlEnable);
     audio_control = static_cast<uint8_t>(routing);
   }
 
   constexpr void setAudio(AudioControl routing) {
     valid_flag0 = static_cast<uint8_t>(
-        bit(ValidFlag0::HEADPHONE_VOLUME_ENABLE) | bit(ValidFlag0::SPEAKER_VOLUME_ENABLE) |
-        bit(ValidFlag0::MIC_VOLUME_ENABLE) | bit(ValidFlag0::AUDIO_CONTROL_ENABLE));
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::AUDIO_CONTROL2_ENABLE));
+        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
+        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::AudioControl2Enable));
     headphone_volume = 0x7F;
     speaker_volume = 0x64;
     audio_control = static_cast<uint8_t>(routing);
@@ -580,7 +580,7 @@ public:
   }
 
   constexpr void setMic(bool on) {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::POWER_SAVE_CONTROL_ENABLE));
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::PowerSaveControlEnable));
     if (on) {
       power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
       mic_volume = 0x40;
@@ -591,12 +591,12 @@ public:
 
   constexpr void clearPlayerLeds() {
     valid_flag1 =
-        static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::PLAYER_INDICATOR_CONTROL_ENABLE));
+        static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
   }
 
   constexpr void clearLightbar() {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::LIGHTBAR_CONTROL_ENABLE));
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LIGHTBAR_SETUP_CONTROL_ENABLE));
+    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::LightbarControlEnable));
+    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
     lightbar_setup = 0;
     lightbar_red = 0;
     lightbar_green = 0;
@@ -609,9 +609,9 @@ public:
   constexpr void init(AudioControl routing = AudioControl::Headphones) {
     *this = OutputBody{};
     valid_flag0 = static_cast<uint8_t>(
-        bit(ValidFlag0::HEADPHONE_VOLUME_ENABLE) | bit(ValidFlag0::SPEAKER_VOLUME_ENABLE) |
-        bit(ValidFlag0::MIC_VOLUME_ENABLE) | bit(ValidFlag0::AUDIO_CONTROL_ENABLE));
-    valid_flag1 = bit(ValidFlag1::AUDIO_CONTROL2_ENABLE);
+        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
+        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
+    valid_flag1 = bit(ValidFlag1::AudioControl2Enable);
     headphone_volume = 0x7F;
     speaker_volume = 0x64;
     audio_control = static_cast<uint8_t>(routing);
@@ -872,28 +872,28 @@ public:
   //   +0x0a  eight bits the kernel does not read; maybe L5/R5
   enum class Button : uint32_t {
     // +0x07
-    BUTTON_SQUARE     = 1u << 4,
-    BUTTON_CROSS      = 1u << 5,
-    BUTTON_CIRCLE     = 1u << 6,
-    BUTTON_TRIANGLE   = 1u << 7,
+    ButtonSquare    = 1u << 4,
+    ButtonCross     = 1u << 5,
+    ButtonCircle    = 1u << 6,
+    ButtonTriangle  = 1u << 7,
     // +0x08
-    L1                = 1u << 8,
-    R1                = 1u << 9,
-    L2                = 1u << 10,
-    R2                = 1u << 11,
-    CREATE            = 1u << 12,
-    OPTIONS           = 1u << 13,
-    L3                = 1u << 14,
-    R3                = 1u << 15,
+    L1              = 1u << 8,
+    R1              = 1u << 9,
+    L2              = 1u << 10,
+    R2              = 1u << 11,
+    Create          = 1u << 12,
+    Options         = 1u << 13,
+    L3              = 1u << 14,
+    R3              = 1u << 15,
     // +0x09
-    PS_HOME           = 1u << 16,
-    TOUCHPAD          = 1u << 17,
-    MIC_MUTE          = 1u << 18,
+    PsHome          = 1u << 16,
+    Touchpad        = 1u << 17,
+    MicMute         = 1u << 18,
     // bit 19 reserved
-    EDGE_FN1          = 1u << 20, // Edge only
-    EDGE_FN2          = 1u << 21, // Edge only
-    EDGE_LEFT_PADDLE  = 1u << 22, // Edge only
-    EDGE_RIGHT_PADDLE = 1u << 23, // Edge only
+    EdgeFn1         = 1u << 20, // Edge only
+    EdgeFn2         = 1u << 21, // Edge only
+    EdgeLeftPaddle  = 1u << 22, // Edge only
+    EdgeRightPaddle = 1u << 23, // Edge only
     // +0x0a: unread by the kernel; maybe L5/R5
   };
 
@@ -937,29 +937,29 @@ public:
   // +0x35. Bits 0-1 are jack/mic detection, bit 2 is mic mute, bit 3 is the
   // observed USB data-link flag; bits 4-7 are reserved.
   enum class Status1 : uint8_t {
-    HEADPHONE_DETECT = 1u << 0, // bit 0
-    MIC_DETECT       = 1u << 1, // bit 1
-    MIC_MUTE         = 1u << 2, // bit 2
+    HeadphoneDetect = 1u << 0, // bit 0
+    MicDetect       = 1u << 1, // bit 1
+    MicMute         = 1u << 2, // bit 2
     // Undocumented: observed set whenever a USB data link is present,
     // including USB-only operation. Clear with a charger-only cable or no USB.
     // Combined with the active Bluetooth transport, it means another USB host
     // is also attached. Not parsed by hid-playstation.
-    USB_DATA_LINK    = 1u << 3, // bit 3
+    UsbDataLink     = 1u << 3, // bit 3
   };
 
   constexpr bool headset() const {
-    return (status1 & static_cast<uint8_t>(Status1::HEADPHONE_DETECT)) != 0;
+    return (status1 & static_cast<uint8_t>(Status1::HeadphoneDetect)) != 0;
   }
 
   constexpr bool usbDataLink() const {
-    return (status1 & static_cast<uint8_t>(Status1::USB_DATA_LINK)) != 0;
+    return (status1 & static_cast<uint8_t>(Status1::UsbDataLink)) != 0;
   }
 
   constexpr bool microphone() const {
-    return (status1 & static_cast<uint8_t>(Status1::MIC_DETECT)) != 0;
+    return (status1 & static_cast<uint8_t>(Status1::MicDetect)) != 0;
   }
 
-  constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MIC_MUTE)) != 0; }
+  constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
 
   struct Touch {
     bool active;

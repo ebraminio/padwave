@@ -189,6 +189,16 @@
   .field { background: #0f1219; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 11px; }
   .field b { display: block; color: var(--muted); font-weight: 500; font-size: 10px; letter-spacing: .05em; }
   .field span { font-family: var(--mono); color: var(--accent-2); }
+  .bitwatch { margin-top: 12px; display: grid; gap: 6px; }
+  .bitrow { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+  .bitrow .name { width: 62px; color: var(--muted); font-family: var(--mono); }
+  .bit { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 5px;
+         display: flex; align-items: center; justify-content: center; font-family: var(--mono);
+         font-size: 10px; color: var(--muted); }
+  .bit.on { color: var(--text); background: #1b2130; border-color: var(--accent-2); }
+  .bit.unknown { border-style: dashed; }
+  .bit.on.unknown { background: #3a2a14; border-color: var(--warn); color: #ffd18a; }
+  .bitwatch .note { color: var(--muted); font-size: 11px; }
 
   .setting { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--muted); }
   .setting label { display: inline-flex; align-items: center; gap: 6px; }
@@ -299,6 +309,7 @@
         <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div></div>
         <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div></div>
       </div>
+      <div class="bitwatch" id="bitwatch"></div>
       <details>
         <summary>live packet 0x31 · 78 bytes, every field</summary>
         <pre class="hex" id="hex">waiting for the controller…</pre>
@@ -640,7 +651,10 @@ function render(s) {
     $("#hex").textContent = c.raw || "—";
     renderFields(c.fields || {});
     renderSensors(c);
+    renderBitWatch(c.raw);
     $("#lastAction").textContent = c.last_action || "—";
+  } else {
+    renderBitWatch("");
   }
 
   const pressed = new Set(c.buttons || []);
@@ -779,6 +793,46 @@ function flattenFields(object, prefix = "") {
     }
   }
   return out;
+}
+
+function renderBitWatch(raw) {
+  const host = $("#bitwatch");
+  if (!raw) {
+    host.innerHTML = '<div class="note">bit watch · waiting for a report</div>';
+    return;
+  }
+  const clean = raw.replace(/[^0-9a-f]/gi, "");
+  const bytes = clean.match(/../g)?.map(x => parseInt(x, 16)) || [];
+  const bt = bytes[0] === 0x31;
+  const body = bt ? 2 : 1;
+  if (bytes.length < body + 0x37) {
+    host.innerHTML = '<div class="note">bit watch · short report</div>';
+    return;
+  }
+  const status1 = bytes[body + 0x35];
+  const status2 = bytes[body + 0x36];
+  const buttons3 = bytes[body + 0x0a];
+  const unknown = [];
+  const row = (title, value, labels) => {
+    const cells = [];
+    for (let bit = 0; bit < 8; bit++) {
+      const on = ((value >> bit) & 1) !== 0;
+      const label = labels[bit] || "?";
+      if (on && !labels[bit]) unknown.push(`${title}.${bit}`);
+      cells.push(`<span class="bit${on ? " on" : ""}${labels[bit] ? "" : " unknown"}"
+        title="${title} bit ${bit}${labels[bit] ? " · " + labels[bit] : " · unexplained"}">${label}</span>`);
+    }
+    return `<div class="bitrow"><span class="name">${title} 0x${value.toString(16).padStart(2, "0")}</span>${cells.join("")}</div>`;
+  };
+  const html = [
+    row("status1", status1, ["HP", "MIC", "MUTE", "USB", null, null, null, null]),
+    row("status2", status2, [null, null, null, null, null, null, null, null]),
+    row("buttons3", buttons3, [null, null, null, null, null, null, null, null]),
+    `<div class="note">${unknown.length
+      ? "unexplained set: " + unknown.join(", ")
+      : "no unexplained bits set"}</div>`,
+  ];
+  host.innerHTML = html.join("");
 }
 
 function renderFields(fields) {
