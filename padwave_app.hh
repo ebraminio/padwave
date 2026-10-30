@@ -1560,8 +1560,8 @@ private:
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
     this->touch_timestamp = b.touchTimestamp();
-    this->host_timestamp = b.hostTimestamp();
-    this->device_timestamp = b.deviceTimestamp();
+    this->host_timestamp = b.hostTime();
+    this->device_timestamp = b.deviceTime();
     this->trigger_effect_r = b.triggerEffectRight();
     this->trigger_effect_l = b.triggerEffectLeft();
     for (int t = 0; t < 2; t++) {

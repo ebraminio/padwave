@@ -11,7 +11,7 @@ namespace internal {
 
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
-  static constexpr unsigned int static_size = sizeof(Type);
+  static constexpr unsigned int staticSize = sizeof(Type);
 
   constexpr NumType() = default;
 
@@ -73,7 +73,7 @@ static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
 // 0xA2 output, 0xA3 features), over everything before the trailing `crc`
-// member. Every report type carries `crc`, `CrcSeed` and a `report_id`, so one
+// member. Every report type carries `crc`, `CrcSeed` and a `reportId`, so one
 // template covers them all. This is the same result as zlib's crc32(), but
 // local so the binary does not need -lz.
 struct Crc32Table {
@@ -523,41 +523,41 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 valid_flag0;         // +0x00  ValidFlag0 bits
-  DSUINT8 valid_flag1;         // +0x01  ValidFlag1 bits
-  DSUINT8 motor_right;         // +0x02  DS4-compatible rumble
-  DSUINT8 motor_left;          // +0x03
-  DSUINT8 headphone_volume;    // +0x04  0x00..0x7f
-  DSUINT8 speaker_volume;      // +0x05  0x00..0xff
-  DSUINT8 mic_volume;          // +0x06  0x00..0x40 (claimed by MicVolume)
-  DSUINT8 audio_control;       // +0x07  AudioControl; claimed by AudioRouting
-  DSUINT8 mute_button_led;     // +0x08
-  DSUINT8 power_save_control;  // +0x09  PowerSave bits
-  TriggerEffect right_trigger; // +0x0a  11-byte effect block
-  TriggerEffect left_trigger;  // +0x15  11-byte effect block
-  DSUINT32 host_timestamp;     // +0x20  mirrored input sensor timestamp
-  DSUINT8 motor_power_level;   // +0x24  trigger:rumble reduction nibbles
-  DSUINT8 audio_control2;      // +0x25  speaker preamp gain
-  DSUINT8 valid_flag2;         // +0x26  ValidFlag2 bits
-  DSUINT8 haptic_low_pass_filter; // +0x27  hardware haptic LPF enable
-  DSUINT8 reserved_40;            // +0x28
-  DSUINT8 lightbar_setup;      // +0x29  valid_flag2 bit 1; 0x02 fades out
-  DSUINT8 led_brightness;      // +0x2a
-  DSUINT8 player_leds;         // +0x2b  PlayerLeds bits
-  DSUINT8 lightbar_red;        // +0x2c
-  DSUINT8 lightbar_green;      // +0x2d
-  DSUINT8 lightbar_blue;       // +0x2e
+  DSUINT8 validFlag0;         // +0x00  ValidFlag0 bits
+  DSUINT8 validFlag1;         // +0x01  ValidFlag1 bits
+  DSUINT8 motorRight;         // +0x02  DS4-compatible rumble
+  DSUINT8 motorLeft;          // +0x03
+  DSUINT8 volumeHeadphones;   // +0x04  0x00..0x7f
+  DSUINT8 volumeSpeaker;      // +0x05  0x00..0xff
+  DSUINT8 micVolume;          // +0x06  0x00..0x40 (claimed by MicVolume)
+  DSUINT8 audioControl;       // +0x07  AudioControl; claimed by AudioRouting
+  DSUINT8 muteButtonLed;     // +0x08
+  DSUINT8 powerSaveControl;  // +0x09  PowerSave bits
+  TriggerEffect rightTrigger; // +0x0a  11-byte effect block
+  TriggerEffect leftTrigger;  // +0x15  11-byte effect block
+  DSUINT32 hostTimestamp;     // +0x20  mirrored input sensor timestamp
+  DSUINT8 motorPowerLevel;   // +0x24  trigger:rumble reduction nibbles
+  DSUINT8 audioControl2;      // +0x25  speaker preamp gain
+  DSUINT8 validFlag2;         // +0x26  ValidFlag2 bits
+  DSUINT8 hapticLowPassFilter; // +0x27  hardware haptic LPF enable
+  DSUINT8 reserved40;            // +0x28
+  DSUINT8 lightbarSetup;      // +0x29  validFlag2 bit 1; 0x02 fades out
+  DSUINT8 ledBrightness;      // +0x2a
+  DSUINT8 playerLeds;         // +0x2b  PlayerLeds bits
+  DSUINT8 lightbarRed;        // +0x2c
+  DSUINT8 lightbarGreen;      // +0x2d
+  DSUINT8 lightbarBlue;       // +0x2e
 
 public:
   enum : uint8_t { Size = 47 };
 
-  constexpr uint8_t headphoneVolume() const { return headphone_volume; }
+  constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
 
-  constexpr uint8_t speakerVolume() const { return speaker_volume; }
+  constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
 
 private:
   // Which fields this report owns: the kernel's (and DS4Windows', and
-  // dualsense-tester's) valid_flag0 / valid_flag1 / valid_flag2. A set bit
+  // dualsense-tester's) validFlag0 / validFlag1 / validFlag2. A set bit
   // means "adopt my bytes for this feature"; a clear bit means "leave that
   // feature as it is" — a claim, not a change notification.
   //
@@ -577,7 +577,7 @@ private:
 
   enum class ValidFlag1 : uint8_t {
     MicMuteLedControlEnable = 1u << 0,      // +0x01 bit 0
-    PowerSaveControlEnable = 1u << 1,       //       bit 1  enables power_save_control
+    PowerSaveControlEnable = 1u << 1,       //       bit 1  enables powerSaveControl
     LightbarControlEnable = 1u << 2,        //       bit 2
     ReleaseLEDs = 1u << 3,                  //       bit 3
     PlayerIndicatorControlEnable = 1u << 4, //       bit 4
@@ -591,7 +591,7 @@ private:
   // 3-7 are reserved.
   enum class ValidFlag2 : uint8_t {
     LedBrightnessControlEnable = 1u << 0, // bit 0
-    LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbar_setup fade control
+    LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbarSetup fade control
     CompatibleVibration2 = 1u << 2,       // bit 2
   };
 
@@ -651,177 +651,177 @@ private:
 
   static constexpr uint8_t bit(ValidFlag2 f) { return static_cast<uint8_t>(f); }
 
-  constexpr void claim(ValidFlag0 f) { valid_flag0 = static_cast<uint8_t>(valid_flag0 | bit(f)); }
+  constexpr void claim(ValidFlag0 f) { validFlag0 = static_cast<uint8_t>(validFlag0 | bit(f)); }
 
-  constexpr void claim(ValidFlag1 f) { valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(f)); }
+  constexpr void claim(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 | bit(f)); }
 
-  constexpr void claim(ValidFlag2 f) { valid_flag2 = static_cast<uint8_t>(valid_flag2 | bit(f)); }
+  constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
 public:
   constexpr void clearOneShotLightbar() {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::ReleaseLEDs));
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
+    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::ReleaseLEDs));
+    validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
   }
 
   constexpr void setMotorRight(uint8_t v) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
-    motor_right = v;
+    motorRight = v;
   }
 
   constexpr void setMotorLeft(uint8_t v) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
-    motor_left = v;
+    motorLeft = v;
   }
 
   constexpr void setHeadphoneVolume(uint8_t v) {
     claim(ValidFlag0::HeadphoneVolumeEnable);
-    headphone_volume = v;
+    volumeHeadphones = v;
   }
 
   constexpr void setSpeakerVolume(uint8_t v) {
     claim(ValidFlag0::SpeakerVolumeEnable);
-    speaker_volume = v;
+    volumeSpeaker = v;
   }
 
   constexpr void setMicVolume(uint8_t v) {
     claim(ValidFlag0::MicVolumeEnable);
-    mic_volume = v;
+    micVolume = v;
   }
 
   constexpr void setAudioRouting(uint8_t v) {
     claim(ValidFlag0::AudioControlEnable);
-    audio_control = v;
+    audioControl = v;
   }
 
   constexpr void setMuteButtonLed(uint8_t v) {
     claim(ValidFlag1::MicMuteLedControlEnable);
-    mute_button_led = v;
+    muteButtonLed = v;
   }
 
   constexpr void setPowerSaveControl(uint8_t v) {
     claim(ValidFlag1::PowerSaveControlEnable);
-    power_save_control = v;
+    powerSaveControl = v;
   }
 
   constexpr void setRightTriggerMode(uint8_t v) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    right_trigger.block[0] = v;
+    rightTrigger.block[0] = v;
   }
 
   constexpr void setLeftTriggerMode(uint8_t v) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    left_trigger.block[0] = v;
+    leftTrigger.block[0] = v;
   }
 
   constexpr void setMotorPowerLevel(uint8_t v) {
     claim(ValidFlag1::VibrationAttenuationEnable);
-    motor_power_level = v;
+    motorPowerLevel = v;
   }
 
   constexpr void setHapticLowPassFilter(bool on) {
     claim(ValidFlag1::HapticLowPassFilterEnable);
-    haptic_low_pass_filter = on ? 1 : 0;
+    hapticLowPassFilter = on ? 1 : 0;
   }
 
   constexpr void setHapticLowPassFilter(uint8_t v) { setHapticLowPassFilter(v != 0); }
 
-  constexpr void setHostTimestamp(uint32_t v) { host_timestamp = v; }
+  constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
 
   constexpr void setAudioControl2(uint8_t v) {
     claim(ValidFlag1::AudioControl2Enable);
-    audio_control2 = v;
+    audioControl2 = v;
   }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
     claim(ValidFlag2::LightbarSetupControlEnable);
-    lightbar_setup = static_cast<uint8_t>(v);
+    lightbarSetup = static_cast<uint8_t>(v);
   }
 
   constexpr void setLedBrightness(uint8_t v) {
     claim(ValidFlag2::LedBrightnessControlEnable);
-    led_brightness = v;
+    ledBrightness = v;
   }
 
   constexpr void setPlayerLedsMask(uint8_t v) {
     claim(ValidFlag1::PlayerIndicatorControlEnable);
-    player_leds = v;
+    playerLeds = v;
   }
 
   constexpr void setLightbarRed(uint8_t v) {
     claim(ValidFlag1::LightbarControlEnable);
-    lightbar_red = v;
+    lightbarRed = v;
   }
 
   constexpr void setLightbarGreen(uint8_t v) {
     claim(ValidFlag1::LightbarControlEnable);
-    lightbar_green = v;
+    lightbarGreen = v;
   }
 
   constexpr void setLightbarBlue(uint8_t v) {
     claim(ValidFlag1::LightbarControlEnable);
-    lightbar_blue = v;
+    lightbarBlue = v;
   }
 
   constexpr void setRightTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) right_trigger.block[i + 1] = v[i];
+    for (size_t i = 0; i < 10; ++i) rightTrigger.block[i + 1] = v[i];
   }
 
   constexpr void setLeftTriggerParams(const uint8_t *v) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) left_trigger.block[i + 1] = v[i];
+    for (size_t i = 0; i < 10; ++i) leftTrigger.block[i + 1] = v[i];
   }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::RightTriggerMotorEnable);
-    right_trigger = effect;
+    rightTrigger = effect;
   }
 
   constexpr void setLeftTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
-    left_trigger = effect;
+    leftTrigger = effect;
   }
 
   constexpr void setAudioRoute(AudioControl routing) {
     claim(ValidFlag0::AudioControlEnable);
-    audio_control = static_cast<uint8_t>(routing);
+    audioControl = static_cast<uint8_t>(routing);
   }
 
   constexpr void setAudio(AudioControl routing) {
-    valid_flag0 = static_cast<uint8_t>(
+    validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::AudioControl2Enable));
-    headphone_volume = 0x7F;
-    speaker_volume = 0x64;
-    audio_control = static_cast<uint8_t>(routing);
-    audio_control2 = 0x0A;
+    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
+    volumeHeadphones = 0x7F;
+    volumeSpeaker = 0x64;
+    audioControl = static_cast<uint8_t>(routing);
+    audioControl2 = 0x0A;
   }
 
   constexpr void setMic(bool on) {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 | bit(ValidFlag1::PowerSaveControlEnable));
+    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::PowerSaveControlEnable));
     if (on) {
-      power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
-      mic_volume = 0x40;
+      powerSaveControl = static_cast<uint8_t>(powerSaveControl & ~0x10);
+      micVolume = 0x40;
     } else {
-      power_save_control = static_cast<uint8_t>(power_save_control | 0x10);
+      powerSaveControl = static_cast<uint8_t>(powerSaveControl | 0x10);
     }
   }
 
   constexpr void clearPlayerLeds() {
-    valid_flag1 =
-        static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
+    validFlag1 =
+        static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
   }
 
   constexpr void clearLightbar() {
-    valid_flag1 = static_cast<uint8_t>(valid_flag1 & ~bit(ValidFlag1::LightbarControlEnable));
-    valid_flag2 = static_cast<uint8_t>(valid_flag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
-    lightbar_setup = 0;
-    lightbar_red = 0;
-    lightbar_green = 0;
-    lightbar_blue = 0;
+    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::LightbarControlEnable));
+    validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
+    lightbarSetup = 0;
+    lightbarRed = 0;
+    lightbarGreen = 0;
+    lightbarBlue = 0;
   }
 
   // Claims only what the audio path writes: the volumes and the routing.
@@ -829,14 +829,14 @@ public:
   // another writer is using.
   constexpr void init(AudioControl routing = AudioControl::Headphones) {
     *this = OutputBody{};
-    valid_flag0 = static_cast<uint8_t>(
+    validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    valid_flag1 = bit(ValidFlag1::AudioControl2Enable);
-    headphone_volume = 0x7F;
-    speaker_volume = 0x64;
-    audio_control = static_cast<uint8_t>(routing);
-    audio_control2 = 0x0A;
+    validFlag1 = bit(ValidFlag1::AudioControl2Enable);
+    volumeHeadphones = 0x7F;
+    volumeSpeaker = 0x64;
+    audioControl = static_cast<uint8_t>(routing);
+    audioControl2 = 0x0A;
   }
 };
 
@@ -844,9 +844,9 @@ static_assert(sizeof(OutputBody) == OutputBody::Size, "output body must stay 47 
 
 namespace internal {
 struct OutputBodyProbe {
-  static constexpr uint8_t valid0(const OutputBody &b) { return b.valid_flag0; }
+  static constexpr uint8_t valid0(const OutputBody &b) { return b.validFlag0; }
 
-  static constexpr uint8_t valid1(const OutputBody &b) { return b.valid_flag1; }
+  static constexpr uint8_t valid1(const OutputBody &b) { return b.validFlag1; }
 
   static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
     return e.block[i];
@@ -960,10 +960,10 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 report_id;     // 0x00  Packet::PacketStateBluetooth
-  DSUINT8 seq_tag;       // 0x01  high nibble = counter 0..15, low nibble = 0
+  DSUINT8 reportId;     // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 seqTag;       // 0x01  high nibble = counter 0..15, low nibble = 0
   DSUINT8 tag;           // 0x02  must be 0x10
-  OutputBody body_;      // 0x03..0x31
+  OutputBody bodyData;      // 0x03..0x31
   DSUINT8 reserved4[24]; // 0x32..0x49
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
@@ -992,24 +992,24 @@ public:
 
   constexpr void init() {
     *this = OutputReport{};
-    report_id = ReportId;
+    reportId = ReportId;
     tag = Tag;
-    seq_tag = 0;
-    body_.init();
+    seqTag = 0;
+    bodyData.init();
   }
 
   constexpr void init(Sequence &sequence) {
     init();
-    seq_tag = sequence.next();
+    seqTag = sequence.next();
   }
 
-  constexpr const OutputBody &body() const { return body_; }
+  constexpr const OutputBody &body() const { return bodyData; }
 
-  constexpr OutputBody &body() { return body_; }
+  constexpr OutputBody &body() { return bodyData; }
 
   constexpr void sign() { crc = internal::crc_of(*this); }
 
-  constexpr bool valid() const { return report_id == ReportId && crc == internal::crc_of(*this); }
+  constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
 };
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
@@ -1022,8 +1022,8 @@ private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 report_id;    // 0x00  Packet::PacketOutputUsb
-  OutputBody body_;     // 0x01..0x2f
+  DSUINT8 reportId;    // 0x00  Packet::PacketOutputUsb
+  OutputBody bodyData;     // 0x01..0x2f
   DSUINT8 reserved[15]; // 0x30..0x3e
 
 public:
@@ -1031,14 +1031,14 @@ public:
 
   constexpr void init() {
     *this = UsbOutputReport{};
-    report_id = ReportId;
+    reportId = ReportId;
     // USB field reports must not claim the audio defaults.
-    body_ = OutputBody{};
+    bodyData = OutputBody{};
   }
 
-  constexpr const OutputBody &body() const { return body_; }
+  constexpr const OutputBody &body() const { return bodyData; }
 
-  constexpr OutputBody &body() { return body_; }
+  constexpr OutputBody &body() { return bodyData; }
 };
 
 static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
@@ -1071,14 +1071,14 @@ private:
   using DSINT16 = internal::DSINT16;
 
 public:
-  // One 4-byte touch contact on the wire. The high nibble of `xy_high` is
+  // One 4-byte touch contact on the wire. The high nibble of `xyHigh` is
   // y-low; the low nibble is x-high. Bit 7 of `contact` means "not touching".
   struct TouchPoint {
   private:
     DSUINT8 contact;
-    DSUINT8 x_low;
-    DSUINT8 xy_high;
-    DSUINT8 y_high;
+    DSUINT8 xLow;
+    DSUINT8 xyHigh;
+    DSUINT8 yHigh;
 
   public:
     constexpr bool active() const { return (contact & 0x80) == 0; }
@@ -1086,11 +1086,11 @@ public:
     constexpr unsigned id() const { return contact & 0x7F; }
 
     constexpr unsigned x() const {
-      return static_cast<unsigned>(x_low) | (static_cast<unsigned>(xy_high & 0x0F) << 8);
+      return static_cast<unsigned>(xLow) | (static_cast<unsigned>(xyHigh & 0x0F) << 8);
     }
 
     constexpr unsigned y() const {
-      return static_cast<unsigned>(xy_high >> 4) | (static_cast<unsigned>(y_high) << 4);
+      return static_cast<unsigned>(xyHigh >> 4) | (static_cast<unsigned>(yHigh) << 4);
     }
   };
 
@@ -1115,29 +1115,29 @@ protected:
   DSUINT8 l2;                 // +0x04  L2 analogue
   DSUINT8 r2;                 // +0x05  R2 analogue
   DSUINT8 seq;                // +0x06  report sequence number
-  DSUINT32 buttons_;          // +0x07  Buttons bits (d-pad in bits 0-3)
+  DSUINT32 buttonsData;          // +0x07  Buttons bits (d-pad in bits 0-3)
   DSUINT8 incremental;        // +0x0b  increments every report, wraps at 256
-  DSUINT8 reserved_14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
+  DSUINT8 reserved14[3];     // +0x0c  constant (0x84, ?, 0x85) except that the
                               //        middle byte ticks up by one every few
                               //        minutes — a slow counter
-  DSINT16 gyro_x;             // +0x0f  angular velocity, little-endian
-  DSINT16 gyro_y;             // +0x11
-  DSINT16 gyro_z;             // +0x13
-  DSINT16 accel_x;            // +0x15  acceleration, ~8192 counts per g
-  DSINT16 accel_y;            // +0x17
-  DSINT16 accel_z;            // +0x19
-  DSUINT32 sensor_time;       // +0x1b  timestamp, 0.33 us units
-  DSUINT8 temperature_;       // +0x1f  controller temperature, degrees C
-  TouchData touch_data;          // +0x20  two contacts + timestamp
-  TriggerFeedback trigger_right; // +0x29  stop location + status
-  TriggerFeedback trigger_left;  // +0x2a
-  DSUINT32 host_timestamp;       // +0x2b  echoed host timestamp
-  DSUINT8 trigger_effect;        // +0x2f  low nibble right, high nibble left
-  DSUINT32 device_timestamp;     // +0x30  device clock
+  DSINT16 gyroX;             // +0x0f  angular velocity, little-endian
+  DSINT16 gyroY;             // +0x11
+  DSINT16 gyroZ;             // +0x13
+  DSINT16 accelX;            // +0x15  acceleration, ~8192 counts per g
+  DSINT16 accelY;            // +0x17
+  DSINT16 accelZ;            // +0x19
+  DSUINT32 sensorTime;       // +0x1b  timestamp, 0.33 us units
+  DSUINT8 temperatureC;       // +0x1f  controller temperature, degrees C
+  TouchData touchData;          // +0x20  two contacts + timestamp
+  TriggerFeedback triggerRight; // +0x29  stop location + status
+  TriggerFeedback triggerLeft;  // +0x2a
+  DSUINT32 hostTimestamp;       // +0x2b  echoed host timestamp
+  DSUINT8 triggerEffect;        // +0x2f  low nibble right, high nibble left
+  DSUINT32 deviceTimestamp;     // +0x30  device clock
   DSUINT8 status0;               // +0x34  low nibble battery, high power state
   DSUINT8 status1;               // +0x35  Status1 bits
   DSUINT8 status2;               // +0x36  Status2 bits
-  DSUINT8 aes_cmac[8];        // +0x37  high entropy in every report, like a
+  DSUINT8 aesCmac[8];        // +0x37  high entropy in every report, like a
                               //        per-report MAC/nonce; not verified
                               //        against the pairing handshake
 
@@ -1180,7 +1180,7 @@ public:
     static constexpr float CountsPerFullScale = 32768.f;
   };
 
-  Gyro gyro() const { return {gyro_x, gyro_y, gyro_z}; }
+  Gyro gyro() const { return {gyroX, gyroY, gyroZ}; }
 
   // Acceleration in g: ~8192 raw counts per g.
   struct Accelerometer {
@@ -1196,9 +1196,9 @@ public:
     static constexpr float CountsPerG = 8192.f;
   };
 
-  Accelerometer accelerometer() const { return {accel_x, accel_y, accel_z}; }
+  Accelerometer accelerometer() const { return {accelX, accelY, accelZ}; }
 
-  uint8_t temperature() const { return temperature_; }
+  uint8_t temperature() const { return temperatureC; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -1214,7 +1214,7 @@ public:
     None = 8,
   };
 
-  Dpad dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttons_) & DPAD_MASK); }
+  Dpad dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttonsData) & DPAD_MASK); }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
@@ -1269,7 +1269,7 @@ public:
     uint32_t buttons;
   };
 
-  constexpr const Buttons buttons() const { return Buttons(this->buttons_ & ~DPAD_MASK); }
+  constexpr const Buttons buttons() const { return Buttons(this->buttonsData & ~DPAD_MASK); }
 
   // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
   // high nibble is PowerState. The controller can report Complete before the
@@ -1334,29 +1334,29 @@ public:
     return (status2 & static_cast<uint8_t>(Status2::HapticLowPassFilter)) != 0;
   }
 
-  TouchPoint touch(int index) const { return touch_data.fingers[index == 0 ? 0 : 1]; }
+  TouchPoint touch(int index) const { return touchData.fingers[index == 0 ? 0 : 1]; }
 
-  uint8_t touchTimestamp() const { return touch_data.timestamp; }
+  uint8_t touchTimestamp() const { return touchData.timestamp; }
 
-  unsigned triggerFeedbackLeft() const { return trigger_left.value; }
+  unsigned triggerFeedbackLeft() const { return triggerLeft.value; }
 
-  unsigned triggerFeedbackRight() const { return trigger_right.value; }
+  unsigned triggerFeedbackRight() const { return triggerRight.value; }
 
-  unsigned triggerStopLocationLeft() const { return trigger_left.stopLocation(); }
+  unsigned triggerStopLocationLeft() const { return triggerLeft.stopLocation(); }
 
-  unsigned triggerStatusLeft() const { return trigger_left.status(); }
+  unsigned triggerStatusLeft() const { return triggerLeft.status(); }
 
-  unsigned triggerStopLocationRight() const { return trigger_right.stopLocation(); }
+  unsigned triggerStopLocationRight() const { return triggerRight.stopLocation(); }
 
-  unsigned triggerStatusRight() const { return trigger_right.status(); }
+  unsigned triggerStatusRight() const { return triggerRight.status(); }
 
-  unsigned triggerEffectLeft() const { return trigger_effect >> 4; }
+  unsigned triggerEffectLeft() const { return triggerEffect >> 4; }
 
-  unsigned triggerEffectRight() const { return trigger_effect & 0x0F; }
+  unsigned triggerEffectRight() const { return triggerEffect & 0x0F; }
 
-  uint32_t hostTimestamp() const { return host_timestamp; }
+  uint32_t hostTime() const { return hostTimestamp; }
 
-  uint32_t deviceTimestamp() const { return device_timestamp; }
+  uint32_t deviceTime() const { return deviceTimestamp; }
 };
 
 static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes");
@@ -1382,10 +1382,10 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 report_id;      // 0x00  Packet::PacketStateBluetooth
-  DSUINT8 seq_tag;        // 0x01  high nibble = sequence tag, low nibble = 0
-  InputBody body_;        // 0x02..0x40
-  DSUINT8 bt_reserved[9]; // 0x41..0x49  the first byte is not constant (30
+  DSUINT8 reportId;      // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 seqTag;        // 0x01  high nibble = sequence tag, low nibble = 0
+  InputBody bodyData;        // 0x02..0x40
+  DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
                           //             distinct values in a 150 s capture), the
                           //             other eight were; unknown
   DSUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
@@ -1399,9 +1399,9 @@ public:
     CrcSeed = 0xA1, // the input stream signs with 0xA1, output with 0xA2
   };
 
-  constexpr const InputBody &body() const { return body_; }
+  constexpr const InputBody &body() const { return bodyData; }
 
-  constexpr InputBody &body() { return body_; }
+  constexpr InputBody &body() { return bodyData; }
 
   constexpr void sign() { crc = internal::crc_of(*this); }
 
@@ -1460,7 +1460,7 @@ private:
   using DSINT16 = internal::DSINT16;
 
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
-  // padding. Note valid_flag0: claiming RightTrigger or LeftTrigger here hands
+  // padding. Note validFlag0: claiming RightTrigger or LeftTrigger here hands
   // the trigger effect to this stream, which writes zeros to it 93 times a
   // second. The fix for the cancelled trigger effects was clearing exactly
   // those two bits (0xFD -> 0xF1).
@@ -1476,21 +1476,21 @@ private:
   };
 
 protected:
-  DSUINT8 report_id;         // 0x000  Packet::PacketAudio
-  DSUINT8 seq_tag;           // 0x001  high nibble = counter, low nibble = 0
-  DSUINT8 config_tag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  DSUINT8 config_length;     // 0x003  7
-  DSUINT8 enable_mask;       // 0x004  EnableMask bits
-  DSUINT8 haptic_lengths[5]; // 0x005..0x009  64 each
+  DSUINT8 reportId;         // 0x000  Packet::PacketAudio
+  DSUINT8 seqTag;           // 0x001  high nibble = counter, low nibble = 0
+  DSUINT8 configTag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
+  DSUINT8 configLength;     // 0x003  7
+  DSUINT8 enableMaskValue;  // 0x004  EnableMask bits
+  DSUINT8 hapticLengths[5]; // 0x005..0x009  64 each
   DSUINT8 counter;           // 0x00a  free-running 8-bit counter
-  DSUINT8 state_tag;         // 0x00b  0x10 | 0x80
-  DSUINT8 state_length;      // 0x00c  63
+  DSUINT8 stateTag;         // 0x00b  0x10 | 0x80
+  DSUINT8 stateLength;      // 0x00c  63
   State state;               // 0x00d..0x04b
-  DSUINT8 haptics_tag;       // 0x04c  0x12 | 0x80
-  DSUINT8 haptics_length;    // 0x04d  64
-  DSINT8 haptics_pcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  DSUINT8 speaker_tag;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  DSUINT8 speaker_length;    // 0x08f  200
+  DSUINT8 hapticsTag;       // 0x04c  0x12 | 0x80
+  DSUINT8 hapticsLength;    // 0x04d  64
+  DSINT8 hapticsPcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  DSUINT8 speakerTagValue;       // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerLength;    // 0x08f  200
   DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
   DSUINT8 padding[50];       // 0x158..0x189
   DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
@@ -1567,7 +1567,7 @@ public:
 
   constexpr const OutputBody &stateBody() const { return state.body; }
 
-  constexpr void setSeqTag(uint8_t value) { seq_tag = value; }
+  constexpr void setSeqTag(uint8_t value) { seqTag = value; }
 
   constexpr void setCounter(uint8_t value) { counter = value; }
 
@@ -1589,28 +1589,28 @@ public:
   };
 
   constexpr EnableMask enableMask() const {
-    return static_cast<EnableMask>(static_cast<uint8_t>(enable_mask));
+    return static_cast<EnableMask>(static_cast<uint8_t>(enableMaskValue));
   }
 
   constexpr SpeakerTag speakerTag() const {
-    return static_cast<SpeakerTag>(static_cast<uint8_t>(speaker_tag) & 0x7F);
+    return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
   }
 
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
   constexpr void init(SpeakerTag tag, EnableMask mask = EnableMask::SpeakerOnly) {
     *this = AudioReport{};
-    report_id = ReportId;
-    config_tag = 0x11 | 0x80;
-    config_length = 7;
-    enable_mask = static_cast<uint8_t>(mask);
-    for (int i = 0; i < 5; ++i) haptic_lengths[i] = HapticSize;
-    state_tag = 0x10 | 0x80;
-    state_length = StateSize;
-    haptics_tag = 0x12 | 0x80;
-    haptics_length = HapticSize;
-    speaker_tag = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
-    speaker_length = OpusSize;
+    reportId = ReportId;
+    configTag = 0x11 | 0x80;
+    configLength = 7;
+    enableMaskValue = static_cast<uint8_t>(mask);
+    for (int i = 0; i < 5; ++i) hapticLengths[i] = HapticSize;
+    stateTag = 0x10 | 0x80;
+    stateLength = StateSize;
+    hapticsTag = 0x12 | 0x80;
+    hapticsLength = HapticSize;
+    speakerTagValue = static_cast<uint8_t>(static_cast<uint8_t>(tag) | 0x80);
+    speakerLength = OpusSize;
   }
 
   bool setPcm(const float *pcm, int frames, Encoder &encoder) {
@@ -1631,38 +1631,38 @@ public:
   // haptic frame cannot leak the previous report's samples.
   constexpr void setHaptics(const int8_t *data, size_t len) {
     size_t n = len < HapticSize ? len : HapticSize;
-    for (size_t i = 0; i < n; ++i) haptics_pcm[i] = data[i];
-    for (size_t i = n; i < HapticSize; ++i) haptics_pcm[i] = 0;
+    for (size_t i = 0; i < n; ++i) hapticsPcm[i] = data[i];
+    for (size_t i = n; i < HapticSize; ++i) hapticsPcm[i] = 0;
   }
 
   constexpr void sign() { crc = internal::crc_of(*this); }
 
-  constexpr bool valid() const { return report_id == ReportId && crc == internal::crc_of(*this); }
+  constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
 };
 
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
 
 namespace internal {
 struct AudioReportProbe {
-  static constexpr uint8_t reportId(const AudioReport &r) { return r.report_id; }
+  static constexpr uint8_t reportId(const AudioReport &r) { return r.reportId; }
 
-  static constexpr uint8_t seqTag(const AudioReport &r) { return r.seq_tag; }
+  static constexpr uint8_t seqTag(const AudioReport &r) { return r.seqTag; }
 
-  static constexpr uint8_t configTag(const AudioReport &r) { return r.config_tag; }
+  static constexpr uint8_t configTag(const AudioReport &r) { return r.configTag; }
 
-  static constexpr uint8_t configLength(const AudioReport &r) { return r.config_length; }
+  static constexpr uint8_t configLength(const AudioReport &r) { return r.configLength; }
 
   static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
-    return r.haptic_lengths[i];
+    return r.hapticLengths[i];
   }
 
   static constexpr uint8_t counter(const AudioReport &r) { return r.counter; }
 
-  static constexpr uint8_t stateTag(const AudioReport &r) { return r.state_tag; }
+  static constexpr uint8_t stateTag(const AudioReport &r) { return r.stateTag; }
 
-  static constexpr uint8_t stateLength(const AudioReport &r) { return r.state_length; }
+  static constexpr uint8_t stateLength(const AudioReport &r) { return r.stateLength; }
 
-  static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speaker_length; }
+  static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speakerLength; }
 
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
 
@@ -1723,50 +1723,50 @@ struct ImuCalibration {
 namespace internal {
 struct Calibration {
 protected:
-  DSUINT8 report_id; // 0x00  Packet::PacketFeatureCalibration
+  DSUINT8 reportId; // 0x00  Packet::PacketFeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
   // plus/minus at 1 g per axis.
-  DSINT16 gyro_pitch_bias;
-  DSINT16 gyro_yaw_bias;
-  DSINT16 gyro_roll_bias;
-  DSINT16 gyro_pitch_plus;
-  DSINT16 gyro_pitch_minus;
-  DSINT16 gyro_yaw_plus;
-  DSINT16 gyro_yaw_minus;
-  DSINT16 gyro_roll_plus;
-  DSINT16 gyro_roll_minus;
-  DSINT16 gyro_speed_plus;
-  DSINT16 gyro_speed_minus;
-  DSINT16 acc_x_plus;
-  DSINT16 acc_x_minus;
-  DSINT16 acc_y_plus;
-  DSINT16 acc_y_minus;
-  DSINT16 acc_z_plus;
-  DSINT16 acc_z_minus;
-  DSUINT8 unknown_35[6]; // 0x23..0x28  not used by the kernel
+  DSINT16 gyroPitchBias;
+  DSINT16 gyroYawBias;
+  DSINT16 gyroRollBias;
+  DSINT16 gyroPitchPlus;
+  DSINT16 gyroPitchMinus;
+  DSINT16 gyroYawPlus;
+  DSINT16 gyroYawMinus;
+  DSINT16 gyroRollPlus;
+  DSINT16 gyroRollMinus;
+  DSINT16 gyroSpeedPlus;
+  DSINT16 gyroSpeedMinus;
+  DSINT16 accXPlus;
+  DSINT16 accXMinus;
+  DSINT16 accYPlus;
+  DSINT16 accYMinus;
+  DSINT16 accZPlus;
+  DSINT16 accZMinus;
+  DSUINT8 unknown35[6]; // 0x23..0x28  not used by the kernel
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
-    int speed_2x = static_cast<int>(gyro_speed_plus) + static_cast<int>(gyro_speed_minus);
+    int speed_2x = static_cast<int>(gyroSpeedPlus) + static_cast<int>(gyroSpeedMinus);
     int gyro_numerator = speed_2x * ImuCalibration::GyroResolutionPerDps;
 
-    int pitch_bias = static_cast<int>(gyro_pitch_bias);
-    int yaw_bias = static_cast<int>(gyro_yaw_bias);
-    int roll_bias = static_cast<int>(gyro_roll_bias);
+    int pitch_bias = static_cast<int>(gyroPitchBias);
+    int yaw_bias = static_cast<int>(gyroYawBias);
+    int roll_bias = static_cast<int>(gyroRollBias);
     result.gyro[0] = {0, gyro_numerator,
-                      static_cast<int>(gyro_pitch_plus) - pitch_bias +
-                          static_cast<int>(gyro_pitch_minus) - pitch_bias};
+                      static_cast<int>(gyroPitchPlus) - pitch_bias +
+                          static_cast<int>(gyroPitchMinus) - pitch_bias};
     result.gyro[1] = {0, gyro_numerator,
-                      static_cast<int>(gyro_yaw_plus) - yaw_bias +
-                          static_cast<int>(gyro_yaw_minus) - yaw_bias};
+                      static_cast<int>(gyroYawPlus) - yaw_bias +
+                          static_cast<int>(gyroYawMinus) - yaw_bias};
     result.gyro[2] = {0, gyro_numerator,
-                      static_cast<int>(gyro_roll_plus) - roll_bias +
-                          static_cast<int>(gyro_roll_minus) - roll_bias};
+                      static_cast<int>(gyroRollPlus) - roll_bias +
+                          static_cast<int>(gyroRollMinus) - roll_bias};
     for (auto &axis : result.gyro)
       if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::GyroRange);
 
@@ -1776,9 +1776,9 @@ public:
       return AxisCalibration{plus - range_2g / 2, 2 * ImuCalibration::AccelResolutionPerG,
                              range_2g};
     };
-    result.accel[0] = accel_axis(acc_x_plus, acc_x_minus);
-    result.accel[1] = accel_axis(acc_y_plus, acc_y_minus);
-    result.accel[2] = accel_axis(acc_z_plus, acc_z_minus);
+    result.accel[0] = accel_axis(accXPlus, accXMinus);
+    result.accel[1] = accel_axis(accYPlus, accYMinus);
+    result.accel[2] = accel_axis(accZPlus, accZMinus);
     return result;
   }
 };
@@ -1787,9 +1787,9 @@ static_assert(sizeof(Calibration) == Calibration::Size, "0x05 must stay 41 bytes
 
 struct Pairing {
 protected:
-  DSUINT8 report_id;      // 0x00  Packet::PacketFeaturePairing
+  DSUINT8 reportId;      // 0x00  Packet::PacketFeaturePairing
   DSUINT8 mac[6];         // 0x01..0x06  the controller's own address
-  DSUINT8 unknown_07[13]; // 0x07..0x13
+  DSUINT8 unknown07[13]; // 0x07..0x13
 
 public:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing), Size = 20 };
@@ -1799,20 +1799,20 @@ static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  DSUINT8 report_id;        // 0x00  Packet::PacketFeatureFirmware
-  char build_date[11];      // 0x01..0x0b
-  char build_time[8];       // 0x0c..0x13
-  DSUINT16 fw_type;         // 0x14..0x15
-  DSUINT16 sw_series;       // 0x16..0x17
-  DSUINT32 hardware_info;   // 0x18..0x1b  variation/generation
-  DSUINT32 firmware_version; // 0x1c..0x1f
-  char device_info[12];     // 0x20..0x2b
-  DSUINT16 update_version;  // 0x2c..0x2d
-  DSUINT8 update_image_info; // 0x2e
-  DSUINT8 update_unk;       // 0x2f
-  DSUINT32 fw_version1;     // 0x30..0x33  SBL
-  DSUINT32 fw_version2;     // 0x34..0x37  Venom
-  DSUINT32 fw_version3;     // 0x38..0x3b  Spider DSP
+  DSUINT8 reportId;        // 0x00  Packet::PacketFeatureFirmware
+  char buildDate[11];      // 0x01..0x0b
+  char buildTime[8];       // 0x0c..0x13
+  DSUINT16 fwType;         // 0x14..0x15
+  DSUINT16 swSeries;       // 0x16..0x17
+  DSUINT32 hardwareInfo;   // 0x18..0x1b  variation/generation
+  DSUINT32 firmwareVersion; // 0x1c..0x1f
+  char deviceInfo[12];     // 0x20..0x2b
+  DSUINT16 updateVersion;  // 0x2c..0x2d
+  DSUINT8 updateImageInfo; // 0x2e
+  DSUINT8 updateUnk;       // 0x2f
+  DSUINT32 fwVersion1;     // 0x30..0x33  SBL
+  DSUINT32 fwVersion2;     // 0x34..0x37  Venom
+  DSUINT32 fwVersion3;     // 0x38..0x3b  Spider DSP
   DSUINT8 padding[4];       // 0x3c..0x3f
 
 public:
@@ -1823,13 +1823,7 @@ public:
 
   static constexpr uint16_t VibrationV2MinimumVersion = (2 << 8) | 21;
 
-  constexpr uint32_t hardwareInfo() const { return hardware_info; }
-
-  constexpr uint32_t firmwareVersion() const { return firmware_version; }
-
-  constexpr uint16_t updateVersion() const { return update_version; }
-
-  constexpr bool usesVibrationV2() const { return update_version >= VibrationV2MinimumVersion; }
+  constexpr bool usesVibrationV2() const { return updateVersion >= VibrationV2MinimumVersion; }
 };
 
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
@@ -1849,10 +1843,10 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 // Opus, 48 kHz, mono, 480 samples (10 ms), about 100 packets per second.
 //
 // Turning capture on takes three writes in the outgoing 0x36:
-//   1. power_save_control (+0x09) bit 4 = 0 AND valid_flag1 bit 1 claims the
+//   1. powerSaveControl (+0x09) bit 4 = 0 AND validFlag1 bit 1 claims the
 //      byte (without the claim the unmute is inert);
 //   2. enable mask (0x36 byte 4) bit 0 set: 0xFF instead of 0xFE;
-//   3. mic_volume (+0x06) = 0x40, claimed by valid_flag0 bit 6.
+//   3. micVolume (+0x06) = 0x40, claimed by validFlag0 bit 6.
 // Step 2 is the tap; step 1 is the one people forget.
 //
 // It disturbs the gamepad input: these frames carry the same report id as the
