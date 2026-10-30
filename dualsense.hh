@@ -1243,6 +1243,14 @@ public:
     for (size_t i = n; i < OpusSize; ++i) opus[i] = 0;
   }
 
+  // 64 signed 8-bit samples at 6 kHz. Zero-fill any unused tail so a short
+  // haptic frame cannot leak the previous report's samples.
+  constexpr void setHaptics(const int8_t *data, size_t len) {
+    size_t n = len < HapticSize ? len : HapticSize;
+    for (size_t i = 0; i < n; ++i) haptics_pcm[i] = data[i];
+    for (size_t i = n; i < HapticSize; ++i) haptics_pcm[i] = 0;
+  }
+
   constexpr void sign() { crc = internal::crc_of(*this); }
 
   constexpr bool valid() const { return report_id == ReportId && crc == internal::crc_of(*this); }

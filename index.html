@@ -446,6 +446,16 @@
         <button id="teTestR" title="apply the selected effect to the right trigger">test R</button>
       </div>
 
+      <div class="lab-row">
+        <b>haptic sub</b>
+        <label title="low-pass music into the DualSense actuators (USB channels 3/4 or BT haptic PCM)">
+          <input type="checkbox" id="hapticSub"> enabled
+        </label>
+        <label>cutoff <input type="number" id="hapticCutoff" value="150" min="20" max="2000" style="width:62px"> Hz</label>
+        <label>gain <input type="number" id="hapticGain" value="100" min="0" max="200" style="width:58px">%</label>
+        <span style="font-size:11px;color:var(--muted)">USB rear pair / BT 6 kHz haptic stream</span>
+      </div>
+
       <details>
         <summary>raw output fields · everything the report can carry</summary>
         <p style="color:var(--muted);font-size:11.5px;margin:8px 0">
@@ -659,6 +669,12 @@ function render(s) {
     $("#labTrigPeriod").value = cfg.trigger_effect_period;
   if (document.activeElement !== $("#labTrigAmpB") && cfg.trigger_effect_amplitude_b != null)
     $("#labTrigAmpB").value = cfg.trigger_effect_amplitude_b;
+  if (document.activeElement !== $("#hapticSub"))
+    $("#hapticSub").checked = cfg.haptic_subwoofer === true;
+  if (document.activeElement !== $("#hapticCutoff") && cfg.haptic_cutoff_hz != null)
+    $("#hapticCutoff").value = cfg.haptic_cutoff_hz;
+  if (document.activeElement !== $("#hapticGain") && cfg.haptic_gain != null)
+    $("#hapticGain").value = cfg.haptic_gain;
   if (document.activeElement !== $("#labTrigPreset")) {
     let effect = cfg.trigger_effect_preset || "off";
     if (effect === "none") effect = "off";
@@ -1114,6 +1130,18 @@ $("#labRawSend").onclick = async () => {
     $("#labRawMsg").textContent = "invalid JSON";
   }
 };
+
+function hapticConfig() {
+  pushTriggerConfig({
+    haptic_subwoofer: $("#hapticSub").checked ? "true" : "false",
+    haptic_cutoff_hz: Number($("#hapticCutoff").value),
+    haptic_gain: Number($("#hapticGain").value),
+  });
+}
+
+for (const id of ["hapticSub", "hapticCutoff", "hapticGain"]) {
+  $(`#${id}`).addEventListener("change", hapticConfig);
+}
 
 function pushTriggerConfig(values) {
   clearTimeout(triggerCfgTimer);

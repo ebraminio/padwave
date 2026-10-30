@@ -290,6 +290,9 @@ private:
   int trigger_effect_amplitude_b = 0;
   bool trigger_effects = false;
   char trigger_effect_preset[32] = "none";
+  bool haptic_subwoofer = false;
+  int haptic_cutoff_hz = 150;
+  int haptic_gain = 100;
 
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
@@ -650,6 +653,9 @@ public:
           this->trigger_effect_amplitude_b);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
+    kvAdd(buf, cap, &o, "config.haptic_gain", "%d", this->haptic_gain);
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     kvAdd(buf, cap, &o, "config.speed", "%d", this->speed);
@@ -697,6 +703,9 @@ public:
           this->trigger_effect_amplitude_b);
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
+    kvAdd(buf, cap, &o, "config.haptic_gain", "%d", this->haptic_gain);
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
     kvAdd(buf, cap, &o, "config.last_nonzero_volume", "%d", this->last_nonzero_volume);
     kvAdd(buf, cap, &o, "config.speed", "%d", this->speed);
@@ -757,9 +766,26 @@ public:
       snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
                value[0] ? value : "custom");
     }
+    if (kvGet(body, "haptic_subwoofer", value, sizeof(value))) {
+      this->haptic_subwoofer = strcmp(value, "true") == 0 || atoi(value) != 0;
+    }
+    if (kvGet(body, "haptic_cutoff_hz", value, sizeof(value))) {
+      int v = atoi(value);
+      this->haptic_cutoff_hz = v < 20 ? 20 : (v > 2000 ? 2000 : v);
+    }
+    if (kvGet(body, "haptic_gain", value, sizeof(value))) {
+      int v = atoi(value);
+      this->haptic_gain = v < 0 ? 0 : (v > 200 ? 200 : v);
+    }
     if (kvGet(body, "trigger_effects", value, sizeof(value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
     if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
+    if (this->player) {
+      char line[64];
+      snprintf(line, sizeof(line), "haptic %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+               this->haptic_cutoff_hz, this->haptic_gain);
+      playerSend(line);
+    }
     configSave();
     this->volume_dirty = false;
   }
@@ -1075,6 +1101,9 @@ private:
     snprintf(line, sizeof(line), "volume %d\n", this->volume);
     playerSend(line);
     snprintf(line, sizeof(line), "speed %d\n", this->speed);
+    playerSend(line);
+    snprintf(line, sizeof(line), "haptic %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+             this->haptic_cutoff_hz, this->haptic_gain);
     playerSend(line);
     if (this->paused) playerSend("pause 1\n");
     this->led_force = true;
@@ -1654,6 +1683,9 @@ private:
     fprintf(f, "trigger_effect_amplitude_b=%d\n", this->trigger_effect_amplitude_b);
     fprintf(f, "trigger_effect_preset=%s\n", this->trigger_effect_preset);
     fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
+    fprintf(f, "haptic_subwoofer=%s\n", this->haptic_subwoofer ? "true" : "false");
+    fprintf(f, "haptic_cutoff_hz=%d\n", this->haptic_cutoff_hz);
+    fprintf(f, "haptic_gain=%d\n", this->haptic_gain);
     const char *play_path = this->current >= 0 ? this->tracks[this->current].path : "";
     fputs("play_path=", f);
     for (const char *p = play_path; *p; p++) fputc((*p == '\n' || *p == '\r') ? ' ' : *p, f);

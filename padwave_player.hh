@@ -262,6 +262,10 @@ private:
   bool playing = false, paused = false, eof = false, primed = false;
   int volume = 80;
   int speed_percent = 100;
+  bool haptic_subwoofer = false;
+  int haptic_cutoff = 150;
+  int haptic_gain = 100;
+  float haptic_lp = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -546,9 +550,9 @@ private:
     const char *device = "plughw:CARD=Controller,DEV=0";
     char command[256];
     snprintf(command, sizeof(command),
-             "exec aplay -q -D '%s' -t raw -f S16_LE -r 48000 -c 2 "
+             "exec aplay -q -D '%s' -t raw -f S16_LE -r 48000 -c %d "
              "--buffer-time=100000 --period-time=20000",
-             device);
+             device, haptic_subwoofer ? 4 : 2);
     usb_audio = popen(command, "w");
     if (!usb_audio) {
       fprintf(stderr, "padwave player: USB audio start failed\n");
@@ -564,7 +568,49 @@ private:
     usb_audio = nullptr;
   }
 
+  float hapticAlpha() const {
+    float x = 2.0f * 3.14159265358979323846f * static_cast<float>(haptic_cutoff) / 48000.0f;
+    if (x > 0.99f) x = 0.99f;
+    return x < 0.0001f ? 0.0001f : x;
+  }
+
+  float lowPass(float input) {
+    haptic_lp += hapticAlpha() * (input - haptic_lp);
+    return haptic_lp;
+  }
+
+  // The USB card is natively 4ch: FL/FR go to the speaker or headphone jack,
+  // RL/RR drive the two haptic actuators. With haptic subwoofer enabled, send
+  // a low-passed mono bass signal to RL/RR; otherwise leave them silent.
   void writeUsbPcm(const float block[IN_FRAMES][CHANNELS], float gain) {
+    if (haptic_subwoofer) {
+      int16_t samples[IN_FRAMES * 4];
+      float hgain = static_cast<float>(haptic_gain) / 100.0f;
+      for (int i = 0; i < IN_FRAMES; i++) {
+        float l = block[i][0] * gain;
+        float r = block[i][1] * gain;
+        float bass = lowPass((l + r) * 0.5f) * hgain;
+        if (l > 1.0f) l = 1.0f;
+        if (l < -1.0f) l = -1.0f;
+        if (r > 1.0f) r = 1.0f;
+        if (r < -1.0f) r = -1.0f;
+        if (bass > 1.0f) bass = 1.0f;
+        if (bass < -1.0f) bass = -1.0f;
+        samples[i * 4 + 0] = static_cast<int16_t>(l * 32767.0f);
+        samples[i * 4 + 1] = static_cast<int16_t>(r * 32767.0f);
+        samples[i * 4 + 2] = static_cast<int16_t>(bass * 32767.0f);
+        samples[i * 4 + 3] = static_cast<int16_t>(bass * 32767.0f);
+      }
+      if (!startUsbAudio()) return;
+      size_t count = static_cast<size_t>(IN_FRAMES) * 4;
+      if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
+        stopUsbAudio();
+        return;
+      }
+      sent++;
+      return;
+    }
+
     int16_t samples[IN_FRAMES * CHANNELS];
     for (int i = 0; i < IN_FRAMES; i++) {
       for (int ch = 0; ch < CHANNELS; ch++) {
@@ -581,6 +627,21 @@ private:
       return;
     }
     sent++;
+  }
+
+  void buildHaptics(const float *pcm, int frames, int8_t *haptic_out) {
+    memset(haptic_out, 0, dualsense::AudioReport::HapticSize);
+    if (!haptic_subwoofer) return;
+    float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    int written = 0;
+    for (int i = 0; i < frames && written < dualsense::AudioReport::HapticSize; i++) {
+      float mono = (pcm[i * CHANNELS] + pcm[i * CHANNELS + 1]) * 0.5f;
+      float bass = lowPass(mono) * hgain;
+      if (i % 8 != 0) continue;
+      if (bass > 1.0f) bass = 1.0f;
+      if (bass < -1.0f) bass = -1.0f;
+      haptic_out[written++] = static_cast<int8_t>(bass * 127.0f);
+    }
   }
 
   void sendMuteLed(bool on) {
@@ -614,6 +675,11 @@ private:
     report.stateBody() = state;
     report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
                                         : dualsense::OutputBody::AudioControl::Headphones);
+
+    int8_t haptics[dualsense::AudioReport::HapticSize];
+    buildHaptics(pcm, frames, haptics);
+    report.setHaptics(haptics, dualsense::AudioReport::HapticSize);
+    if (haptic_subwoofer) report.stateBody().setHapticVolume(0x64);
 
     audio_sequence.apply(report);
 
@@ -765,6 +831,17 @@ private:
       sendMuteLed(paused);
       float silence[dualsense::AudioReport::PcmFrames * CHANNELS] = {};
       sendReport(silence, dualsense::AudioReport::PcmFrames);
+      return;
+    }
+
+    long enabled = 0, cutoff = 0, gain = 0;
+    if (sscanf(line, "haptic %ld %ld %ld", &enabled, &cutoff, &gain) == 3) {
+      bool was = haptic_subwoofer;
+      haptic_subwoofer = enabled != 0;
+      haptic_cutoff = cutoff < 20 ? 20 : (cutoff > 2000 ? 2000 : static_cast<int>(cutoff));
+      haptic_gain = gain < 0 ? 0 : (gain > 200 ? 200 : static_cast<int>(gain));
+      haptic_lp = 0;
+      if (was != haptic_subwoofer) stopUsbAudio();
       return;
     }
 
