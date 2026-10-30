@@ -1351,13 +1351,13 @@ private:
         {dualsense::InputBody::Button::Options, "options"},
         {dualsense::InputBody::Button::L3, "l3"},
         {dualsense::InputBody::Button::R3, "r3"},
-        {dualsense::InputBody::Button::Ps, "ps"},
+        {dualsense::InputBody::Button::PsHome, "ps"},
         {dualsense::InputBody::Button::Touchpad, "touchpad"},
-        {dualsense::InputBody::Button::Mute, "mute"},
-        {dualsense::InputBody::Button::Fn1, "fn1"},
-        {dualsense::InputBody::Button::Fn2, "fn2"},
-        {dualsense::InputBody::Button::LeftPaddle, "left_paddle"},
-        {dualsense::InputBody::Button::RightPaddle, "right_paddle"},
+        {dualsense::InputBody::Button::MicMute, "mute"},
+        {dualsense::InputBody::Button::EdgeFn1, "fn1"},
+        {dualsense::InputBody::Button::EdgeFn2, "fn2"},
+        {dualsense::InputBody::Button::EdgeLeftPaddle, "left_paddle"},
+        {dualsense::InputBody::Button::EdgeRightPaddle, "right_paddle"},
     };
 
     size_t o = 0;

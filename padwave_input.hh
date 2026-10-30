@@ -85,13 +85,13 @@ private:
       {dualsense::InputBody::Button::Create, "previous"},
       {dualsense::InputBody::Button::Options, "next"},
       {dualsense::InputBody::Button::Touchpad, "toggle_mute"},
-      {dualsense::InputBody::Button::Mute, "toggle_mute"},
+      {dualsense::InputBody::Button::MicMute, "toggle_mute"},
       {dualsense::InputBody::Button::L3, "next"},
       {dualsense::InputBody::Button::R3, "previous"},
-      {dualsense::InputBody::Button::LeftPaddle, "previous"},
-      {dualsense::InputBody::Button::RightPaddle, "next"},
-      {dualsense::InputBody::Button::Fn1, "toggle_pause"},
-      {dualsense::InputBody::Button::Fn2, "toggle_mute"},
+      {dualsense::InputBody::Button::EdgeLeftPaddle, "previous"},
+      {dualsense::InputBody::Button::EdgeRightPaddle, "next"},
+      {dualsense::InputBody::Button::EdgeFn1, "toggle_pause"},
+      {dualsense::InputBody::Button::EdgeFn2, "toggle_mute"},
   };
 
   void trackButtons(dualsense::InputBody::Buttons buttons) {
@@ -101,12 +101,12 @@ private:
     for (auto &b : kBindings)
       if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
-    if (pressed.isOn(dualsense::InputBody::Button::Ps)) {
+    if (pressed.isOn(dualsense::InputBody::Button::PsHome)) {
       actions.ps_armed = true;
       actions.ps_at = nowMs();
     }
 
-    if (!buttons.isOn(dualsense::InputBody::Button::Ps)) {
+    if (!buttons.isOn(dualsense::InputBody::Button::PsHome)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
