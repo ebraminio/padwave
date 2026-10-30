@@ -1500,11 +1500,11 @@ private:
     this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
     this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
     for (int t = 0; t < 2; t++) {
-      const dualsense::InputBody::Touch touch = b.touch(t);
-      this->touch_active[t] = touch.active ? 1 : 0;
-      this->touch_id[t] = touch.id;
-      this->touch_x[t] = touch.x;
-      this->touch_y[t] = touch.y;
+      const dualsense::InputBody::TouchPoint touch = b.touch(t);
+      this->touch_active[t] = touch.active() ? 1 : 0;
+      this->touch_id[t] = touch.id();
+      this->touch_x[t] = touch.x();
+      this->touch_y[t] = touch.y();
     }
 
     long now = nowMs();

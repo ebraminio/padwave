@@ -738,15 +738,22 @@ static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 
 // feedback name, and every multi-byte integer is little-endian. Sizes come from
 // hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
 struct InputBody {
+private:
+  using PWUINT8 = internal::PWUINT8;
+  using PWUINT32 = internal::PWUINT32;
+  using PWINT16 = internal::PWINT16;
+
 public:
   // One 4-byte touch contact on the wire. The high nibble of `xy_high` is
   // y-low; the low nibble is x-high. Bit 7 of `contact` means "not touching".
   struct TouchPoint {
-    uint8_t contact;
-    uint8_t x_low;
-    uint8_t xy_high;
-    uint8_t y_high;
+  private:
+    PWUINT8 contact;
+    PWUINT8 x_low;
+    PWUINT8 xy_high;
+    PWUINT8 y_high;
 
+  public:
     constexpr bool active() const { return (contact & 0x80) == 0; }
 
     constexpr unsigned id() const { return contact & 0x7F; }
@@ -761,11 +768,6 @@ public:
              (static_cast<unsigned>(y_high) << 4);
     }
   };
-
-private:
-  using PWUINT8 = internal::PWUINT8;
-  using PWUINT32 = internal::PWUINT32;
-  using PWINT16 = internal::PWINT16;
 
 protected:
   PWUINT8 lx;                 // +0x00  left stick X, 0..255 (128 = centre)
@@ -992,17 +994,7 @@ public:
 
   constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
 
-  struct Touch {
-    bool active;
-    unsigned id;
-    unsigned x;
-    unsigned y;
-  };
-
-  Touch touch(int index) const {
-    const TouchPoint &raw = index == 0 ? touch1 : touch2;
-    return {.active = raw.active(), .id = raw.id(), .x = raw.x(), .y = raw.y()};
-  }
+  TouchPoint touch(int index) const { return index == 0 ? touch1 : touch2; }
 };
 
 static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes");
