@@ -4,7 +4,9 @@
 #include <string.h>
 #include <math.h>
 
+#ifdef DS_HAVE_OPUS
 #include <opus/opus.h>
+#endif
 
 namespace dualsense {
 namespace internal {
@@ -1501,6 +1503,7 @@ protected:
   DSUINT32 crc;             // 0x18a..0x18d  seed 0xA2
 
 public:
+#ifdef DS_HAVE_OPUS
   // PCM-facing encoder: the rest of padwave never touches libopus.
   struct Encoder {
     ::OpusEncoder *encoder = nullptr;
@@ -1538,6 +1541,7 @@ public:
       encoder = nullptr;
     }
   };
+#endif
 
 public:
   enum : uint8_t {
@@ -1618,6 +1622,7 @@ public:
     speakerLength   = OpusSize;
   }
 
+#ifdef DS_HAVE_OPUS
   bool setPcm(const float *pcm, int frames, Encoder &encoder) {
     uint8_t payload[OpusSize];
     int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof(payload)));
@@ -1625,6 +1630,7 @@ public:
     setOpus(payload, static_cast<size_t>(n));
     return n > 0;
   }
+#endif
 
   constexpr void setOpus(const uint8_t *data, size_t len) {
     size_t n = len < OpusSize ? len : OpusSize;
@@ -1861,6 +1867,7 @@ static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 // link traffic (speaker down and mic up are each ~160 kbps of Opus).
 
 struct MicFrame {
+#ifdef DS_HAVE_OPUS
   // PCM-facing decoder for the Opus mic packet.
   struct Decoder {
     ::OpusDecoder *decoder = nullptr;
@@ -1895,6 +1902,7 @@ struct MicFrame {
       decoder = nullptr;
     }
   };
+#endif
 
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),

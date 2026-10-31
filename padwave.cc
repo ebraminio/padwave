@@ -19,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#define DS_HAVE_OPUS
 #include "padwave_app.hh"
 #include "padwave_http.hh"
 

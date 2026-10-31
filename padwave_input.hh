@@ -70,7 +70,9 @@ private:
   char node_name[64] = "";
   char mac_[32] = "";
   App *app = nullptr;
+#ifdef DS_HAVE_OPUS
   dualsense::MicFrame::Decoder mic_decoder;
+#endif
 
   ActionsState actions;
   SensorsState sensors;
@@ -271,6 +273,7 @@ private:
   void handleReport(const uint8_t *buf, size_t len) {
     if (!buf || len == 0) return;
 
+#ifdef DS_HAVE_OPUS
     if (len > 7 && dualsense::MicFrame::is_frame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = dualsense::MicFrame::payload(buf, len, &payload_len);
@@ -280,6 +283,7 @@ private:
       if (n > 0) emitMic(pcm, static_cast<size_t>(n));
       return;
     }
+#endif
 
     if (buf[0] == static_cast<uint8_t>(dualsense::Packet::PacketStateBluetooth) &&
         len >= dualsense::InputReport::Size) {
@@ -315,7 +319,9 @@ public:
     node_name[0] = 0;
     mac_[0] = 0;
     app = nullptr;
+#ifdef DS_HAVE_OPUS
     mic_decoder.close();
+#endif
     actions = ActionsState{};
     sensors = SensorsState{};
     dpad_state = DpadState{};
@@ -323,7 +329,13 @@ public:
 
   int fd() const { return fd_; }
 
-  bool micReady() const { return mic_decoder.valid(); }
+  bool micReady() const {
+#ifdef DS_HAVE_OPUS
+    return mic_decoder.valid();
+#else
+    return false;
+#endif
+  }
 
   const char *node() const { return node_name; }
 
