@@ -347,6 +347,7 @@ private:
   int led_manual_mask = 4;
   bool led_painted = false;
   bool lightbar_on = true;
+  int power_save_mask = 0;
   long led_charge_at = 0;
   dualsense::OutputBody::LightbarSetup led_charge_setup =
       dualsense::OutputBody::LightbarSetup::LightOut;
@@ -577,7 +578,7 @@ public:
     kvText(buf, cap, &o, "audio.state",
            this->player.audioActive() ? "running" : (this->player.valid() ? "ready" : "null"));
 
-    kvText(buf, cap, &o, "hid.power_save", "null");
+    kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
     kvAdd(buf, cap, &o, "hid.player_leds", "%d",
           this->led_last_player >= 0 ? this->led_last_player : 4);
     int state = ledState();
@@ -911,6 +912,7 @@ public:
         int bit = atoi(tok);
         if (bit >= 0 && bit < 8) mask |= 1 << bit;
       }
+      this->power_save_mask = mask;
       snprintf(fields, sizeof(fields), "power_save_control=%d", mask);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n",
@@ -1484,6 +1486,7 @@ private:
     bool was_connected = this->controller;
     this->controller = true;
     if (!was_connected) {
+      this->power_save_mask = 0;
       this->led_force = true;
       this->serviceLeds();
     }
