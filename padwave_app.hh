@@ -273,6 +273,7 @@ private:
   long volume_saved_at = 0;
 
   int reconnect_at = 0;
+  static constexpr long kNoPlaybackIdleMs = 60000;
   long idle_since = 0;
   long last_activity_ms = 0;
   bool idle_warning = false;
@@ -288,8 +289,8 @@ private:
   bool powered_off = false;
 
   // Config that the panel edits; persisted as ~/.config/padwave/config.
-  int idle_timeout_ms = 60000;
-  int idle_warn_grace_ms = 10000;
+  int idle_timeout_ms = 900000;
+  int idle_warn_grace_ms = 60000;
   int poweroff_when_idle_ms = 60000;
   int trigger_effect_amplitude = 2;
   int trigger_effect_position = 2;
@@ -507,8 +508,9 @@ public:
 
     long now = nowMs();
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
-    long timeout = this->idle_timeout_ms;
-    long grace = this->idle_warn_grace_ms;
+    bool active_playback = this->playing && !this->paused;
+    long timeout = active_playback ? this->idle_timeout_ms : kNoPlaybackIdleMs;
+    long grace = active_playback ? this->idle_warn_grace_ms : 0;
     const char *phase = "active";
     long warning_in = (timeout + 999) / 1000;
     long shutdown_in = 0;
@@ -518,6 +520,9 @@ public:
       phase = "suspended";
       warning_in = 0;
       fade_percent = 10;
+    } else if (!active_playback) {
+      long left = timeout - idle_ms;
+      warning_in = left > 0 ? (left + 999) / 1000 : 0;
     } else if (this->idle_warning && idle_ms >= timeout) {
       phase = "warning";
       long over = idle_ms - timeout;
@@ -1830,12 +1835,30 @@ private:
       configSave();
       this->powered_off = powerOffController();
     }
+    if (this->suspended) return;
 
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
+    bool active_playback = this->playing && !this->paused;
+
+    if (!active_playback) {
+      if (idle_ms < kNoPlaybackIdleMs) return;
+      this->idle_warning = false;
+      this->suspended = true;
+      this->paused_by_idle = true;
+      this->paused = true;
+      this->playhead_dirty = true;
+      playerSend("pause 1\n");
+      this->poweroff_at = 0;
+      this->powered_off = powerOffController();
+      this->led_force = true;
+      serviceLeds();
+      return;
+    }
+
     long timeout = this->idle_timeout_ms;
     long grace = this->idle_warn_grace_ms;
 
-    if (!this->idle_warning && !this->suspended && idle_ms >= timeout) {
+    if (!this->idle_warning && idle_ms >= timeout) {
       this->idle_warning = true;
       this->idle_volume = this->volume;
       this->idle_volume_saved = true;
