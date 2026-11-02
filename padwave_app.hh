@@ -288,7 +288,7 @@ private:
   bool powered_off = false;
 
   // Config that the panel edits; persisted as ~/.config/padwave/config.
-  int idle_timeout_ms = 900000;
+  int idle_timeout_ms = 60000;
   int idle_warn_grace_ms = 10000;
   int poweroff_when_idle_ms = 60000;
   int trigger_effect_amplitude = 2;
@@ -507,7 +507,6 @@ public:
 
     long now = nowMs();
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
-    if (!this->playing || (this->paused && !this->suspended)) idle_ms = 0;
     long timeout = this->idle_timeout_ms;
     long grace = this->idle_warn_grace_ms;
     const char *phase = "active";
@@ -1831,8 +1830,6 @@ private:
       configSave();
       this->powered_off = powerOffController();
     }
-
-    if (!this->playing || this->paused) return;
 
     long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     long timeout = this->idle_timeout_ms;
