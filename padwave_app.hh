@@ -233,6 +233,7 @@ private:
   bool controller = false;
   bool jack = false;
   bool plugged_usb_data = false;
+  bool pluggedUsbPower = false;
   // Runtime-only fallback for a shared USB host. Never persisted; cleared
   // whenever the USB data link goes away.
   bool controller_disabled = false;
@@ -624,6 +625,7 @@ public:
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.plugged_usb_data", "%s", this->plugged_usb_data ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.plugged_usb_power", "%s", this->pluggedUsbPower ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.padwave_disabled", "%s",
           this->padwaveDisabled() ? "true" : "false");
@@ -1224,6 +1226,7 @@ private:
     this->input_node[0] = 0;
     this->controller_mac[0] = 0;
     this->plugged_usb_data = false;
+    this->pluggedUsbPower = false;
     this->controller_disabled = false;
     this->rate = 0;
     this->rate_at = 0;
@@ -1896,7 +1899,9 @@ private:
   }
 
   bool powerOffController() {
-    if (this->player.isUsb()) return false;
+    // Keep the pad awake whenever USB data or USB power is present, even if
+    // padwave is using the Bluetooth transport.
+    if (this->player.isUsb() || this->plugged_usb_data || this->pluggedUsbPower) return false;
     char mac[32] = "";
     if (this->controller_mac[0]) {
       snprintf(mac, sizeof(mac), "%s", this->controller_mac);
