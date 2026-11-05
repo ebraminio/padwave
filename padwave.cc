@@ -14,6 +14,7 @@
 #include <strings.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/timerfd.h>
 #include <time.h>
@@ -48,6 +49,10 @@ private:
     bool front_sse = false;
     bool status_sse = false;
     bool client_blocked = false;
+    bool file_reply = false;
+    int file_fd = -1;
+    off_t file_off = 0;
+    off_t file_end = 0;
   };
 
   Conn conns[kMaxConns];
@@ -257,6 +262,7 @@ private:
   }
 
   void closeConn(Conn *c) {
+    if (c->file_fd >= 0) close(c->file_fd);
     if (c->fd >= 0) {
       epoll_ctl(epoll_fd, EPOLL_CTL_DEL, c->fd, nullptr);
       if (c->fd < kMaxFds) owners[c->fd] = nullptr;
@@ -318,6 +324,95 @@ private:
     size_t body_len = req.body_len;
 
     requests++;
+
+    if (strncmp(path, "/stream", 7) == 0 && (path[7] == 0 || path[7] == '/')) {
+      const char *id = path[7] == '/' ? path + 8 : "";
+      const char *file_path = nullptr;
+      const char *mime = "application/octet-stream";
+      if (!app->streamTrack(id, &file_path, &mime)) {
+        static const char body[] = "track not found\n";
+        c->static_reply = true;
+        c->out_len = static_cast<size_t>(
+            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+        modFd(c->fd, EPOLLOUT);
+        return;
+      }
+      int fd = open(file_path, O_RDONLY | O_CLOEXEC);
+      struct stat stbuf;
+      if (fd < 0 || fstat(fd, &stbuf) != 0 || !S_ISREG(stbuf.st_mode) || stbuf.st_size <= 0) {
+        if (fd >= 0) close(fd);
+        static const char body[] = "cannot open track\n";
+        c->static_reply = true;
+        c->out_len = static_cast<size_t>(
+            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+        modFd(c->fd, EPOLLOUT);
+        return;
+      }
+      off_t size = stbuf.st_size;
+      off_t start = 0;
+      off_t end = size - 1;
+      bool partial = false;
+      const char *range = strcasestr(c->in, "Range:");
+      if (range) {
+        const char *eq = strchr(range, '=');
+        long long first = -1;
+        long long last = -1;
+        int parsed = eq ? sscanf(eq + 1, "%lld-%lld", &first, &last) : 0;
+        if (eq && eq[1] == '-') {
+          long long suffix = 0;
+          if (sscanf(eq + 2, "%lld", &suffix) == 1 && suffix > 0) {
+            first = suffix >= size ? 0 : size - suffix;
+            parsed = 1;
+          }
+        }
+        if (parsed < 1 || first < 0 || first >= size || (parsed >= 2 && last < first)) {
+          close(fd);
+          static const char body[] = "range not satisfiable\n";
+          c->static_reply = true;
+          c->out_len = static_cast<size_t>(snprintf(
+              c->out, sizeof(c->out),
+              "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: text/plain\r\n"
+              "Content-Range: bytes */%lld\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+              static_cast<long long>(size), sizeof(body) - 1, body));
+          modFd(c->fd, EPOLLOUT);
+          return;
+        }
+        start = first;
+        end = parsed >= 2 && last >= first && last < size ? last : size - 1;
+        partial = true;
+      }
+      if (lseek(fd, start, SEEK_SET) < 0) {
+        close(fd);
+        closeConn(c);
+        return;
+      }
+      long long length = static_cast<long long>(end - start + 1);
+      char header[512];
+      int hn = partial
+                   ? snprintf(header, sizeof(header),
+                              "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
+                              "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
+                              "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
+                              mime, static_cast<long long>(start), static_cast<long long>(end),
+                              static_cast<long long>(size), length)
+                   : snprintf(header, sizeof(header),
+                              "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
+                              "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
+                              mime, length);
+      if (hn <= 0 || static_cast<size_t>(hn) >= sizeof(c->out)) {
+        close(fd);
+        closeConn(c);
+        return;
+      }
+      memcpy(c->out, header, static_cast<size_t>(hn));
+      c->out_len = static_cast<size_t>(hn);
+      c->file_fd = fd;
+      c->file_off = start;
+      c->file_end = end;
+      c->file_reply = true;
+      modFd(c->fd, EPOLLOUT);
+      return;
+    }
 
     if (strcmp(path, "/api/status") == 0) {
       static char body[8192];
@@ -518,6 +613,25 @@ private:
     }
     c->out_off = c->out_len = 0;
     c->client_blocked = false;
+
+    if (c->file_reply) {
+      if (c->file_off > c->file_end) {
+        closeConn(c);
+        return;
+      }
+      size_t want = static_cast<size_t>(c->file_end - c->file_off + 1);
+      if (want > sizeof(c->out)) want = sizeof(c->out);
+      ssize_t n = read(c->file_fd, c->out, want);
+      if (n <= 0) {
+        closeConn(c);
+        return;
+      }
+      c->file_off += n;
+      c->out_len = static_cast<size_t>(n);
+      c->out_off = 0;
+      modFd(c->fd, EPOLLOUT);
+      return;
+    }
 
     if (c->front_sse || c->status_sse) {
       modFd(c->fd, 0);

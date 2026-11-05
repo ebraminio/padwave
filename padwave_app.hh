@@ -828,6 +828,23 @@ public:
     return static_cast<int>(o);
   }
 
+  // Resolve a track id (or the current track) to its path and browser MIME type.
+  // The path remains owned by App and is only valid until the next library scan.
+  bool streamTrack(const char *id, const char **path, const char **mime) const {
+    int index = (id && *id) ? findId(id) : this->current;
+    if (index < 0 || index >= this->count) return false;
+    const Track *track = &this->tracks[index];
+    *path = track->path;
+    const char *ext = track->ext;
+    if (strcmp(ext, "mp3") == 0) *mime = "audio/mpeg";
+    else if (strcmp(ext, "m4a") == 0 || strcmp(ext, "aac") == 0) *mime = "audio/mp4";
+    else if (strcmp(ext, "flac") == 0) *mime = "audio/flac";
+    else if (strcmp(ext, "wav") == 0) *mime = "audio/wav";
+    else if (strcmp(ext, "ogg") == 0 || strcmp(ext, "opus") == 0) *mime = "audio/ogg";
+    else *mime = "application/octet-stream";
+    return true;
+  }
+
   int output(const char *body, char *out, size_t out_cap) {
     char kind[32];
     if (!kvGet(body, "kind", kind, sizeof(kind)))
@@ -1157,7 +1174,7 @@ private:
     return -1;
   }
 
-  int findId(const char *id) {
+  int findId(const char *id) const {
     for (int i = 0; i < this->count; i++)
       if (strcmp(this->tracks[i].id, id) == 0) return i;
     return -1;

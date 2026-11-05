@@ -277,6 +277,7 @@
         <button class="primary" data-action="pause" id="pauseBtn">play</button>
         <button class="icon" data-action="next" title="next track in this folder">⏭</button>
         <button class="icon" data-action="shuffle_folder" title="another folder">🎲</button>
+        <button class="icon" id="webStream" title="play the current track in this browser (works without a controller)">🌐</button>
         <button class="icon" data-action="disconnect" title="stop and power the controller off">⏏</button>
       </div>
 
@@ -297,6 +298,8 @@
           <option value="200">2×</option>
         </select>
       </div>
+
+      <audio id="webAudio" controls preload="none" style="width:100%;margin-top:12px;display:none"></audio>
 
       <div class="warnbar" id="warnbar">Sleep timer: volume fading out. Shutting down in <b id="warnLeft">60</b>s — press anything or <b>shake the controller</b>.</div>
     </section>
@@ -936,6 +939,21 @@ function highlightTrack(id) {
   });
 }
 
+const webAudio = $("#webAudio");
+
+function streamInBrowser(id) {
+  const trackId = id || (last && last.radio && last.radio.current && last.radio.current.id);
+  if (!trackId) {
+    toast("select a track first");
+    return;
+  }
+  $("#webAudio").style.display = "block";
+  webAudio.src = `/stream/${encodeURIComponent(trackId)}`;
+  webAudio.play().catch((e) => toast("browser audio: " + e.message));
+}
+
+$("#webStream").onclick = () => streamInBrowser();
+
 function buildTracks() {
   const list = $("#tracks");
   const items = tracks.filter(t =>
@@ -946,7 +964,12 @@ function buildTracks() {
   ).join("");
 
   list.querySelectorAll("li").forEach(li => {
-    li.onclick = () => send("play_track", { id: li.dataset.id });
+    li.onclick = () => {
+      if (last && last.controller && last.controller.connected)
+        send("play_track", { id: li.dataset.id });
+      else
+        streamInBrowser(li.dataset.id);
+    };
   });
 
   if (last && last.radio && last.radio.current) highlightTrack(last.radio.current.id);
