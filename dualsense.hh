@@ -11,49 +11,28 @@
 namespace dualsense {
 namespace internal {
 
+// Method bodies live just below the wire helpers: OutputBody stores NumType by
+// value, so a forward declaration alone cannot be used here.
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
   static constexpr unsigned int staticSize = sizeof(Type);
 
   constexpr NumType() = default;
 
-  constexpr explicit NumType(Type value) { *this = value; }
+  constexpr explicit NumType(Type value);
+  constexpr NumType &operator=(Type value);
+  constexpr operator Type() const;
 
-  constexpr NumType &operator=(Type value) {
-    UnsignedType v = static_cast<UnsignedType>(value);
-    for (unsigned int i = 0; i < sizeof(Type); ++i) {
-      bytes[i] = static_cast<unsigned char>((v & 0xFF));
-      v        = static_cast<UnsignedType>((v >> 8));
-    }
-    return *this;
-  }
+  constexpr bool operator==(const NumType &o) const;
+  constexpr bool operator!=(const NumType &o) const;
 
-  constexpr operator Type() const {
-    UnsignedType v = 0;
-    for (unsigned int i = 0; i < sizeof(Type); ++i)
-      v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
-    return static_cast<Type>(v);
-  }
-
-  constexpr bool operator==(const NumType &o) const {
-    return static_cast<Type>(*this) == static_cast<Type>(o);
-  }
-
-  constexpr bool operator!=(const NumType &o) const { return !(*this == o); }
-
-  constexpr NumType &operator+=(Type n) { return *this = static_cast<Type>(*this) + n; }
-
-  constexpr NumType &operator-=(Type n) { return *this = static_cast<Type>(*this) - n; }
-
-  constexpr NumType &operator|=(Type n) { return *this = static_cast<Type>(*this) | n; }
-
-  constexpr NumType &operator&=(Type n) { return *this = static_cast<Type>(*this) & n; }
-
-  constexpr NumType &operator^=(Type n) { return *this = static_cast<Type>(*this) ^ n; }
-
-  constexpr NumType &operator++() { return *this = static_cast<Type>(*this) + 1; }
-
-  constexpr NumType &operator--() { return *this = static_cast<Type>(*this) - 1; }
+  constexpr NumType &operator+=(Type n);
+  constexpr NumType &operator-=(Type n);
+  constexpr NumType &operator|=(Type n);
+  constexpr NumType &operator&=(Type n);
+  constexpr NumType &operator^=(Type n);
+  constexpr NumType &operator++();
+  constexpr NumType &operator--();
 
   unsigned char bytes[sizeof(Type)];
 };
@@ -111,6 +90,74 @@ static constexpr uint32_t crc_of(const Report &report) {
   uint32_t c   = crc32(0, &seed, 1);
   auto raw     = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType>::NumType(Type value) {
+  *this = value;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator=(Type value) {
+  UnsignedType v = static_cast<UnsignedType>(value);
+  for (unsigned int i = 0; i < sizeof(Type); ++i) {
+    bytes[i] = static_cast<unsigned char>((v & 0xFF));
+    v        = static_cast<UnsignedType>((v >> 8));
+  }
+  return *this;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType>::operator Type() const {
+  UnsignedType v = 0;
+  for (unsigned int i = 0; i < sizeof(Type); ++i)
+    v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
+  return static_cast<Type>(v);
+}
+
+template <typename Type, typename UnsignedType>
+constexpr bool NumType<Type, UnsignedType>::operator==(const NumType &o) const {
+  return static_cast<Type>(*this) == static_cast<Type>(o);
+}
+
+template <typename Type, typename UnsignedType>
+constexpr bool NumType<Type, UnsignedType>::operator!=(const NumType &o) const {
+  return !(*this == o);
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator+=(Type n) {
+  return *this = static_cast<Type>(*this) + n;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator-=(Type n) {
+  return *this = static_cast<Type>(*this) - n;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator|=(Type n) {
+  return *this = static_cast<Type>(*this) | n;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator&=(Type n) {
+  return *this = static_cast<Type>(*this) & n;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator^=(Type n) {
+  return *this = static_cast<Type>(*this) ^ n;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator++() {
+  return *this = static_cast<Type>(*this) + 1;
+}
+
+template <typename Type, typename UnsignedType>
+constexpr NumType<Type, UnsignedType> &NumType<Type, UnsignedType>::operator--() {
+  return *this = static_cast<Type>(*this) - 1;
 }
 
 // ===========================================================================
