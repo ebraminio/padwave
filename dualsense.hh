@@ -40,19 +40,12 @@ struct NumType {
   }
 
   constexpr bool operator!=(const NumType &o) const { return !(*this == o); }
-
   constexpr NumType &operator+=(Type n) { return *this = static_cast<Type>(*this) + n; }
-
   constexpr NumType &operator-=(Type n) { return *this = static_cast<Type>(*this) - n; }
-
   constexpr NumType &operator|=(Type n) { return *this = static_cast<Type>(*this) | n; }
-
   constexpr NumType &operator&=(Type n) { return *this = static_cast<Type>(*this) & n; }
-
   constexpr NumType &operator^=(Type n) { return *this = static_cast<Type>(*this) ^ n; }
-
   constexpr NumType &operator++() { return *this = static_cast<Type>(*this) + 1; }
-
   constexpr NumType &operator--() { return *this = static_cast<Type>(*this) - 1; }
 
   unsigned char bytes[sizeof(Type)];
@@ -183,9 +176,7 @@ public:
 
   public:
     constexpr TriggerEffect() { off(); }
-
     constexpr uint8_t mode() const { return block[0]; }
-
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
     constexpr void zero() {
@@ -471,13 +462,9 @@ public:
 
     // reWASD traffic captures, including its intentionally non-standard values.
     constexpr bool rewasdFullPress() { return simpleWeapon(0x90, 0xA0, 0xFF); }
-
     constexpr bool rewasdSoftPress() { return simpleWeapon(0x70, 0xA0, 0xFF); }
-
     constexpr bool rewasdMediumPress() { return simpleWeapon(0x45, 0xA0, 0xFF); }
-
     constexpr bool rewasdHardPress() { return simpleWeapon(0x20, 0xA0, 0xFF); }
-
     constexpr bool rewasdPulse() { return simpleWeapon(0x00, 0x00, 0x00); }
 
     constexpr bool rewasdChoppy() {
@@ -493,11 +480,8 @@ public:
     }
 
     constexpr bool rewasdSoftRigidity() { return simpleFeedback(0x00, 0x00); }
-
     constexpr bool rewasdMediumRigidity() { return simpleFeedback(0x00, 0x64); }
-
     constexpr bool rewasdMaxRigidity() { return simpleFeedback(0x00, 0xDC); }
-
     constexpr bool rewasdHalfPress() { return simpleFeedback(0x55, 0x64); }
 
     constexpr bool rewasdRifle(uint8_t frequency = 10) {
@@ -555,7 +539,6 @@ public:
   static constexpr size_t size = 47;
 
   constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
-
   constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
 
 private:
@@ -649,15 +632,10 @@ public:
 
 private:
   static constexpr uint8_t bit(ValidFlag0 f) { return static_cast<uint8_t>(f); }
-
   static constexpr uint8_t bit(ValidFlag1 f) { return static_cast<uint8_t>(f); }
-
   static constexpr uint8_t bit(ValidFlag2 f) { return static_cast<uint8_t>(f); }
-
   constexpr void claim(ValidFlag0 f) { validFlag0 = static_cast<uint8_t>(validFlag0 | bit(f)); }
-
   constexpr void claim(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 | bit(f)); }
-
   constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
 public:
@@ -729,7 +707,6 @@ public:
   }
 
   constexpr void setHapticLowPassFilter(uint8_t v) { setHapticLowPassFilter(v != 0); }
-
   constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
 
   constexpr void setAudioControl2(uint8_t v) {
@@ -847,7 +824,6 @@ static_assert(sizeof(OutputBody) == OutputBody::size, "output body must stay 47 
 namespace internal {
 struct OutputBodyProbe {
   static constexpr uint8_t valid0(const OutputBody &b) { return b.validFlag0; }
-
   static constexpr uint8_t valid1(const OutputBody &b) { return b.validFlag1; }
 
   static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
@@ -964,24 +940,26 @@ struct DSScale {
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
   friend struct internal::ReportProbe;
-  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
+  template <typename Report>
+  friend constexpr uint32_t internal::crc_of(const Report &);
+
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue;      // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 reportIdValue; // 0x00  Packet::PacketStateBluetooth
   DSUINT8 seqTag;        // 0x01  high nibble = counter 0..15, low nibble = 0
-  DSUINT8 tagValue;           // 0x02  must be 0x10
+  DSUINT8 tagValue;      // 0x02  must be 0x10
   OutputBody bodyData;   // 0x03..0x31
   DSUINT8 reserved4[24]; // 0x32..0x49
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
-  static constexpr size_t size = 78;
-  static constexpr uint8_t crcSeed = 0xA2;
-  static constexpr uint8_t tag = 0x10;
+  static constexpr size_t size      = 78;
+  static constexpr uint8_t crcSeed  = 0xA2;
+  static constexpr uint8_t tag      = 0x10;
 
 public:
   // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
@@ -1000,10 +978,10 @@ public:
   };
 
   constexpr void init() {
-    *this    = OutputReport{};
+    *this         = OutputReport{};
     reportIdValue = reportId;
     tagValue      = tag;
-    seqTag   = 0;
+    seqTag        = 0;
     bodyData.init();
   }
 
@@ -1013,43 +991,39 @@ public:
   }
 
   constexpr const OutputBody &body() const { return bodyData; }
-
   constexpr OutputBody &body() { return bodyData; }
-
   constexpr void sign() { crc = internal::crc_of(*this); }
 };
-
 
 // Output 0x02 (USB, 63 bytes). No CRC — the kernel signs only the Bluetooth
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
   friend struct internal::ReportProbe;
+
 private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 reportIdValue;     // 0x00  Packet::PacketOutputUsb
-  OutputBody bodyData;  // 0x01..0x2f
-  DSUINT8 reserved[15]; // 0x30..0x3e
+  DSUINT8 reportIdValue; // 0x00  Packet::PacketOutputUsb
+  OutputBody bodyData;   // 0x01..0x2f
+  DSUINT8 reserved[15];  // 0x30..0x3e
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketOutputUsb);
-  static constexpr size_t size = 63;
+  static constexpr size_t size      = 63;
 
 public:
   constexpr void init() {
-    *this    = UsbOutputReport{};
+    *this         = UsbOutputReport{};
     reportIdValue = reportId;
     // USB field reports must not claim the audio defaults.
-    bodyData = OutputBody{};
+    bodyData      = OutputBody{};
   }
 
   constexpr const OutputBody &body() const { return bodyData; }
-
   constexpr OutputBody &body() { return bodyData; }
 };
-
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -1090,7 +1064,6 @@ public:
 
   public:
     constexpr bool active() const { return (contact & 0x80) == 0; }
-
     constexpr unsigned id() const { return contact & 0x7F; }
 
     constexpr unsigned x() const {
@@ -1111,7 +1084,6 @@ public:
     uint8_t value;
 
     constexpr unsigned stopLocation() const { return value & 0x0F; }
-
     constexpr unsigned status() const { return value >> 4; }
   };
 
@@ -1168,11 +1140,8 @@ public:
   static constexpr int touchpadHeight = 1080;
 
   Stick leftStick() const { return {lx, ly}; }
-
   Stick rightStick() const { return {rx, ry}; }
-
   Triggers triggers() const { return {l2, r2}; }
-
   int sequence() const { return seq; }
 
   // Normalized full-scale angular rate: -1..1.
@@ -1197,7 +1166,6 @@ public:
     constexpr Accelerometer(int raw_x, int raw_y, int raw_z)
         : x(static_cast<float>(raw_x) / countsPerG), y(static_cast<float>(raw_y) / countsPerG),
           z(static_cast<float>(raw_z) / countsPerG) {}
-
     float len() const { return sqrtf(x * x + y * y + z * z); }
 
   private:
@@ -1205,7 +1173,6 @@ public:
   };
 
   Accelerometer accelerometer() const { return {accelX, accelY, accelZ}; }
-
   uint8_t temperature() const { return temperatureC; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
@@ -1262,9 +1229,7 @@ public:
     friend struct InputBody;
 
     constexpr Buttons() : buttons(0) {}
-
     constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
-
     constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
 
     const Buttons pressed(const Buttons &prev) const {
@@ -1297,7 +1262,6 @@ public:
   };
 
   constexpr PowerState powerState() const { return static_cast<PowerState>(status0 >> 4); }
-
   constexpr PowerState charging() const { return powerState(); }
 
   // +0x35. PluggedUsbData/Power are the two bits observed during USB/charger
@@ -1343,27 +1307,16 @@ public:
   }
 
   TouchPoint touch(int index) const { return touchData.fingers[index == 0 ? 0 : 1]; }
-
   uint8_t touchTimestamp() const { return touchData.timestamp; }
-
   unsigned triggerFeedbackLeft() const { return triggerLeft.value; }
-
   unsigned triggerFeedbackRight() const { return triggerRight.value; }
-
   unsigned triggerStopLocationLeft() const { return triggerLeft.stopLocation(); }
-
   unsigned triggerStatusLeft() const { return triggerLeft.status(); }
-
   unsigned triggerStopLocationRight() const { return triggerRight.stopLocation(); }
-
   unsigned triggerStatusRight() const { return triggerRight.status(); }
-
   unsigned triggerEffectLeft() const { return triggerEffect >> 4; }
-
   unsigned triggerEffectRight() const { return triggerEffect & 0x0F; }
-
   uint32_t hostTime() const { return hostTimestamp; }
-
   uint32_t deviceTime() const { return deviceTimestamp; }
 };
 
@@ -1386,13 +1339,15 @@ static_assert(sizeof(InputBody) == InputBody::size, "input body must stay 63 byt
 
 struct InputReport {
   friend struct internal::ReportProbe;
-  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
+  template <typename Report>
+  friend constexpr uint32_t internal::crc_of(const Report &);
+
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue;      // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 reportIdValue; // 0x00  Packet::PacketStateBluetooth
   DSUINT8 seqTag;        // 0x01  high nibble = sequence tagValue, low nibble = 0
   InputBody bodyData;    // 0x02..0x40
   DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
@@ -1402,19 +1357,17 @@ protected:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
-  static constexpr size_t size = 78;
-  static constexpr uint8_t crcSeed = 0xA1;
+  static constexpr size_t size      = 78;
+  static constexpr uint8_t crcSeed  = 0xA1;
 
 public:
   constexpr void init() {
-    *this    = InputReport{};
+    *this         = InputReport{};
     reportIdValue = reportId;
   }
 
   constexpr const InputBody &body() const { return bodyData; }
-
   constexpr InputBody &body() { return bodyData; }
-
   constexpr void sign() { crc = internal::crc_of(*this); }
 
 private:
@@ -1428,29 +1381,28 @@ public:
   }
 };
 
-
 // USB 0x01 input report: one report-id byte followed by the same 63-byte body.
 struct UsbInputReport {
   friend struct internal::ReportProbe;
+
 private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 reportIdValue;  // 0x00  Packet::PacketInputUsb
-  InputBody bodyData; // 0x01..0x3f
+  DSUINT8 reportIdValue; // 0x00  Packet::PacketInputUsb
+  InputBody bodyData;    // 0x01..0x3f
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketInputUsb);
-  static constexpr size_t size = 64;
+  static constexpr size_t size      = 64;
 
 public:
   constexpr void init() {
-    *this    = UsbInputReport{};
+    *this         = UsbInputReport{};
     reportIdValue = reportId;
   }
 
   constexpr const InputBody &body() const { return bodyData; }
-
   constexpr InputBody &body() { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
@@ -1458,7 +1410,6 @@ public:
     return reinterpret_cast<const UsbInputReport *>(buf);
   }
 };
-
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -1502,7 +1453,8 @@ public:
 
 struct AudioReport {
   friend struct internal::ReportProbe;
-  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
+  template <typename Report>
+  friend constexpr uint32_t internal::crc_of(const Report &);
   friend struct internal::AudioReportProbe;
 
 private:
@@ -1528,7 +1480,7 @@ private:
   };
 
 protected:
-  DSUINT8 reportIdValue;         // 0x000  Packet::PacketAudio
+  DSUINT8 reportIdValue;    // 0x000  Packet::PacketAudio
   DSUINT8 seqTag;           // 0x001  high nibble = counter, low nibble = 0
   DSUINT8 configTag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
   DSUINT8 configLength;     // 0x003  7
@@ -1590,12 +1542,12 @@ public:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketAudio);
-  static constexpr size_t size = 398;
-  static constexpr uint8_t crcSeed = 0xA2;
+  static constexpr size_t size      = 398;
+  static constexpr uint8_t crcSeed  = 0xA2;
 
 private:
   static constexpr uint8_t stateSize = 63;
-  static constexpr uint8_t opusSize = 200;
+  static constexpr uint8_t opusSize  = 200;
 
 public:
   static constexpr uint8_t hapticSize = 64;
@@ -1605,7 +1557,6 @@ public:
   static constexpr uint16_t pcmFrames = 480;
 
 public:
-
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
   // opens it and the input stream then also carries 0xD4 frames.
   enum class EnableMask : uint8_t {
@@ -1621,16 +1572,13 @@ public:
   };
 
   constexpr OutputBody &stateBody() { return state.body; }
-
   constexpr const OutputBody &stateBody() const { return state.body; }
 
 private:
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
-
   constexpr void setCounter(uint8_t value) { counter = value; }
 
 public:
-
   // 0x36 sequence tagValue: high nibble counts 0..15, low nibble stays zero;
   // the counter is a separate free-running byte.
   struct Sequence {
@@ -1657,15 +1605,16 @@ private:
     return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
   }
 
-  constexpr bool valid() const { return reportIdValue == reportId && crc == internal::crc_of(*this); }
+  constexpr bool valid() const {
+    return reportIdValue == reportId && crc == internal::crc_of(*this);
+  }
 
 public:
-
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
   constexpr void init(SpeakerTag tagValue, EnableMask mask = EnableMask::SpeakerOnly) {
     *this           = AudioReport{};
-    reportIdValue        = reportId;
+    reportIdValue   = reportId;
     configTag       = 0x11 | 0x80;
     configLength    = 7;
     enableMaskValue = static_cast<uint8_t>(mask);
@@ -1705,15 +1654,11 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this); }
 };
 
-
 namespace internal {
 struct AudioReportProbe {
   static constexpr uint8_t reportIdValue(const AudioReport &r) { return r.reportIdValue; }
-
   static constexpr uint8_t seqTag(const AudioReport &r) { return r.seqTag; }
-
   static constexpr uint8_t configTag(const AudioReport &r) { return r.configTag; }
-
   static constexpr uint8_t configLength(const AudioReport &r) { return r.configLength; }
 
   static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
@@ -1721,15 +1666,10 @@ struct AudioReportProbe {
   }
 
   static constexpr uint8_t counter(const AudioReport &r) { return r.counter; }
-
   static constexpr uint8_t stateTag(const AudioReport &r) { return r.stateTag; }
-
   static constexpr uint8_t stateLength(const AudioReport &r) { return r.stateLength; }
-
   static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speakerLength; }
-
   static constexpr void setSeqTag(AudioReport &r, uint8_t v) { r.setSeqTag(v); }
-
   static constexpr void setCounter(AudioReport &r, uint8_t v) { r.setCounter(v); }
 
   static constexpr AudioReport::EnableMask enableMask(const AudioReport &r) {
@@ -1741,9 +1681,7 @@ struct AudioReportProbe {
   }
 
   static constexpr bool valid(const AudioReport &r) { return r.valid(); }
-
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
-
   static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
 };
 } // namespace internal
@@ -1827,7 +1765,7 @@ protected:
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration);
-  static constexpr size_t size = 41;
+  static constexpr size_t size      = 41;
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
@@ -1866,20 +1804,20 @@ static_assert(sizeof(Calibration) == Calibration::size, "0x05 must stay 41 bytes
 
 struct Pairing {
 protected:
-  DSUINT8 reportIdValue;      // 0x00  Packet::PacketFeaturePairing
+  DSUINT8 reportIdValue; // 0x00  Packet::PacketFeaturePairing
   DSUINT8 mac[6];        // 0x01..0x06  the controller's own address
   DSUINT8 unknown07[13]; // 0x07..0x13
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeaturePairing);
-  static constexpr size_t size = 20;
+  static constexpr size_t size      = 20;
 };
 
 static_assert(sizeof(Pairing) == Pairing::size, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  DSUINT8 reportIdValue;         // 0x00  Packet::PacketFeatureFirmware
+  DSUINT8 reportIdValue;    // 0x00  Packet::PacketFeatureFirmware
   char buildDate[11];       // 0x01..0x0b
   char buildTime[8];        // 0x0c..0x13
   DSUINT16 fwType;          // 0x14..0x15
@@ -1897,7 +1835,7 @@ protected:
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware);
-  static constexpr size_t size = 64;
+  static constexpr size_t size      = 64;
 
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
@@ -1910,15 +1848,10 @@ static_assert(sizeof(Firmware) == Firmware::size, "0x20 must stay 64 bytes");
 namespace internal {
 struct ReportProbe {
   static constexpr size_t outputSize() { return OutputReport::size; }
-
   static constexpr size_t usbOutputSize() { return UsbOutputReport::size; }
-
   static constexpr size_t inputSize() { return InputReport::size; }
-
   static constexpr size_t usbInputSize() { return UsbInputReport::size; }
-
   static constexpr size_t audioSize() { return AudioReport::size; }
-
 };
 } // namespace internal
 
@@ -1999,12 +1932,12 @@ struct MicFrame {
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
-  static constexpr uint8_t toc = 0xD4;
-  static constexpr size_t crcBytes = 4;
+  static constexpr uint8_t toc      = 0xD4;
+  static constexpr size_t crcBytes  = 4;
 
 public:
   static constexpr uint32_t sampleRate = 48000;
-  static constexpr uint32_t samples = 480;
+  static constexpr uint32_t samples    = 480;
 
   static void init(uint8_t *buf, size_t len) {
     if (!buf || len < 3 + crcBytes) return;
