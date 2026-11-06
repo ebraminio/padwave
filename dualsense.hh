@@ -1995,7 +1995,6 @@ protected:
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
-  static constexpr size_t size      = 64;
   static constexpr uint8_t crcSeed  = 0xA3;
 
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
@@ -2034,7 +2033,6 @@ protected:
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Haptics);
   static constexpr uint8_t crcSeed  = 0xA2;
-  static constexpr size_t size      = 142;
 
 public:
   static constexpr uint32_t sampleRate = 3000;
