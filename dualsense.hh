@@ -122,22 +122,22 @@ struct ReportProbe;
 // output state report; the direction is the stream, not the id.
 
 enum class Packet : uint8_t {
-  PacketInputUsb           = 0x01,
-  PacketOutputUsb          = 0x02,
-  PacketFeatureCalibration = 0x05,
-  PacketFeaturePairing     = 0x09,
-  PacketFeatureFirmware    = 0x20,
-  PacketStateBluetooth     = 0x31,
-  PacketHaptics            = 0x32,
-  PacketAudio              = 0x36,
-  PacketCommandHost        = 0x80,
-  PacketCommandStatus      = 0x81,
-  PacketCommandGyro        = 0x90,
-  PacketCommandGyroStatus  = 0x91,
-  PacketCommandCodec       = 0xA0,
-  PacketCommandQuery       = 0xA4,
-  PacketCommandTable       = 0xA5,
-  PacketCommandFlash       = 0xF0,
+  InputUsb           = 0x01,
+  OutputUsb          = 0x02,
+  FeatureCalibration = 0x05,
+  FeaturePairing     = 0x09,
+  FeatureFirmware    = 0x20,
+  StateBluetooth     = 0x31,
+  Haptics            = 0x32,
+  Audio              = 0x36,
+  CommandHost        = 0x80,
+  CommandStatus      = 0x81,
+  CommandGyro        = 0x90,
+  CommandGyroStatus  = 0x91,
+  CommandCodec       = 0xA0,
+  CommandQuery       = 0xA4,
+  CommandTable       = 0xA5,
+  CommandFlash       = 0xF0,
 };
 
 // psdevwiki HID command metadata. Command report IDs are part of Packet above;
@@ -174,143 +174,143 @@ struct CommandInfo {
 // records fields whose interpretation is not part of the generic command
 // header; keep it as the place to add payload details.
 inline constexpr CommandInfo kCommandTable[] = {
-    {"Get MCU Unique ID", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Get MCU Unique ID", Packet::CommandHost, CommandDevice::MainMcu,
      9, 0, false, "MediaTek main MCU unique ID"},
-    {"Read Device Info", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Read Device Info", Packet::CommandHost, CommandDevice::MainMcu,
      12, 0, false, ""},
-    {"Erase Device Info", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Erase Device Info", Packet::CommandHost, CommandDevice::MainMcu,
      13, 0, true, "DANGEROUS"},
-    {"Spider DSP Init Get Status", Packet::PacketCommandStatus, CommandDevice::Codec,
+    {"Spider DSP Init Get Status", Packet::CommandStatus, CommandDevice::Codec,
      1, 0, false, "status query"},
-    {"Spider DSP Get Status", Packet::PacketCommandStatus, CommandDevice::Codec,
+    {"Spider DSP Get Status", Packet::CommandStatus, CommandDevice::Codec,
      2, 0, false, "status query"},
-    {"Spider DSP Patch Finalize", Packet::PacketCommandHost, CommandDevice::Codec,
+    {"Spider DSP Patch Finalize", Packet::CommandHost, CommandDevice::Codec,
      5, 0, false, ""},
-    {"Spider DSP Finalize Get Status", Packet::PacketCommandStatus, CommandDevice::Codec,
+    {"Spider DSP Finalize Get Status", Packet::CommandStatus, CommandDevice::Codec,
      5, 0, false, "status query"},
-    {"Spider DSP Firmware Patch", Packet::PacketCommandHost, CommandDevice::Codec,
+    {"Spider DSP Firmware Patch", Packet::CommandHost, CommandDevice::Codec,
      2, 57, false, ""},
-    {"Spider DSP Firmware Patch Init", Packet::PacketCommandHost, CommandDevice::Codec,
+    {"Spider DSP Firmware Patch Init", Packet::CommandHost, CommandDevice::Codec,
      1, 0, false, ""},
-    {"Spider DSP Firmware Verify", Packet::PacketCommandHost, CommandDevice::Codec,
+    {"Spider DSP Firmware Verify", Packet::CommandHost, CommandDevice::Codec,
      3, 0, false, ""},
-    {"Spider DSP Firmware Verify Status", Packet::PacketCommandStatus, CommandDevice::Codec,
+    {"Spider DSP Firmware Verify Status", Packet::CommandStatus, CommandDevice::Codec,
      5, 0, false, "status query"},
-    {"Spider DSP Firmware Verify Request", Packet::PacketCommandHost, CommandDevice::Codec,
+    {"Spider DSP Firmware Verify Request", Packet::CommandHost, CommandDevice::Codec,
      7, 0, false, ""},
-    {"Spider DSP Firmware Verify Request Status", Packet::PacketCommandStatus, CommandDevice::Codec,
+    {"Spider DSP Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Codec,
      7, 0, false, "status query"},
-    {"Get TP UID", Packet::PacketCommandHost, CommandDevice::TouchPanel,
+    {"Get TP UID", Packet::CommandHost, CommandDevice::TouchPanel,
      2, 0, false, "touch panel unique ID"},
-    {"Get TP Version", Packet::PacketCommandHost, CommandDevice::TouchPanel,
+    {"Get TP Version", Packet::CommandHost, CommandDevice::TouchPanel,
      4, 0, false, ""},
-    {"Get Table ID", Packet::PacketCommandQuery, CommandDevice::Nvs,
+    {"Get Table ID", Packet::CommandQuery, CommandDevice::Nvs,
      2, 5, false, "DataLenLocal = 5"},
-    {"Reset", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Reset", Packet::CommandHost, CommandDevice::MainMcu,
      1, 0, false, ""},
-    {"Request Table ID", Packet::PacketCommandCodec, CommandDevice::Nvs,
+    {"Request Table ID", Packet::CommandCodec, CommandDevice::Nvs,
      2, 0, false, ""},
-    {"Reboot Secure Boot Loader", Packet::PacketCommandHost, CommandDevice::None,
+    {"Reboot Secure Boot Loader", Packet::CommandHost, CommandDevice::None,
      kNoCommandAction, 0, false, "RebootCmd = 1"},
-    {"Read Patch Info", Packet::PacketCommandHost, CommandDevice::DeviceInfo,
+    {"Read Patch Info", Packet::CommandHost, CommandDevice::DeviceInfo,
      13, 0, false, ""},
-    {"Get Firmware Info", Packet::PacketFeatureFirmware, CommandDevice::None,
+    {"Get Firmware Info", Packet::FeatureFirmware, CommandDevice::None,
      kNoCommandAction, 0, false, ""},
-    {"Start Gyroscope Offset", Packet::PacketCommandGyro, CommandDevice::Gyro,
+    {"Start Gyroscope Offset", Packet::CommandGyro, CommandDevice::Gyro,
      1, 0, false, "TargetID = 7"},
-    {"Get Gyroscope Offset State", Packet::PacketCommandGyroStatus, CommandDevice::Gyro,
+    {"Get Gyroscope Offset State", Packet::CommandGyroStatus, CommandDevice::Gyro,
      kNoCommandAction, 0, false, "TargetID = 7"},
-    {"Get BlueTooth Patch Data", Packet::PacketCommandStatus, CommandDevice::Bluetooth,
+    {"Get BlueTooth Patch Data", Packet::CommandStatus, CommandDevice::Bluetooth,
      3, 0, false, "status query"},
-    {"Get BlueTooth Patch Info", Packet::PacketCommandStatus, CommandDevice::DeviceInfo,
+    {"Get BlueTooth Patch Info", Packet::CommandStatus, CommandDevice::DeviceInfo,
      13, 0, false, "status query"},
-    {"Get Audio Codec State", Packet::PacketCommandQuery, CommandDevice::Codec,
+    {"Get Audio Codec State", Packet::CommandQuery, CommandDevice::Codec,
      1, 0, false, ""},
-    {"Flash", Packet::PacketCommandFlash, CommandDevice::None,
+    {"Flash", Packet::CommandFlash, CommandDevice::None,
      kNoCommandAction, 57, false, "DownloadCmd = 0; WriteCmd = 1"},
-    {"Audio Codec Select", Packet::PacketCommandCodec, CommandDevice::Codec,
+    {"Audio Codec Select", Packet::CommandCodec, CommandDevice::Codec,
      1, 0, false, ""},
-    {"Blue Tooth Patch", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth,
      2, 57, false, ""},
-    {"Read Blue Tooth Patch", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Read Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth,
      4, 0, false, ""},
-    {"Read Blue Tooth Patch Info", Packet::PacketCommandStatus, CommandDevice::Bluetooth,
+    {"Read Blue Tooth Patch Info", Packet::CommandStatus, CommandDevice::Bluetooth,
      4, 0, false, "status query"},
-    {"Blue Tooth Patch Finalize", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Blue Tooth Patch Finalize", Packet::CommandHost, CommandDevice::Bluetooth,
      5, 0, false, ""},
-    {"Blue Tooth Patch Init", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Blue Tooth Patch Init", Packet::CommandHost, CommandDevice::Bluetooth,
      1, 0, false, ""},
-    {"Blue Tooth Patch Restart", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Blue Tooth Patch Restart", Packet::CommandHost, CommandDevice::Bluetooth,
      6, 0, false, ""},
-    {"Blue Tooth Patch Verify", Packet::PacketCommandHost, CommandDevice::Bluetooth,
+    {"Blue Tooth Patch Verify", Packet::CommandHost, CommandDevice::Bluetooth,
      3, 0, false, ""},
-    {"Blue Tooth Restart Result", Packet::PacketCommandStatus, CommandDevice::Bluetooth,
+    {"Blue Tooth Restart Result", Packet::CommandStatus, CommandDevice::Bluetooth,
      6, 0, false, "status query"},
-    {"Get BT Address", Packet::PacketCommandStatus, CommandDevice::DeviceInfo,
+    {"Get BT Address", Packet::CommandStatus, CommandDevice::DeviceInfo,
      2, 6, false, "status query"},
-    {"Set BT Address", Packet::PacketCommandHost, CommandDevice::DeviceInfo,
+    {"Set BT Address", Packet::CommandHost, CommandDevice::DeviceInfo,
      1, 6, false, "ReadCmd = 2"},
-    {"Set BlueTooth Disable", Packet::PacketCommandHost, CommandDevice::DeviceInfo,
+    {"Set BlueTooth Disable", Packet::CommandHost, CommandDevice::DeviceInfo,
      5, 0, false, "Param = 0"},
-    {"Set BlueTooth Enable", Packet::PacketCommandHost, CommandDevice::DeviceInfo,
+    {"Set BlueTooth Enable", Packet::CommandHost, CommandDevice::DeviceInfo,
      5, 0, false, "Param = 1"},
-    {"Set BlueTooth Table", Packet::PacketCommandTable, CommandDevice::None,
+    {"Set BlueTooth Table", Packet::CommandTable, CommandDevice::None,
      kNoCommandAction, 16, false,
      "PowerTable = 1; RadioTable = 2; DataBegin = 0; PowerTableSize = 224; "
      "RadioTableSize = 112; DataMaxLen = 255; DataMinLen = 0"},
-    {"Set DFU Mode", Packet::PacketCommandCodec, CommandDevice::None,
+    {"Set DFU Mode", Packet::CommandCodec, CommandDevice::None,
      kNoCommandAction, 0, false,
      "DVT/prototype only; DisableMode = 0; EnablePBLMode = 1; EnableSBLMode = 2; "
      "EnableMode = 1"},
-    {"Set Hardware Version", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Set Hardware Version", Packet::CommandHost, CommandDevice::MainMcu,
      5, 0, false, ""},
-    {"Write PCBAID", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Write PCBAID", Packet::CommandHost, CommandDevice::MainMcu,
      3, 6, false, ""},
-    {"Read PCBAID", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Read PCBAID", Packet::CommandHost, CommandDevice::MainMcu,
      4, 0, false, ""},
-    {"Set Power Charge Off", Packet::PacketCommandHost, CommandDevice::Gyro,
+    {"Set Power Charge Off", Packet::CommandHost, CommandDevice::Gyro,
      3, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
-    {"Set Power Charge On", Packet::PacketCommandHost, CommandDevice::Gyro,
+    {"Set Power Charge On", Packet::CommandHost, CommandDevice::Gyro,
      2, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
-    {"Get Read OTP", Packet::PacketCommandQuery, CommandDevice::Nvs,
+    {"Get Read OTP", Packet::CommandQuery, CommandDevice::Nvs,
      9, 0, false, ""},
-    {"Set Read OTP", Packet::PacketCommandCodec, CommandDevice::Nvs,
+    {"Set Read OTP", Packet::CommandCodec, CommandDevice::Nvs,
      9, 0, false, "Offset = 23; Length = 1"},
-    {"Set Secure Boot Loader", Packet::PacketCommandCodec, CommandDevice::None,
+    {"Set Secure Boot Loader", Packet::CommandCodec, CommandDevice::None,
      kNoCommandAction, 0, false, "SetCmd = 2"},
-    {"Set VDD External Power Off", Packet::PacketCommandCodec, CommandDevice::Vdd,
+    {"Set VDD External Power Off", Packet::CommandCodec, CommandDevice::Vdd,
      1, 0, false, "Param = 0"},
-    {"Set VDD External Power On", Packet::PacketCommandCodec, CommandDevice::Vdd,
+    {"Set VDD External Power On", Packet::CommandCodec, CommandDevice::Vdd,
      1, 0, false, "Param = 1"},
-    {"Venom Get Status", Packet::PacketCommandStatus, CommandDevice::Venom,
+    {"Venom Get Status", Packet::CommandStatus, CommandDevice::Venom,
      2, 0, false, "status query"},
-    {"Set Venom FW Version", Packet::PacketCommandHost, CommandDevice::VenomFw,
+    {"Set Venom FW Version", Packet::CommandHost, CommandDevice::VenomFw,
      3, 0, false, ""},
-    {"Venom Finalize Get Status", Packet::PacketCommandStatus, CommandDevice::Venom,
+    {"Venom Finalize Get Status", Packet::CommandStatus, CommandDevice::Venom,
      5, 0, false, "status query"},
-    {"Venom Firmware Patch", Packet::PacketCommandHost, CommandDevice::Venom,
+    {"Venom Firmware Patch", Packet::CommandHost, CommandDevice::Venom,
      2, 57, false, ""},
-    {"Venom Firmware Patch Init", Packet::PacketCommandHost, CommandDevice::Venom,
+    {"Venom Firmware Patch Init", Packet::CommandHost, CommandDevice::Venom,
      1, 0, false, ""},
-    {"Venom Firmware Verify", Packet::PacketCommandHost, CommandDevice::Venom,
+    {"Venom Firmware Verify", Packet::CommandHost, CommandDevice::Venom,
      3, 0, false, ""},
-    {"Venom Firmware Verify Request", Packet::PacketCommandHost, CommandDevice::Venom,
+    {"Venom Firmware Verify Request", Packet::CommandHost, CommandDevice::Venom,
      7, 0, false, ""},
-    {"Venom Firmware Verify Request Status", Packet::PacketCommandStatus, CommandDevice::Venom,
+    {"Venom Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Venom,
      7, 0, false, "status query"},
-    {"Venom Firmware Verify Status", Packet::PacketCommandStatus, CommandDevice::Venom,
+    {"Venom Firmware Verify Status", Packet::CommandStatus, CommandDevice::Venom,
      5, 0, false, "status query"},
-    {"Venom Init Get Status", Packet::PacketCommandStatus, CommandDevice::Venom,
+    {"Venom Init Get Status", Packet::CommandStatus, CommandDevice::Venom,
      1, 0, false, "status query"},
-    {"Venom Patch Finalize", Packet::PacketCommandHost, CommandDevice::Venom,
+    {"Venom Patch Finalize", Packet::CommandHost, CommandDevice::Venom,
      5, 0, false, ""},
-    {"Set bonding", Packet::PacketCommandHost, CommandDevice::MainMcu,
+    {"Set bonding", Packet::CommandHost, CommandDevice::MainMcu,
      14, 0, false, ""},
-    {"NVS Lock", Packet::PacketCommandHost, CommandDevice::Nvs,
+    {"NVS Lock", Packet::CommandHost, CommandDevice::Nvs,
      1, 0, false, ""},
-    {"NVS Unlock", Packet::PacketCommandHost, CommandDevice::Nvs,
+    {"NVS Unlock", Packet::CommandHost, CommandDevice::Nvs,
      2, 0, false, "Param0 = 101; Param1 = 50; Param2 = 64; Param3 = 12"},
-    {"NVS Lock Status", Packet::PacketCommandHost, CommandDevice::Nvs,
+    {"NVS Lock Status", Packet::CommandHost, CommandDevice::Nvs,
      3, 0, false, "0 = Unlocked; 1 = Locked"},
 };
 
@@ -1128,7 +1128,7 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 reportIdValue; // 0x00  Packet::StateBluetooth
   DSUINT8 seqTag;        // 0x01  high nibble = counter 0..15, low nibble = 0
   DSUINT8 tagValue;      // 0x02  must be 0x10
   OutputBody bodyData;   // 0x03..0x31
@@ -1136,7 +1136,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t tag      = 0x10;
 
 public:
@@ -1187,12 +1187,12 @@ private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketOutputUsb
+  DSUINT8 reportIdValue; // 0x00  Packet::OutputUsb
   OutputBody bodyData;   // 0x01..0x2f
   DSUINT8 reserved[15];  // 0x30..0x3e
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketOutputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::OutputUsb);
 
 public:
   constexpr void init() {
@@ -1523,7 +1523,7 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketStateBluetooth
+  DSUINT8 reportIdValue; // 0x00  Packet::StateBluetooth
   DSUINT8 seqTag;        // 0x01  high nibble = sequence tagValue, low nibble = 0
   InputBody bodyData;    // 0x02..0x40
   DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
@@ -1532,7 +1532,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t crcSeed  = 0xA1;
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
@@ -1560,10 +1560,10 @@ struct UsbInputReport {
 
 private:
   using DSUINT8 = internal::DSUINT8;
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketInputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::InputUsb);
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketInputUsb
+  DSUINT8 reportIdValue; // 0x00  Packet::InputUsb
   InputBody bodyData;    // 0x01..0x3f
 
 public:
@@ -1649,7 +1649,7 @@ private:
   static_assert(sizeof (State) == 63, "State must stay 63 bytes");
 
 protected:
-  DSUINT8 reportIdValue;    // 0x000  Packet::PacketAudio
+  DSUINT8 reportIdValue;    // 0x000  Packet::Audio
   DSUINT8 seqTag;           // 0x001  high nibble = counter, low nibble = 0
   DSUINT8 configTag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
   DSUINT8 configLength;     // 0x003  7
@@ -1724,7 +1724,7 @@ public:
   };
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketAudio);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Audio);
   static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr uint8_t stateSize = 63;
   static constexpr uint8_t opusSize  = 200;
@@ -1899,7 +1899,7 @@ static_assert(sizeof (ImuCalibration) == 72, "IMU calibration must stay 72 bytes
 
 struct Calibration {
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketFeatureCalibration
+  DSUINT8 reportIdValue; // 0x00  Packet::FeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
@@ -1924,7 +1924,7 @@ protected:
   DSUINT8 unknown35[6]; // 0x23..0x28  not used by the kernel
 
 public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureCalibration);
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
@@ -1962,18 +1962,18 @@ static_assert(sizeof (Calibration) == 41, "0x05 must stay 41 bytes");
 
 struct Pairing {
 protected:
-  DSUINT8 reportIdValue; // 0x00  Packet::PacketFeaturePairing
+  DSUINT8 reportIdValue; // 0x00  Packet::FeaturePairing
   DSUINT8 mac[6];        // 0x01..0x06  the controller's own address
   DSUINT8 unknown07[13]; // 0x07..0x13
 
 public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeaturePairing);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeaturePairing);
 };
 static_assert(sizeof (Pairing) == 20, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
-  DSUINT8 reportIdValue;    // 0x00  Packet::PacketFeatureFirmware
+  DSUINT8 reportIdValue;    // 0x00  Packet::FeatureFirmware
   char buildDate[11];       // 0x01..0x0b
   char buildTime[8];        // 0x0c..0x13
   DSUINT16 fwType;          // 0x14..0x15
@@ -1990,7 +1990,7 @@ protected:
   DSUINT8 padding[4];       // 0x3c..0x3f
 
 public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
   static constexpr size_t size      = 64;
 
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
@@ -2018,7 +2018,7 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x000  Packet::PacketHaptics
+  DSUINT8 reportIdValue; // 0x000  Packet::Haptics
   DSUINT8 tagValue;      // 0x001  low nibble tag, high nibble sequence
   DSUINT8 packet0[9];    // 0x002..0x00a  0x11 config packet
   DSUINT8 packet1[66];   // 0x00b..0x04c  0x12 sample packet
@@ -2026,7 +2026,7 @@ protected:
   DSUINT32 crc;          // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketHaptics);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Haptics);
   static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr size_t size      = 142;
 
@@ -2127,7 +2127,7 @@ struct MicFrame {
 #endif
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t toc      = 0xD4;
   static constexpr size_t crcBytes  = 4;
 
