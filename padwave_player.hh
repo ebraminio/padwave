@@ -630,11 +630,11 @@ private:
   }
 
   void buildHaptics(const float *pcm, int frames, int8_t *haptic_out) {
-    memset(haptic_out, 0, dualsense::AudioReport::HapticSize);
+    memset(haptic_out, 0, dualsense::AudioReport::hapticSize);
     if (!haptic_subwoofer) return;
     float hgain = static_cast<float>(haptic_gain) / 100.0f;
     int written = 0;
-    for (int i = 0; i < frames && written < dualsense::AudioReport::HapticSize; i++) {
+    for (int i = 0; i < frames && written < dualsense::AudioReport::hapticSize; i++) {
       float mono = (pcm[i * CHANNELS] + pcm[i * CHANNELS + 1]) * 0.5f;
       float bass = lowPass(mono) * hgain;
       if (i % 8 != 0) continue;
@@ -676,9 +676,9 @@ private:
     report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
                                         : dualsense::OutputBody::AudioControl::Headphones);
 
-    int8_t haptics[dualsense::AudioReport::HapticSize];
+    int8_t haptics[dualsense::AudioReport::hapticSize];
     buildHaptics(pcm, frames, haptics);
-    report.setHaptics(haptics, dualsense::AudioReport::HapticSize);
+    report.setHaptics(haptics, dualsense::AudioReport::hapticSize);
     if (haptic_subwoofer) report.stateBody().setHapticLowPassFilter(true);
 
     audio_sequence.apply(report);
@@ -829,8 +829,8 @@ private:
       // immediately, and reassert the pause-only mute LED with a one-shot
       // 0x31 so mic capture cannot turn it into an activity blink.
       sendMuteLed(paused);
-      float silence[dualsense::AudioReport::PcmFrames * CHANNELS] = {};
-      sendReport(silence, dualsense::AudioReport::PcmFrames);
+      float silence[dualsense::AudioReport::pcmFrames * CHANNELS] = {};
+      sendReport(silence, dualsense::AudioReport::pcmFrames);
       return;
     }
 
@@ -956,10 +956,10 @@ private:
       return;
     }
 
-    float pcm[dualsense::AudioReport::PcmFrames * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::PcmFrames - 1));
+    float pcm[dualsense::AudioReport::pcmFrames * CHANNELS];
+    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::pcmFrames - 1));
 
-    for (int i = 0; i < dualsense::AudioReport::PcmFrames; i++) {
+    for (int i = 0; i < dualsense::AudioReport::pcmFrames; i++) {
       double src = i * step;
       int idx = static_cast<int>(src);
       int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
@@ -971,7 +971,7 @@ private:
       }
     }
 
-    sendReport(pcm, dualsense::AudioReport::PcmFrames);
+    sendReport(pcm, dualsense::AudioReport::pcmFrames);
   }
 
 public:

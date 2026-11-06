@@ -277,9 +277,9 @@ private:
     if (auto *audioFrame = dualsense::MicFrame::asFrame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = audioFrame->payload(buf, len, &payload_len);
-      if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::SampleRate, 1)) return;
-      int16_t pcm[dualsense::MicFrame::Samples];
-      int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::Samples);
+      if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::sampleRate, 1)) return;
+      int16_t pcm[dualsense::MicFrame::samples];
+      int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::samples);
       if (n > 0) emitMic(pcm, static_cast<size_t>(n));
       return;
     }
