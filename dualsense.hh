@@ -13,15 +13,13 @@ namespace internal {
 
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
-  static constexpr unsigned int staticSize = sizeof(Type);
-
   constexpr NumType() = default;
 
   constexpr explicit NumType(Type value) { *this = value; }
 
   constexpr NumType &operator=(Type value) {
     UnsignedType v = static_cast<UnsignedType>(value);
-    for (unsigned int i = 0; i < sizeof(Type); ++i) {
+    for (unsigned i = 0; i < sizeof (Type); ++i) {
       bytes[i] = static_cast<unsigned char>((v & 0xFF));
       v        = static_cast<UnsignedType>((v >> 8));
     }
@@ -30,8 +28,8 @@ struct NumType {
 
   constexpr operator Type() const {
     UnsignedType v = 0;
-    for (unsigned int i = 0; i < sizeof(Type); ++i)
-      v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
+    for (unsigned i = 0; i < sizeof (Type); ++i)
+      v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof (Type) - 1 - i]));
     return static_cast<Type>(v);
   }
 
@@ -48,7 +46,7 @@ struct NumType {
   constexpr NumType &operator++() { return *this = static_cast<Type>(*this) + 1; }
   constexpr NumType &operator--() { return *this = static_cast<Type>(*this) - 1; }
 
-  unsigned char bytes[sizeof(Type)];
+  uint8_t bytes[sizeof (Type)];
 };
 
 using DSUINT8  = NumType<uint8_t>;
@@ -58,12 +56,12 @@ using DSINT8   = NumType<int8_t, uint8_t>;
 using DSINT16  = NumType<int16_t, uint16_t>;
 using DSINT32  = NumType<int32_t, uint32_t>;
 
-static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
-static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
-static_assert(sizeof(DSUINT32) == 4, "DSUINT32 is four bytes");
-static_assert(sizeof(DSINT8) == 1, "DSINT8 is one byte");
-static_assert(sizeof(DSINT16) == 2, "DSINT16 is two bytes");
-static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
+static_assert(sizeof (DSUINT8) == 1, "DSUINT8 is one byte");
+static_assert(sizeof (DSUINT16) == 2, "DSUINT16 is two bytes");
+static_assert(sizeof (DSUINT32) == 4, "DSUINT32 is four bytes");
+static_assert(sizeof (DSINT8) == 1, "DSINT8 is one byte");
+static_assert(sizeof (DSINT16) == 2, "DSINT16 is two bytes");
+static_assert(sizeof (DSINT32) == 4, "DSINT32 is four bytes");
 
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
@@ -95,14 +93,14 @@ static constexpr uint32_t crc32(uint32_t crc, const uint8_t *p, size_t len) {
 
 template <typename Report>
 struct WireBytes {
-  unsigned char data[sizeof(Report)];
+  uint8_t data[sizeof (Report)];
 };
 
 template <typename Report>
 static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
   uint32_t c   = crc32(0, &crcSeed, 1);
   auto raw     = __builtin_bit_cast(WireBytes<Report>, report);
-  return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
+  return crc32(c, raw.data, sizeof (Report) - sizeof (DSUINT32));
 }
 
 // ===========================================================================
@@ -141,6 +139,8 @@ public:
   // parameters. Encoders adapted from ExtendInput.DataTools.DualSense
   // TriggerEffectGenerator (revision 6) by John "Nielk1" Klein, MIT License.
   struct TriggerEffect {
+    friend struct internal::OutputBodyProbe;
+    friend struct OutputBody;
   public:
     // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
     // values are firmware leftovers; keep them for completeness but prefer the
@@ -163,15 +163,11 @@ public:
       DebugFe         = 0xFE,
     };
 
-    static constexpr size_t blockSize = 11;
-    static constexpr int zoneCount    = 10;
-    static constexpr uint8_t maxLevel = 8;
 
   private:
-    friend struct internal::OutputBodyProbe;
-    friend struct OutputBody;
-
-    uint8_t block[blockSize] = {static_cast<uint8_t>(Type::Off)};
+    static constexpr int zoneCount    = 10;
+    static constexpr uint8_t maxLevel = 8;
+    uint8_t block[11] = {static_cast<uint8_t>(Type::Off)};
 
   public:
     constexpr TriggerEffect() { off(); }
@@ -179,7 +175,7 @@ public:
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
     constexpr void zero() {
-      for (size_t i = 1; i < blockSize; i++) block[i] = 0;
+      for (size_t i = 1; i < sizeof (block); ++i) block[i] = 0;
     }
 
     constexpr bool off() {
@@ -197,7 +193,7 @@ public:
       uint16_t active = 0;
       uint32_t force  = 0;
       uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
-      for (int i = position; i < 10; i++) {
+      for (int i = position; i < 10; ++i) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
@@ -232,7 +228,7 @@ public:
       uint16_t active = 0;
       uint32_t levels = 0;
       uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
-      for (int i = position; i < 10; i++) {
+      for (int i = position; i < 10; ++i) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
@@ -249,14 +245,14 @@ public:
     // Official: per-zone resistance levels (0..8).
     constexpr bool multiplePositionFeedback(const uint8_t *strength) {
       bool any = false;
-      for (int i = 0; i < 10; i++)
+      for (int i = 0; i < 10; ++i)
         if (strength[i] > 0) any = true;
       if (!any) return off();
       zero();
       block[0]        = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < 10; ++i) {
         if (strength[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
@@ -280,7 +276,7 @@ public:
       uint8_t strength[10] = {};
       float slope          = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
                     static_cast<float>(end - start);
-      for (int i = start; i < 10; i++) {
+      for (int i = start; i < 10; ++i) {
         int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
                                                 slope * static_cast<float>(i - start) + 0.5f)
                              : end_strength;
@@ -294,14 +290,14 @@ public:
     // Official: per-zone vibration amplitudes with one frequency.
     constexpr bool multiplePositionVibration(uint8_t frequency, const uint8_t *amplitude) {
       bool any = false;
-      for (int i = 0; i < 10; i++)
+      for (int i = 0; i < 10; ++i)
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
       zero();
       block[0]        = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < 10; ++i) {
         if (amplitude[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
@@ -443,7 +439,7 @@ public:
 
     constexpr bool appleFeedback(const float *strengths) {
       uint8_t levels[10];
-      for (int i = 0; i < 10; i++) levels[i] = normalize(strengths[i], 8.0f);
+      for (int i = 0; i < 10; ++i) levels[i] = normalize(strengths[i], 8.0f);
       return multiplePositionFeedback(levels);
     }
 
@@ -455,7 +451,7 @@ public:
 
     constexpr bool appleVibration(const float *amplitudes, float frequency) {
       uint8_t levels[10];
-      for (int i = 0; i < 10; i++) levels[i] = normalize(amplitudes[i], 8.0f);
+      for (int i = 0; i < 10; ++i) levels[i] = normalize(amplitudes[i], 8.0f);
       return multiplePositionVibration(normalize(frequency, 255.0f), levels);
     }
 
@@ -503,6 +499,7 @@ public:
       return true;
     }
   };
+  static_assert(sizeof (TriggerEffect) == 11, "trigger effect must stay 11 bytes");
 
 private:
   using DSUINT8  = internal::DSUINT8;
@@ -822,8 +819,7 @@ public:
     audioControl2    = 0x0A;
   }
 };
-
-static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
+static_assert(sizeof (OutputBody) == 47, "output body must stay 47 bytes");
 
 namespace internal {
 struct OutputBodyProbe {
@@ -835,8 +831,6 @@ struct OutputBodyProbe {
   }
 };
 } // namespace internal
-
-static_assert(sizeof(OutputBody::TriggerEffect) == OutputBody::TriggerEffect::blockSize);
 
 constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
   OutputBody::TriggerEffect effect;
@@ -959,7 +953,6 @@ protected:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
-  static constexpr size_t size      = 78;
   static constexpr uint8_t tag      = 0x10;
 
 public:
@@ -998,6 +991,7 @@ public:
     crc = internal::crc_of(*this, crcSeed);
   }
 };
+static_assert(sizeof (OutputReport) == 78, "0x31 must stay 78 bytes");
 
 // Output 0x02 (USB, 63 bytes). No CRC — the kernel signs only the Bluetooth
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
@@ -1015,7 +1009,6 @@ protected:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketOutputUsb);
-  static constexpr size_t size      = 63;
 
 public:
   constexpr void init() {
@@ -1028,6 +1021,7 @@ public:
   constexpr const OutputBody &body() const { return bodyData; }
   constexpr OutputBody &body() { return bodyData; }
 };
+static_assert(sizeof (UsbOutputReport) == 63, "0x02 must stay 63 bytes");
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -1078,11 +1072,13 @@ public:
       return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4));
     }
   };
+  static_assert(sizeof (TouchPoint) == 4, "touch point must stay 4 bytes");
 
   struct TouchData {
     TouchPoint fingers[2];
     uint8_t timestamp;
   };
+  static_assert(sizeof (TouchData) == 9, "touch data must stay 9 bytes");
 
   struct TriggerFeedback {
     uint8_t value;
@@ -1090,6 +1086,7 @@ public:
     constexpr unsigned stopLocation() const { return value & 0x0F; }
     constexpr unsigned status() const { return value >> 4; }
   };
+  static_assert(sizeof (TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
 
 protected:
   DSUINT8 lx;                   // +0x00  left stick X, 0..255 (128 = centre)
@@ -1321,12 +1318,7 @@ public:
   uint32_t hostTime() const { return hostTimestamp; }
   uint32_t deviceTime() const { return deviceTimestamp; }
 };
-
-static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes");
-static_assert(sizeof(InputBody::TouchData) == 9, "touch data must stay 9 bytes");
-static_assert(sizeof(InputBody::TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
-
-static_assert(sizeof(InputBody) == 63, "input body must stay 63 bytes");
+static_assert(sizeof (InputBody) == 63, "input body must stay 63 bytes");
 
 // ===========================================================================
 // Input 0x31 (Bluetooth, 78 bytes) and 0x01 (USB, 64 bytes)
@@ -1357,7 +1349,6 @@ protected:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
-  static constexpr size_t size      = 78;
   static constexpr uint8_t crcSeed  = 0xA1;
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
@@ -1372,11 +1363,12 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < size || buf[0] != reportId) return nullptr;
+    if (!buf || len < sizeof (InputReport) || buf[0] != reportId) return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
     return r->valid() ? r : nullptr;
   }
 };
+static_assert(sizeof (InputReport) == 78, "input 0x31 must stay 78 bytes");
 
 // USB 0x01 input report: one report-id byte followed by the same 63-byte body.
 struct UsbInputReport {
@@ -1391,7 +1383,6 @@ protected:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketInputUsb);
-  static constexpr size_t size      = 64;
 
 public:
   constexpr void init() {
@@ -1402,10 +1393,11 @@ public:
   constexpr const InputBody &body() const { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < size || buf[0] != reportId) return nullptr;
+    if (!buf || len < sizeof (UsbInputReport) || buf[0] != reportId) return nullptr;
     return reinterpret_cast<const UsbInputReport *>(buf);
   }
 };
+static_assert(sizeof (UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -1472,6 +1464,7 @@ private:
     OutputBody body;     // +0x00..0x2e
     DSUINT8 padding[16]; // +0x2f..0x3e  the rest of the 63-byte block
   };
+  static_assert(sizeof (State) == 63, "State must stay 63 bytes");
 
 protected:
   DSUINT8 reportIdValue;    // 0x000  Packet::PacketAudio
@@ -1550,7 +1543,6 @@ public:
 
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketAudio);
-  static constexpr size_t size      = 398;
   static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr uint8_t stateSize = 63;
   static constexpr uint8_t opusSize  = 200;
@@ -1616,7 +1608,7 @@ public:
 #ifdef DS_HAVE_OPUS
   bool setPcm(const float *pcm, int frames, Encoder &encoder) {
     uint8_t payload[opusSize];
-    int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof(payload)));
+    int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof (payload)));
     if (n < 0) n = 0;
     setOpus(payload, static_cast<size_t>(n));
     return n > 0;
@@ -1639,6 +1631,7 @@ public:
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
+static_assert(sizeof (AudioReport) == 398, "0x36 must stay 398 bytes");
 
 namespace internal {
 struct AudioReportProbe {
@@ -1668,7 +1661,7 @@ struct AudioReportProbe {
 
   static constexpr bool valid(const AudioReport &r) { return r.valid(); }
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
-  static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
+  static constexpr size_t stateSize() { return sizeof (AudioReport::State); }
 };
 
 // ===========================================================================
@@ -1720,6 +1713,7 @@ struct ImuCalibration {
   AxisCalibration gyro[3];
   AxisCalibration accel[3];
 };
+static_assert(sizeof (ImuCalibration) == 72, "IMU calibration must stay 72 bytes");
 
 struct Calibration {
 protected:
@@ -1749,7 +1743,6 @@ protected:
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration);
-  static constexpr size_t size      = 41;
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
@@ -1783,8 +1776,7 @@ public:
     return result;
   }
 };
-
-static_assert(sizeof(Calibration) == Calibration::size, "0x05 must stay 41 bytes");
+static_assert(sizeof (Calibration) == 41, "0x05 must stay 41 bytes");
 
 struct Pairing {
 protected:
@@ -1794,10 +1786,8 @@ protected:
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketFeaturePairing);
-  static constexpr size_t size      = 20;
 };
-
-static_assert(sizeof(Pairing) == Pairing::size, "0x09 must stay 20 bytes");
+static_assert(sizeof (Pairing) == 20, "0x09 must stay 20 bytes");
 
 struct Firmware {
 protected:
@@ -1825,27 +1815,7 @@ public:
 
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
 };
-
-static_assert(sizeof(Firmware) == Firmware::size, "0x20 must stay 64 bytes");
-
-struct ReportProbe {
-  static constexpr size_t outputSize() { return OutputReport::size; }
-  static constexpr size_t usbOutputSize() { return UsbOutputReport::size; }
-  static constexpr size_t inputSize() { return InputReport::size; }
-  static constexpr size_t usbInputSize() { return UsbInputReport::size; }
-  static constexpr size_t audioSize() { return AudioReport::size; }
-};
-
-static_assert(sizeof(OutputReport) == internal::ReportProbe::outputSize(),
-              "0x31 must stay 78 bytes");
-static_assert(sizeof(UsbOutputReport) == internal::ReportProbe::usbOutputSize(),
-              "0x02 must stay 63 bytes");
-static_assert(sizeof(InputReport) == internal::ReportProbe::inputSize(),
-              "input 0x31 must stay 78 bytes");
-static_assert(sizeof(UsbInputReport) == internal::ReportProbe::usbInputSize(),
-              "input 0x01 must stay 64 bytes");
-static_assert(sizeof(AudioReport) == internal::ReportProbe::audioSize(),
-              "0x36 must stay 398 bytes");
+static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 
 } // namespace internal
 
@@ -1988,7 +1958,7 @@ static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
 // --- CRC-32 ----------------------------------------------------------------
 
 constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-static_assert(internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+static_assert(internal::crc32(0, kCheck, sizeof (kCheck)) == 0xCBF43926u);
 constexpr uint32_t kChained = [] {
   uint32_t c = internal::crc32(0, kCheck, 4);
   return internal::crc32(c, kCheck + 4, 5);
@@ -2006,9 +1976,9 @@ constexpr AudioReport kReport = [] {
   return r;
 }();
 
-static_assert(sizeof(AudioReport) == 398);
+static_assert(sizeof (AudioReport) == 398);
 static_assert(internal::AudioReportProbe::stateSize() == 63);
-static_assert(sizeof(OutputBody) == 47);
+static_assert(sizeof (OutputBody) == 47);
 
 static_assert(internal::AudioReportProbe::reportIdValue(kReport) == 0x36);
 static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
