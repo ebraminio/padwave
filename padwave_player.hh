@@ -669,10 +669,14 @@ private:
     int8_t haptics[dualsense::AudioReport::hapticSize];
     buildHaptics(pcm, frames, haptics);
     for (size_t n = 0; n < dualsense::HapticsReport::sampleFrames; n++) {
-      // SAxense's PipeWire stream is u8, so shift signed samples to 0x80 center.
-      uint8_t sample = static_cast<uint8_t>(haptics[n * 2] + 128);
-      dest[n * 2]     = sample;
-      dest[n * 2 + 1] = sample;
+      // Decimate 6 kHz to 3 kHz with a two-tap average instead of dropping
+      // every other sample; the latter gives the actuator a stepped edge.
+      // SAxense's PipeWire stream is u8, centered at 0x80.
+      int sample = (static_cast<int>(haptics[n * 2]) + haptics[n * 2 + 1]) / 2 + 128;
+      if (sample < 0) sample = 0;
+      if (sample > 255) sample = 255;
+      dest[n * 2]     = static_cast<uint8_t>(sample);
+      dest[n * 2 + 1] = static_cast<uint8_t>(sample);
     }
   }
 
