@@ -981,10 +981,9 @@ private:
   static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
   static constexpr size_t Size = 78;
   static constexpr uint8_t CrcSeed = 0xA2;
-
-public:
   static constexpr uint8_t Tag = 0x10;
 
+public:
   // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
   // The class owns the shift and wrap; callers just hold a Sequence.
   struct Sequence {
@@ -1018,14 +1017,6 @@ public:
   constexpr OutputBody &body() { return bodyData; }
 
   constexpr void sign() { crc = internal::crc_of(*this); }
-
-  constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
-
-  static const OutputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
-    const auto *r = reinterpret_cast<const OutputReport *>(buf);
-    return r->valid() ? r : nullptr;
-  }
 };
 
 
@@ -1057,11 +1048,6 @@ public:
   constexpr const OutputBody &body() const { return bodyData; }
 
   constexpr OutputBody &body() { return bodyData; }
-
-  static const UsbOutputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
-    return reinterpret_cast<const UsbOutputReport *>(buf);
-  }
 };
 
 
@@ -1431,8 +1417,10 @@ public:
 
   constexpr void sign() { crc = internal::crc_of(*this); }
 
+private:
   constexpr bool valid() const { return crc == internal::crc_of(*this); }
 
+public:
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len < Size || buf[0] != ReportId) return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
@@ -1605,16 +1593,16 @@ private:
   static constexpr size_t Size = 398;
   static constexpr uint8_t CrcSeed = 0xA2;
 
-public:
+private:
   static constexpr uint8_t StateSize = 63;
-  static constexpr uint8_t HapticSize = 64;
   static constexpr uint8_t OpusSize = 200;
+
+public:
+  static constexpr uint8_t HapticSize = 64;
 
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   static constexpr uint16_t PcmFrames = 480;
-  static constexpr uint16_t InputBlock = 512;
-  static constexpr uint16_t Channels = 2;
 
 public:
 
@@ -1636,9 +1624,12 @@ public:
 
   constexpr const OutputBody &stateBody() const { return state.body; }
 
+private:
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
 
   constexpr void setCounter(uint8_t value) { counter = value; }
+
+public:
 
   // 0x36 sequence tag: high nibble counts 0..15, low nibble stays zero;
   // the counter is a separate free-running byte.
@@ -1657,6 +1648,7 @@ public:
     static constexpr uint8_t Shift = 4;
   };
 
+private:
   constexpr EnableMask enableMask() const {
     return static_cast<EnableMask>(static_cast<uint8_t>(enableMaskValue));
   }
@@ -1664,6 +1656,10 @@ public:
   constexpr SpeakerTag speakerTag() const {
     return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
   }
+
+  constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
+
+public:
 
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
@@ -1707,14 +1703,6 @@ public:
   }
 
   constexpr void sign() { crc = internal::crc_of(*this); }
-
-  constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
-
-  static const AudioReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
-    const auto *r = reinterpret_cast<const AudioReport *>(buf);
-    return r->valid() ? r : nullptr;
-  }
 };
 
 
@@ -1739,6 +1727,20 @@ struct AudioReportProbe {
   static constexpr uint8_t stateLength(const AudioReport &r) { return r.stateLength; }
 
   static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speakerLength; }
+
+  static constexpr void setSeqTag(AudioReport &r, uint8_t v) { r.setSeqTag(v); }
+
+  static constexpr void setCounter(AudioReport &r, uint8_t v) { r.setCounter(v); }
+
+  static constexpr AudioReport::EnableMask enableMask(const AudioReport &r) {
+    return r.enableMask();
+  }
+
+  static constexpr AudioReport::SpeakerTag speakerTag(const AudioReport &r) {
+    return r.speakerTag();
+  }
+
+  static constexpr bool valid(const AudioReport &r) { return r.valid(); }
 
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
 
@@ -2003,7 +2005,6 @@ private:
 public:
   static constexpr uint32_t SampleRate = 48000;
   static constexpr uint32_t Samples = 480;
-  static constexpr uint32_t FrameMs = 10;
 
   static void init(uint8_t *buf, size_t len) {
     if (!buf || len < 3 + CrcBytes) return;
@@ -2084,8 +2085,8 @@ constexpr AudioReport kReport = [] {
   AudioReport r{};
   r.init(AudioReport::SpeakerTag::Jack, AudioReport::EnableMask::SpeakerOnly);
   r.stateBody().init(OutputBody::AudioControl::Headphones);
-  r.setSeqTag(0x00);
-  r.setCounter(0);
+  internal::AudioReportProbe::setSeqTag(r, 0x00);
+  internal::AudioReportProbe::setCounter(r, 0);
   return r;
 }();
 
@@ -2097,7 +2098,8 @@ static_assert(internal::AudioReportProbe::reportId(kReport) == 0x36);
 static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
 static_assert(internal::AudioReportProbe::configTag(kReport) == 0x91);
 static_assert(internal::AudioReportProbe::configLength(kReport) == 7);
-static_assert(kReport.enableMask() == AudioReport::EnableMask::SpeakerOnly);
+static_assert(internal::AudioReportProbe::enableMask(kReport) ==
+              AudioReport::EnableMask::SpeakerOnly);
 static_assert(internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
 static_assert(internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
 static_assert(internal::AudioReportProbe::counter(kReport) == 0);
@@ -2107,7 +2109,7 @@ static_assert(internal::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
 static_assert(internal::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
 static_assert(kReport.stateBody().headphoneVolume() == 0x7F);
 static_assert(kReport.stateBody().speakerVolume() == 0x64);
-static_assert(kReport.speakerTag() == AudioReport::SpeakerTag::Jack);
+static_assert(internal::AudioReportProbe::speakerTag(kReport) == AudioReport::SpeakerTag::Jack);
 static_assert(internal::AudioReportProbe::speakerLength(kReport) == 200);
 static_assert(internal::AudioReportProbe::opusByte(kReport, 0) == 0);
 
@@ -2118,11 +2120,11 @@ constexpr AudioReport kSigned = [] {
   r.sign();
   return r;
 }();
-static_assert(kSigned.valid());
+static_assert(internal::AudioReportProbe::valid(kSigned));
 
 constexpr auto kRaw         = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
 constexpr AudioReport kCopy = __builtin_bit_cast(AudioReport, kRaw);
-static_assert(kCopy.valid());
+static_assert(internal::AudioReportProbe::valid(kCopy));
 
 } // namespace wire_test
 } // namespace internal
