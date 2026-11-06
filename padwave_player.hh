@@ -602,7 +602,7 @@ private:
         samples[i * 4 + 3] = static_cast<int16_t>(bass * 32767.0f);
       }
       if (!startUsbAudio()) return;
-      size_t count = static_cast<size_t>(IN_FRAMES) * 4;
+      size_t count = IN_FRAMES * 4;
       if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
         stopUsbAudio();
         return;
@@ -621,7 +621,7 @@ private:
       }
     }
     if (!startUsbAudio()) return;
-    size_t count = static_cast<size_t>(IN_FRAMES) * CHANNELS;
+    size_t count = IN_FRAMES * CHANNELS;
     if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
       stopUsbAudio();
       return;
@@ -863,7 +863,7 @@ private:
           seek_fade = true;
           fading = true;
           fade_pos = 0;
-          fade_total = static_cast<int>((static_cast<long>(fade) * 1000 / 10667));
+          fade_total = static_cast<int>(fade * 1000 / 10667);
           if (fade_total < 1) fade_total = 1;
           base_ms = value;
           consumed = 0;

@@ -407,7 +407,7 @@ public:
     }
 
     constexpr bool limitedWeapon(uint8_t start, uint8_t end, uint8_t strength) {
-      if (start < 0x10 || end < start || static_cast<int>(end) > static_cast<int>(start) + 100 ||
+      if (start < 0x10 || end < start || end > start + 100 ||
           strength > 10)
         return false;
       if (strength == 0) return off();
@@ -1071,11 +1071,11 @@ public:
     constexpr unsigned id() const { return contact & 0x7F; }
 
     constexpr unsigned x() const {
-      return static_cast<unsigned>(xLow) | (static_cast<unsigned>(xyHigh & 0x0F) << 8);
+      return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8));
     }
 
     constexpr unsigned y() const {
-      return static_cast<unsigned>(xyHigh >> 4) | (static_cast<unsigned>(yHigh) << 4);
+      return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4));
     }
   };
 
@@ -1191,7 +1191,7 @@ public:
     None      = 8,
   };
 
-  Dpad dpad() const { return static_cast<Dpad>(static_cast<uint32_t>(buttonsData) & dpadMask); }
+  Dpad dpad() const { return static_cast<Dpad>(buttonsData & dpadMask); }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
@@ -1235,7 +1235,7 @@ public:
     constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
 
     const Buttons pressed(const Buttons &prev) const {
-      return Buttons(static_cast<uint32_t>(buttons) & ~static_cast<uint32_t>(prev.buttons));
+      return Buttons(buttons & ~prev.buttons);
     }
 
   private:
@@ -1753,20 +1753,20 @@ public:
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
-    int speed_2x       = static_cast<int>(gyroSpeedPlus) + static_cast<int>(gyroSpeedMinus);
+    int speed_2x       = gyroSpeedPlus + gyroSpeedMinus;
     int gyro_numerator = speed_2x * ImuCalibration::gyroResolutionPerDps;
 
-    int pitch_bias = static_cast<int>(gyroPitchBias);
-    int yaw_bias   = static_cast<int>(gyroYawBias);
-    int roll_bias  = static_cast<int>(gyroRollBias);
+    int pitch_bias = gyroPitchBias;
+    int yaw_bias   = gyroYawBias;
+    int roll_bias  = gyroRollBias;
     result.gyro[0] = {0, gyro_numerator,
-                      static_cast<int>(gyroPitchPlus) - pitch_bias +
-                          static_cast<int>(gyroPitchMinus) - pitch_bias};
+                      gyroPitchPlus - pitch_bias +
+                          gyroPitchMinus - pitch_bias};
     result.gyro[1] = {0, gyro_numerator,
-                      static_cast<int>(gyroYawPlus) - yaw_bias + static_cast<int>(gyroYawMinus) -
+                      gyroYawPlus - yaw_bias + gyroYawMinus -
                           yaw_bias};
     result.gyro[2] = {0, gyro_numerator,
-                      static_cast<int>(gyroRollPlus) - roll_bias + static_cast<int>(gyroRollMinus) -
+                      gyroRollPlus - roll_bias + gyroRollMinus -
                           roll_bias};
     for (auto &axis : result.gyro)
       if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::gyroRange);

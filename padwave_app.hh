@@ -1609,8 +1609,8 @@ private:
     this->ay = accel.y;
     this->az = accel.z;
     this->seq = static_cast<unsigned>(b.sequence());
-    this->tfl = static_cast<unsigned>(b.triggerFeedbackLeft());
-    this->tfr = static_cast<unsigned>(b.triggerFeedbackRight());
+    this->tfl = b.triggerFeedbackLeft();
+    this->tfr = b.triggerFeedbackRight();
     this->touch_timestamp = b.touchTimestamp();
     this->host_timestamp = b.hostTime();
     this->device_timestamp = b.deviceTime();
