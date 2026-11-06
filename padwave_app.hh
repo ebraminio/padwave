@@ -1703,10 +1703,16 @@ private:
       this->paused = true;
       playerSend("pause 1\n");
     } else if (strcmp(name, "jack_unplugged") == 0) {
-      // No headset means the speaker route; do not stop playback on connect or
-      // unplug. The old pause here made a silent controller look like a dead
-      // haptics channel.
+      // macOS-style: a real unplug pauses playback. The input layer only emits
+      // this on a stable transition, so starting with no headset does not
+      // trigger it.
       applyOutputRoute();
+      if (this->playing && !this->paused) {
+        this->paused = true;
+        this->paused_by_jack = true;
+        playerSend("pause 1\n");
+        this->playhead_dirty = true;
+      }
     } else if (strcmp(name, "jack_plugged") == 0) {
       applyOutputRoute();
       if (this->paused_by_jack) {
