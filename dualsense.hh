@@ -99,9 +99,8 @@ struct WireBytes {
 };
 
 template <typename Report>
-static constexpr uint32_t crc_of(const Report &report) {
-  uint8_t seed = static_cast<uint8_t>(Report::crcSeed);
-  uint32_t c   = crc32(0, &seed, 1);
+static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
+  uint32_t c   = crc32(0, &crcSeed, 1);
   auto raw     = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
 }
@@ -536,8 +535,6 @@ protected:
   DSUINT8 lightbarBlue;        // +0x2e
 
 public:
-  static constexpr size_t size = 47;
-
   constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
   constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
 
@@ -819,7 +816,7 @@ public:
   }
 };
 
-static_assert(sizeof(OutputBody) == OutputBody::size, "output body must stay 47 bytes");
+static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
 namespace internal {
 struct OutputBodyProbe {
@@ -940,8 +937,6 @@ struct DSScale {
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
   friend struct internal::ReportProbe;
-  template <typename Report>
-  friend constexpr uint32_t internal::crc_of(const Report &);
 
 private:
   using DSUINT8  = internal::DSUINT8;
@@ -958,7 +953,6 @@ protected:
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
   static constexpr size_t size      = 78;
-  static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr uint8_t tag      = 0x10;
 
 public:
@@ -992,7 +986,10 @@ public:
 
   constexpr const OutputBody &body() const { return bodyData; }
   constexpr OutputBody &body() { return bodyData; }
-  constexpr void sign() { crc = internal::crc_of(*this); }
+  constexpr void sign() {
+    constexpr uint8_t crcSeed = 0xA2;
+    crc = internal::crc_of(*this, crcSeed);
+  }
 };
 
 // Output 0x02 (USB, 63 bytes). No CRC — the kernel signs only the Bluetooth
@@ -1124,8 +1121,6 @@ protected:
   static constexpr uint32_t dpadMask = 0x0F;
 
 public:
-  static constexpr size_t size = 63;
-
   struct Stick {
     int x;
     int y;
@@ -1324,7 +1319,7 @@ static_assert(sizeof(InputBody::TouchPoint) == 4, "touch point must stay 4 bytes
 static_assert(sizeof(InputBody::TouchData) == 9, "touch data must stay 9 bytes");
 static_assert(sizeof(InputBody::TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
 
-static_assert(sizeof(InputBody) == InputBody::size, "input body must stay 63 bytes");
+static_assert(sizeof(InputBody) == 63, "input body must stay 63 bytes");
 
 // ===========================================================================
 // Input 0x31 (Bluetooth, 78 bytes) and 0x01 (USB, 64 bytes)
@@ -1339,8 +1334,6 @@ static_assert(sizeof(InputBody) == InputBody::size, "input body must stay 63 byt
 
 struct InputReport {
   friend struct internal::ReportProbe;
-  template <typename Report>
-  friend constexpr uint32_t internal::crc_of(const Report &);
 
 private:
   using DSUINT8  = internal::DSUINT8;
@@ -1359,6 +1352,7 @@ private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
   static constexpr size_t size      = 78;
   static constexpr uint8_t crcSeed  = 0xA1;
+  constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
   constexpr void init() {
@@ -1368,12 +1362,8 @@ public:
 
   constexpr const InputBody &body() const { return bodyData; }
   constexpr InputBody &body() { return bodyData; }
-  constexpr void sign() { crc = internal::crc_of(*this); }
+  constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
-private:
-  constexpr bool valid() const { return crc == internal::crc_of(*this); }
-
-public:
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len < size || buf[0] != reportId) return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
@@ -1403,7 +1393,6 @@ public:
   }
 
   constexpr const InputBody &body() const { return bodyData; }
-  constexpr InputBody &body() { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len < size || buf[0] != reportId) return nullptr;
@@ -1453,8 +1442,6 @@ public:
 
 struct AudioReport {
   friend struct internal::ReportProbe;
-  template <typename Report>
-  friend constexpr uint32_t internal::crc_of(const Report &);
   friend struct internal::AudioReportProbe;
 
 private:
@@ -1540,23 +1527,6 @@ public:
   };
 #endif
 
-private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketAudio);
-  static constexpr size_t size      = 398;
-  static constexpr uint8_t crcSeed  = 0xA2;
-
-private:
-  static constexpr uint8_t stateSize = 63;
-  static constexpr uint8_t opusSize  = 200;
-
-public:
-  static constexpr uint8_t hapticSize = 64;
-
-  // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
-  // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
-  static constexpr uint16_t pcmFrames = 480;
-
-public:
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
   // opens it and the input stream then also carries 0xD4 frames.
   enum class EnableMask : uint8_t {
@@ -1571,14 +1541,36 @@ public:
     Jack    = 0x16,
   };
 
-  constexpr OutputBody &stateBody() { return state.body; }
-  constexpr const OutputBody &stateBody() const { return state.body; }
-
 private:
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketAudio);
+  static constexpr size_t size      = 398;
+  static constexpr uint8_t crcSeed  = 0xA2;
+  static constexpr uint8_t stateSize = 63;
+  static constexpr uint8_t opusSize  = 200;
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { counter = value; }
 
+  constexpr EnableMask enableMask() const {
+    return static_cast<EnableMask>(static_cast<uint8_t>(enableMaskValue));
+  }
+
+  constexpr SpeakerTag speakerTag() const {
+    return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
+  }
+
+  constexpr bool valid() const {
+    return reportIdValue == reportId && crc == internal::crc_of(*this, crcSeed);
+  }
+
 public:
+  static constexpr uint8_t hapticSize = 64;
+  // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
+  // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
+  static constexpr uint16_t pcmFrames = 480;
+
+  constexpr OutputBody &stateBody() { return state.body; }
+  constexpr const OutputBody &stateBody() const { return state.body; }
+
   // 0x36 sequence tagValue: high nibble counts 0..15, low nibble stays zero;
   // the counter is a separate free-running byte.
   struct Sequence {
@@ -1595,19 +1587,6 @@ public:
     static constexpr uint8_t mask  = 0x0F;
     static constexpr uint8_t shift = 4;
   };
-
-private:
-  constexpr EnableMask enableMask() const {
-    return static_cast<EnableMask>(static_cast<uint8_t>(enableMaskValue));
-  }
-
-  constexpr SpeakerTag speakerTag() const {
-    return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
-  }
-
-  constexpr bool valid() const {
-    return reportIdValue == reportId && crc == internal::crc_of(*this);
-  }
 
 public:
   // Fill the constant parts, then set seq, counter and whatever state fields
@@ -1651,7 +1630,7 @@ public:
     for (size_t i = n; i < hapticSize; ++i) hapticsPcm[i] = 0;
   }
 
-  constexpr void sign() { crc = internal::crc_of(*this); }
+  constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
 
 namespace internal {
@@ -1684,7 +1663,6 @@ struct AudioReportProbe {
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
   static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
 };
-} // namespace internal
 
 // ===========================================================================
 // Feature reports — the configuration channel
@@ -1736,7 +1714,6 @@ struct ImuCalibration {
   AxisCalibration accel[3];
 };
 
-namespace internal {
 struct Calibration {
 protected:
   DSUINT8 reportIdValue; // 0x00  Packet::PacketFeatureCalibration
@@ -1843,9 +1820,7 @@ public:
 };
 
 static_assert(sizeof(Firmware) == Firmware::size, "0x20 must stay 64 bytes");
-} // namespace internal
 
-namespace internal {
 struct ReportProbe {
   static constexpr size_t outputSize() { return OutputReport::size; }
   static constexpr size_t usbOutputSize() { return UsbOutputReport::size; }
@@ -1853,7 +1828,6 @@ struct ReportProbe {
   static constexpr size_t usbInputSize() { return UsbInputReport::size; }
   static constexpr size_t audioSize() { return AudioReport::size; }
 };
-} // namespace internal
 
 static_assert(sizeof(OutputReport) == internal::ReportProbe::outputSize(),
               "0x31 must stay 78 bytes");
@@ -1865,6 +1839,8 @@ static_assert(sizeof(UsbInputReport) == internal::ReportProbe::usbInputSize(),
               "input 0x01 must stay 64 bytes");
 static_assert(sizeof(AudioReport) == internal::ReportProbe::audioSize(),
               "0x36 must stay 398 bytes");
+
+} // namespace internal
 
 // ===========================================================================
 // Microphone frames inside the 0x31 input stream
