@@ -35,7 +35,7 @@ struct Server {
 private:
   static constexpr int kMaxConns = 64;
   static constexpr size_t kRequestMax = 8192;
-  static constexpr size_t kBufferMax = 65536;
+  static constexpr size_t kBufferMax = 131072;
   static constexpr int kMaxFds = 1024;
 
   struct Conn {

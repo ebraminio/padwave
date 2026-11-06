@@ -350,6 +350,10 @@ private:
   bool led_painted = false;
   bool lightbar_on = true;
   int power_save_mask = 0;
+  bool power_save_mode = false;
+  bool power_save_leds_applied = false;
+  int power_save_saved_mask = 0;
+  bool lightbar_saved_on = true;
   long led_charge_at = 0;
   dualsense::OutputBody::LightbarSetup led_charge_setup =
       dualsense::OutputBody::LightbarSetup::LightOut;
@@ -584,6 +588,7 @@ public:
            this->player.audioActive() ? "running" : (this->player.valid() ? "ready" : "null"));
 
     kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
+    kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");
     kvAdd(buf, cap, &o, "hid.player_leds", "%d",
           this->led_last_player >= 0 ? this->led_last_player : 4);
     int state = ledState();
@@ -927,6 +932,7 @@ public:
     }
 
     if (strcmp(kind, "power_save") == 0) {
+      if (this->power_save_mode) setPowerSaveMode(false);
       char bits[64] = "";
       kvGet(body, "bits", bits, sizeof(bits));
       int mask = 0;
@@ -940,6 +946,13 @@ public:
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n",
                       static_cast<unsigned>(mask));
+    }
+
+    if (strcmp(kind, "power_save_mode") == 0) {
+      int enabled = static_cast<int>(kvNumber(body, "enabled", 0));
+      setPowerSaveMode(enabled != 0);
+      return snprintf(out, out_cap, "ok=true\nnote=power save mode %s\n",
+                      this->power_save_mode ? "on" : "off");
     }
 
     if (strcmp(kind, "rumble") == 0) {
@@ -1915,6 +1928,34 @@ private:
     }
   }
 
+  void setPowerSaveMode(bool on) {
+    if (this->power_save_mode == on) return;
+    if (on) {
+      this->power_save_saved_mask = this->power_save_mask;
+      this->lightbar_saved_on = this->lightbar_on;
+      this->power_save_mask = 0x17; // touch, motion, haptic, mic mute; keep audio out
+      this->power_save_mode = true;
+      this->lightbar_on = false;
+      this->power_save_leds_applied = false;
+      this->led_force = true;
+      serviceLeds();
+    } else {
+      this->power_save_mode = false;
+      this->power_save_mask = this->power_save_saved_mask;
+      this->lightbar_on = this->lightbar_saved_on;
+      this->power_save_leds_applied = false;
+      char fields[48];
+      snprintf(fields, sizeof(fields), "power_save_control=%d", this->power_save_mask);
+      outputFields(fields);
+      this->led_force = true;
+      this->led_last_rgb[0] = this->led_last_rgb[1] = this->led_last_rgb[2] = -1;
+      this->led_last_player = -2;
+      this->led_last_state = -1;
+      this->led_painted = false;
+      serviceLeds();
+    }
+  }
+
   bool powerOffController() {
     // Keep the pad awake whenever USB data or USB power is present, even if
     // padwave is using the Bluetooth transport.
@@ -1999,6 +2040,25 @@ private:
   }
 
   void serviceLeds() {
+    if (this->power_save_mode) {
+      if (!this->controller || !this->player) {
+        this->power_save_leds_applied = false;
+        return;
+      }
+      if (!this->power_save_leds_applied && !this->padwaveDisabled()) {
+        this->power_save_leds_applied = true;
+        char fields[192];
+        snprintf(fields, sizeof(fields),
+                 "power_save_control=%d;lightbar_setup=2;led_brightness=0;"
+                 "player_leds=0;lightbar_red=0;lightbar_green=0;lightbar_blue=0;"
+                 "mute_button_led=0",
+                 this->power_save_mask);
+        outputFields(fields);
+      }
+      return;
+    }
+    this->power_save_leds_applied = false;
+
     long now = nowMs();
     int state = ledState();
 
