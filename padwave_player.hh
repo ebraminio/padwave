@@ -268,6 +268,9 @@ private:
   int haptic_gain = 100;
   float haptic_lp = 0;
   uint8_t haptics_sequence = 0;
+  SwrContext *haptic_swr = nullptr;
+  uint8_t haptic_pending[256] = {};
+  size_t haptic_pending_len = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -665,37 +668,55 @@ private:
     if (!writeDevice(&report, sizeof(report))) return;
   }
 
-  void sendHapticsOnly(const float block[IN_FRAMES][CHANNELS]) {
-    uint8_t samples[dualsense::HapticsReport::sampleBytes];
-    float hgain = static_cast<float>(haptic_gain) / 100.0f;
-    constexpr size_t outFrames = dualsense::HapticsReport::sampleFrames;
-    for (size_t n = 0; n < outFrames; n++) {
-      // Average a 16-frame slice of the 48 kHz block into one 3 kHz stereo
-      // frame. This matches SAxense's ffmpeg -ar 3000 stream much more closely
-      // than the low-passed 6 kHz haptic path.
-      size_t first = n * IN_FRAMES / outFrames;
-      size_t last  = (n + 1) * IN_FRAMES / outFrames;
-      float l = 0.0f, r = 0.0f;
-      for (size_t i = first; i < last; i++) {
-        l += block[i][0];
-        r += block[i][1];
-      }
-      float count = static_cast<float>(last - first);
-      l = (l / count) * hgain;
-      r = (r / count) * hgain;
-      if (l > 1.0f) l = 1.0f;
-      if (l < -1.0f) l = -1.0f;
-      if (r > 1.0f) r = 1.0f;
-      if (r < -1.0f) r = -1.0f;
-      samples[n * 2] = static_cast<uint8_t>(static_cast<int8_t>(l * 127.0f));
-      samples[n * 2 + 1] = static_cast<uint8_t>(static_cast<int8_t>(r * 127.0f));
+  bool openHapticResampler() {
+    if (haptic_swr) swr_free(&haptic_swr);
+    AVChannelLayout layout;
+    av_channel_layout_default(&layout, CHANNELS);
+    int r = swr_alloc_set_opts2(&haptic_swr, &layout, AV_SAMPLE_FMT_U8,
+                                dualsense::HapticsReport::sampleRate, &layout,
+                                AV_SAMPLE_FMT_FLT, RATE, 0, nullptr);
+    av_channel_layout_uninit(&layout);
+    if (r < 0 || !haptic_swr || swr_init(haptic_swr) < 0) {
+      if (haptic_swr) swr_free(&haptic_swr);
+      return false;
     }
-    dualsense::HapticsReport report;
-    report.init();
-    report.setSamples(samples, sizeof(samples));
-    report.setSequence(haptics_sequence++);
-    report.sign();
-    if (writeDevice(&report, sizeof(report))) sent++;
+    haptic_pending_len = 0;
+    return true;
+  }
+
+  void sendHapticsOnly(const float block[IN_FRAMES][CHANNELS]) {
+    if (!haptic_swr) return;
+    uint8_t converted[256];
+    uint8_t *outbuf[1] = {converted};
+    const uint8_t *in[1] = {reinterpret_cast<const uint8_t *>(block)};
+    int got = swr_convert(haptic_swr, outbuf, 128, in, IN_FRAMES);
+    if (got <= 0) return;
+    size_t bytes = static_cast<size_t>(got) * CHANNELS;
+    if (haptic_pending_len + bytes > sizeof(haptic_pending)) return;
+    memcpy(haptic_pending + haptic_pending_len, converted, bytes);
+    haptic_pending_len += bytes;
+
+    const float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    while (haptic_pending_len >= dualsense::HapticsReport::sampleBytes) {
+      uint8_t samples[dualsense::HapticsReport::sampleBytes];
+      for (size_t i = 0; i < sizeof(samples); i++) {
+        int sample = static_cast<int>(
+            static_cast<float>(static_cast<int>(haptic_pending[i]) - 128) * hgain);
+        if (sample < -128) sample = -128;
+        if (sample > 127) sample = 127;
+        samples[i] = static_cast<uint8_t>(static_cast<int8_t>(sample));
+      }
+      memmove(haptic_pending, haptic_pending + sizeof(samples),
+              haptic_pending_len - sizeof(samples));
+      haptic_pending_len -= sizeof(samples);
+
+      dualsense::HapticsReport report;
+      report.init();
+      report.setSamples(samples, sizeof(samples));
+      report.setSequence(haptics_sequence++);
+      report.sign();
+      if (writeDevice(&report, sizeof(report))) sent++;
+    }
   }
 
   void sendReport(const float *pcm, int frames) {
@@ -1080,6 +1101,7 @@ public:
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
     state.init(dualsense::OutputBody::AudioControl::Headphones);
 
+    if (!openHapticResampler()) fprintf(stderr, "padwave player: haptic resampler init failed\n");
     if (!enc.open(RATE, CHANNELS)) {
       fprintf(stderr, "padwave player: audio encoder init failed\n");
       dropDevice();
@@ -1105,6 +1127,8 @@ public:
     closeNext();
     if (hidraw >= 0) close(hidraw);
     enc.close();
+    if (haptic_swr) swr_free(&haptic_swr);
+    haptic_pending_len = 0;
     if (pkt) av_packet_free(&pkt);
     if (frame) av_frame_free(&frame);
     if (tfd >= 0) close(tfd);
