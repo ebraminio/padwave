@@ -696,7 +696,8 @@ private:
     memcpy(haptic_pending + haptic_pending_len, converted, bytes);
     haptic_pending_len += bytes;
 
-    const float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    const float vgain = static_cast<float>(volume) / 100.0f;
+    const float hgain = vgain * static_cast<float>(haptic_gain) / 100.0f;
     while (haptic_pending_len >= dualsense::HapticsReport::sampleBytes) {
       uint8_t samples[dualsense::HapticsReport::sampleBytes];
       for (size_t i = 0; i < sizeof(samples); i++) {
