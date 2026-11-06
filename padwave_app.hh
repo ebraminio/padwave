@@ -303,6 +303,7 @@ private:
   bool trigger_effects = false;
   char trigger_effect_preset[32] = "none";
   bool haptic_subwoofer = false;
+  bool haptics_only = false;
   int haptic_cutoff_hz = 150;
   int haptic_gain = 100;
 
@@ -685,6 +686,7 @@ public:
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptics_only", "%s", this->haptics_only ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
     kvAdd(buf, cap, &o, "config.haptic_gain", "%d", this->haptic_gain);
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
@@ -735,6 +737,7 @@ public:
     kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
     kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
+    kvAdd(buf, cap, &o, "config.haptics_only", "%s", this->haptics_only ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
     kvAdd(buf, cap, &o, "config.haptic_gain", "%d", this->haptic_gain);
     kvAdd(buf, cap, &o, "config.volume", "%d", this->volume);
@@ -800,6 +803,9 @@ public:
     if (kvGet(body, "haptic_subwoofer", value, sizeof(value))) {
       this->haptic_subwoofer = strcmp(value, "true") == 0 || atoi(value) != 0;
     }
+    if (kvGet(body, "haptics_only", value, sizeof(value))) {
+      this->haptics_only = strcmp(value, "true") == 0 || atoi(value) != 0;
+    }
     if (kvGet(body, "haptic_cutoff_hz", value, sizeof(value))) {
       int v = atoi(value);
       this->haptic_cutoff_hz = v < 20 ? 20 : (v > 2000 ? 2000 : v);
@@ -813,8 +819,8 @@ public:
     if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
     if (this->player) {
       char line[64];
-      snprintf(line, sizeof(line), "haptic %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
-               this->haptic_cutoff_hz, this->haptic_gain);
+      snprintf(line, sizeof(line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+               this->haptic_cutoff_hz, this->haptic_gain, this->haptics_only ? 1 : 0);
       playerSend(line);
     }
     configSave();
@@ -1221,8 +1227,8 @@ private:
     playerSend(line);
     snprintf(line, sizeof(line), "speed %d\n", this->speed);
     playerSend(line);
-    snprintf(line, sizeof(line), "haptic %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
-             this->haptic_cutoff_hz, this->haptic_gain);
+    snprintf(line, sizeof(line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+             this->haptic_cutoff_hz, this->haptic_gain, this->haptics_only ? 1 : 0);
     playerSend(line);
     if (this->paused) playerSend("pause 1\n");
     this->led_force = true;
@@ -1796,6 +1802,8 @@ private:
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
         this->resume_pos_ms = atol(value);
+      } else if (strcmp(line, "haptics_only") == 0) {
+        this->haptics_only = strcmp(value, "true") == 0 || atoi(value) != 0;
       } else if (strcmp(line, "power_save_mode") == 0) {
         if (strcmp(value, "true") == 0 || atoi(value) != 0) setPowerSaveMode(true, false);
       }
@@ -1839,6 +1847,7 @@ private:
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
+    fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
     this->playhead_saved_at = nowMs();

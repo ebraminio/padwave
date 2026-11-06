@@ -263,9 +263,11 @@ private:
   int volume = 80;
   int speed_percent = 100;
   bool haptic_subwoofer = false;
+  bool haptics_only = false;
   int haptic_cutoff = 150;
   int haptic_gain = 100;
   float haptic_lp = 0;
+  uint8_t haptics_sequence = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -663,8 +665,39 @@ private:
     if (!writeDevice(&report, sizeof(report))) return;
   }
 
+  void buildHaptics32(const float *pcm, int frames, uint8_t *dest) {
+    memset(dest, 0, dualsense::HapticsReport::sampleBytes);
+    float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    for (size_t n = 0; n < dualsense::HapticsReport::sampleFrames; n++) {
+      int i = static_cast<int>(n * static_cast<size_t>(frames) /
+                               dualsense::HapticsReport::sampleFrames);
+      float mono = (pcm[i * CHANNELS] + pcm[i * CHANNELS + 1]) * 0.5f;
+      float bass = lowPass(mono) * hgain;
+      if (bass > 1.0f) bass = 1.0f;
+      if (bass < -1.0f) bass = -1.0f;
+      uint8_t sample = static_cast<uint8_t>(static_cast<int8_t>(bass * 127.0f));
+      dest[n * 2]     = sample;
+      dest[n * 2 + 1] = sample;
+    }
+  }
+
+  void sendHapticsOnly(const float *pcm, int frames) {
+    uint8_t samples[dualsense::HapticsReport::sampleBytes];
+    buildHaptics32(pcm, frames, samples);
+    dualsense::HapticsReport report;
+    report.init();
+    report.setSamples(samples, sizeof(samples));
+    report.setSequence(haptics_sequence++);
+    report.sign();
+    if (writeDevice(&report, sizeof(report))) sent++;
+  }
+
   void sendReport(const float *pcm, int frames) {
     if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
+    if (haptics_only) {
+      sendHapticsOnly(pcm, frames);
+      return;
+    }
     dualsense::AudioReport report;
 
     report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
@@ -834,12 +867,13 @@ private:
       return;
     }
 
-    long enabled = 0, cutoff = 0, gain = 0;
-    if (sscanf(line, "haptic %ld %ld %ld", &enabled, &cutoff, &gain) == 3) {
+    long enabled = 0, cutoff = 0, gain = 0, only = 0;
+    if (sscanf(line, "haptic %ld %ld %ld %ld", &enabled, &cutoff, &gain, &only) >= 3) {
       bool was = haptic_subwoofer;
       haptic_subwoofer = enabled != 0;
       haptic_cutoff = cutoff < 20 ? 20 : (cutoff > 2000 ? 2000 : static_cast<int>(cutoff));
       haptic_gain = gain < 0 ? 0 : (gain > 200 ? 200 : static_cast<int>(gain));
+      haptics_only = only != 0;
       haptic_lp = 0;
       if (was != haptic_subwoofer) stopUsbAudio();
       return;

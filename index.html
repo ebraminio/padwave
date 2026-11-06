@@ -522,6 +522,7 @@
         </label>
         <label>cutoff <input type="number" id="hapticCutoff" value="150" min="20" max="2000" style="width:62px"> Hz</label>
         <label>gain <input type="number" id="hapticGain" value="100" min="0" max="200" style="width:58px">%</label>
+        <label title="Bluetooth only: send the low-passed bass as SAxense 0x32 PCM and skip the 0x36 audio report"><input type="checkbox" id="hapticOnly"> 0x32 only</label>
         <span style="font-size:11px;color:var(--muted)">USB rear pair / BT 6 kHz haptic stream</span>
       </div>
 
@@ -764,6 +765,8 @@ function render(s) {
     $("#labTrigAmpB").value = cfg.trigger_effect_amplitude_b;
   if (document.activeElement !== $("#hapticSub"))
     $("#hapticSub").checked = cfg.haptic_subwoofer === true;
+  if (document.activeElement !== $("#hapticOnly"))
+    $("#hapticOnly").checked = cfg.haptics_only === true;
   if (document.activeElement !== $("#hapticCutoff") && cfg.haptic_cutoff_hz != null)
     $("#hapticCutoff").value = cfg.haptic_cutoff_hz;
   if (document.activeElement !== $("#hapticGain") && cfg.haptic_gain != null)
@@ -1351,12 +1354,13 @@ $("#labRawSend").onclick = async () => {
 function hapticConfig() {
   pushTriggerConfig({
     haptic_subwoofer: $("#hapticSub").checked ? "true" : "false",
+    haptics_only: $("#hapticOnly").checked ? "true" : "false",
     haptic_cutoff_hz: Number($("#hapticCutoff").value),
     haptic_gain: Number($("#hapticGain").value),
   });
 }
 
-for (const id of ["hapticSub", "hapticCutoff", "hapticGain"]) {
+for (const id of ["hapticSub", "hapticOnly", "hapticCutoff", "hapticGain"]) {
   $(`#${id}`).addEventListener("change", hapticConfig);
 }
 
