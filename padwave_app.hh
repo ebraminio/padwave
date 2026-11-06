@@ -307,6 +307,7 @@ private:
 
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
+  long idle_rumble_until = 0;
   int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
 
@@ -966,6 +967,7 @@ public:
       // is ignored by the controller.
       snprintf(fields, sizeof(fields), "motor_left=%d;motor_right=%d", left, right);
       outputFields(fields);
+      this->idle_rumble_until = 0;
       this->rumble_left = left;
       this->rumble_right = right;
       this->rumble_until = ms > 0 ? nowMs() + ms : 0;
@@ -2249,16 +2251,18 @@ private:
 
   void pulseIdleWarning() {
     if (!this->player || !this->controller || this->padwaveDisabled()) return;
-    constexpr int strength = 64;
+    if (this->rumble_until || this->idle_rumble_until) return;
     outputFields("motor_left=64;motor_right=64");
-    this->rumble_left = strength;
-    this->rumble_right = strength;
-    this->rumble_until = nowMs() + 300;
+    this->idle_rumble_until = nowMs() + 300;
   }
 
   void serviceOutput() {
     if (!this->player) return;
     long now = nowMs();
+    if (this->idle_rumble_until && now >= this->idle_rumble_until) {
+      if (!this->rumble_until) outputFields("motor_left=0;motor_right=0");
+      this->idle_rumble_until = 0;
+    }
     if (this->rumble_until && now >= this->rumble_until) {
       outputFields("motor_left=0;motor_right=0");
       this->rumble_until = 0;
