@@ -633,7 +633,7 @@ private:
 
   void buildHaptics(const float *pcm, int frames, int8_t *haptic_out) {
     memset(haptic_out, 0, dualsense::AudioReport::hapticSize);
-    if (!haptic_subwoofer && !haptics_only) return;
+    if (!haptic_subwoofer) return;
     float hgain = static_cast<float>(haptic_gain) / 100.0f;
     int written = 0;
     for (int i = 0; i < frames && written < dualsense::AudioReport::hapticSize; i++) {
@@ -665,24 +665,31 @@ private:
     if (!writeDevice(&report, sizeof(report))) return;
   }
 
-  void buildHaptics32(const float *pcm, int frames, uint8_t *dest) {
-    int8_t haptics[dualsense::AudioReport::hapticSize];
-    buildHaptics(pcm, frames, haptics);
-    for (size_t n = 0; n < dualsense::HapticsReport::sampleFrames; n++) {
-      // Decimate 6 kHz to 3 kHz with a two-tap average instead of dropping
-      // every other sample; the latter gives the actuator a stepped edge.
-      // SAxense's PipeWire stream is u8, centered at 0x80.
-      int sample = (static_cast<int>(haptics[n * 2]) + haptics[n * 2 + 1]) / 2 + 128;
-      if (sample < 0) sample = 0;
-      if (sample > 255) sample = 255;
-      dest[n * 2]     = static_cast<uint8_t>(sample);
-      dest[n * 2 + 1] = static_cast<uint8_t>(sample);
-    }
-  }
-
-  void sendHapticsOnly(const float *pcm, int frames) {
+  void sendHapticsOnly(const float block[IN_FRAMES][CHANNELS]) {
     uint8_t samples[dualsense::HapticsReport::sampleBytes];
-    buildHaptics32(pcm, frames, samples);
+    float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    constexpr size_t outFrames = dualsense::HapticsReport::sampleFrames;
+    for (size_t n = 0; n < outFrames; n++) {
+      // Average a 16-frame slice of the 48 kHz block into one 3 kHz stereo
+      // frame. This matches SAxense's ffmpeg -ar 3000 stream much more closely
+      // than the low-passed 6 kHz haptic path.
+      size_t first = n * IN_FRAMES / outFrames;
+      size_t last  = (n + 1) * IN_FRAMES / outFrames;
+      float l = 0.0f, r = 0.0f;
+      for (size_t i = first; i < last; i++) {
+        l += block[i][0];
+        r += block[i][1];
+      }
+      float count = static_cast<float>(last - first);
+      l = (l / count) * hgain;
+      r = (r / count) * hgain;
+      if (l > 1.0f) l = 1.0f;
+      if (l < -1.0f) l = -1.0f;
+      if (r > 1.0f) r = 1.0f;
+      if (r < -1.0f) r = -1.0f;
+      samples[n * 2] = static_cast<uint8_t>(static_cast<int8_t>(l * 127.0f));
+      samples[n * 2 + 1] = static_cast<uint8_t>(static_cast<int8_t>(r * 127.0f));
+    }
     dualsense::HapticsReport report;
     report.init();
     report.setSamples(samples, sizeof(samples));
@@ -693,10 +700,6 @@ private:
 
   void sendReport(const float *pcm, int frames) {
     if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
-    if (haptics_only) {
-      sendHapticsOnly(pcm, frames);
-      return;
-    }
     dualsense::AudioReport report;
 
     report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
@@ -977,6 +980,11 @@ private:
       } else {
         advanceConsumed();
       }
+    }
+
+    if (haptics_only && !usb) {
+      sendHapticsOnly(block);
+      return;
     }
 
     float gain = static_cast<float>((volume / 100.0));

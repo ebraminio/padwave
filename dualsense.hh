@@ -1850,7 +1850,7 @@ static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 // 0x32: dedicated Bluetooth haptics stream (SAxense)
 //
 // SAxense by Sdore established this packet stream: a 142-byte report carrying
-// a 0x11 configuration packet and a 0x12 packet with 64 unsigned 8-bit PCM
+// a 0x11 configuration packet and a 0x12 packet with 64 signed 8-bit PCM
 // samples at 3 kHz stereo. It feeds the controller's haptics actuator, not the
 // main motor channels; those remain motor_left/motor_right in 0x31/0x36.
 // ===========================================================================
