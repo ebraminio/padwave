@@ -132,33 +132,192 @@ enum class Packet : uint8_t {
   PacketAudio              = 0x36,
 };
 
-// psdevwiki's HID command table (incomplete import). These are command/feature
-// reports, not the state/audio streams above:
-//   Host command/status: 0x80 / 0x81
-//   Gyro target:         0x90 / 0x91
-//   Codec command/state: 0xA0 / 0xA4, DeviceID 16, ActionID 1
-//   Flash command:       0xF0
-// TODO: add request payloads and a feature-report writer once captured.
+// psdevwiki's HID command table. These are the command/feature report IDs,
+// separate from the state/audio streams above. This is metadata only: payload
+// construction and a feature-report writer are still TODO.
 enum class CommandReport : uint8_t {
-  HostCommand  = 0x80,
-  HostStatus   = 0x81,
-  GyroCommand  = 0x90,
-  GyroStatus   = 0x91,
-  CodecCommand = 0xA0,
-  CodecState   = 0xA4,
-  FlashCommand = 0xF0,
+  None          = 0x00,
+  FirmwareInfo  = 0x20,
+  HostCommand   = 0x80,
+  HostStatus    = 0x81,
+  GyroCommand   = 0x90,
+  GyroStatus    = 0x91,
+  CodecCommand  = 0xA0,
+  Query         = 0xA4,
+  TableCommand  = 0xA5,
+  FlashCommand  = 0xF0,
 };
 
 enum class CommandDevice : uint8_t {
+  None       = 0,
   MainMcu    = 1,
   Gyro       = 2,
   Nvs        = 3,
   TouchPanel = 5,
+  VenomFw    = 6,
   DeviceInfo = 9,
   Bluetooth  = 14,
   Venom      = 15,
   Codec      = 16,
+  Vdd        = 17,
 };
+
+static constexpr uint8_t kNoCommandAction = 0xFF;
+
+struct CommandInfo {
+  const char *name;
+  CommandReport report;
+  CommandDevice device;
+  uint8_t action;
+  uint8_t dataLen;
+  bool dangerous;
+  const char *extra;
+};
+
+// ReportIDs, DeviceIDs and Actions from the psdevwiki command dump. `extra`
+// records fields whose interpretation is not part of the generic command
+// header; keep it as the place to add payload details.
+inline constexpr CommandInfo kCommandTable[] = {
+    {"Get MCU Unique ID", CommandReport::HostCommand, CommandDevice::MainMcu,
+     9, 0, false, "MediaTek main MCU unique ID"},
+    {"Read Device Info", CommandReport::HostCommand, CommandDevice::MainMcu,
+     12, 0, false, ""},
+    {"Erase Device Info", CommandReport::HostCommand, CommandDevice::MainMcu,
+     13, 0, true, "DANGEROUS"},
+    {"Spider DSP Init Get Status", CommandReport::HostStatus, CommandDevice::Codec,
+     1, 0, false, "status query"},
+    {"Spider DSP Get Status", CommandReport::HostStatus, CommandDevice::Codec,
+     2, 0, false, "status query"},
+    {"Spider DSP Patch Finalize", CommandReport::HostCommand, CommandDevice::Codec,
+     5, 0, false, ""},
+    {"Spider DSP Finalize Get Status", CommandReport::HostStatus, CommandDevice::Codec,
+     5, 0, false, "status query"},
+    {"Spider DSP Firmware Patch", CommandReport::HostCommand, CommandDevice::Codec,
+     2, 57, false, ""},
+    {"Spider DSP Firmware Patch Init", CommandReport::HostCommand, CommandDevice::Codec,
+     1, 0, false, ""},
+    {"Spider DSP Firmware Verify", CommandReport::HostCommand, CommandDevice::Codec,
+     3, 0, false, ""},
+    {"Spider DSP Firmware Verify Status", CommandReport::HostStatus, CommandDevice::Codec,
+     5, 0, false, "status query"},
+    {"Spider DSP Firmware Verify Request", CommandReport::HostCommand, CommandDevice::Codec,
+     7, 0, false, ""},
+    {"Spider DSP Firmware Verify Request Status", CommandReport::HostStatus, CommandDevice::Codec,
+     7, 0, false, "status query"},
+    {"Get TP UID", CommandReport::HostCommand, CommandDevice::TouchPanel,
+     2, 0, false, "touch panel unique ID"},
+    {"Get TP Version", CommandReport::HostCommand, CommandDevice::TouchPanel,
+     4, 0, false, ""},
+    {"Get Table ID", CommandReport::Query, CommandDevice::Nvs,
+     2, 5, false, "DataLenLocal = 5"},
+    {"Reset", CommandReport::HostCommand, CommandDevice::MainMcu,
+     1, 0, false, ""},
+    {"Request Table ID", CommandReport::CodecCommand, CommandDevice::Nvs,
+     2, 0, false, ""},
+    {"Reboot Secure Boot Loader", CommandReport::HostCommand, CommandDevice::None,
+     kNoCommandAction, 0, false, "RebootCmd = 1"},
+    {"Read Patch Info", CommandReport::HostCommand, CommandDevice::DeviceInfo,
+     13, 0, false, ""},
+    {"Get Firmware Info", CommandReport::FirmwareInfo, CommandDevice::None,
+     kNoCommandAction, 0, false, ""},
+    {"Start Gyroscope Offset", CommandReport::GyroCommand, CommandDevice::Gyro,
+     1, 0, false, "TargetID = 7"},
+    {"Get Gyroscope Offset State", CommandReport::GyroStatus, CommandDevice::Gyro,
+     kNoCommandAction, 0, false, "TargetID = 7"},
+    {"Get BlueTooth Patch Data", CommandReport::HostStatus, CommandDevice::Bluetooth,
+     3, 0, false, "status query"},
+    {"Get BlueTooth Patch Info", CommandReport::HostStatus, CommandDevice::DeviceInfo,
+     13, 0, false, "status query"},
+    {"Get Audio Codec State", CommandReport::Query, CommandDevice::Codec,
+     1, 0, false, ""},
+    {"Flash", CommandReport::FlashCommand, CommandDevice::None,
+     kNoCommandAction, 57, false, "DownloadCmd = 0; WriteCmd = 1"},
+    {"Audio Codec Select", CommandReport::CodecCommand, CommandDevice::Codec,
+     1, 0, false, ""},
+    {"Blue Tooth Patch", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     2, 57, false, ""},
+    {"Read Blue Tooth Patch", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     4, 0, false, ""},
+    {"Read Blue Tooth Patch Info", CommandReport::HostStatus, CommandDevice::Bluetooth,
+     4, 0, false, "status query"},
+    {"Blue Tooth Patch Finalize", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     5, 0, false, ""},
+    {"Blue Tooth Patch Init", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     1, 0, false, ""},
+    {"Blue Tooth Patch Restart", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     6, 0, false, ""},
+    {"Blue Tooth Patch Verify", CommandReport::HostCommand, CommandDevice::Bluetooth,
+     3, 0, false, ""},
+    {"Blue Tooth Restart Result", CommandReport::HostStatus, CommandDevice::Bluetooth,
+     6, 0, false, "status query"},
+    {"Get BT Address", CommandReport::HostStatus, CommandDevice::DeviceInfo,
+     2, 6, false, "status query"},
+    {"Set BT Address", CommandReport::HostCommand, CommandDevice::DeviceInfo,
+     1, 6, false, "ReadCmd = 2"},
+    {"Set BlueTooth Disable", CommandReport::HostCommand, CommandDevice::DeviceInfo,
+     5, 0, false, "Param = 0"},
+    {"Set BlueTooth Enable", CommandReport::HostCommand, CommandDevice::DeviceInfo,
+     5, 0, false, "Param = 1"},
+    {"Set BlueTooth Table", CommandReport::TableCommand, CommandDevice::None,
+     kNoCommandAction, 16, false,
+     "PowerTable = 1; RadioTable = 2; DataBegin = 0; PowerTableSize = 224; "
+     "RadioTableSize = 112; DataMaxLen = 255; DataMinLen = 0"},
+    {"Set DFU Mode", CommandReport::CodecCommand, CommandDevice::None,
+     kNoCommandAction, 0, false,
+     "DVT/prototype only; DisableMode = 0; EnablePBLMode = 1; EnableSBLMode = 2; "
+     "EnableMode = 1"},
+    {"Set Hardware Version", CommandReport::HostCommand, CommandDevice::MainMcu,
+     5, 0, false, ""},
+    {"Write PCBAID", CommandReport::HostCommand, CommandDevice::MainMcu,
+     3, 6, false, ""},
+    {"Read PCBAID", CommandReport::HostCommand, CommandDevice::MainMcu,
+     4, 0, false, ""},
+    {"Set Power Charge Off", CommandReport::HostCommand, CommandDevice::Gyro,
+     3, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
+    {"Set Power Charge On", CommandReport::HostCommand, CommandDevice::Gyro,
+     2, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
+    {"Get Read OTP", CommandReport::Query, CommandDevice::Nvs,
+     9, 0, false, ""},
+    {"Set Read OTP", CommandReport::CodecCommand, CommandDevice::Nvs,
+     9, 0, false, "Offset = 23; Length = 1"},
+    {"Set Secure Boot Loader", CommandReport::CodecCommand, CommandDevice::None,
+     kNoCommandAction, 0, false, "SetCmd = 2"},
+    {"Set VDD External Power Off", CommandReport::CodecCommand, CommandDevice::Vdd,
+     1, 0, false, "Param = 0"},
+    {"Set VDD External Power On", CommandReport::CodecCommand, CommandDevice::Vdd,
+     1, 0, false, "Param = 1"},
+    {"Venom Get Status", CommandReport::HostStatus, CommandDevice::Venom,
+     2, 0, false, "status query"},
+    {"Set Venom FW Version", CommandReport::HostCommand, CommandDevice::VenomFw,
+     3, 0, false, ""},
+    {"Venom Finalize Get Status", CommandReport::HostStatus, CommandDevice::Venom,
+     5, 0, false, "status query"},
+    {"Venom Firmware Patch", CommandReport::HostCommand, CommandDevice::Venom,
+     2, 57, false, ""},
+    {"Venom Firmware Patch Init", CommandReport::HostCommand, CommandDevice::Venom,
+     1, 0, false, ""},
+    {"Venom Firmware Verify", CommandReport::HostCommand, CommandDevice::Venom,
+     3, 0, false, ""},
+    {"Venom Firmware Verify Request", CommandReport::HostCommand, CommandDevice::Venom,
+     7, 0, false, ""},
+    {"Venom Firmware Verify Request Status", CommandReport::HostStatus, CommandDevice::Venom,
+     7, 0, false, "status query"},
+    {"Venom Firmware Verify Status", CommandReport::HostStatus, CommandDevice::Venom,
+     5, 0, false, "status query"},
+    {"Venom Init Get Status", CommandReport::HostStatus, CommandDevice::Venom,
+     1, 0, false, "status query"},
+    {"Venom Patch Finalize", CommandReport::HostCommand, CommandDevice::Venom,
+     5, 0, false, ""},
+    {"Set bonding", CommandReport::HostCommand, CommandDevice::MainMcu,
+     14, 0, false, ""},
+    {"NVS Lock", CommandReport::HostCommand, CommandDevice::Nvs,
+     1, 0, false, ""},
+    {"NVS Unlock", CommandReport::HostCommand, CommandDevice::Nvs,
+     2, 0, false, "Param0 = 101; Param1 = 50; Param2 = 64; Param3 = 12"},
+    {"NVS Lock Status", CommandReport::HostCommand, CommandDevice::Nvs,
+     3, 0, false, "0 = Unlocked; 1 = Locked"},
+};
+
 
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
