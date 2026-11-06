@@ -767,9 +767,16 @@ public:
   }
 
   constexpr void setAudio(AudioControl routing) {
-    validFlag0 = static_cast<uint8_t>(
-        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
-        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
+    // Keep the main-motor claims so a 0x36 snapshot does not stop a 0x31
+    // rumble on the next packet. Trigger claims stay cleared: this stream
+    // writes zeros into those blocks.
+    constexpr uint8_t motorMask =
+        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
+    validFlag0 = static_cast<uint8_t>((validFlag0 & motorMask) |
+                                      bit(ValidFlag0::HeadphoneVolumeEnable) |
+                                      bit(ValidFlag0::SpeakerVolumeEnable) |
+                                      bit(ValidFlag0::MicVolumeEnable) |
+                                      bit(ValidFlag0::AudioControlEnable));
     validFlag1       = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
     volumeHeadphones = 0x7F;
     volumeSpeaker    = 0x64;
