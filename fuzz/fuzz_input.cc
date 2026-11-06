@@ -20,7 +20,7 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max
                                           unsigned int seed) {
   size = LLVMFuzzerMutate(data, size, max_size);
 
-  if (size == dualsense::InputReport::Size && data[0] == dualsense::InputReport::ReportId) {
+  if (size == sizeof(dualsense::InputReport)) {
     auto *report = reinterpret_cast<dualsense::InputReport *>(data);
     report->sign(); // keep the CRC in sync with the mutated body
   }

@@ -274,9 +274,9 @@ private:
     if (!buf || len == 0) return;
 
 #ifdef DS_HAVE_OPUS
-    if (len > 7 && dualsense::MicFrame::isFrame(buf, len)) {
+    if (auto *audioFrame = dualsense::MicFrame::asFrame(buf, len)) {
       size_t payload_len = 0;
-      const uint8_t *payload = dualsense::MicFrame::payload(buf, len, &payload_len);
+      const uint8_t *payload = audioFrame->payload(buf, len, &payload_len);
       if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::SampleRate, 1)) return;
       int16_t pcm[dualsense::MicFrame::Samples];
       int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::Samples);
@@ -285,16 +285,13 @@ private:
     }
 #endif
 
-    if (dualsense::InputReport::isFrame(buf, len)) {
-      const auto *r = reinterpret_cast<const dualsense::InputReport *>(buf);
-      if (!r->valid()) return;
-      emitFrame(r->body(), buf, dualsense::InputReport::Size);
+    if (auto *r = dualsense::InputReport::asFrame(buf, len)) {
+      emitFrame(r->body(), buf, sizeof(*r));
       return;
     }
 
-    if (dualsense::UsbInputReport::isFrame(buf, len)) {
-      const auto *r = reinterpret_cast<const dualsense::UsbInputReport *>(buf);
-      emitFrame(r->body(), buf, dualsense::UsbInputReport::Size);
+    if (auto *r = dualsense::UsbInputReport::asFrame(buf, len)) {
+      emitFrame(r->body(), buf, sizeof(*r));
     }
   }
 

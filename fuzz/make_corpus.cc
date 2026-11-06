@@ -19,8 +19,8 @@ static bool write_file(const char *dir, const char *name, const void *data, size
 
 static dualsense::InputReport report(uint32_t buttons) {
   dualsense::InputReport r{};
+  r.init();
   auto *raw = reinterpret_cast<uint8_t *>(&r);
-  raw[0] = dualsense::InputReport::ReportId;
   raw[1] = 0x10;
   raw[2 + 0x00] = 128;
   raw[2 + 0x01] = 128;
@@ -43,13 +43,15 @@ int main(int argc, char **argv) {
   dualsense::InputReport pressed = report(static_cast<uint32_t>(dualsense::InputBody::Button::ButtonCross));
   dualsense::InputReport released = report(0);
 
-  uint8_t usb[dualsense::InputReport::UsbSize] = {dualsense::InputReport::UsbReportId};
+  dualsense::UsbInputReport usbReport{};
+  usbReport.init();
+  uint8_t usb[sizeof(usbReport)] = {};
+  memcpy(usb, &usbReport, sizeof(usb));
   usb[1 + 0] = 0x80;
   usb[1 + 1] = 0x80;
 
   uint8_t mic[78] = {0};
-  mic[0] = dualsense::MicFrame::ReportId;
-  mic[3] = dualsense::MicFrame::Toc;
+  dualsense::MicFrame::init(mic, sizeof(mic));
 
   bool ok = write_file(argv[1], "bt31.bin", &neutral, sizeof(neutral)) &&
             write_file(argv[1], "press.bin", &pressed, sizeof(pressed)) &&

@@ -125,6 +125,7 @@ static constexpr uint32_t crc_of(const Report &report) {
 
 struct OutputBodyProbe;
 struct AudioReportProbe;
+struct ReportProbe;
 } // namespace internal
 
 // Report ordinals, common to every schema. 0x31 is both the input and the
@@ -962,6 +963,7 @@ struct DSScale {
 // Implementation-only wire wrappers. Consumers use InputReport, OutputReport,
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
+  friend struct internal::ReportProbe;
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -974,13 +976,11 @@ protected:
   DSUINT8 reserved4[24]; // 0x32..0x49
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
+private:
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth), Size = 78 };
+
 public:
-  enum : uint8_t {
-    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
-    Size     = 78,
-    CrcSeed  = 0xA2,
-    Tag      = 0x10,
-  };
+  enum : uint8_t { CrcSeed = 0xA2, Tag = 0x10 };
 
   // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
   // The class owns the shift and wrap; callers just hold a Sequence.
@@ -1018,17 +1018,19 @@ public:
 
   constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
 
-  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
-    return buf && len >= Size && buf[0] == ReportId;
+  static const OutputReport *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
+    const auto *r = reinterpret_cast<const OutputReport *>(buf);
+    return r->valid() ? r : nullptr;
   }
 };
 
-static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
 
 // Output 0x02 (USB, 63 bytes). No CRC — the kernel signs only the Bluetooth
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
+  friend struct internal::ReportProbe;
 private:
   using DSUINT8 = internal::DSUINT8;
 
@@ -1037,9 +1039,10 @@ protected:
   OutputBody bodyData;  // 0x01..0x2f
   DSUINT8 reserved[15]; // 0x30..0x3e
 
-public:
+private:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
 
+public:
   constexpr void init() {
     *this    = UsbOutputReport{};
     reportId = ReportId;
@@ -1051,12 +1054,12 @@ public:
 
   constexpr OutputBody &body() { return bodyData; }
 
-  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
-    return buf && len >= Size && buf[0] == ReportId;
+  static const UsbOutputReport *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
+    return reinterpret_cast<const UsbOutputReport *>(buf);
   }
 };
 
-static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
 
 // ===========================================================================
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
@@ -1392,6 +1395,7 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 // ===========================================================================
 
 struct InputReport {
+  friend struct internal::ReportProbe;
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -1405,14 +1409,16 @@ protected:
                          //             other eight were; unknown
   DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
+private:
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth), Size = 78 };
+
 public:
-  enum : uint8_t {
-    ReportId    = static_cast<uint8_t>(Packet::PacketStateBluetooth),
-    UsbReportId = static_cast<uint8_t>(Packet::PacketInputUsb),
-    Size        = 78,
-    UsbSize     = 64,
-    CrcSeed     = 0xA1, // the input stream signs with 0xA1, output with 0xA2
-  };
+  enum : uint8_t { CrcSeed = 0xA1 }; // input stream seed; output uses 0xA2
+
+  constexpr void init() {
+    *this    = InputReport{};
+    reportId = ReportId;
+  }
 
   constexpr const InputBody &body() const { return bodyData; }
 
@@ -1422,15 +1428,17 @@ public:
 
   constexpr bool valid() const { return crc == internal::crc_of(*this); }
 
-  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
-    return buf && len >= Size && buf[0] == ReportId;
+  static const InputReport *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
+    const auto *r = reinterpret_cast<const InputReport *>(buf);
+    return r->valid() ? r : nullptr;
   }
 };
 
-static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
 
 // USB 0x01 input report: one report-id byte followed by the same 63-byte body.
 struct UsbInputReport {
+  friend struct internal::ReportProbe;
 private:
   using DSUINT8 = internal::DSUINT8;
 
@@ -1438,19 +1446,25 @@ protected:
   DSUINT8 reportId;  // 0x00  Packet::PacketInputUsb
   InputBody bodyData; // 0x01..0x3f
 
-public:
+private:
   enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketInputUsb), Size = 64 };
+
+public:
+  constexpr void init() {
+    *this    = UsbInputReport{};
+    reportId = ReportId;
+  }
 
   constexpr const InputBody &body() const { return bodyData; }
 
   constexpr InputBody &body() { return bodyData; }
 
-  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
-    return buf && len >= Size && buf[0] == ReportId;
+  static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
+    return reinterpret_cast<const UsbInputReport *>(buf);
   }
 };
 
-static_assert(sizeof(UsbInputReport) == UsbInputReport::Size, "input 0x01 must stay 64 bytes");
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -1493,6 +1507,7 @@ static_assert(sizeof(UsbInputReport) == UsbInputReport::Size, "input 0x01 must s
 // because the high byte (0xE3) does not claim the LED colour bit.
 
 struct AudioReport {
+  friend struct internal::ReportProbe;
   friend struct internal::AudioReportProbe;
 
 private:
@@ -1578,9 +1593,11 @@ public:
   };
 #endif
 
+private:
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketAudio) };
+
 public:
   enum : uint8_t {
-    ReportId   = static_cast<uint8_t>(Packet::PacketAudio),
     StateSize  = 63,
     HapticSize = 64,
     OpusSize   = 200,
@@ -1591,7 +1608,10 @@ public:
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   enum : uint16_t { PcmFrames = 480, InputBlock = 512, Channels = 2 };
 
+private:
   static constexpr size_t Size = 398;
+
+public:
 
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
   // opens it and the input stream then also carries 0xD4 frames.
@@ -1685,12 +1705,13 @@ public:
 
   constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
 
-  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
-    return buf && len >= Size && buf[0] == ReportId;
+  static const AudioReport *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len < Size || buf[0] != ReportId) return nullptr;
+    const auto *r = reinterpret_cast<const AudioReport *>(buf);
+    return r->valid() ? r : nullptr;
   }
 };
 
-static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
 
 namespace internal {
 struct AudioReportProbe {
@@ -1879,6 +1900,31 @@ public:
 static_assert(sizeof(Firmware) == Firmware::Size, "0x20 must stay 64 bytes");
 } // namespace internal
 
+namespace internal {
+struct ReportProbe {
+  static constexpr size_t outputSize() { return OutputReport::Size; }
+
+  static constexpr size_t usbOutputSize() { return UsbOutputReport::Size; }
+
+  static constexpr size_t inputSize() { return InputReport::Size; }
+
+  static constexpr size_t usbInputSize() { return UsbInputReport::Size; }
+
+  static constexpr size_t audioSize() { return AudioReport::Size; }
+};
+} // namespace internal
+
+static_assert(sizeof(OutputReport) == internal::ReportProbe::outputSize(),
+              "0x31 must stay 78 bytes");
+static_assert(sizeof(UsbOutputReport) == internal::ReportProbe::usbOutputSize(),
+              "0x02 must stay 63 bytes");
+static_assert(sizeof(InputReport) == internal::ReportProbe::inputSize(),
+              "input 0x31 must stay 78 bytes");
+static_assert(sizeof(UsbInputReport) == internal::ReportProbe::usbInputSize(),
+              "input 0x01 must stay 64 bytes");
+static_assert(sizeof(AudioReport) == internal::ReportProbe::audioSize(),
+              "0x36 must stay 398 bytes");
+
 // ===========================================================================
 // Microphone frames inside the 0x31 input stream
 // ===========================================================================
@@ -1943,25 +1989,35 @@ struct MicFrame {
   };
 #endif
 
+private:
   enum : uint8_t {
     ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
     Toc      = 0xD4,
     CrcBytes = 4,
   };
 
+public:
   enum : uint32_t {
     SampleRate = 48000,
     Samples    = 480,
     FrameMs    = 10,
   };
 
-  static bool isFrame(const uint8_t *buf, size_t len) {
-    return len > 3 + CrcBytes && buf[0] == ReportId && buf[3] == Toc;
+  static void init(uint8_t *buf, size_t len) {
+    if (!buf || len < 3 + CrcBytes) return;
+    memset(buf, 0, len);
+    buf[0] = ReportId;
+    buf[3] = Toc;
+  }
+
+  static const MicFrame *asFrame(const uint8_t *buf, size_t len) {
+    if (!buf || len <= 3 + CrcBytes || buf[0] != ReportId || buf[3] != Toc) return nullptr;
+    return reinterpret_cast<const MicFrame *>(buf);
   }
 
   // The Opus packet: everything after the TOC byte, minus the trailing CRC.
   static const uint8_t *payload(const uint8_t *buf, size_t len, size_t *out_len) {
-    if (!isFrame(buf, len)) return nullptr;
+    if (!asFrame(buf, len)) return nullptr;
     *out_len = len - 3 - CrcBytes;
     return buf + 3;
   }
