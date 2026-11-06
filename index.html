@@ -331,6 +331,8 @@
         <pre class="hex" id="hex">waiting for the controller…</pre>
         <div class="fields" id="fields"></div>
       </details>
+      <div class="lab-row"><button id="labFirmware">get firmware info</button><span id="labFirmwareMsg"></span></div>
+      <pre id="labFirmwareOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
     </section>
 
     <section class="card">
@@ -1348,6 +1350,22 @@ $("#labRawSend").onclick = async () => {
     $("#labRawMsg").textContent = data.ok === true ? "sent" : ("failed: " + data.error);
   } catch (e) {
     $("#labRawMsg").textContent = "invalid JSON";
+  }
+};
+
+$("#labFirmware").onclick = async () => {
+  const data = await labSend({ kind: "firmware_info" });
+  const out = $("#labFirmwareOut");
+  if (data.ok === true) {
+    out.textContent = Object.entries(data)
+      .filter(([key]) => key !== "ok")
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n");
+    out.style.display = "block";
+    $("#labFirmwareMsg").textContent = "read";
+  } else {
+    out.style.display = "none";
+    $("#labFirmwareMsg").textContent = "failed: " + (data.error || "unknown");
   }
 };
 

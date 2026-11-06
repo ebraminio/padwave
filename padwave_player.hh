@@ -35,6 +35,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <linux/hidraw.h>
+#include <sys/ioctl.h>
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
@@ -649,6 +651,75 @@ private:
     }
   }
 
+public:
+  int firmwareInfo(char *dest, size_t cap) {
+    if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
+    dualsense::internal::Firmware info{};
+    info.init();
+    int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
+    if (got < 0 || !info.valid())
+      return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
+
+    size_t o = 0;
+    auto append = [&](const char *text) {
+      int n = snprintf(dest + o, cap > o ? cap - o : 0, "%s", text);
+      if (n > 0) o += static_cast<size_t>(n);
+    };
+    char line[192];
+    append("ok=true\nfirmware.valid=true\n");
+    snprintf(line, sizeof(line), "firmware.build_date=%.*s\n", 11, info.buildDateText());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.build_time=%.*s\n", 8, info.buildTimeText());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.typeValue()));
+    append(line);
+    snprintf(line, sizeof(line), "firmware.series=%u\n", static_cast<unsigned>(info.seriesValue()));
+    append(line);
+    snprintf(line, sizeof(line), "firmware.hardware=0x%08X\n", info.hardwareInfoValue());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.version=0x%08X\n", info.firmwareVersionValue());
+    append(line);
+    char hex[129];
+    size_t h = 0;
+    for (int i = 0; i < 12; i++) {
+      int n = snprintf(hex + h, sizeof(hex) - h, "%02x",
+                       static_cast<unsigned>(static_cast<unsigned char>(info.deviceInfoText()[i])));
+      if (n > 0) h += static_cast<size_t>(n);
+    }
+    snprintf(line, sizeof(line), "firmware.device_info=%s\n", hex);
+    append(line);
+    snprintf(line, sizeof(line), "firmware.update_version=0x%04X\n",
+             static_cast<unsigned>(info.updateVersionValue()));
+    append(line);
+    snprintf(line, sizeof(line), "firmware.update_image=%u\n",
+             static_cast<unsigned>(info.updateImageInfoValue()));
+    append(line);
+    snprintf(line, sizeof(line), "firmware.update_unknown=%u\n",
+             static_cast<unsigned>(info.updateUnkValue()));
+    append(line);
+    snprintf(line, sizeof(line), "firmware.version1=0x%08X\n", info.fwVersion1Value());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.version2=0x%08X\n", info.fwVersion2Value());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.version3=0x%08X\n", info.fwVersion3Value());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.crc=0x%08X\n", info.crcValue());
+    append(line);
+    snprintf(line, sizeof(line), "firmware.vibration_v2=%s\n",
+             info.usesVibrationV2() ? "true" : "false");
+    append(line);
+    const auto *raw = reinterpret_cast<const uint8_t *>(&info);
+    h = 0;
+    for (size_t i = 0; i < sizeof(info); i++) {
+      int n = snprintf(hex + h, sizeof(hex) - h, "%02x", static_cast<unsigned>(raw[i]));
+      if (n > 0) h += static_cast<size_t>(n);
+    }
+    snprintf(line, sizeof(line), "firmware.raw=%s\n", hex);
+    append(line);
+    return static_cast<int>(o);
+  }
+
+private:
   void sendMuteLed(bool on) {
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);

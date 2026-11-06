@@ -218,8 +218,6 @@ inline constexpr CommandInfo kCommandTable[] = {
      kNoCommandAction, 0, false, "RebootCmd = 1"},
     {"Read Patch Info", Packet::CommandHost, CommandDevice::DeviceInfo,
      13, 0, false, ""},
-    {"Get Firmware Info", Packet::FeatureFirmware, CommandDevice::None,
-     kNoCommandAction, 0, false, ""},
     {"Start Gyroscope Offset", Packet::CommandGyro, CommandDevice::Gyro,
      1, 0, false, "TargetID = 7"},
     {"Get Gyroscope Offset State", Packet::CommandGyroStatus, CommandDevice::Gyro,
@@ -1996,13 +1994,34 @@ protected:
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
   static constexpr uint8_t crcSeed  = 0xA3;
+  static constexpr size_t size      = 64;
 
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
+
+  constexpr void init() {
+    *this         = Firmware{};
+    reportIdValue = reportId;
+  }
+
+  constexpr const char *buildDateText() const { return buildDate; }
+  constexpr const char *buildTimeText() const { return buildTime; }
+  constexpr const char *deviceInfoText() const { return deviceInfo; }
+  constexpr uint16_t typeValue() const { return fwType; }
+  constexpr uint16_t seriesValue() const { return swSeries; }
+  constexpr uint32_t hardwareInfoValue() const { return hardwareInfo; }
+  constexpr uint32_t firmwareVersionValue() const { return firmwareVersion; }
+  constexpr uint16_t updateVersionValue() const { return updateVersion; }
+  constexpr uint8_t updateImageInfoValue() const { return updateImageInfo; }
+  constexpr uint8_t updateUnkValue() const { return updateUnk; }
+  constexpr uint32_t fwVersion1Value() const { return fwVersion1; }
+  constexpr uint32_t fwVersion2Value() const { return fwVersion2; }
+  constexpr uint32_t fwVersion3Value() const { return fwVersion3; }
+  constexpr uint32_t crcValue() const { return crc; }
 
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 };
-static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
+static_assert(sizeof (Firmware) == Firmware::size, "0x20 must stay 64 bytes");
 
 } // namespace internal
 

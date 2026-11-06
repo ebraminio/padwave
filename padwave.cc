@@ -505,7 +505,7 @@ private:
         modFd(c->fd, EPOLLOUT);
         return;
       }
-      char result[256];
+      char result[2048];
       int len = app->output(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
