@@ -1356,9 +1356,8 @@ $("#labRawSend").onclick = async () => {
 $("#labFirmware").onclick = async () => {
   const data = await labSend({ kind: "firmware_info" });
   const out = $("#labFirmwareOut");
-  if (data.ok === true) {
-    out.textContent = Object.entries(data)
-      .filter(([key]) => key !== "ok")
+  if (data.ok === true && data.firmware) {
+    out.textContent = Object.entries(data.firmware)
       .map(([key, value]) => `${key}=${value}`)
       .join("\n");
     out.style.display = "block";
