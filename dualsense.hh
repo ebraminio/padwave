@@ -128,6 +128,7 @@ enum class Packet : uint8_t {
   PacketFeaturePairing     = 0x09,
   PacketFeatureFirmware    = 0x20,
   PacketStateBluetooth     = 0x31,
+  PacketHaptics            = 0x32,
   PacketAudio              = 0x36,
 };
 
@@ -1376,13 +1377,11 @@ struct UsbInputReport {
 
 private:
   using DSUINT8 = internal::DSUINT8;
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketInputUsb);
 
 protected:
   DSUINT8 reportIdValue; // 0x00  Packet::PacketInputUsb
   InputBody bodyData;    // 0x01..0x3f
-
-private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketInputUsb);
 
 public:
   constexpr void init() {
@@ -1818,6 +1817,67 @@ public:
 static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 
 } // namespace internal
+
+// ===========================================================================
+// 0x32: dedicated Bluetooth haptics stream (SAxense)
+//
+// SAxense by Sdore established this packet stream: a 142-byte report carrying
+// a 0x11 configuration packet and a 0x12 packet with 64 signed 8-bit samples at
+// 3 kHz stereo. It feeds the controller's haptics actuator, not the main
+// motor channels; those remain motor_left/motor_right in 0x31/0x36.
+// ===========================================================================
+
+struct HapticsReport {
+  friend struct internal::ReportProbe;
+
+private:
+  using DSUINT8  = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
+
+protected:
+  DSUINT8 reportIdValue; // 0x000  Packet::PacketHaptics
+  DSUINT8 tagValue;      // 0x001  low nibble tag, high nibble sequence
+  DSUINT8 packet0[9];    // 0x002..0x00a  0x11 config packet
+  DSUINT8 packet1[66];   // 0x00b..0x04c  0x12 sample packet
+  DSUINT8 reserved[61];  // 0x04d..0x089  SAxense leaves this zero
+  DSUINT32 crc;          // 0x08a..0x08d  CRC-32, seed 0xA2
+
+private:
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::PacketHaptics);
+  static constexpr uint8_t crcSeed  = 0xA2;
+  static constexpr size_t size      = 142;
+
+public:
+  static constexpr uint32_t sampleRate = 3000;
+  static constexpr size_t sampleBytes  = 64;
+  static constexpr size_t sampleFrames = sampleBytes / 2;
+
+  constexpr void init() {
+    *this         = HapticsReport{};
+    reportIdValue = reportId;
+    // 0x11: enable haptics, seven-byte configuration.
+    packet0[0] = 0x91; // packet id 0x11 | sized
+    packet0[1] = 7;
+    packet0[2] = 0xFE;
+    packet0[7] = 0xFF;
+    // 0x12: 64 sample bytes, 32 stereo frames at 3 kHz.
+    packet1[0] = 0x92; // packet id 0x12 | sized
+    packet1[1] = sampleBytes;
+  }
+
+  constexpr void setSamples(const uint8_t *pcm, size_t len) {
+    size_t n = len < sampleBytes ? len : sampleBytes;
+    for (size_t i = 0; i < n; ++i) packet1[2 + i] = pcm[i];
+    for (size_t i = n; i < sampleBytes; ++i) packet1[2 + i] = 0;
+  }
+
+  // SAxense advances the last config byte once per 10.67 ms frame.
+  constexpr void setSequence(uint8_t value) { packet0[8] = value; }
+
+  constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
+};
+
+static_assert(sizeof(HapticsReport) == 142, "0x32 must stay 142 bytes");
 
 // ===========================================================================
 // Microphone frames inside the 0x31 input stream
