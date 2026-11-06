@@ -173,6 +173,10 @@ struct CommandInfo {
 // ReportIDs, DeviceIDs and Actions from the psdevwiki command dump. `extra`
 // records fields whose interpretation is not part of the generic command
 // header; keep it as the place to add payload details.
+// Observed on a retail Bluetooth DualSense: the feature descriptor exposes
+// 0x05, 0x08, 0x09, 0x0b, 0x20, 0x22, 0x80..0x83 and 0xF0..0xF7.
+// 0x90/0x91/0xA0/0xA4/0xA5 are not feature report IDs there; writes to the
+// 0x80 feature report return EIO. USB may expose a different command surface.
 inline constexpr CommandInfo kCommandTable[] = {
     {"Get MCU Unique ID", Packet::CommandHost, CommandDevice::MainMcu,
      9, 0, false, "MediaTek main MCU unique ID"},
@@ -1987,15 +1991,17 @@ protected:
   DSUINT32 fwVersion1;      // 0x30..0x33  SBL
   DSUINT32 fwVersion2;      // 0x34..0x37  Venom
   DSUINT32 fwVersion3;      // 0x38..0x3b  Spider DSP
-  DSUINT8 padding[4];       // 0x3c..0x3f
+  DSUINT32 crc;             // 0x3c..0x3f  CRC-32, seed 0xA3
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
   static constexpr size_t size      = 64;
+  static constexpr uint8_t crcSeed  = 0xA3;
 
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
+  constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 };
 static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 
