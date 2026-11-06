@@ -1017,6 +1017,10 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this); }
 
   constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
+
+  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
+    return buf && len >= Size && buf[0] == ReportId;
+  }
 };
 
 static_assert(sizeof(OutputReport) == OutputReport::Size, "0x31 must stay 78 bytes");
@@ -1046,6 +1050,10 @@ public:
   constexpr const OutputBody &body() const { return bodyData; }
 
   constexpr OutputBody &body() { return bodyData; }
+
+  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
+    return buf && len >= Size && buf[0] == ReportId;
+  }
 };
 
 static_assert(sizeof(UsbOutputReport) == UsbOutputReport::Size, "0x02 must stay 63 bytes");
@@ -1413,9 +1421,36 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this); }
 
   constexpr bool valid() const { return crc == internal::crc_of(*this); }
+
+  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
+    return buf && len >= Size && buf[0] == ReportId;
+  }
 };
 
 static_assert(sizeof(InputReport) == InputReport::Size, "input 0x31 must stay 78 bytes");
+
+// USB 0x01 input report: one report-id byte followed by the same 63-byte body.
+struct UsbInputReport {
+private:
+  using DSUINT8 = internal::DSUINT8;
+
+protected:
+  DSUINT8 reportId;  // 0x00  Packet::PacketInputUsb
+  InputBody bodyData; // 0x01..0x3f
+
+public:
+  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketInputUsb), Size = 64 };
+
+  constexpr const InputBody &body() const { return bodyData; }
+
+  constexpr InputBody &body() { return bodyData; }
+
+  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
+    return buf && len >= Size && buf[0] == ReportId;
+  }
+};
+
+static_assert(sizeof(UsbInputReport) == UsbInputReport::Size, "input 0x01 must stay 64 bytes");
 
 // ===========================================================================
 // Audio 0x36 (Bluetooth, 398 bytes)
@@ -1649,6 +1684,10 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this); }
 
   constexpr bool valid() const { return reportId == ReportId && crc == internal::crc_of(*this); }
+
+  static constexpr bool isFrame(const uint8_t *buf, size_t len) {
+    return buf && len >= Size && buf[0] == ReportId;
+  }
 };
 
 static_assert(sizeof(AudioReport) == AudioReport::Size, "0x36 must stay 398 bytes");
@@ -1916,13 +1955,13 @@ struct MicFrame {
     FrameMs    = 10,
   };
 
-  static bool is_frame(const uint8_t *buf, size_t len) {
+  static bool isFrame(const uint8_t *buf, size_t len) {
     return len > 3 + CrcBytes && buf[0] == ReportId && buf[3] == Toc;
   }
 
   // The Opus packet: everything after the TOC byte, minus the trailing CRC.
   static const uint8_t *payload(const uint8_t *buf, size_t len, size_t *out_len) {
-    if (!is_frame(buf, len)) return nullptr;
+    if (!isFrame(buf, len)) return nullptr;
     *out_len = len - 3 - CrcBytes;
     return buf + 3;
   }

@@ -274,7 +274,7 @@ private:
     if (!buf || len == 0) return;
 
 #ifdef DS_HAVE_OPUS
-    if (len > 7 && dualsense::MicFrame::is_frame(buf, len)) {
+    if (len > 7 && dualsense::MicFrame::isFrame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = dualsense::MicFrame::payload(buf, len, &payload_len);
       if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::SampleRate, 1)) return;
@@ -285,18 +285,17 @@ private:
     }
 #endif
 
-    if (buf[0] == static_cast<uint8_t>(dualsense::Packet::PacketStateBluetooth) &&
-        len >= dualsense::InputReport::Size) {
-      const dualsense::InputReport *r = reinterpret_cast<const dualsense::InputReport *>(buf);
+    if (dualsense::InputReport::isFrame(buf, len)) {
+      const auto *r = reinterpret_cast<const dualsense::InputReport *>(buf);
       if (!r->valid()) return;
       emitFrame(r->body(), buf, dualsense::InputReport::Size);
       return;
     }
 
-    if (buf[0] == static_cast<uint8_t>(dualsense::Packet::PacketInputUsb) &&
-        len >= dualsense::InputReport::UsbSize)
-      emitFrame(*reinterpret_cast<const dualsense::InputBody *>((buf + 1)), buf,
-                dualsense::InputReport::UsbSize);
+    if (dualsense::UsbInputReport::isFrame(buf, len)) {
+      const auto *r = reinterpret_cast<const dualsense::UsbInputReport *>(buf);
+      emitFrame(r->body(), buf, dualsense::UsbInputReport::Size);
+    }
   }
 
 public:
