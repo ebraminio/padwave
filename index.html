@@ -652,12 +652,10 @@ function render(s) {
   $("#labPsMode").classList.toggle("on", psMode);
   $("#labPsMode").textContent = psMode ? "power save: on" : "power save mode";
 
-  const canPlay = c.connected === true && c.jack === true;
+  const canPlay = !!cur || r.playing === true;
   $("#pauseBtn").textContent = r.paused ? "resume" : (r.playing ? "pause" : "play");
   $("#pauseBtn").disabled = !canPlay;
-  $("#pauseBtn").title = canPlay
-    ? ""
-    : "needs the controller connected with the headset plugged in";
+  $("#pauseBtn").title = canPlay ? "" : "no track selected";
   $("#muteBtn").textContent = r.muted || r.volume === 0 ? "🔇" : "🔊";
 
   // A new track resets the client clock; otherwise keep the last known

@@ -275,6 +275,7 @@ private:
 
   int reconnect_at = 0;
   static constexpr long kNoPlaybackIdleMs = 60000;
+  static constexpr int kPowerSaveModeMask = 0x17;
   long idle_since = 0;
   long last_activity_ms = 0;
   bool idle_warning = false;
@@ -1525,7 +1526,12 @@ private:
     bool was_connected = this->controller;
     this->controller = true;
     if (!was_connected) {
-      this->power_save_mask = 0;
+      if (this->power_save_mode) {
+        this->power_save_mask = kPowerSaveModeMask;
+        this->power_save_leds_applied = false;
+      } else {
+        this->power_save_mask = 0;
+      }
       this->led_force = true;
       this->serviceLeds();
     }
@@ -1790,6 +1796,8 @@ private:
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
         this->resume_pos_ms = atol(value);
+      } else if (strcmp(line, "power_save_mode") == 0) {
+        if (strcmp(value, "true") == 0 || atoi(value) != 0) setPowerSaveMode(true, false);
       }
     }
     fclose(f);
@@ -1831,6 +1839,7 @@ private:
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
+    fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
     this->playhead_saved_at = nowMs();
   }
@@ -1931,12 +1940,12 @@ private:
     }
   }
 
-  void setPowerSaveMode(bool on) {
+  void setPowerSaveMode(bool on, bool persist = true) {
     if (this->power_save_mode == on) return;
     if (on) {
       this->power_save_saved_mask = this->power_save_mask;
       this->lightbar_saved_on = this->lightbar_on;
-      this->power_save_mask = 0x17; // touch, motion, haptic, mic mute; keep audio out
+      this->power_save_mask = kPowerSaveModeMask; // touch, motion, haptic, mic mute
       this->power_save_mode = true;
       this->lightbar_on = false;
       this->power_save_leds_applied = false;
@@ -1957,6 +1966,7 @@ private:
       this->led_painted = false;
       serviceLeds();
     }
+    if (persist) configSave();
   }
 
   bool powerOffController() {
