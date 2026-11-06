@@ -132,6 +132,34 @@ enum class Packet : uint8_t {
   PacketAudio              = 0x36,
 };
 
+// psdevwiki's HID command table (incomplete import). These are command/feature
+// reports, not the state/audio streams above:
+//   Host command/status: 0x80 / 0x81
+//   Gyro target:         0x90 / 0x91
+//   Codec command/state: 0xA0 / 0xA4, DeviceID 16, ActionID 1
+//   Flash command:       0xF0
+// TODO: add request payloads and a feature-report writer once captured.
+enum class CommandReport : uint8_t {
+  HostCommand  = 0x80,
+  HostStatus   = 0x81,
+  GyroCommand  = 0x90,
+  GyroStatus   = 0x91,
+  CodecCommand = 0xA0,
+  CodecState   = 0xA4,
+  FlashCommand = 0xF0,
+};
+
+enum class CommandDevice : uint8_t {
+  MainMcu    = 1,
+  Gyro       = 2,
+  Nvs        = 3,
+  TouchPanel = 5,
+  DeviceInfo = 9,
+  Bluetooth  = 14,
+  Venom      = 15,
+  Codec      = 16,
+};
+
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
 
@@ -1822,9 +1850,9 @@ static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 // 0x32: dedicated Bluetooth haptics stream (SAxense)
 //
 // SAxense by Sdore established this packet stream: a 142-byte report carrying
-// a 0x11 configuration packet and a 0x12 packet with 64 signed 8-bit samples at
-// 3 kHz stereo. It feeds the controller's haptics actuator, not the main
-// motor channels; those remain motor_left/motor_right in 0x31/0x36.
+// a 0x11 configuration packet and a 0x12 packet with 64 unsigned 8-bit PCM
+// samples at 3 kHz stereo. It feeds the controller's haptics actuator, not the
+// main motor channels; those remain motor_left/motor_right in 0x31/0x36.
 // ===========================================================================
 
 struct HapticsReport {

@@ -633,7 +633,7 @@ private:
 
   void buildHaptics(const float *pcm, int frames, int8_t *haptic_out) {
     memset(haptic_out, 0, dualsense::AudioReport::hapticSize);
-    if (!haptic_subwoofer) return;
+    if (!haptic_subwoofer && !haptics_only) return;
     float hgain = static_cast<float>(haptic_gain) / 100.0f;
     int written = 0;
     for (int i = 0; i < frames && written < dualsense::AudioReport::hapticSize; i++) {
@@ -666,16 +666,11 @@ private:
   }
 
   void buildHaptics32(const float *pcm, int frames, uint8_t *dest) {
-    memset(dest, 0, dualsense::HapticsReport::sampleBytes);
-    float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    int8_t haptics[dualsense::AudioReport::hapticSize];
+    buildHaptics(pcm, frames, haptics);
     for (size_t n = 0; n < dualsense::HapticsReport::sampleFrames; n++) {
-      int i = static_cast<int>(n * static_cast<size_t>(frames) /
-                               dualsense::HapticsReport::sampleFrames);
-      float mono = (pcm[i * CHANNELS] + pcm[i * CHANNELS + 1]) * 0.5f;
-      float bass = lowPass(mono) * hgain;
-      if (bass > 1.0f) bass = 1.0f;
-      if (bass < -1.0f) bass = -1.0f;
-      uint8_t sample = static_cast<uint8_t>(static_cast<int8_t>(bass * 127.0f));
+      // SAxense's PipeWire stream is u8, so shift signed samples to 0x80 center.
+      uint8_t sample = static_cast<uint8_t>(haptics[n * 2] + 128);
       dest[n * 2]     = sample;
       dest[n * 2 + 1] = sample;
     }

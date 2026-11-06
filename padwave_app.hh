@@ -452,7 +452,6 @@ public:
           int start = rand() % this->count;
           play(start, 0);
         }
-        if (this->controller && !this->jack) pauseIfNoJack();
       }
     }
     if (this->player && this->input.fd() >= 0 && this->input.fd() != this->player.fd()) {
@@ -1321,15 +1320,6 @@ private:
     if (this->player) this->player.setSpeaker(!this->jack);
   }
 
-  void pauseIfNoJack() {
-    if (this->controller && !this->jack && this->playing && !this->paused) {
-      this->paused = true;
-      this->paused_by_jack = true;
-      playerSend("pause 1\n");
-      this->playhead_dirty = true;
-    }
-  }
-
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
     ensureAudibleVolume();
@@ -1564,17 +1554,12 @@ private:
     if (!was_connected) {
       if (this->paused_by_disconnect) {
         this->paused_by_disconnect = false;
-        if (this->jack) {
-          this->paused_by_jack = false;
-          ensureAudibleVolume();
-          if (this->paused) {
-            this->paused = false;
-            playerSend("pause 0\n");
-            this->playhead_dirty = true;
-          }
-        } else {
-          this->paused_by_jack = true;
-          pauseIfNoJack();
+        this->paused_by_jack = false;
+        ensureAudibleVolume();
+        if (this->paused) {
+          this->paused = false;
+          playerSend("pause 0\n");
+          this->playhead_dirty = true;
         }
       } else if (this->jack && this->paused_by_jack) {
         this->paused_by_jack = false;
@@ -1584,8 +1569,6 @@ private:
           playerSend("pause 0\n");
           this->playhead_dirty = true;
         }
-      } else {
-        pauseIfNoJack();
       }
     }
     this->temp = b.temperature();
@@ -1720,13 +1703,10 @@ private:
       this->paused = true;
       playerSend("pause 1\n");
     } else if (strcmp(name, "jack_unplugged") == 0) {
+      // No headset means the speaker route; do not stop playback on connect or
+      // unplug. The old pause here made a silent controller look like a dead
+      // haptics channel.
       applyOutputRoute();
-      if (this->playing && !this->paused) {
-        this->paused = true;
-        this->paused_by_jack = true;
-        playerSend("pause 1\n");
-        this->playhead_dirty = true;
-      }
     } else if (strcmp(name, "jack_plugged") == 0) {
       applyOutputRoute();
       if (this->paused_by_jack) {
