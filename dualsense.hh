@@ -552,7 +552,7 @@ protected:
   DSUINT8 lightbarBlue;        // +0x2e
 
 public:
-  enum : uint8_t { Size = 47 };
+  static constexpr size_t Size = 47;
 
   constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
 
@@ -964,6 +964,7 @@ struct DSScale {
 // UsbOutputReport, AudioReport and MicFrame from padwave.
 struct OutputReport {
   friend struct internal::ReportProbe;
+  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -977,10 +978,12 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth), Size = 78 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr size_t Size = 78;
+  static constexpr uint8_t CrcSeed = 0xA2;
 
 public:
-  enum : uint8_t { CrcSeed = 0xA2, Tag = 0x10 };
+  static constexpr uint8_t Tag = 0x10;
 
   // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
   // The class owns the shift and wrap; callers just hold a Sequence.
@@ -1040,7 +1043,8 @@ protected:
   DSUINT8 reserved[15]; // 0x30..0x3e
 
 private:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb), Size = 63 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketOutputUsb);
+  static constexpr size_t Size = 63;
 
 public:
   constexpr void init() {
@@ -1162,7 +1166,7 @@ protected:
   static constexpr uint32_t DPAD_MASK = 0x0F;
 
 public:
-  enum : uint8_t { Size = 63 };
+  static constexpr size_t Size = 63;
 
   struct Stick {
     int x;
@@ -1396,6 +1400,7 @@ static_assert(sizeof(InputBody) == InputBody::Size, "input body must stay 63 byt
 
 struct InputReport {
   friend struct internal::ReportProbe;
+  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -1410,11 +1415,11 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth), Size = 78 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr size_t Size = 78;
+  static constexpr uint8_t CrcSeed = 0xA1;
 
 public:
-  enum : uint8_t { CrcSeed = 0xA1 }; // input stream seed; output uses 0xA2
-
   constexpr void init() {
     *this    = InputReport{};
     reportId = ReportId;
@@ -1447,7 +1452,8 @@ protected:
   InputBody bodyData; // 0x01..0x3f
 
 private:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketInputUsb), Size = 64 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketInputUsb);
+  static constexpr size_t Size = 64;
 
 public:
   constexpr void init() {
@@ -1508,6 +1514,7 @@ public:
 
 struct AudioReport {
   friend struct internal::ReportProbe;
+  template <typename Report> friend constexpr uint32_t internal::crc_of(const Report &);
   friend struct internal::AudioReportProbe;
 
 private:
@@ -1594,22 +1601,20 @@ public:
 #endif
 
 private:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketAudio) };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketAudio);
+  static constexpr size_t Size = 398;
+  static constexpr uint8_t CrcSeed = 0xA2;
 
 public:
-  enum : uint8_t {
-    StateSize  = 63,
-    HapticSize = 64,
-    OpusSize   = 200,
-    CrcSeed    = 0xA2,
-  };
+  static constexpr uint8_t StateSize = 63;
+  static constexpr uint8_t HapticSize = 64;
+  static constexpr uint8_t OpusSize = 200;
 
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
-  enum : uint16_t { PcmFrames = 480, InputBlock = 512, Channels = 2 };
-
-private:
-  static constexpr size_t Size = 398;
+  static constexpr uint16_t PcmFrames = 480;
+  static constexpr uint16_t InputBlock = 512;
+  static constexpr uint16_t Channels = 2;
 
 public:
 
@@ -1819,7 +1824,8 @@ protected:
   DSUINT8 unknown35[6]; // 0x23..0x28  not used by the kernel
 
 public:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration), Size = 41 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketFeatureCalibration);
+  static constexpr size_t Size = 41;
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
@@ -1863,7 +1869,8 @@ protected:
   DSUINT8 unknown07[13]; // 0x07..0x13
 
 public:
-  enum : uint8_t { ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing), Size = 20 };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketFeaturePairing);
+  static constexpr size_t Size = 20;
 };
 
 static_assert(sizeof(Pairing) == Pairing::Size, "0x09 must stay 20 bytes");
@@ -1887,10 +1894,8 @@ protected:
   DSUINT8 padding[4];       // 0x3c..0x3f
 
 public:
-  enum : uint8_t {
-    ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware),
-    Size     = 64,
-  };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketFeatureFirmware);
+  static constexpr size_t Size = 64;
 
   static constexpr uint16_t VibrationV2MinimumVersion = (2 << 8) | 21;
 
@@ -1911,6 +1916,7 @@ struct ReportProbe {
   static constexpr size_t usbInputSize() { return UsbInputReport::Size; }
 
   static constexpr size_t audioSize() { return AudioReport::Size; }
+
 };
 } // namespace internal
 
@@ -1990,18 +1996,14 @@ struct MicFrame {
 #endif
 
 private:
-  enum : uint8_t {
-    ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth),
-    Toc      = 0xD4,
-    CrcBytes = 4,
-  };
+  static constexpr uint8_t ReportId = static_cast<uint8_t>(Packet::PacketStateBluetooth);
+  static constexpr uint8_t Toc = 0xD4;
+  static constexpr size_t CrcBytes = 4;
 
 public:
-  enum : uint32_t {
-    SampleRate = 48000,
-    Samples    = 480,
-    FrameMs    = 10,
-  };
+  static constexpr uint32_t SampleRate = 48000;
+  static constexpr uint32_t Samples = 480;
+  static constexpr uint32_t FrameMs = 10;
 
   static void init(uint8_t *buf, size_t len) {
     if (!buf || len < 3 + CrcBytes) return;
