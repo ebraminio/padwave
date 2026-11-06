@@ -1896,6 +1896,7 @@ private:
       this->idle_volume = this->volume;
       this->idle_volume_saved = true;
       this->idle_fade_volume = this->volume;
+      this->pulseIdleWarning();
     }
 
     if (!this->idle_warning) return;
@@ -2244,6 +2245,15 @@ private:
     else
       encodeTriggerZones(params, start, strength, 0);
     return preset.mode;
+  }
+
+  void pulseIdleWarning() {
+    if (!this->player || !this->controller || this->padwaveDisabled()) return;
+    constexpr int strength = 64;
+    outputFields("motor_left=64;motor_right=64");
+    this->rumble_left = strength;
+    this->rumble_right = strength;
+    this->rumble_until = nowMs() + 300;
   }
 
   void serviceOutput() {
