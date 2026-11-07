@@ -431,8 +431,6 @@ public:
       DebugFe         = 0xFE,
     };
 
-    static constexpr int zoneCount    = 10;
-    static constexpr uint8_t maxLevel = 8;
     Type mode;
     uint8_t parameters[10];
 
@@ -440,8 +438,6 @@ public:
 
   public:
     constexpr bool isValid() const { return this->mode != Type::Invalid; }
-
-    static constexpr const TriggerEffect invalid() { return TriggerEffect(); }
 
     static constexpr const TriggerEffect off() { return TriggerEffect(Type::Off); }
 
@@ -706,7 +702,8 @@ public:
                            normalize(start_strength, 8.0f), normalize(end_strength, 8.0f));
     }
 
-    static constexpr const TriggerEffect appleVibration(const float amplitudes[10], float frequency) {
+    static constexpr const TriggerEffect appleVibration(const float amplitudes[10],
+                                                        float frequency) {
       uint8_t levels[10];
       for (unsigned i = 0; i < 10; ++i) levels[i] = normalize(amplitudes[i], 8.0f);
       return multiplePositionVibration(normalize(frequency, 255.0f), levels);
@@ -1092,7 +1089,6 @@ constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
   constexpr uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
   return OutputBody::TriggerEffect::multiplePositionFeedback(levels);
 }();
-static_assert(!OutputBody::TriggerEffect::invalid().isValid());
 static_assert(OutputBody::TriggerEffect::off().isValid());
 static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) == 0x21);
 static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF &&
