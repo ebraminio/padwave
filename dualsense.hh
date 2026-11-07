@@ -467,7 +467,6 @@ public:
       DebugFe         = 0xFE,
     };
 
-
   private:
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
@@ -1392,14 +1391,20 @@ public:
   static_assert(sizeof(TouchPoint) == 4, "touch point must stay 4 bytes");
 
   struct TouchData {
+  protected:
     TouchPoint fingers[2];
-    uint8_t timestamp;
+    DSUINT8 timestamp;
+
+  public:
+    constexpr const TouchPoint &getFinger(unsigned i) const { return fingers[i == 0 ? 0 : 1]; }
   };
   static_assert(sizeof(TouchData) == 9, "touch data must stay 9 bytes");
 
   struct TriggerFeedback {
+  protected:
     uint8_t value;
 
+  public:
     constexpr unsigned stopLocation() const { return value & 0x0F; }
     constexpr unsigned status() const { return value >> 4; }
   };
@@ -1622,10 +1627,7 @@ public:
     return (status2 & static_cast<uint8_t>(Status2::HapticLowPassFilter)) != 0;
   }
 
-  TouchPoint touch(int index) const { return touchData.fingers[index == 0 ? 0 : 1]; }
-  uint8_t touchTimestamp() const { return touchData.timestamp; }
-  unsigned triggerFeedbackLeft() const { return triggerLeft.value; }
-  unsigned triggerFeedbackRight() const { return triggerRight.value; }
+  TouchPoint touch(unsigned index) const { return touchData.getFinger(index); }
   unsigned triggerStopLocationLeft() const { return triggerLeft.stopLocation(); }
   unsigned triggerStatusLeft() const { return triggerLeft.status(); }
   unsigned triggerStopLocationRight() const { return triggerRight.stopLocation(); }

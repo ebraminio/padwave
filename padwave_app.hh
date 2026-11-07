@@ -247,8 +247,6 @@ private:
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
   unsigned seq = 0;
   int rate = 0;
-  unsigned tfl = 0, tfr = 0;
-  unsigned touch_timestamp = 0;
   unsigned host_timestamp = 0;
   unsigned device_timestamp = 0;
   unsigned trigger_effect_r = 0;
@@ -641,9 +639,6 @@ public:
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
     kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
     kvAdd(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
-    kvAdd(buf, cap, &o, "controller.fields.tfl", "%u", this->tfl);
-    kvAdd(buf, cap, &o, "controller.fields.tfr", "%u", this->tfr);
-    kvAdd(buf, cap, &o, "controller.fields.touch_timestamp", "%u", this->touch_timestamp);
     kvAdd(buf, cap, &o, "controller.fields.host_timestamp", "%u", this->host_timestamp);
     kvAdd(buf, cap, &o, "controller.fields.device_timestamp", "%u", this->device_timestamp);
     kvAdd(buf, cap, &o, "controller.fields.trigger_effect_right", "%u", this->trigger_effect_r);
@@ -1615,14 +1610,11 @@ private:
     this->ay = accel.y;
     this->az = accel.z;
     this->seq = static_cast<unsigned>(b.sequence());
-    this->tfl = b.triggerFeedbackLeft();
-    this->tfr = b.triggerFeedbackRight();
-    this->touch_timestamp = b.touchTimestamp();
     this->host_timestamp = b.hostTime();
     this->device_timestamp = b.deviceTime();
     this->trigger_effect_r = b.triggerEffectRight();
     this->trigger_effect_l = b.triggerEffectLeft();
-    for (int t = 0; t < 2; t++) {
+    for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.touch(t);
       this->touch_active[t] = touch.active() ? 1 : 0;
       this->touch_id[t] = touch.id();

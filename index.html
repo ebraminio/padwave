@@ -920,7 +920,6 @@ function renderBitWatch(raw) {
     .map(x => x.toString(16).padStart(2, "0")).join(" ");
   const rawRows = [
     ["reserved_14", 0x0c, 3],
-    ["touch_timestamp", 0x28, 1],
     ["host_timestamp", 0x2b, 4],
     ["trigger_effect", 0x2f, 1],
     ["device_timestamp", 0x30, 4],
