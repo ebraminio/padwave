@@ -106,8 +106,8 @@ struct WireBytes {
 
 template <typename Report>
 static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
-  uint32_t c   = crc32(0, &crcSeed, 1);
-  auto raw     = __builtin_bit_cast(WireBytes<Report>, report);
+  uint32_t c = crc32(0, &crcSeed, 1);
+  auto raw   = __builtin_bit_cast(WireBytes<Report>, report);
   return crc32(c, raw.data, sizeof(Report) - sizeof(DSUINT32));
 }
 
@@ -189,142 +189,107 @@ struct CommandInfo {
 // 0x90/0x91/0xA0/0xA4/0xA5 are not feature report IDs there; writes to the
 // 0x80 feature report return EIO. USB may expose a different command surface.
 inline constexpr CommandInfo kCommandTable[] = {
-    {"Get MCU Unique ID", Packet::CommandHost, CommandDevice::MainMcu,
-     9, 0, false, "MediaTek main MCU unique ID"},
-    {"Read Device Info", Packet::CommandHost, CommandDevice::MainMcu,
-     12, 0, false, ""},
-    {"Erase Device Info", Packet::CommandHost, CommandDevice::MainMcu,
-     13, 0, true, "DANGEROUS"},
-    {"Spider DSP Init Get Status", Packet::CommandStatus, CommandDevice::Codec,
-     1, 0, false, "status query"},
-    {"Spider DSP Get Status", Packet::CommandStatus, CommandDevice::Codec,
-     2, 0, false, "status query"},
-    {"Spider DSP Patch Finalize", Packet::CommandHost, CommandDevice::Codec,
-     5, 0, false, ""},
-    {"Spider DSP Finalize Get Status", Packet::CommandStatus, CommandDevice::Codec,
-     5, 0, false, "status query"},
-    {"Spider DSP Firmware Patch", Packet::CommandHost, CommandDevice::Codec,
-     2, 57, false, ""},
-    {"Spider DSP Firmware Patch Init", Packet::CommandHost, CommandDevice::Codec,
-     1, 0, false, ""},
-    {"Spider DSP Firmware Verify", Packet::CommandHost, CommandDevice::Codec,
-     3, 0, false, ""},
-    {"Spider DSP Firmware Verify Status", Packet::CommandStatus, CommandDevice::Codec,
-     5, 0, false, "status query"},
-    {"Spider DSP Firmware Verify Request", Packet::CommandHost, CommandDevice::Codec,
-     7, 0, false, ""},
-    {"Spider DSP Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Codec,
-     7, 0, false, "status query"},
-    {"Get TP UID", Packet::CommandHost, CommandDevice::TouchPanel,
-     2, 0, false, "touch panel unique ID"},
-    {"Get TP Version", Packet::CommandHost, CommandDevice::TouchPanel,
-     4, 0, false, ""},
-    {"Get Table ID", Packet::CommandQuery, CommandDevice::Nvs,
-     2, 5, false, "DataLenLocal = 5"},
-    {"Reset", Packet::CommandHost, CommandDevice::MainMcu,
-     1, 0, false, ""},
-    {"Request Table ID", Packet::CommandCodec, CommandDevice::Nvs,
-     2, 0, false, ""},
-    {"Reboot Secure Boot Loader", Packet::CommandHost, CommandDevice::None,
-     kNoCommandAction, 0, false, "RebootCmd = 1"},
-    {"Read Patch Info", Packet::CommandHost, CommandDevice::DeviceInfo,
-     13, 0, false, ""},
-    {"Start Gyroscope Offset", Packet::CommandGyro, CommandDevice::Gyro,
-     1, 0, false, "TargetID = 7"},
-    {"Get Gyroscope Offset State", Packet::CommandGyroStatus, CommandDevice::Gyro,
-     kNoCommandAction, 0, false, "TargetID = 7"},
-    {"Get BlueTooth Patch Data", Packet::CommandStatus, CommandDevice::Bluetooth,
-     3, 0, false, "status query"},
-    {"Get BlueTooth Patch Info", Packet::CommandStatus, CommandDevice::DeviceInfo,
-     13, 0, false, "status query"},
-    {"Get Audio Codec State", Packet::CommandQuery, CommandDevice::Codec,
-     1, 0, false, ""},
-    {"Flash", Packet::CommandFlash, CommandDevice::None,
-     kNoCommandAction, 57, false, "DownloadCmd = 0; WriteCmd = 1"},
-    {"Audio Codec Select", Packet::CommandCodec, CommandDevice::Codec,
-     1, 0, false, ""},
-    {"Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth,
-     2, 57, false, ""},
-    {"Read Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth,
-     4, 0, false, ""},
-    {"Read Blue Tooth Patch Info", Packet::CommandStatus, CommandDevice::Bluetooth,
-     4, 0, false, "status query"},
-    {"Blue Tooth Patch Finalize", Packet::CommandHost, CommandDevice::Bluetooth,
-     5, 0, false, ""},
-    {"Blue Tooth Patch Init", Packet::CommandHost, CommandDevice::Bluetooth,
-     1, 0, false, ""},
-    {"Blue Tooth Patch Restart", Packet::CommandHost, CommandDevice::Bluetooth,
-     6, 0, false, ""},
-    {"Blue Tooth Patch Verify", Packet::CommandHost, CommandDevice::Bluetooth,
-     3, 0, false, ""},
-    {"Blue Tooth Restart Result", Packet::CommandStatus, CommandDevice::Bluetooth,
-     6, 0, false, "status query"},
-    {"Get BT Address", Packet::CommandStatus, CommandDevice::DeviceInfo,
-     2, 6, false, "status query"},
-    {"Set BT Address", Packet::CommandHost, CommandDevice::DeviceInfo,
-     1, 6, false, "ReadCmd = 2"},
-    {"Set BlueTooth Disable", Packet::CommandHost, CommandDevice::DeviceInfo,
-     5, 0, false, "Param = 0"},
-    {"Set BlueTooth Enable", Packet::CommandHost, CommandDevice::DeviceInfo,
-     5, 0, false, "Param = 1"},
-    {"Set BlueTooth Table", Packet::CommandTable, CommandDevice::None,
-     kNoCommandAction, 16, false,
+    {"Get MCU Unique ID", Packet::CommandHost, CommandDevice::MainMcu, 9, 0, false,
+     "MediaTek main MCU unique ID"},
+    {"Read Device Info", Packet::CommandHost, CommandDevice::MainMcu, 12, 0, false, ""},
+    {"Erase Device Info", Packet::CommandHost, CommandDevice::MainMcu, 13, 0, true, "DANGEROUS"},
+    {"Spider DSP Init Get Status", Packet::CommandStatus, CommandDevice::Codec, 1, 0, false,
+     "status query"},
+    {"Spider DSP Get Status", Packet::CommandStatus, CommandDevice::Codec, 2, 0, false,
+     "status query"},
+    {"Spider DSP Patch Finalize", Packet::CommandHost, CommandDevice::Codec, 5, 0, false, ""},
+    {"Spider DSP Finalize Get Status", Packet::CommandStatus, CommandDevice::Codec, 5, 0, false,
+     "status query"},
+    {"Spider DSP Firmware Patch", Packet::CommandHost, CommandDevice::Codec, 2, 57, false, ""},
+    {"Spider DSP Firmware Patch Init", Packet::CommandHost, CommandDevice::Codec, 1, 0, false, ""},
+    {"Spider DSP Firmware Verify", Packet::CommandHost, CommandDevice::Codec, 3, 0, false, ""},
+    {"Spider DSP Firmware Verify Status", Packet::CommandStatus, CommandDevice::Codec, 5, 0, false,
+     "status query"},
+    {"Spider DSP Firmware Verify Request", Packet::CommandHost, CommandDevice::Codec, 7, 0, false,
+     ""},
+    {"Spider DSP Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Codec, 7, 0,
+     false, "status query"},
+    {"Get TP UID", Packet::CommandHost, CommandDevice::TouchPanel, 2, 0, false,
+     "touch panel unique ID"},
+    {"Get TP Version", Packet::CommandHost, CommandDevice::TouchPanel, 4, 0, false, ""},
+    {"Get Table ID", Packet::CommandQuery, CommandDevice::Nvs, 2, 5, false, "DataLenLocal = 5"},
+    {"Reset", Packet::CommandHost, CommandDevice::MainMcu, 1, 0, false, ""},
+    {"Request Table ID", Packet::CommandCodec, CommandDevice::Nvs, 2, 0, false, ""},
+    {"Reboot Secure Boot Loader", Packet::CommandHost, CommandDevice::None, kNoCommandAction, 0,
+     false, "RebootCmd = 1"},
+    {"Read Patch Info", Packet::CommandHost, CommandDevice::DeviceInfo, 13, 0, false, ""},
+    {"Start Gyroscope Offset", Packet::CommandGyro, CommandDevice::Gyro, 1, 0, false,
+     "TargetID = 7"},
+    {"Get Gyroscope Offset State", Packet::CommandGyroStatus, CommandDevice::Gyro, kNoCommandAction,
+     0, false, "TargetID = 7"},
+    {"Get BlueTooth Patch Data", Packet::CommandStatus, CommandDevice::Bluetooth, 3, 0, false,
+     "status query"},
+    {"Get BlueTooth Patch Info", Packet::CommandStatus, CommandDevice::DeviceInfo, 13, 0, false,
+     "status query"},
+    {"Get Audio Codec State", Packet::CommandQuery, CommandDevice::Codec, 1, 0, false, ""},
+    {"Flash", Packet::CommandFlash, CommandDevice::None, kNoCommandAction, 57, false,
+     "DownloadCmd = 0; WriteCmd = 1"},
+    {"Audio Codec Select", Packet::CommandCodec, CommandDevice::Codec, 1, 0, false, ""},
+    {"Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth, 2, 57, false, ""},
+    {"Read Blue Tooth Patch", Packet::CommandHost, CommandDevice::Bluetooth, 4, 0, false, ""},
+    {"Read Blue Tooth Patch Info", Packet::CommandStatus, CommandDevice::Bluetooth, 4, 0, false,
+     "status query"},
+    {"Blue Tooth Patch Finalize", Packet::CommandHost, CommandDevice::Bluetooth, 5, 0, false, ""},
+    {"Blue Tooth Patch Init", Packet::CommandHost, CommandDevice::Bluetooth, 1, 0, false, ""},
+    {"Blue Tooth Patch Restart", Packet::CommandHost, CommandDevice::Bluetooth, 6, 0, false, ""},
+    {"Blue Tooth Patch Verify", Packet::CommandHost, CommandDevice::Bluetooth, 3, 0, false, ""},
+    {"Blue Tooth Restart Result", Packet::CommandStatus, CommandDevice::Bluetooth, 6, 0, false,
+     "status query"},
+    {"Get BT Address", Packet::CommandStatus, CommandDevice::DeviceInfo, 2, 6, false,
+     "status query"},
+    {"Set BT Address", Packet::CommandHost, CommandDevice::DeviceInfo, 1, 6, false, "ReadCmd = 2"},
+    {"Set BlueTooth Disable", Packet::CommandHost, CommandDevice::DeviceInfo, 5, 0, false,
+     "Param = 0"},
+    {"Set BlueTooth Enable", Packet::CommandHost, CommandDevice::DeviceInfo, 5, 0, false,
+     "Param = 1"},
+    {"Set BlueTooth Table", Packet::CommandTable, CommandDevice::None, kNoCommandAction, 16, false,
      "PowerTable = 1; RadioTable = 2; DataBegin = 0; PowerTableSize = 224; "
      "RadioTableSize = 112; DataMaxLen = 255; DataMinLen = 0"},
-    {"Set DFU Mode", Packet::CommandCodec, CommandDevice::None,
-     kNoCommandAction, 0, false,
+    {"Set DFU Mode", Packet::CommandCodec, CommandDevice::None, kNoCommandAction, 0, false,
      "DVT/prototype only; DisableMode = 0; EnablePBLMode = 1; EnableSBLMode = 2; "
      "EnableMode = 1"},
-    {"Set Hardware Version", Packet::CommandHost, CommandDevice::MainMcu,
-     5, 0, false, ""},
-    {"Write PCBAID", Packet::CommandHost, CommandDevice::MainMcu,
-     3, 6, false, ""},
-    {"Read PCBAID", Packet::CommandHost, CommandDevice::MainMcu,
-     4, 0, false, ""},
-    {"Set Power Charge Off", Packet::CommandHost, CommandDevice::Gyro,
-     3, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
-    {"Set Power Charge On", Packet::CommandHost, CommandDevice::Gyro,
-     2, 0, false, "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
-    {"Get Read OTP", Packet::CommandQuery, CommandDevice::Nvs,
-     9, 0, false, ""},
-    {"Set Read OTP", Packet::CommandCodec, CommandDevice::Nvs,
-     9, 0, false, "Offset = 23; Length = 1"},
-    {"Set Secure Boot Loader", Packet::CommandCodec, CommandDevice::None,
-     kNoCommandAction, 0, false, "SetCmd = 2"},
-    {"Set VDD External Power Off", Packet::CommandCodec, CommandDevice::Vdd,
-     1, 0, false, "Param = 0"},
-    {"Set VDD External Power On", Packet::CommandCodec, CommandDevice::Vdd,
-     1, 0, false, "Param = 1"},
-    {"Venom Get Status", Packet::CommandStatus, CommandDevice::Venom,
-     2, 0, false, "status query"},
-    {"Set Venom FW Version", Packet::CommandHost, CommandDevice::VenomFw,
-     3, 0, false, ""},
-    {"Venom Finalize Get Status", Packet::CommandStatus, CommandDevice::Venom,
-     5, 0, false, "status query"},
-    {"Venom Firmware Patch", Packet::CommandHost, CommandDevice::Venom,
-     2, 57, false, ""},
-    {"Venom Firmware Patch Init", Packet::CommandHost, CommandDevice::Venom,
-     1, 0, false, ""},
-    {"Venom Firmware Verify", Packet::CommandHost, CommandDevice::Venom,
-     3, 0, false, ""},
-    {"Venom Firmware Verify Request", Packet::CommandHost, CommandDevice::Venom,
-     7, 0, false, ""},
-    {"Venom Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Venom,
-     7, 0, false, "status query"},
-    {"Venom Firmware Verify Status", Packet::CommandStatus, CommandDevice::Venom,
-     5, 0, false, "status query"},
-    {"Venom Init Get Status", Packet::CommandStatus, CommandDevice::Venom,
-     1, 0, false, "status query"},
-    {"Venom Patch Finalize", Packet::CommandHost, CommandDevice::Venom,
-     5, 0, false, ""},
-    {"Set bonding", Packet::CommandHost, CommandDevice::MainMcu,
-     14, 0, false, ""},
-    {"NVS Lock", Packet::CommandHost, CommandDevice::Nvs,
-     1, 0, false, ""},
-    {"NVS Unlock", Packet::CommandHost, CommandDevice::Nvs,
-     2, 0, false, "Param0 = 101; Param1 = 50; Param2 = 64; Param3 = 12"},
-    {"NVS Lock Status", Packet::CommandHost, CommandDevice::Nvs,
-     3, 0, false, "0 = Unlocked; 1 = Locked"},
+    {"Set Hardware Version", Packet::CommandHost, CommandDevice::MainMcu, 5, 0, false, ""},
+    {"Write PCBAID", Packet::CommandHost, CommandDevice::MainMcu, 3, 6, false, ""},
+    {"Read PCBAID", Packet::CommandHost, CommandDevice::MainMcu, 4, 0, false, ""},
+    {"Set Power Charge Off", Packet::CommandHost, CommandDevice::Gyro, 3, 0, false,
+     "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
+    {"Set Power Charge On", Packet::CommandHost, CommandDevice::Gyro, 2, 0, false,
+     "Param0 = 208; Param1 = 38; Param2 = 117; Param3 = 192"},
+    {"Get Read OTP", Packet::CommandQuery, CommandDevice::Nvs, 9, 0, false, ""},
+    {"Set Read OTP", Packet::CommandCodec, CommandDevice::Nvs, 9, 0, false,
+     "Offset = 23; Length = 1"},
+    {"Set Secure Boot Loader", Packet::CommandCodec, CommandDevice::None, kNoCommandAction, 0,
+     false, "SetCmd = 2"},
+    {"Set VDD External Power Off", Packet::CommandCodec, CommandDevice::Vdd, 1, 0, false,
+     "Param = 0"},
+    {"Set VDD External Power On", Packet::CommandCodec, CommandDevice::Vdd, 1, 0, false,
+     "Param = 1"},
+    {"Venom Get Status", Packet::CommandStatus, CommandDevice::Venom, 2, 0, false, "status query"},
+    {"Set Venom FW Version", Packet::CommandHost, CommandDevice::VenomFw, 3, 0, false, ""},
+    {"Venom Finalize Get Status", Packet::CommandStatus, CommandDevice::Venom, 5, 0, false,
+     "status query"},
+    {"Venom Firmware Patch", Packet::CommandHost, CommandDevice::Venom, 2, 57, false, ""},
+    {"Venom Firmware Patch Init", Packet::CommandHost, CommandDevice::Venom, 1, 0, false, ""},
+    {"Venom Firmware Verify", Packet::CommandHost, CommandDevice::Venom, 3, 0, false, ""},
+    {"Venom Firmware Verify Request", Packet::CommandHost, CommandDevice::Venom, 7, 0, false, ""},
+    {"Venom Firmware Verify Request Status", Packet::CommandStatus, CommandDevice::Venom, 7, 0,
+     false, "status query"},
+    {"Venom Firmware Verify Status", Packet::CommandStatus, CommandDevice::Venom, 5, 0, false,
+     "status query"},
+    {"Venom Init Get Status", Packet::CommandStatus, CommandDevice::Venom, 1, 0, false,
+     "status query"},
+    {"Venom Patch Finalize", Packet::CommandHost, CommandDevice::Venom, 5, 0, false, ""},
+    {"Set bonding", Packet::CommandHost, CommandDevice::MainMcu, 14, 0, false, ""},
+    {"NVS Lock", Packet::CommandHost, CommandDevice::Nvs, 1, 0, false, ""},
+    {"NVS Unlock", Packet::CommandHost, CommandDevice::Nvs, 2, 0, false,
+     "Param0 = 101; Param1 = 50; Param2 = 64; Param3 = 12"},
+    {"NVS Lock Status", Packet::CommandHost, CommandDevice::Nvs, 3, 0, false,
+     "0 = Unlocked; 1 = Locked"},
 };
 
 // Feature-report map captured from a PS5 <-> DualSense USB session
@@ -475,13 +440,11 @@ public:
     DSUINT8 parameters[10];
 
     constexpr void zero() {
-      for (size_t i = 0; i < sizeof(parameters); ++i) parameters[i] = 0;
+      for (auto &p : parameters) p = 0;
     }
 
   public:
-    constexpr TriggerEffect() : mode(0), parameters() {
-      zero();
-    }
+    constexpr TriggerEffect() : mode(0), parameters() { zero(); }
 
     constexpr bool off() {
       mode = static_cast<uint8_t>(Type::Off);
@@ -494,11 +457,11 @@ public:
       if (position > 9 || strength > 8) return false;
       if (strength == 0) return off();
       zero();
-      mode        = static_cast<uint8_t>(Type::Feedback);
+      mode            = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
       uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
-      for (int i = position; i < 10; ++i) {
+      for (unsigned i = position; i < 10; ++i) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
@@ -517,10 +480,10 @@ public:
       if (strength == 0) return off();
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      mode       = static_cast<uint8_t>(Type::Weapon);
-      parameters[0]       = static_cast<uint8_t>(zones & 0xFF);
-      parameters[1]       = static_cast<uint8_t>(zones >> 8);
-      parameters[2]       = static_cast<uint8_t>(strength - 1);
+      mode           = static_cast<uint8_t>(Type::Weapon);
+      parameters[0]  = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]  = static_cast<uint8_t>(zones >> 8);
+      parameters[2]  = static_cast<uint8_t>(strength - 1);
       return true;
     }
 
@@ -529,11 +492,11 @@ public:
       if (position > 9 || amplitude > 8) return false;
       if (amplitude == 0 || frequency == 0) return off();
       zero();
-      mode        = static_cast<uint8_t>(Type::Vibration);
+      mode            = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
-      for (int i = position; i < 10; ++i) {
+      for (unsigned i = position; i < 10; ++i) {
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
@@ -550,14 +513,14 @@ public:
     // Official: per-zone resistance levels (0..8).
     constexpr bool multiplePositionFeedback(const uint8_t *strength) {
       bool any = false;
-      for (int i = 0; i < 10; ++i)
+      for (unsigned i = 0; i < 10; ++i)
         if (strength[i] > 0) any = true;
       if (!any) return off();
       zero();
-      mode        = static_cast<uint8_t>(Type::Feedback);
+      mode            = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
-      for (int i = 0; i < 10; ++i) {
+      for (unsigned i = 0; i < 10; ++i) {
         if (strength[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((strength[i] - 1) & 0x07);
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
@@ -580,8 +543,8 @@ public:
         return false;
       uint8_t strength[10] = {};
       float slope          = static_cast<float>(static_cast<int>(end_strength) - start_strength) /
-                    static_cast<float>(end - start);
-      for (int i = start; i < 10; ++i) {
+                             static_cast<float>(end - start);
+      for (unsigned i = start; i < 10; ++i) {
         int value = i <= end ? static_cast<int>(static_cast<float>(start_strength) +
                                                 slope * static_cast<float>(i - start) + 0.5f)
                              : end_strength;
@@ -595,14 +558,14 @@ public:
     // Official: per-zone vibration amplitudes with one frequency.
     constexpr bool multiplePositionVibration(uint8_t frequency, const uint8_t *amplitude) {
       bool any = false;
-      for (int i = 0; i < 10; ++i)
+      for (unsigned i = 0; i < 10; ++i)
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
       zero();
-      mode        = static_cast<uint8_t>(Type::Vibration);
+      mode            = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
-      for (int i = 0; i < 10; ++i) {
+      for (unsigned i = 0; i < 10; ++i) {
         if (amplitude[i] == 0) continue;
         uint8_t value = static_cast<uint8_t>((amplitude[i] - 1) & 0x07);
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
@@ -625,12 +588,12 @@ public:
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t pair  = static_cast<uint32_t>((strength - 1) & 0x07) |
-                      (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
-      mode = static_cast<uint8_t>(Type::Bow);
-      parameters[0] = static_cast<uint8_t>(zones & 0xFF);
-      parameters[1] = static_cast<uint8_t>(zones >> 8);
-      parameters[2] = static_cast<uint8_t>(pair & 0xFF);
-      parameters[3] = static_cast<uint8_t>((pair >> 8) & 0xFF);
+                       (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
+      mode           = static_cast<uint8_t>(Type::Bow);
+      parameters[0]  = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]  = static_cast<uint8_t>(zones >> 8);
+      parameters[2]  = static_cast<uint8_t>(pair & 0xFF);
+      parameters[3]  = static_cast<uint8_t>((pair >> 8) & 0xFF);
       return true;
     }
 
@@ -644,11 +607,11 @@ public:
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t ratio = static_cast<uint32_t>(second_foot & 0x07) |
                        (static_cast<uint32_t>(first_foot & 0x07) << 3);
-      mode = static_cast<uint8_t>(Type::Galloping);
-      parameters[0] = static_cast<uint8_t>(zones & 0xFF);
-      parameters[1] = static_cast<uint8_t>(zones >> 8);
-      parameters[2] = static_cast<uint8_t>(ratio & 0xFF);
-      parameters[3] = frequency;
+      mode           = static_cast<uint8_t>(Type::Galloping);
+      parameters[0]  = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]  = static_cast<uint8_t>(zones >> 8);
+      parameters[2]  = static_cast<uint8_t>(ratio & 0xFF);
+      parameters[3]  = frequency;
       return true;
     }
 
@@ -659,19 +622,19 @@ public:
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
-      mode       = static_cast<uint8_t>(Type::Machine);
-      parameters[0]       = static_cast<uint8_t>(zones & 0xFF);
-      parameters[1]       = static_cast<uint8_t>(zones >> 8);
-      parameters[2]       = pair;
-      parameters[3]       = frequency;
-      parameters[4]       = period;
+      mode           = static_cast<uint8_t>(Type::Machine);
+      parameters[0]  = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]  = static_cast<uint8_t>(zones >> 8);
+      parameters[2]  = pair;
+      parameters[3]  = frequency;
+      parameters[4]  = period;
       return true;
     }
 
     // Firmware leftovers with simpler logic and no parameter validation.
     constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
       zero();
-      mode = static_cast<uint8_t>(Type::SimpleFeedback);
+      mode          = static_cast<uint8_t>(Type::SimpleFeedback);
       parameters[0] = position;
       parameters[1] = strength;
       return true;
@@ -679,7 +642,7 @@ public:
 
     constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
       zero();
-      mode = static_cast<uint8_t>(Type::SimpleWeapon);
+      mode          = static_cast<uint8_t>(Type::SimpleWeapon);
       parameters[0] = start;
       parameters[1] = end;
       parameters[2] = strength;
@@ -689,7 +652,7 @@ public:
     constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
       if (frequency == 0 || amplitude == 0) return off();
       zero();
-      mode = static_cast<uint8_t>(Type::SimpleVibration);
+      mode          = static_cast<uint8_t>(Type::SimpleVibration);
       parameters[0] = frequency;
       parameters[1] = amplitude;
       parameters[2] = position;
@@ -701,19 +664,17 @@ public:
       if (strength > 10) return false;
       if (strength == 0) return off();
       zero();
-      mode = static_cast<uint8_t>(Type::LimitedFeedback);
+      mode          = static_cast<uint8_t>(Type::LimitedFeedback);
       parameters[0] = position;
       parameters[1] = strength;
       return true;
     }
 
     constexpr bool limitedWeapon(uint8_t start, uint8_t end, uint8_t strength) {
-      if (start < 0x10 || end < start || end > start + 100 ||
-          strength > 10)
-        return false;
+      if (start < 0x10 || end < start || end > start + 100 || strength > 10) return false;
       if (strength == 0) return off();
       zero();
-      mode = static_cast<uint8_t>(Type::LimitedWeapon);
+      mode          = static_cast<uint8_t>(Type::LimitedWeapon);
       parameters[0] = start;
       parameters[1] = end;
       parameters[2] = strength;
@@ -744,7 +705,7 @@ public:
 
     constexpr bool appleFeedback(const float *strengths) {
       uint8_t levels[10];
-      for (int i = 0; i < 10; ++i) levels[i] = normalize(strengths[i], 8.0f);
+      for (unsigned i = 0; i < 10; ++i) levels[i] = normalize(strengths[i], 8.0f);
       return multiplePositionFeedback(levels);
     }
 
@@ -756,7 +717,7 @@ public:
 
     constexpr bool appleVibration(const float *amplitudes, float frequency) {
       uint8_t levels[10];
-      for (int i = 0; i < 10; ++i) levels[i] = normalize(amplitudes[i], 8.0f);
+      for (unsigned i = 0; i < 10; ++i) levels[i] = normalize(amplitudes[i], 8.0f);
       return multiplePositionVibration(normalize(frequency, 255.0f), levels);
     }
 
@@ -769,7 +730,7 @@ public:
 
     constexpr bool rewasdChoppy() {
       zero();
-      mode = static_cast<uint8_t>(Type::Feedback);
+      mode          = static_cast<uint8_t>(Type::Feedback);
       parameters[0] = 0x02;
       parameters[1] = 0x27;
       parameters[2] = 0x18;
@@ -787,7 +748,7 @@ public:
     constexpr bool rewasdRifle(uint8_t frequency = 10) {
       if (frequency < 2 || frequency > 20) return false;
       zero();
-      mode = static_cast<uint8_t>(Type::Vibration);
+      mode          = static_cast<uint8_t>(Type::Vibration);
       parameters[1] = 0x03;
       parameters[5] = 0x3F;
       parameters[8] = frequency;
@@ -797,7 +758,7 @@ public:
     constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
       if (strength < 1 || frequency < 1) return false;
       zero();
-      mode = static_cast<uint8_t>(Type::Vibration);
+      mode          = static_cast<uint8_t>(Type::Vibration);
       parameters[1] = 0x03;
       parameters[5] = strength;
       parameters[8] = frequency;
@@ -877,8 +838,8 @@ private:
   // fade control. Bits 3-7 are reserved.
   enum class ValidFlag2 : uint8_t {
     PlayerLedBrightnessControlEnable = 1u << 0, // bit 0
-    LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbarSetup fade control
-    CompatibleVibration2       = 1u << 2, // bit 2
+    LightbarSetupControlEnable       = 1u << 1, // bit 1: enables the lightbarSetup fade control
+    CompatibleVibration2             = 1u << 2, // bit 2
   };
 
   // +0x09. Power-save controls. hid-playstation.c documents microphone mute
@@ -992,7 +953,6 @@ public:
     powerSaveControl = v;
   }
 
-
   constexpr void setMotorPowerLevel(uint8_t v) {
     claim(ValidFlag1::VibrationAttenuationEnable);
     motorPowerLevel = v;
@@ -1064,11 +1024,10 @@ public:
     // writes zeros into those blocks.
     constexpr uint8_t motorMask =
         static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
-    validFlag0 = static_cast<uint8_t>((validFlag0 & motorMask) |
-                                      bit(ValidFlag0::HeadphoneVolumeEnable) |
-                                      bit(ValidFlag0::SpeakerVolumeEnable) |
-                                      bit(ValidFlag0::MicVolumeEnable) |
-                                      bit(ValidFlag0::AudioControlEnable));
+    validFlag0 = static_cast<uint8_t>(
+        (validFlag0 & motorMask) | bit(ValidFlag0::HeadphoneVolumeEnable) |
+        bit(ValidFlag0::SpeakerVolumeEnable) | bit(ValidFlag0::MicVolumeEnable) |
+        bit(ValidFlag0::AudioControlEnable));
     validFlag1       = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
     volumeHeadphones = 0x7F;
     volumeSpeaker    = 0x64;
@@ -1079,9 +1038,8 @@ public:
   constexpr void setMicMuted(bool muted) {
     claim(ValidFlag1::PowerSaveControlEnable);
     constexpr uint8_t mask = static_cast<uint8_t>(PowerSave::MicMute);
-    powerSaveControl =
-        muted ? static_cast<uint8_t>(powerSaveControl | mask)
-              : static_cast<uint8_t>(powerSaveControl & ~mask);
+    powerSaveControl       = muted ? static_cast<uint8_t>(powerSaveControl | mask)
+                                   : static_cast<uint8_t>(powerSaveControl & ~mask);
   }
 
   // 0 mutes capture; 1..micMaxVolume enables it at that volume.
@@ -1281,7 +1239,7 @@ public:
   constexpr OutputBody &body() { return bodyData; }
   constexpr void sign() {
     constexpr uint8_t crcSeed = 0xA2;
-    crc = internal::crc_of(*this, crcSeed);
+    crc                       = internal::crc_of(*this, crcSeed);
   }
 };
 static_assert(sizeof(OutputReport) == 78, "0x31 must stay 78 bytes");
@@ -1357,13 +1315,9 @@ public:
     constexpr bool active() const { return (contact & 0x80) == 0; }
     constexpr unsigned id() const { return contact & 0x7F; }
 
-    constexpr unsigned x() const {
-      return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8));
-    }
+    constexpr unsigned x() const { return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8)); }
 
-    constexpr unsigned y() const {
-      return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4));
-    }
+    constexpr unsigned y() const { return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4)); }
   };
   static_assert(sizeof(TouchPoint) == 4, "touch point must stay 4 bytes");
 
@@ -1530,9 +1484,7 @@ public:
     constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
     constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
 
-    const Buttons pressed(const Buttons &prev) const {
-      return Buttons(buttons & ~prev.buttons);
-    }
+    const Buttons pressed(const Buttons &prev) const { return Buttons(buttons & ~prev.buttons); }
 
   private:
     constexpr Buttons(uint32_t v) : buttons(v) {}
@@ -1540,7 +1492,7 @@ public:
     uint32_t buttons;
   };
 
-  constexpr const Buttons buttons() const { return Buttons(this->buttonsData & ~dpadMask); }
+  constexpr const Buttons buttons() const { return Buttons(buttonsData & ~dpadMask); }
 
   // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
   // high nibble is PowerState. The controller can report Complete before the
@@ -1671,7 +1623,7 @@ struct UsbInputReport {
   friend struct internal::ReportProbe;
 
 private:
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8                     = internal::DSUINT8;
   static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::InputUsb);
 
 protected:
@@ -1836,8 +1788,8 @@ public:
   };
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Audio);
-  static constexpr uint8_t crcSeed  = 0xA2;
+  static constexpr uint8_t reportId  = static_cast<uint8_t>(internal::Packet::Audio);
+  static constexpr uint8_t crcSeed   = 0xA2;
   static constexpr uint8_t stateSize = 63;
   static constexpr uint8_t opusSize  = 200;
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
@@ -1890,7 +1842,7 @@ public:
     configTag       = 0x11 | 0x80;
     configLength    = 7;
     enableMaskValue = static_cast<uint8_t>(mask);
-    for (int i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
+    for (unsigned i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
     stateTag        = 0x10 | 0x80;
     stateLength     = stateSize;
     hapticsTag      = 0x12 | 0x80;
@@ -2045,15 +1997,9 @@ public:
     int pitch_bias = gyroPitchBias;
     int yaw_bias   = gyroYawBias;
     int roll_bias  = gyroRollBias;
-    result.gyro[0] = {0, gyro_numerator,
-                      gyroPitchPlus - pitch_bias +
-                          gyroPitchMinus - pitch_bias};
-    result.gyro[1] = {0, gyro_numerator,
-                      gyroYawPlus - yaw_bias + gyroYawMinus -
-                          yaw_bias};
-    result.gyro[2] = {0, gyro_numerator,
-                      gyroRollPlus - roll_bias + gyroRollMinus -
-                          roll_bias};
+    result.gyro[0] = {0, gyro_numerator, gyroPitchPlus - pitch_bias + gyroPitchMinus - pitch_bias};
+    result.gyro[1] = {0, gyro_numerator, gyroYawPlus - yaw_bias + gyroYawMinus - yaw_bias};
+    result.gyro[2] = {0, gyro_numerator, gyroRollPlus - roll_bias + gyroRollMinus - roll_bias};
     for (auto &axis : result.gyro)
       if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::gyroRange);
 
@@ -2184,13 +2130,13 @@ public:
     *this         = HapticsReport{};
     reportIdValue = reportId;
     // 0x11: enable haptics, seven-byte configuration.
-    packet0[0] = 0x91; // packet id 0x11 | sized
-    packet0[1] = 7;
-    packet0[2] = 0xFE;
-    packet0[7] = 0xFF;
+    packet0[0]    = 0x91; // packet id 0x11 | sized
+    packet0[1]    = 7;
+    packet0[2]    = 0xFE;
+    packet0[7]    = 0xFF;
     // 0x12: 64 sample bytes, 32 stereo frames at 3 kHz.
-    packet1[0] = 0x92; // packet id 0x12 | sized
-    packet1[1] = sampleBytes;
+    packet1[0]    = 0x92; // packet id 0x12 | sized
+    packet1[1]    = sampleBytes;
   }
 
   constexpr void setSamples(const uint8_t *pcm, size_t len) {
