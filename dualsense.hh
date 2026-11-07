@@ -474,9 +474,6 @@ public:
 
     constexpr uint8_t mode() const { return block[0]; }
 
-  public:
-    constexpr TriggerEffect() { clearBlock(); }
-
     constexpr void clearBlock() {
       for (size_t i = 0; i < sizeof(block); ++i) block[i] = 0;
     }
@@ -486,6 +483,9 @@ public:
     constexpr void zero() {
       for (size_t i = 1; i < sizeof(block); ++i) block[i] = 0;
     }
+
+  public:
+    constexpr TriggerEffect() { clearBlock(); }
 
     constexpr bool off() {
       clearBlock();
