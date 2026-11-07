@@ -1,3 +1,10 @@
+// dualsense.hh — DualSense HID wire schema for C++23.
+//
+// Self-contained protocol definitions: report framing, output/input bodies,
+// feature reports, haptics and the command metadata. The public report classes
+// expose construction/accessors; storage and compile-time probes stay in
+// dualsense::internal. No STL, RTTI, exceptions, heap allocation or platform
+// I/O. DS_HAVE_OPUS enables the optional Opus packet encoder.
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
@@ -66,9 +73,10 @@ static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
 // 0xA2 output, 0xA3 features), over everything before the trailing `crc`
-// member. Every report type carries `crc`, `crcSeed` and a `reportId`, so one
-// template covers them all. This is the same result as zlib's crc32(), but
-// local so the binary does not need -lz.
+// member. CRC-bearing report types carry `crc`, `crcSeed` and a `reportId`, so
+// one template covers them. This is the same result as zlib's crc32(), but
+// local so the binary does not need -lz. USB input/output reports do not carry
+// a CRC.
 struct Crc32Table {
   uint32_t entries[256];
 };
@@ -107,8 +115,8 @@ static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
 // Output: the 47-byte state body shared by 0x31 (Bluetooth) and 0x02 (USB)
 //
 // +0x00 in these comments is the offset inside this payload: 0x01 in a USB
-// report, 0x03 in a Bluetooth one (after the id, the sequence tagValue and the 0x10
-// tagValue byte). Only the fields whose valid_flag* bit is set are applied by the
+// report, 0x03 in a Bluetooth one (after the id, sequence tag and 0x10 tag
+// byte). Only the fields whose valid_flag* bit is set are applied by the
 // controller — a claim, not a change notification — which is what makes a
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
@@ -136,8 +144,7 @@ enum class Packet : uint8_t {
 };
 
 // psdevwiki HID command metadata. Command report IDs are part of Packet above;
-// this table is metadata only. Payload construction and a feature-report writer
-// are still TODO.
+// this table is metadata only; it does not construct payloads or perform I/O.
 
 enum class CommandDevice : uint8_t {
   None       = 0,
@@ -760,11 +767,9 @@ private:
     CompatibleVibration2       = 1u << 2, // bit 2
   };
 
-  // +0x09. Bit layout: bits 0-3 reserved, bit 4 microphone mute, bit 5
-  // reserved, bit 6 audio mute, bit 7 reserved. Only the two documented bits
-  // are named (hid-playstation.c uses the first; DS4Windows comments both);
-  // the other six are in the panel's power save row so they can be probed: if
-  // one stops the motion sensors, the gyro and accelerometer in the UI go flat.
+  // +0x09. Power-save controls. hid-playstation.c documents microphone mute
+  // and audio mute; the other names come from the community schemas. Some
+  // controllers stop reporting motion while MotionPowerSave is set.
   enum PowerSave : uint8_t {
     TouchPowerSave  = 1u << 0, // bit 0
     MotionPowerSave = 1u << 1, // bit 1
@@ -1082,8 +1087,8 @@ static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) ==
 static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 &&
               internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
 
-// Saturating conversions used by the Swift schema when moving normalized UI
-// values onto the byte/zone/level wire fields.
+// Saturating conversions used by the Swift schema when mapping normalized
+// [0, 1] values onto the byte/zone/level wire fields.
 struct DSScale {
   static constexpr float clamp01(float value) {
     if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
@@ -1119,8 +1124,8 @@ struct DSScale {
 // Output 0x31 (Bluetooth, 78 bytes, CRC at the end)
 // ===========================================================================
 
-// Implementation-only wire wrappers. Consumers use InputReport, OutputReport,
-// UsbOutputReport, AudioReport and MicFrame from padwave.
+// Wire report types. The internal namespace owns storage and probes; these
+// public wrappers expose construction, accessors and framing helpers.
 struct OutputReport {
   friend struct internal::ReportProbe;
 
@@ -1671,7 +1676,7 @@ protected:
 
 public:
 #ifdef DS_HAVE_OPUS
-  // PCM-facing encoder: the rest of padwave never touches libopus.
+  // PCM-facing encoder; libopus types stay contained in this block.
   struct Encoder {
     ::OpusEncoder *encoder = nullptr;
 
@@ -1856,9 +1861,8 @@ struct AudioReportProbe {
 // and 0x20 and the offsets below come from hid-playstation.c; DualSenseClient's
 // descriptor notes corroborate the ids and lengths. Feature reports are signed
 // with CRC-32 seed 0xA3 over Bluetooth (the streams use 0xA1 input, 0xA2
-// output). padwave does not read them — the kernel already exposes the results
-// (MAC, battery, calibration) — but they are here so the whole protocol is
-// visible.
+// output). This header models the reports; a platform layer performs the HID
+// GET_FEATURE/SET_FEATURE calls.
 //
 //   id   length  what
 //   0x05 41      motion-sensor calibration: 17 int16 LE at buf[1..34]
@@ -1868,8 +1872,8 @@ struct AudioReportProbe {
 //   0x81 64      the matching command response
 //   0x65 64      DualSense Edge factory handshake
 //
-// The Edge also exposes profile reports in the 0x60..0x7B range, beyond what
-// padwave needs.
+// The Edge also exposes profile reports in the 0x60..0x7B range; they are
+// outside this header's modeled subset.
 
 // Calibration math from the Swift schema. The feature report stores raw
 // per-axis bias and plus/minus endpoints; converting them to the coefficients

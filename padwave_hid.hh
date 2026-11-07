@@ -1,9 +1,8 @@
 // padwave_hid.hh — one sysfs scan for the controller node and its MAC.
 //
-// The player and App need the same hidraw discovery; Input borrows the
-// player's fd. A
-// single pass over /sys/class/hidraw reads HID_ID and HID_UNIQ once, returning
-// both the /dev node and the Bluetooth address. Enumeration is by
+// The player and App share the same hidraw discovery; Input borrows the
+// player's fd. A single pass over /sys/class/hidraw reads HID_ID and HID_UNIQ,
+// returning both the /dev node and the Bluetooth address. Enumeration is by
 // class entry rather than a fixed hidraw0..15 range, and HID_ID is parsed as
 // numbers; this follows hidapi's Linux discovery instead of assuming a layout.
 #pragma once
