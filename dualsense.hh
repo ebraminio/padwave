@@ -445,7 +445,6 @@ public:
     static constexpr const TriggerEffect feedback(uint8_t position, uint8_t strength) {
       if (position > 9 || strength > 8) return TriggerEffect{};
       if (strength == 0) return off();
-      TriggerEffect effect(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
       uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
@@ -453,6 +452,7 @@ public:
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
+      TriggerEffect effect(Type::Feedback);
       effect.parameters[0] = static_cast<uint8_t>(active & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(active >> 8);
       effect.parameters[2] = static_cast<uint8_t>(force & 0xFF);
@@ -466,8 +466,8 @@ public:
     static constexpr const TriggerEffect weapon(uint8_t start, uint8_t end, uint8_t strength) {
       if (start > 7 || start < 2 || end > 8 || end <= start || strength > 8) return TriggerEffect{};
       if (strength == 0) return off();
-      TriggerEffect effect(Type::Weapon);
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
+      TriggerEffect effect(Type::Weapon);
       effect.parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(zones >> 8);
       effect.parameters[2] = static_cast<uint8_t>(strength - 1);
@@ -479,7 +479,6 @@ public:
                                                    uint8_t frequency) {
       if (position > 9 || amplitude > 8) return TriggerEffect{};
       if (amplitude == 0 || frequency == 0) return off();
-      TriggerEffect effect(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
@@ -487,6 +486,7 @@ public:
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
+      TriggerEffect effect(Type::Vibration);
       effect.parameters[0] = static_cast<uint8_t>(active & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(active >> 8);
       effect.parameters[2] = static_cast<uint8_t>(levels & 0xFF);
@@ -503,7 +503,6 @@ public:
       for (unsigned i = 0; i < 10; ++i)
         if (strength[i] > 0) any = true;
       if (!any) return off();
-      TriggerEffect effect(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
       for (unsigned i = 0; i < 10; ++i) {
@@ -512,6 +511,7 @@ public:
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
+      TriggerEffect effect(Type::Feedback);
       effect.parameters[0] = static_cast<uint8_t>(active & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(active >> 8);
       effect.parameters[2] = static_cast<uint8_t>(force & 0xFF);
@@ -548,7 +548,6 @@ public:
       for (unsigned i = 0; i < 10; ++i)
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
-      TriggerEffect effect(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       for (unsigned i = 0; i < 10; ++i) {
@@ -557,6 +556,7 @@ public:
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
+      TriggerEffect effect(Type::Vibration);
       effect.parameters[0] = static_cast<uint8_t>(active & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(active >> 8);
       effect.parameters[2] = static_cast<uint8_t>(levels & 0xFF);
@@ -572,10 +572,10 @@ public:
                                              uint8_t snap) {
       if (start > 8 || end > 8 || start >= end || strength > 8 || snap > 8) return TriggerEffect{};
       if (end == 0 || strength == 0 || snap == 0) return off();
-      TriggerEffect effect(Type::Bow);
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t pair        = static_cast<uint32_t>((strength - 1) & 0x07) |
                              (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
+      TriggerEffect effect(Type::Bow);
       effect.parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(zones >> 8);
       effect.parameters[2] = static_cast<uint8_t>(pair & 0xFF);
@@ -589,10 +589,10 @@ public:
           first_foot >= second_foot)
         return TriggerEffect{};
       if (frequency == 0) return off();
-      TriggerEffect effect(Type::Galloping);
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t ratio       = static_cast<uint32_t>(second_foot & 0x07) |
                              (static_cast<uint32_t>(first_foot & 0x07) << 3);
+      TriggerEffect effect(Type::Galloping);
       effect.parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(zones >> 8);
       effect.parameters[2] = static_cast<uint8_t>(ratio & 0xFF);
@@ -606,9 +606,9 @@ public:
       if (start > 8 || end > 9 || end <= start || amplitude_a > 7 || amplitude_b > 7)
         return TriggerEffect{};
       if (frequency == 0) return off();
-      TriggerEffect effect(Type::Machine);
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
+      TriggerEffect effect(Type::Machine);
       effect.parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       effect.parameters[1] = static_cast<uint8_t>(zones >> 8);
       effect.parameters[2] = pair;
