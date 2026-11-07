@@ -412,9 +412,6 @@ public:
     friend struct OutputBody;
 
   private:
-    // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
-    // values are firmware leftovers; keep them for completeness but prefer the
-    // official factories.
     enum class Type : uint8_t {
       Invalid         = 0x00,
       Off             = 0x05,
@@ -433,12 +430,11 @@ public:
       DebugFd         = 0xFD,
       DebugFe         = 0xFE,
     };
-    using DSUINT8 = internal::DSUINT8;
 
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
     Type mode;
-    DSUINT8 parameters[10];
+    uint8_t parameters[10];
 
     constexpr TriggerEffect(Type modeValue = Type::Invalid) : mode(modeValue), parameters() {}
 
@@ -506,7 +502,7 @@ public:
     }
 
     // Official: per-zone resistance levels (0..8).
-    static constexpr const TriggerEffect multiplePositionFeedback(const uint8_t *strength) {
+    static constexpr const TriggerEffect multiplePositionFeedback(const uint8_t strength[10]) {
       bool any = false;
       for (unsigned i = 0; i < 10; ++i)
         if (strength[i] > 0) any = true;
@@ -551,7 +547,7 @@ public:
 
     // Official: per-zone vibration amplitudes with one frequency.
     static constexpr const TriggerEffect multiplePositionVibration(uint8_t frequency,
-                                                                   const uint8_t *amplitude) {
+                                                                   const uint8_t amplitude[10]) {
       bool any = false;
       for (unsigned i = 0; i < 10; ++i)
         if (amplitude[i] > 0) any = true;
@@ -698,7 +694,7 @@ public:
                        normalize(frequency, 255.0f));
     }
 
-    static constexpr const TriggerEffect appleFeedback(const float *strengths) {
+    static constexpr const TriggerEffect appleFeedback(const float strengths[10]) {
       uint8_t levels[10];
       for (unsigned i = 0; i < 10; ++i) levels[i] = normalize(strengths[i], 8.0f);
       return multiplePositionFeedback(levels);
@@ -710,7 +706,7 @@ public:
                            normalize(start_strength, 8.0f), normalize(end_strength, 8.0f));
     }
 
-    static constexpr const TriggerEffect appleVibration(const float *amplitudes, float frequency) {
+    static constexpr const TriggerEffect appleVibration(const float amplitudes[10], float frequency) {
       uint8_t levels[10];
       for (unsigned i = 0; i < 10; ++i) levels[i] = normalize(amplitudes[i], 8.0f);
       return multiplePositionVibration(normalize(frequency, 255.0f), levels);
