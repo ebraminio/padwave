@@ -479,7 +479,6 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
       </div>
       <div class="lab-row" data-trigger="right">
         <b>R trigger</b>
@@ -490,7 +489,6 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
       </div>
       <div class="lab-row">
         <b>haptic sub</b>
@@ -1216,34 +1214,6 @@ const triggerModeGroups = [
               ["rewasd-rifle", "rifle"], ["rewasd-vibration", "vibration"]]],
 ];
 
-const triggerHints = {
-  off: "off",
-  feedback: "start..end, level",
-  weapon: "start..end, level",
-  vibration: "start..end, level, Hz",
-  slope: "start/end, start level, end level in B",
-  machine: "start/end, levels A/B, Hz, period",
-  bow: "start/end, level, snap force in B",
-  galloping: "start/end, foot A/B, Hz",
-  "simple-feedback": "start, level",
-  "simple-weapon": "start/end, level",
-  "simple-vibration": "start, level, Hz",
-  "limited-feedback": "start, level 0..10",
-  "limited-weapon": "start >=16, end, level 0..10",
-  "rewasd-rifle": "Hz 2..20",
-  "rewasd-vibration": "level, Hz",
-  "rewasd-full": "full press preset",
-  "rewasd-soft": "soft press preset",
-  "rewasd-medium": "medium press preset",
-  "rewasd-hard": "hard press preset",
-  "rewasd-pulse": "pulse preset",
-  "rewasd-choppy": "choppy preset",
-  "rewasd-soft-rigidity": "soft rigidity preset",
-  "rewasd-medium-rigidity": "medium rigidity preset",
-  "rewasd-max-rigidity": "max rigidity preset",
-  "rewasd-half-press": "half-press preset",
-};
-
 function fillTriggerModes(row) {
   const select = row.querySelector(".trigMode");
   const off = document.createElement("option");
@@ -1285,7 +1255,6 @@ function syncTriggerRow(row) {
   row.querySelector(".trigEnd").max = effect === "limited-weapon" ? 255 : 9;
   row.querySelector(".trigLevel").max =
       ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
-  row.querySelector(".trigHint").textContent = triggerHints[effect] || "off";
 }
 
 function triggerPayloadFor(row) {
