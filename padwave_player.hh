@@ -660,16 +660,24 @@ public:
     state.clearPlayerLeds();
     state.clearOneShotLightbar();
 
+    // Send a fresh report carrying only this trigger block. Copying the whole
+    // saved state here made the other trigger inherit stale claims.
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
-      report.body() = state;
+      if (left)
+        report.body().setLeftTriggerEffect(effect);
+      else
+        report.body().setRightTriggerEffect(effect);
       writeDevice(&report, sizeof(report));
       return;
     }
     dualsense::OutputReport report{};
     report.init(output_sequence);
-    report.body() = state;
+    if (left)
+      report.body().setLeftTriggerEffect(effect);
+    else
+      report.body().setRightTriggerEffect(effect);
     report.sign();
     writeDevice(&report, sizeof(report));
   }
