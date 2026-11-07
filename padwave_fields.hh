@@ -24,16 +24,10 @@ namespace padwave_fields {
 
 using Body = dualsense::OutputBody;
 using Setter = void (Body::*)(uint8_t);
-using ArraySetter = void (Body::*)(const uint8_t *);
 
 struct u8_field {
   const char *name;
   Setter set;
-};
-
-struct array_field {
-  const char *name;
-  ArraySetter set;
 };
 
 inline const u8_field kU8Fields[] = {
@@ -51,11 +45,6 @@ inline const u8_field kU8Fields[] = {
     {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
     {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
     {"lightbar_setup", nullptr},
-};
-
-inline const array_field kArrayFields[] = {
-    {"right_trigger_params", &Body::setRightTriggerParams},
-    {"left_trigger_params", &Body::setLeftTriggerParams},
 };
 
 inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
@@ -103,6 +92,22 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
       continue;
     }
 
+    if (strcmp(name, "right_trigger_params") == 0 || strcmp(name, "left_trigger_params") == 0) {
+      uint8_t params[10] = {};
+      if (!hex_to_bytes(value, params, sizeof(params))) {
+        size_t index = 0;
+        char params_copy[256];
+        snprintf(params_copy, sizeof(params_copy), "%s", value);
+        char *save = nullptr;
+        for (char *byte = strtok_r(params_copy, ",", &save); byte && index < sizeof(params);
+             byte = strtok_r(nullptr, ",", &save))
+          params[index++] = static_cast<uint8_t>(strtoul(byte, nullptr, 0));
+      }
+      auto side = name[0] == 'l' ? Body::TriggerSide::Left : Body::TriggerSide::Right;
+      body->setTriggerParams(side, params);
+      continue;
+    }
+
     bool found = false;
     for (size_t i = 0; i < sizeof(kU8Fields) / sizeof(kU8Fields[0]); i++) {
       if (strcmp(kU8Fields[i].name, name) != 0) continue;
@@ -116,22 +121,6 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     }
     if (found) continue;
 
-    for (size_t i = 0; i < sizeof(kArrayFields) / sizeof(kArrayFields[0]); i++) {
-      if (strcmp(kArrayFields[i].name, name) != 0) continue;
-      uint8_t bytes[10] = {};
-      if (!hex_to_bytes(value, bytes, sizeof(bytes))) {
-        size_t index = 0;
-        char vcopy[256];
-        snprintf(vcopy, sizeof(vcopy), "%s", value);
-        char *save_bytes = nullptr;
-        for (char *b = strtok_r(vcopy, ",", &save_bytes); b && index < sizeof(bytes);
-             b = strtok_r(nullptr, ",", &save_bytes))
-          bytes[index++] = static_cast<uint8_t>(strtoul(b, nullptr, 0));
-      }
-      (body->*(kArrayFields[i].set))(bytes);
-      found = true;
-      break;
-    }
     if (!found) return false;
   }
   return true;

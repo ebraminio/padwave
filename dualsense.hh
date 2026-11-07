@@ -1050,14 +1050,18 @@ public:
     lightbarBlue  = blue;
   }
 
-  constexpr void setRightTriggerParams(const uint8_t *v) {
-    claim(ValidFlag0::RightTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) rightTrigger.block[i + 1] = v[i];
-  }
+  enum class TriggerSide : uint8_t {
+    Right,
+    Left,
+  };
 
-  constexpr void setLeftTriggerParams(const uint8_t *v) {
-    claim(ValidFlag0::LeftTriggerMotorEnable);
-    for (size_t i = 0; i < 10; ++i) leftTrigger.block[i + 1] = v[i];
+  // Writes the ten parameter bytes of one trigger effect. The mode byte is
+  // claimed separately by setRightTriggerMode/setLeftTriggerMode.
+  constexpr void setTriggerParams(TriggerSide side, const uint8_t *params) {
+    bool left = side == TriggerSide::Left;
+    claim(left ? ValidFlag0::LeftTriggerMotorEnable : ValidFlag0::RightTriggerMotorEnable);
+    TriggerEffect &effect = left ? leftTrigger : rightTrigger;
+    for (size_t i = 0; i < 10; ++i) effect.block[i + 1] = params[i];
   }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
