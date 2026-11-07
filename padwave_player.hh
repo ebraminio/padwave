@@ -249,8 +249,6 @@ private:
   dualsense::OutputReport out{};
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
-  dualsense::OutputBody::TriggerEffect left_effect{};
-  dualsense::OutputBody::TriggerEffect right_effect{};
   bool mic = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
@@ -655,13 +653,10 @@ private:
 
 public:
   void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
-    if (left) {
-      left_effect = effect;
+    if (left)
       state.setLeftTriggerEffect(effect);
-    } else {
-      right_effect = effect;
+    else
       state.setRightTriggerEffect(effect);
-    }
     state.clearPlayerLeds();
     state.clearOneShotLightbar();
 

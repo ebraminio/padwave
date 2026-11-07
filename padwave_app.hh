@@ -918,12 +918,10 @@ public:
       int period = static_cast<int>(kvNumber(body, "period", 0));
 
       using TriggerEffect = dualsense::OutputBody::TriggerEffect;
-      TriggerEffect fx;
+      TriggerEffect fx = TriggerEffect::off();
       char label[40] = "off";
       bool off = strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0;
-      if (off) {
-        fx = TriggerEffect::off();
-      } else {
+      if (!off) {
         const uint8_t level8 = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
         if (strcmp(effect, "feedback") == 0) {
