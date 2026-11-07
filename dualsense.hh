@@ -445,7 +445,8 @@ public:
   struct TriggerEffect {
     friend struct internal::OutputBodyProbe;
     friend struct OutputBody;
-  public:
+
+  private:
     // All effect byte values from TriggerEffectType. The Simple/Limited/Debug
     // values are firmware leftovers; keep them for completeness but prefer the
     // official factories.
@@ -467,7 +468,6 @@ public:
       DebugFe         = 0xFE,
     };
 
-  private:
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
     uint8_t block[11] = {};
@@ -1140,8 +1140,7 @@ constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
   effect.multiplePositionFeedback(levels);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Feedback));
+static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) == 0x21);
 static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF &&
               internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 2) == 0x03);
 static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 3) == 0 &&
@@ -1152,8 +1151,7 @@ constexpr OutputBody::TriggerEffect kWeaponEffect = [] {
   effect.weapon(2, 8, 8);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Weapon));
+static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 0) == 0x25);
 static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 1) == 0x04 &&
               internal::OutputBodyProbe::triggerByte(kWeaponEffect, 2) == 0x01);
 static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 3) == 7);
@@ -1164,8 +1162,7 @@ constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
   effect.multiplePositionVibration(25, amplitudes);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Vibration));
+static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 0) == 0x26);
 static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 1) == 0x01 &&
               internal::OutputBodyProbe::triggerByte(kVibrationEffect, 9) == 25);
 
@@ -1174,8 +1171,7 @@ constexpr OutputBody::TriggerEffect kBowEffect = [] {
   effect.bow(2, 8, 6, 4);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Bow));
+static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) == 0x22);
 static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 1) == 0x04 &&
               internal::OutputBodyProbe::triggerByte(kBowEffect, 2) == 0x01);
 static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 3) == 0x1D);
@@ -1185,8 +1181,7 @@ constexpr OutputBody::TriggerEffect kGallopingEffect = [] {
   effect.galloping(2, 8, 2, 4, 25);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Galloping));
+static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 0) == 0x23);
 static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 4) == 25);
 
 constexpr OutputBody::TriggerEffect kMachineEffect = [] {
@@ -1194,8 +1189,7 @@ constexpr OutputBody::TriggerEffect kMachineEffect = [] {
   effect.machine(2, 8, 6, 4, 25, 10);
   return effect;
 }();
-static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) ==
-              static_cast<uint8_t>(OutputBody::TriggerEffect::Type::Machine));
+static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) == 0x27);
 static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 &&
               internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
 
