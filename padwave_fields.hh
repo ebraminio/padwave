@@ -93,18 +93,22 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     }
 
     if (strcmp(name, "right_trigger_params") == 0 || strcmp(name, "left_trigger_params") == 0) {
-      uint8_t params[10] = {};
-      if (!hex_to_bytes(value, params, sizeof(params))) {
+      bool left = name[0] == 'l';
+      uint8_t effect[11] = {};
+      effect[0] = left ? body->leftTriggerMode() : body->rightTriggerMode();
+      if (!hex_to_bytes(value, effect + 1, 10)) {
         size_t index = 0;
         char params_copy[256];
         snprintf(params_copy, sizeof(params_copy), "%s", value);
         char *save = nullptr;
-        for (char *byte = strtok_r(params_copy, ",", &save); byte && index < sizeof(params);
+        for (char *byte = strtok_r(params_copy, ",", &save); byte && index < 10;
              byte = strtok_r(nullptr, ",", &save))
-          params[index++] = static_cast<uint8_t>(strtoul(byte, nullptr, 0));
+          effect[1 + index++] = static_cast<uint8_t>(strtoul(byte, nullptr, 0));
       }
-      auto side = name[0] == 'l' ? Body::TriggerSide::Left : Body::TriggerSide::Right;
-      body->setTriggerParams(side, params);
+      if (left)
+        body->setLeftTriggerEffect(Body::TriggerEffect(effect));
+      else
+        body->setRightTriggerEffect(Body::TriggerEffect(effect));
       continue;
     }
 

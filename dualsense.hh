@@ -474,6 +474,11 @@ public:
 
   public:
     constexpr TriggerEffect() { off(); }
+
+    constexpr explicit TriggerEffect(const uint8_t (&bytes)[11]) {
+      for (size_t i = 0; i < 11; ++i) block[i] = bytes[i];
+    }
+
     constexpr uint8_t mode() const { return block[0]; }
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
@@ -1050,19 +1055,8 @@ public:
     lightbarBlue  = blue;
   }
 
-  enum class TriggerSide : uint8_t {
-    Right,
-    Left,
-  };
-
-  // Writes the ten parameter bytes of one trigger effect. The mode byte is
-  // claimed separately by setRightTriggerMode/setLeftTriggerMode.
-  constexpr void setTriggerParams(TriggerSide side, const uint8_t *params) {
-    bool left = side == TriggerSide::Left;
-    claim(left ? ValidFlag0::LeftTriggerMotorEnable : ValidFlag0::RightTriggerMotorEnable);
-    TriggerEffect &effect = left ? leftTrigger : rightTrigger;
-    for (size_t i = 0; i < 10; ++i) effect.block[i + 1] = params[i];
-  }
+  constexpr uint8_t rightTriggerMode() const { return rightTrigger.mode(); }
+  constexpr uint8_t leftTriggerMode() const { return leftTrigger.mode(); }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::RightTriggerMotorEnable);
