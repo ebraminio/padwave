@@ -479,8 +479,6 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <button class="trigApply">apply</button>
-        <button class="trigOff">off</button>
         <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
       </div>
       <div class="lab-row" data-trigger="right">
@@ -492,8 +490,6 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <button class="trigApply">apply</button>
-        <button class="trigOff">off</button>
         <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
       </div>
       <div class="lab-row">
@@ -1311,11 +1307,13 @@ function triggerPayloadFor(row) {
 
 document.querySelectorAll("[data-trigger]").forEach((row) => {
   fillTriggerModes(row);
-  const select = row.querySelector(".trigMode");
-  select.addEventListener("change", () => syncTriggerRow(row));
-  row.querySelector(".trigApply").onclick = () => labSend(triggerPayloadFor(row));
-  row.querySelector(".trigOff").onclick = () =>
-    labSend({ kind: "trigger", side: row.dataset.trigger, effect: "off", ms: 0 });
+  const apply = () => {
+    syncTriggerRow(row);
+    labSend(triggerPayloadFor(row));
+  };
+  row.querySelector(".trigMode").addEventListener("change", apply);
+  for (const input of row.querySelectorAll("input"))
+    input.addEventListener("change", apply);
   syncTriggerRow(row);
 });
 
