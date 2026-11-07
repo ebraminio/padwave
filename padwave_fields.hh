@@ -76,7 +76,7 @@ inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
 inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
   char copy[4096];
-  snprintf(copy, sizeof (copy), "%s", text);
+  snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;
   for (char *pair = strtok_r(copy, ";", &save_pairs); pair;
        pair = strtok_r(nullptr, ";", &save_pairs)) {
@@ -87,7 +87,7 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     const char *value = eq + 1;
 
     bool found = false;
-    for (size_t i = 0; i < sizeof (kU8Fields) / sizeof (kU8Fields[0]); i++) {
+    for (size_t i = 0; i < sizeof(kU8Fields) / sizeof(kU8Fields[0]); i++) {
       if (strcmp(kU8Fields[i].name, name) != 0) continue;
       uint8_t byte = static_cast<uint8_t>(strtoul(value, nullptr, 0));
       if (kU8Fields[i].set)
@@ -99,15 +99,15 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     }
     if (found) continue;
 
-    for (size_t i = 0; i < sizeof (kArrayFields) / sizeof (kArrayFields[0]); i++) {
+    for (size_t i = 0; i < sizeof(kArrayFields) / sizeof(kArrayFields[0]); i++) {
       if (strcmp(kArrayFields[i].name, name) != 0) continue;
       uint8_t bytes[10] = {};
-      if (!hex_to_bytes(value, bytes, sizeof (bytes))) {
+      if (!hex_to_bytes(value, bytes, sizeof(bytes))) {
         size_t index = 0;
         char vcopy[256];
-        snprintf(vcopy, sizeof (vcopy), "%s", value);
+        snprintf(vcopy, sizeof(vcopy), "%s", value);
         char *save_bytes = nullptr;
-        for (char *b = strtok_r(vcopy, ",", &save_bytes); b && index < sizeof (bytes);
+        for (char *b = strtok_r(vcopy, ",", &save_bytes); b && index < sizeof(bytes);
              b = strtok_r(nullptr, ",", &save_bytes))
           bytes[index++] = static_cast<uint8_t>(strtoul(b, nullptr, 0));
       }

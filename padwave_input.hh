@@ -286,12 +286,12 @@ private:
 #endif
 
     if (auto *r = dualsense::InputReport::asFrame(buf, len)) {
-      emitFrame(r->body(), buf, sizeof (*r));
+      emitFrame(r->body(), buf, sizeof(*r));
       return;
     }
 
     if (auto *r = dualsense::UsbInputReport::asFrame(buf, len)) {
-      emitFrame(r->body(), buf, sizeof (*r));
+      emitFrame(r->body(), buf, sizeof(*r));
     }
   }
 
@@ -305,8 +305,8 @@ public:
     close();
     if (fd < 0) return false;
     fd_ = fd;
-    snprintf(node_name, sizeof (node_name), "%s", node ? node : "");
-    snprintf(mac_, sizeof (mac_), "%s", mac ? mac : "");
+    snprintf(node_name, sizeof(node_name), "%s", node ? node : "");
+    snprintf(mac_, sizeof(mac_), "%s", mac ? mac : "");
     return true;
   }
 

@@ -40,7 +40,7 @@ struct DualSenseDevice {
       if (strncmp(entry->d_name, "hidraw", 6) != 0) continue;
 
       char uevent[160];
-      snprintf(uevent, sizeof (uevent), "/sys/class/hidraw/%s/device/uevent", entry->d_name);
+      snprintf(uevent, sizeof(uevent), "/sys/class/hidraw/%s/device/uevent", entry->d_name);
       FILE *f = fopen(uevent, "r");
       if (!f) continue;
 
@@ -48,7 +48,7 @@ struct DualSenseDevice {
       bool id_match = false;
       char uniq[64] = "";
       char line[256];
-      while (fgets(line, sizeof (line), f)) {
+      while (fgets(line, sizeof(line), f)) {
         if (strncmp(line, "HID_ID=", 7) == 0) {
           unsigned bus_value = 0, vendor = 0, product = 0;
           id_seen = true;
@@ -59,7 +59,7 @@ struct DualSenseDevice {
             bus = static_cast<int>(bus_value);
           }
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
-          snprintf(uniq, sizeof (uniq), "%.*s", static_cast<int>(sizeof (uniq)) - 1, line + 9);
+          snprintf(uniq, sizeof(uniq), "%.*s", static_cast<int>(sizeof(uniq)) - 1, line + 9);
           char *nl = strchr(uniq, '\n');
           if (nl) *nl = 0;
         }
@@ -68,7 +68,7 @@ struct DualSenseDevice {
       if (!id_seen || !id_match) continue;
 
       index = atoi(entry->d_name + 6);
-      snprintf(node, sizeof (node), "/dev/%s", entry->d_name);
+      snprintf(node, sizeof(node), "/dev/%s", entry->d_name);
       if (strlen(uniq) == 17) {
         bool valid = true;
         for (const char *p = uniq; *p; p++) {
@@ -78,7 +78,7 @@ struct DualSenseDevice {
             break;
           }
         }
-        if (valid) snprintf(mac, sizeof (mac), "%s", uniq);
+        if (valid) snprintf(mac, sizeof(mac), "%s", uniq);
       }
       found = true;
     }
