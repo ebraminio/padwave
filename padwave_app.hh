@@ -1000,6 +1000,8 @@ public:
       int period = static_cast<int>(kvNumber(body, "period", 0));
       long ms = kvNumber(body, "ms", 0);
 
+      dualsense::OutputBody::TriggerEffect fx;
+      bool direct = false;
       uint8_t params[10] = {};
       int mode = 0x05;
       char label[40] = "off";
@@ -1009,9 +1011,10 @@ public:
         mode = encodeTriggerPreset(*found, params);
         snprintf(label, sizeof(label), "%s", found->id);
       } else if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
-        mode = 0x05;
+        fx.off();
+        direct = true;
       } else {
-        dualsense::OutputBody::TriggerEffect fx;
+        direct = true;
         bool applied = false;
         const uint8_t level8 = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
@@ -1086,15 +1089,21 @@ public:
         snprintf(label, sizeof(label), "%s", effect);
       }
 
-      if (mode == 0x05) memset(params, 0, sizeof(params));
-      uint8_t effect_bytes[11] = {};
-      effect_bytes[0] = static_cast<uint8_t>(mode);
-      memcpy(effect_bytes + 1, params, sizeof(params));
       if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
 
       bool left = strcmp(side, "left") == 0;
-      this->player.setTriggerEffect(
-          left, reinterpret_cast<const dualsense::OutputBody::TriggerEffect &>(effect_bytes));
+      if (direct) {
+        this->player.setTriggerEffect(left, fx);
+        mode = fx.mode();
+      } else {
+        // Legacy preset path: its encoder still produces a mode plus ten raw
+        // parameter bytes rather than a TriggerEffect object.
+        uint8_t effect_bytes[11] = {};
+        effect_bytes[0] = static_cast<uint8_t>(mode);
+        memcpy(effect_bytes + 1, params, sizeof(params));
+        this->player.setTriggerEffect(
+            left, reinterpret_cast<const dualsense::OutputBody::TriggerEffect &>(effect_bytes));
+      }
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side,
