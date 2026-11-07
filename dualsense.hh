@@ -436,7 +436,7 @@ public:
 
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
-    DSUINT8 mode;
+    Type mode;
     DSUINT8 parameters[10];
 
     constexpr void zero() {
@@ -444,10 +444,10 @@ public:
     }
 
   public:
-    constexpr TriggerEffect() : mode(0), parameters() { zero(); }
+    constexpr TriggerEffect() : mode(static_cast<Type>(0)), parameters() { zero(); }
 
     constexpr bool off() {
-      this->mode = static_cast<uint8_t>(Type::Off);
+      this->mode = Type::Off;
       zero();
       return true;
     }
@@ -457,7 +457,7 @@ public:
       if (position > 9 || strength > 8) return false;
       if (strength == 0) return off();
       zero();
-      this->mode      = static_cast<uint8_t>(Type::Feedback);
+      this->mode      = Type::Feedback;
       uint16_t active = 0;
       uint32_t force  = 0;
       uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
@@ -480,7 +480,7 @@ public:
       if (strength == 0) return off();
       zero();
       uint16_t zones      = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      this->mode          = static_cast<uint8_t>(Type::Weapon);
+      this->mode          = Type::Weapon;
       this->parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       this->parameters[1] = static_cast<uint8_t>(zones >> 8);
       this->parameters[2] = static_cast<uint8_t>(strength - 1);
@@ -492,7 +492,7 @@ public:
       if (position > 9 || amplitude > 8) return false;
       if (amplitude == 0 || frequency == 0) return off();
       zero();
-      this->mode      = static_cast<uint8_t>(Type::Vibration);
+      this->mode      = Type::Vibration;
       uint16_t active = 0;
       uint32_t levels = 0;
       uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
@@ -517,7 +517,7 @@ public:
         if (strength[i] > 0) any = true;
       if (!any) return off();
       zero();
-      this->mode      = static_cast<uint8_t>(Type::Feedback);
+      this->mode      = Type::Feedback;
       uint16_t active = 0;
       uint32_t force  = 0;
       for (unsigned i = 0; i < 10; ++i) {
@@ -562,7 +562,7 @@ public:
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
       zero();
-      this->mode      = static_cast<uint8_t>(Type::Vibration);
+      this->mode      = Type::Vibration;
       uint16_t active = 0;
       uint32_t levels = 0;
       for (unsigned i = 0; i < 10; ++i) {
@@ -589,7 +589,7 @@ public:
       uint16_t zones      = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t pair       = static_cast<uint32_t>((strength - 1) & 0x07) |
                             (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
-      this->mode          = static_cast<uint8_t>(Type::Bow);
+      this->mode          = Type::Bow;
       this->parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       this->parameters[1] = static_cast<uint8_t>(zones >> 8);
       this->parameters[2] = static_cast<uint8_t>(pair & 0xFF);
@@ -607,7 +607,7 @@ public:
       uint16_t zones      = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t ratio      = static_cast<uint32_t>(second_foot & 0x07) |
                             (static_cast<uint32_t>(first_foot & 0x07) << 3);
-      this->mode          = static_cast<uint8_t>(Type::Galloping);
+      this->mode          = Type::Galloping;
       this->parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       this->parameters[1] = static_cast<uint8_t>(zones >> 8);
       this->parameters[2] = static_cast<uint8_t>(ratio & 0xFF);
@@ -622,7 +622,7 @@ public:
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
-      this->mode     = static_cast<uint8_t>(Type::Machine);
+      this->mode     = Type::Machine;
       this->parameters[0] = static_cast<uint8_t>(zones & 0xFF);
       this->parameters[1] = static_cast<uint8_t>(zones >> 8);
       this->parameters[2] = pair;
@@ -634,7 +634,7 @@ public:
     // Firmware leftovers with simpler logic and no parameter validation.
     constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
       zero();
-      this->mode          = static_cast<uint8_t>(Type::SimpleFeedback);
+      this->mode          = Type::SimpleFeedback;
       this->parameters[0] = position;
       this->parameters[1] = strength;
       return true;
@@ -642,7 +642,7 @@ public:
 
     constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
       zero();
-      this->mode          = static_cast<uint8_t>(Type::SimpleWeapon);
+      this->mode          = Type::SimpleWeapon;
       this->parameters[0] = start;
       this->parameters[1] = end;
       this->parameters[2] = strength;
@@ -652,7 +652,7 @@ public:
     constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
       if (frequency == 0 || amplitude == 0) return off();
       zero();
-      this->mode          = static_cast<uint8_t>(Type::SimpleVibration);
+      this->mode          = Type::SimpleVibration;
       this->parameters[0] = frequency;
       this->parameters[1] = amplitude;
       this->parameters[2] = position;
@@ -664,7 +664,7 @@ public:
       if (strength > 10) return false;
       if (strength == 0) return off();
       zero();
-      this->mode          = static_cast<uint8_t>(Type::LimitedFeedback);
+      this->mode          = Type::LimitedFeedback;
       this->parameters[0] = position;
       this->parameters[1] = strength;
       return true;
@@ -674,7 +674,7 @@ public:
       if (start < 0x10 || end < start || end > start + 100 || strength > 10) return false;
       if (strength == 0) return off();
       zero();
-      this->mode          = static_cast<uint8_t>(Type::LimitedWeapon);
+      this->mode          = Type::LimitedWeapon;
       this->parameters[0] = start;
       this->parameters[1] = end;
       this->parameters[2] = strength;
@@ -730,7 +730,7 @@ public:
 
     constexpr bool rewasdChoppy() {
       zero();
-      this->mode          = static_cast<uint8_t>(Type::Feedback);
+      this->mode          = Type::Feedback;
       this->parameters[0] = 0x02;
       this->parameters[1] = 0x27;
       this->parameters[2] = 0x18;
@@ -748,7 +748,7 @@ public:
     constexpr bool rewasdRifle(uint8_t frequency = 10) {
       if (frequency < 2 || frequency > 20) return false;
       zero();
-      this->mode          = static_cast<uint8_t>(Type::Vibration);
+      this->mode          = Type::Vibration;
       this->parameters[1] = 0x03;
       this->parameters[5] = 0x3F;
       this->parameters[8] = frequency;
@@ -758,7 +758,7 @@ public:
     constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
       if (strength < 1 || frequency < 1) return false;
       zero();
-      this->mode          = static_cast<uint8_t>(Type::Vibration);
+      this->mode          = Type::Vibration;
       this->parameters[1] = 0x03;
       this->parameters[5] = strength;
       this->parameters[8] = frequency;
@@ -1084,7 +1084,7 @@ struct OutputBodyProbe {
   static constexpr uint8_t valid1(const OutputBody &b) { return b.validFlag1; }
 
   static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
-    return i == 0 ? e.mode : e.parameters[i - 1];
+    return i == 0 ? static_cast<uint8_t>(e.mode) : e.parameters[i - 1];
   }
 };
 } // namespace internal
