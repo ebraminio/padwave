@@ -93,11 +93,12 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     if (strcmp(name, "right_trigger_effect") == 0 ||
         strcmp(name, "left_trigger_effect") == 0) {
       uint8_t effect[11] = {};
+      static_assert(sizeof(Body::TriggerEffect) == sizeof(effect), "TriggerEffect must be 11 bytes");
       if (!hex_to_bytes(value, effect, sizeof(effect))) return false;
       if (name[0] == 'l')
-        body->setLeftTriggerEffect(Body::TriggerEffect(effect));
+        body->setLeftTriggerEffect(reinterpret_cast<const Body::TriggerEffect &>(effect));
       else
-        body->setRightTriggerEffect(Body::TriggerEffect(effect));
+        body->setRightTriggerEffect(reinterpret_cast<const Body::TriggerEffect &>(effect));
       continue;
     }
 

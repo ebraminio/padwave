@@ -475,10 +475,6 @@ public:
   public:
     constexpr TriggerEffect() { off(); }
 
-    constexpr explicit TriggerEffect(const uint8_t (&bytes)[11]) {
-      for (size_t i = 0; i < 11; ++i) block[i] = bytes[i];
-    }
-
     constexpr uint8_t mode() const { return block[0]; }
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
