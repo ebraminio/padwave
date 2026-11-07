@@ -467,27 +467,24 @@ public:
       DebugFd         = 0xFD,
       DebugFe         = 0xFE,
     };
+    using DSUINT8 = internal::DSUINT8;
 
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
-    uint8_t block[11] = {};
-
-    constexpr uint8_t mode() const { return block[0]; }
-
-    constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
+    DSUINT8 mode;
+    DSUINT8 parameters[10];
 
     constexpr void zero() {
-      for (size_t i = 1; i < sizeof(block); ++i) block[i] = 0;
+      for (size_t i = 0; i < sizeof(parameters); ++i) parameters[i] = 0;
     }
 
   public:
-    constexpr TriggerEffect() {
-      block[0] = 0;
+    constexpr TriggerEffect() : mode(0), parameters() {
       zero();
     }
 
     constexpr bool off() {
-      block[0] = static_cast<uint8_t>(Type::Off);
+      mode = static_cast<uint8_t>(Type::Off);
       zero();
       return true;
     }
@@ -497,7 +494,7 @@ public:
       if (position > 9 || strength > 8) return false;
       if (strength == 0) return off();
       zero();
-      block[0]        = static_cast<uint8_t>(Type::Feedback);
+      mode        = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
       uint8_t value   = static_cast<uint8_t>((strength - 1) & 0x07);
@@ -505,12 +502,12 @@ public:
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
-      block[1] = static_cast<uint8_t>(active & 0xFF);
-      block[2] = static_cast<uint8_t>(active >> 8);
-      block[3] = static_cast<uint8_t>(force & 0xFF);
-      block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
-      block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
-      block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+      parameters[0] = static_cast<uint8_t>(active & 0xFF);
+      parameters[1] = static_cast<uint8_t>(active >> 8);
+      parameters[2] = static_cast<uint8_t>(force & 0xFF);
+      parameters[3] = static_cast<uint8_t>((force >> 8) & 0xFF);
+      parameters[4] = static_cast<uint8_t>((force >> 16) & 0xFF);
+      parameters[5] = static_cast<uint8_t>((force >> 24) & 0xFF);
       return true;
     }
 
@@ -520,10 +517,10 @@ public:
       if (strength == 0) return off();
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
-      block[0]       = static_cast<uint8_t>(Type::Weapon);
-      block[1]       = static_cast<uint8_t>(zones & 0xFF);
-      block[2]       = static_cast<uint8_t>(zones >> 8);
-      block[3]       = static_cast<uint8_t>(strength - 1);
+      mode       = static_cast<uint8_t>(Type::Weapon);
+      parameters[0]       = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]       = static_cast<uint8_t>(zones >> 8);
+      parameters[2]       = static_cast<uint8_t>(strength - 1);
       return true;
     }
 
@@ -532,7 +529,7 @@ public:
       if (position > 9 || amplitude > 8) return false;
       if (amplitude == 0 || frequency == 0) return off();
       zero();
-      block[0]        = static_cast<uint8_t>(Type::Vibration);
+      mode        = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       uint8_t value   = static_cast<uint8_t>((amplitude - 1) & 0x07);
@@ -540,13 +537,13 @@ public:
         active = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
-      block[1] = static_cast<uint8_t>(active & 0xFF);
-      block[2] = static_cast<uint8_t>(active >> 8);
-      block[3] = static_cast<uint8_t>(levels & 0xFF);
-      block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
-      block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
-      block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
-      block[9] = frequency;
+      parameters[0] = static_cast<uint8_t>(active & 0xFF);
+      parameters[1] = static_cast<uint8_t>(active >> 8);
+      parameters[2] = static_cast<uint8_t>(levels & 0xFF);
+      parameters[3] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+      parameters[4] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+      parameters[5] = static_cast<uint8_t>((levels >> 24) & 0xFF);
+      parameters[8] = frequency;
       return true;
     }
 
@@ -557,7 +554,7 @@ public:
         if (strength[i] > 0) any = true;
       if (!any) return off();
       zero();
-      block[0]        = static_cast<uint8_t>(Type::Feedback);
+      mode        = static_cast<uint8_t>(Type::Feedback);
       uint16_t active = 0;
       uint32_t force  = 0;
       for (int i = 0; i < 10; ++i) {
@@ -566,12 +563,12 @@ public:
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         force |= static_cast<uint32_t>(value) << (3 * i);
       }
-      block[1] = static_cast<uint8_t>(active & 0xFF);
-      block[2] = static_cast<uint8_t>(active >> 8);
-      block[3] = static_cast<uint8_t>(force & 0xFF);
-      block[4] = static_cast<uint8_t>((force >> 8) & 0xFF);
-      block[5] = static_cast<uint8_t>((force >> 16) & 0xFF);
-      block[6] = static_cast<uint8_t>((force >> 24) & 0xFF);
+      parameters[0] = static_cast<uint8_t>(active & 0xFF);
+      parameters[1] = static_cast<uint8_t>(active >> 8);
+      parameters[2] = static_cast<uint8_t>(force & 0xFF);
+      parameters[3] = static_cast<uint8_t>((force >> 8) & 0xFF);
+      parameters[4] = static_cast<uint8_t>((force >> 16) & 0xFF);
+      parameters[5] = static_cast<uint8_t>((force >> 24) & 0xFF);
       return true;
     }
 
@@ -602,7 +599,7 @@ public:
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
       zero();
-      block[0]        = static_cast<uint8_t>(Type::Vibration);
+      mode        = static_cast<uint8_t>(Type::Vibration);
       uint16_t active = 0;
       uint32_t levels = 0;
       for (int i = 0; i < 10; ++i) {
@@ -611,13 +608,13 @@ public:
         active        = static_cast<uint16_t>(active | (uint16_t{1} << i));
         levels |= static_cast<uint32_t>(value) << (3 * i);
       }
-      block[1] = static_cast<uint8_t>(active & 0xFF);
-      block[2] = static_cast<uint8_t>(active >> 8);
-      block[3] = static_cast<uint8_t>(levels & 0xFF);
-      block[4] = static_cast<uint8_t>((levels >> 8) & 0xFF);
-      block[5] = static_cast<uint8_t>((levels >> 16) & 0xFF);
-      block[6] = static_cast<uint8_t>((levels >> 24) & 0xFF);
-      block[9] = frequency;
+      parameters[0] = static_cast<uint8_t>(active & 0xFF);
+      parameters[1] = static_cast<uint8_t>(active >> 8);
+      parameters[2] = static_cast<uint8_t>(levels & 0xFF);
+      parameters[3] = static_cast<uint8_t>((levels >> 8) & 0xFF);
+      parameters[4] = static_cast<uint8_t>((levels >> 16) & 0xFF);
+      parameters[5] = static_cast<uint8_t>((levels >> 24) & 0xFF);
+      parameters[8] = frequency;
       return true;
     }
 
@@ -629,11 +626,11 @@ public:
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t pair  = static_cast<uint32_t>((strength - 1) & 0x07) |
                       (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
-      block[0] = static_cast<uint8_t>(Type::Bow);
-      block[1] = static_cast<uint8_t>(zones & 0xFF);
-      block[2] = static_cast<uint8_t>(zones >> 8);
-      block[3] = static_cast<uint8_t>(pair & 0xFF);
-      block[4] = static_cast<uint8_t>((pair >> 8) & 0xFF);
+      mode = static_cast<uint8_t>(Type::Bow);
+      parameters[0] = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1] = static_cast<uint8_t>(zones >> 8);
+      parameters[2] = static_cast<uint8_t>(pair & 0xFF);
+      parameters[3] = static_cast<uint8_t>((pair >> 8) & 0xFF);
       return true;
     }
 
@@ -647,11 +644,11 @@ public:
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t ratio = static_cast<uint32_t>(second_foot & 0x07) |
                        (static_cast<uint32_t>(first_foot & 0x07) << 3);
-      block[0] = static_cast<uint8_t>(Type::Galloping);
-      block[1] = static_cast<uint8_t>(zones & 0xFF);
-      block[2] = static_cast<uint8_t>(zones >> 8);
-      block[3] = static_cast<uint8_t>(ratio & 0xFF);
-      block[4] = frequency;
+      mode = static_cast<uint8_t>(Type::Galloping);
+      parameters[0] = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1] = static_cast<uint8_t>(zones >> 8);
+      parameters[2] = static_cast<uint8_t>(ratio & 0xFF);
+      parameters[3] = frequency;
       return true;
     }
 
@@ -662,40 +659,40 @@ public:
       zero();
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
-      block[0]       = static_cast<uint8_t>(Type::Machine);
-      block[1]       = static_cast<uint8_t>(zones & 0xFF);
-      block[2]       = static_cast<uint8_t>(zones >> 8);
-      block[3]       = pair;
-      block[4]       = frequency;
-      block[5]       = period;
+      mode       = static_cast<uint8_t>(Type::Machine);
+      parameters[0]       = static_cast<uint8_t>(zones & 0xFF);
+      parameters[1]       = static_cast<uint8_t>(zones >> 8);
+      parameters[2]       = pair;
+      parameters[3]       = frequency;
+      parameters[4]       = period;
       return true;
     }
 
     // Firmware leftovers with simpler logic and no parameter validation.
     constexpr bool simpleFeedback(uint8_t position, uint8_t strength) {
       zero();
-      block[0] = static_cast<uint8_t>(Type::SimpleFeedback);
-      block[1] = position;
-      block[2] = strength;
+      mode = static_cast<uint8_t>(Type::SimpleFeedback);
+      parameters[0] = position;
+      parameters[1] = strength;
       return true;
     }
 
     constexpr bool simpleWeapon(uint8_t start, uint8_t end, uint8_t strength) {
       zero();
-      block[0] = static_cast<uint8_t>(Type::SimpleWeapon);
-      block[1] = start;
-      block[2] = end;
-      block[3] = strength;
+      mode = static_cast<uint8_t>(Type::SimpleWeapon);
+      parameters[0] = start;
+      parameters[1] = end;
+      parameters[2] = strength;
       return true;
     }
 
     constexpr bool simpleVibration(uint8_t position, uint8_t amplitude, uint8_t frequency) {
       if (frequency == 0 || amplitude == 0) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::SimpleVibration);
-      block[1] = frequency;
-      block[2] = amplitude;
-      block[3] = position;
+      mode = static_cast<uint8_t>(Type::SimpleVibration);
+      parameters[0] = frequency;
+      parameters[1] = amplitude;
+      parameters[2] = position;
       return true;
     }
 
@@ -704,9 +701,9 @@ public:
       if (strength > 10) return false;
       if (strength == 0) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::LimitedFeedback);
-      block[1] = position;
-      block[2] = strength;
+      mode = static_cast<uint8_t>(Type::LimitedFeedback);
+      parameters[0] = position;
+      parameters[1] = strength;
       return true;
     }
 
@@ -716,10 +713,10 @@ public:
         return false;
       if (strength == 0) return off();
       zero();
-      block[0] = static_cast<uint8_t>(Type::LimitedWeapon);
-      block[1] = start;
-      block[2] = end;
-      block[3] = strength;
+      mode = static_cast<uint8_t>(Type::LimitedWeapon);
+      parameters[0] = start;
+      parameters[1] = end;
+      parameters[2] = strength;
       return true;
     }
 
@@ -772,13 +769,13 @@ public:
 
     constexpr bool rewasdChoppy() {
       zero();
-      block[0] = static_cast<uint8_t>(Type::Feedback);
-      block[1] = 0x02;
-      block[2] = 0x27;
-      block[3] = 0x18;
-      block[4] = 0x00;
-      block[5] = 0x00;
-      block[6] = 0x26;
+      mode = static_cast<uint8_t>(Type::Feedback);
+      parameters[0] = 0x02;
+      parameters[1] = 0x27;
+      parameters[2] = 0x18;
+      parameters[3] = 0x00;
+      parameters[4] = 0x00;
+      parameters[5] = 0x26;
       return true;
     }
 
@@ -790,20 +787,20 @@ public:
     constexpr bool rewasdRifle(uint8_t frequency = 10) {
       if (frequency < 2 || frequency > 20) return false;
       zero();
-      block[0] = static_cast<uint8_t>(Type::Vibration);
-      block[2] = 0x03;
-      block[6] = 0x3F;
-      block[9] = frequency;
+      mode = static_cast<uint8_t>(Type::Vibration);
+      parameters[1] = 0x03;
+      parameters[5] = 0x3F;
+      parameters[8] = frequency;
       return true;
     }
 
     constexpr bool rewasdVibration(uint8_t strength = 220, uint8_t frequency = 30) {
       if (strength < 1 || frequency < 1) return false;
       zero();
-      block[0] = static_cast<uint8_t>(Type::Vibration);
-      block[2] = 0x03;
-      block[6] = strength;
-      block[9] = frequency;
+      mode = static_cast<uint8_t>(Type::Vibration);
+      parameters[1] = 0x03;
+      parameters[5] = strength;
+      parameters[8] = frequency;
       return true;
     }
   };
@@ -1129,7 +1126,7 @@ struct OutputBodyProbe {
   static constexpr uint8_t valid1(const OutputBody &b) { return b.validFlag1; }
 
   static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
-    return e.block[i];
+    return i == 0 ? e.mode : e.parameters[i - 1];
   }
 };
 } // namespace internal
