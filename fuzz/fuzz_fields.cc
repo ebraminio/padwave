@@ -9,7 +9,7 @@
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   char first[4096];
   char second[4096];
-  size_t n = size < sizeof(first) - 1 ? size : sizeof(first) - 1;
+  size_t n = size < sizeof (first) - 1 ? size : sizeof (first) - 1;
   memcpy(first, data, n);
   first[n] = 0;
   memcpy(second, first, n + 1);

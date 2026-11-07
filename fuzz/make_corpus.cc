@@ -9,7 +9,7 @@
 
 static bool write_file(const char *dir, const char *name, const void *data, size_t len) {
   char path[512];
-  snprintf(path, sizeof(path), "%s/%s", dir, name);
+  snprintf(path, sizeof (path), "%s/%s", dir, name);
   FILE *f = fopen(path, "wb");
   if (!f) return false;
   bool ok = fwrite(data, 1, len, f) == len;
@@ -45,18 +45,18 @@ int main(int argc, char **argv) {
 
   dualsense::UsbInputReport usbReport{};
   usbReport.init();
-  uint8_t usb[sizeof(usbReport)] = {};
-  memcpy(usb, &usbReport, sizeof(usb));
+  uint8_t usb[sizeof (usbReport)] = {};
+  memcpy(usb, &usbReport, sizeof (usb));
   usb[1 + 0] = 0x80;
   usb[1 + 1] = 0x80;
 
   uint8_t mic[78] = {0};
-  dualsense::MicFrame::init(mic, sizeof(mic));
+  dualsense::MicFrame::init(mic, sizeof (mic));
 
-  bool ok = write_file(argv[1], "bt31.bin", &neutral, sizeof(neutral)) &&
-            write_file(argv[1], "press.bin", &pressed, sizeof(pressed)) &&
-            write_file(argv[1], "release.bin", &released, sizeof(released)) &&
-            write_file(argv[1], "usb01.bin", usb, sizeof(usb)) &&
-            write_file(argv[1], "mic.bin", mic, sizeof(mic));
+  bool ok = write_file(argv[1], "bt31.bin", &neutral, sizeof (neutral)) &&
+            write_file(argv[1], "press.bin", &pressed, sizeof (pressed)) &&
+            write_file(argv[1], "release.bin", &released, sizeof (released)) &&
+            write_file(argv[1], "usb01.bin", usb, sizeof (usb)) &&
+            write_file(argv[1], "mic.bin", mic, sizeof (mic));
   return ok ? 0 : 1;
 }

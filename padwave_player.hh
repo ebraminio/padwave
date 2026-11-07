@@ -124,7 +124,7 @@ private:
       if (!graph) return false;
 
       char args[192];
-      snprintf(args, sizeof(args),
+      snprintf(args, sizeof (args),
                "sample_fmt=flt:sample_rate=%d:channel_layout=stereo:time_base=1/%d", RATE, RATE);
       const AVFilter *src = avfilter_get_by_name("abuffer");
       const AVFilter *sink = avfilter_get_by_name("abuffersink");
@@ -151,7 +151,7 @@ private:
       speed_percent = percent;
       if (!ftempo) return true;
       char value[16];
-      snprintf(value, sizeof(value), "%.3f", static_cast<double>(percent) / 100.0);
+      snprintf(value, sizeof (value), "%.3f", static_cast<double>(percent) / 100.0);
       if (avfilter_graph_send_command(graph, "tempo", "tempo", value, nullptr, 0, 0) < 0)
         return false;
       return true;
@@ -174,7 +174,7 @@ private:
         av_frame_free(&in);
         return false;
       }
-      memcpy(in->data[0], samples, static_cast<size_t>(n) * CHANNELS * sizeof(float));
+      memcpy(in->data[0], samples, static_cast<size_t>(n) * CHANNELS * sizeof (float));
       int ret = av_buffersrc_add_frame_flags(fsrc, in, AV_BUFFERSRC_FLAG_KEEP_REF);
       av_frame_free(&in);
       return ret >= 0;
@@ -315,7 +315,7 @@ private:
   bool openFile(const char *file_path) {
     closeFile();
     if (!cur.open(file_path, speed_percent)) return false;
-    snprintf(this->path, sizeof(this->path), "%s", file_path);
+    snprintf(this->path, sizeof (this->path), "%s", file_path);
     eof = false;
     consumed = 0;
     sent = 0;
@@ -341,7 +341,7 @@ private:
             *dst_acc_frames = 0;
             break;
           }
-          memcpy(dst_ring[*dst_head], dst_acc, sizeof(float) * IN_FRAMES * CHANNELS);
+          memcpy(dst_ring[*dst_head], dst_acc, sizeof (float) * IN_FRAMES * CHANNELS);
           *dst_head = next;
           if (dst_pushed) (*dst_pushed)++;
           *dst_acc_frames = 0;
@@ -424,17 +424,17 @@ private:
     cur = nxt;
     nxt = File{};
 
-    memcpy(ring, nring, sizeof(ring));
+    memcpy(ring, nring, sizeof (ring));
     head = nhead;
     tail = ntail;
-    memcpy(acc, nacc, sizeof(acc));
+    memcpy(acc, nacc, sizeof (acc));
     acc_frames = nacc_frames;
 
     nhead = ntail = 0;
     nacc_frames = 0;
     npushed = 0;
 
-    snprintf(path, sizeof(path), "%s", next_path);
+    snprintf(path, sizeof (path), "%s", next_path);
     base_ms = 0;
     consumed = 0;
     sent = 0;
@@ -447,14 +447,14 @@ private:
 
   bool takeBlock(float dst[IN_FRAMES][CHANNELS]) {
     if (tail == head) return false;
-    memcpy(dst, ring[tail], sizeof(ring[0]));
+    memcpy(dst, ring[tail], sizeof (ring[0]));
     tail = (tail + 1) % RING_BLOCKS;
     return true;
   }
 
   bool takeNextBlock(float dst[IN_FRAMES][CHANNELS]) {
     if (ntail == nhead) return false;
-    memcpy(dst, nring[ntail], sizeof(nring[0]));
+    memcpy(dst, nring[ntail], sizeof (nring[0]));
     ntail = (ntail + 1) % RING_BLOCKS;
     return true;
   }
@@ -464,10 +464,10 @@ private:
     cur = nxt;
     nxt = File{};
 
-    memcpy(ring, nring, sizeof(ring));
+    memcpy(ring, nring, sizeof (ring));
     head = nhead;
     tail = ntail;
-    memcpy(acc, nacc, sizeof(acc));
+    memcpy(acc, nacc, sizeof (acc));
     acc_frames = nacc_frames;
 
     nhead = ntail = 0;
@@ -477,9 +477,9 @@ private:
     bool manual = manual_fade;
     bool seek = seek_fade;
     if (manual)
-      snprintf(path, sizeof(path), "%s", manual_path);
+      snprintf(path, sizeof (path), "%s", manual_path);
     else if (!seek)
-      snprintf(path, sizeof(path), "%s", next_path);
+      snprintf(path, sizeof (path), "%s", next_path);
 
     if (!seek) {
       base_ms = 0;
@@ -510,8 +510,8 @@ private:
     if (fd < 0) return false;
     hidraw = fd;
     usb = device.isUsb();
-    snprintf(node_name, sizeof(node_name), "%s", device.node);
-    snprintf(controller_mac, sizeof(controller_mac), "%s", device.mac);
+    snprintf(node_name, sizeof (node_name), "%s", device.node);
+    snprintf(controller_mac, sizeof (controller_mac), "%s", device.mac);
     return true;
   }
 
@@ -523,7 +523,7 @@ private:
       report.init();
       // USB audio routing needs the full audio block, not just AudioRouting.
       report.body().setAudio(route);
-      writeDevice(&report, sizeof(report));
+      writeDevice(&report, sizeof (report));
       return;
     }
 
@@ -531,7 +531,7 @@ private:
     report.init(output_sequence);
     report.body().setAudioRoute(route);
     report.sign();
-    writeDevice(&report, sizeof(report));
+    writeDevice(&report, sizeof (report));
   }
 
   bool writeDevice(const void *data, size_t len) {
@@ -556,7 +556,7 @@ private:
     // A stable ALSA card id beats a card index that changes across replugs.
     const char *device = "plughw:CARD=Controller,DEV=0";
     char command[256];
-    snprintf(command, sizeof(command),
+    snprintf(command, sizeof (command),
              "exec aplay -q -D '%s' -t raw -f S16_LE -r 48000 -c %d "
              "--buffer-time=100000 --period-time=20000",
              device, haptic_subwoofer ? 4 : 2);
@@ -610,7 +610,7 @@ private:
       }
       if (!startUsbAudio()) return;
       size_t count = IN_FRAMES * 4;
-      if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
+      if (fwrite(samples, sizeof (int16_t), count, usb_audio) != count) {
         stopUsbAudio();
         return;
       }
@@ -629,7 +629,7 @@ private:
     }
     if (!startUsbAudio()) return;
     size_t count = IN_FRAMES * CHANNELS;
-    if (fwrite(samples, sizeof(int16_t), count, usb_audio) != count) {
+    if (fwrite(samples, sizeof (int16_t), count, usb_audio) != count) {
       stopUsbAudio();
       return;
     }
@@ -656,7 +656,7 @@ public:
     if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
     dualsense::Firmware info{};
     info.init();
-    int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
+    int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof (info)), &info);
     if (got < 0 || !info.valid())
       return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
 
@@ -669,61 +669,61 @@ public:
     append("ok=true\nfirmware.valid=true\n");
     {
       auto [value, length] = info.buildDateText();
-      snprintf(line, sizeof(line), "firmware.build_date=%.*s\n", static_cast<int>(length), value);
+      snprintf(line, sizeof (line), "firmware.build_date=%.*s\n", static_cast<int>(length), value);
     }
     append(line);
     {
       auto [value, length] = info.buildTimeText();
-      snprintf(line, sizeof(line), "firmware.build_time=%.*s\n", static_cast<int>(length), value);
+      snprintf(line, sizeof (line), "firmware.build_time=%.*s\n", static_cast<int>(length), value);
     }
     append(line);
-    snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.typeValue()));
+    snprintf(line, sizeof (line), "firmware.type=%u\n", static_cast<unsigned>(info.typeValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.series=%u\n", static_cast<unsigned>(info.seriesValue()));
+    snprintf(line, sizeof (line), "firmware.series=%u\n", static_cast<unsigned>(info.seriesValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.hardware=0x%08X\n", info.hardwareInfoValue());
+    snprintf(line, sizeof (line), "firmware.hardware=0x%08X\n", info.hardwareInfoValue());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version=0x%08X\n", info.firmwareVersionValue());
+    snprintf(line, sizeof (line), "firmware.version=0x%08X\n", info.firmwareVersionValue());
     append(line);
     char hex[129];
     size_t h = 0;
     {
       auto [value, length] = info.deviceInfoText();
       for (unsigned i = 0; i < length; ++i) {
-        int n = snprintf(hex + h, sizeof(hex) - h, "%02x",
+        int n = snprintf(hex + h, sizeof (hex) - h, "%02x",
                         static_cast<unsigned>(value[i]));
         if (n > 0) h += static_cast<size_t>(n);
       }
     }
-    snprintf(line, sizeof(line), "firmware.device_info=%s\n", hex);
+    snprintf(line, sizeof (line), "firmware.device_info=%s\n", hex);
     append(line);
-    snprintf(line, sizeof(line), "firmware.update_version=0x%04X\n",
+    snprintf(line, sizeof (line), "firmware.update_version=0x%04X\n",
              static_cast<unsigned>(info.updateVersionValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.update_image=%u\n",
+    snprintf(line, sizeof (line), "firmware.update_image=%u\n",
              static_cast<unsigned>(info.updateImageInfoValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.update_unknown=%u\n",
+    snprintf(line, sizeof (line), "firmware.update_unknown=%u\n",
              static_cast<unsigned>(info.updateUnkValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.version1=0x%08X\n", info.fwVersion1Value());
+    snprintf(line, sizeof (line), "firmware.version1=0x%08X\n", info.fwVersion1Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version2=0x%08X\n", info.fwVersion2Value());
+    snprintf(line, sizeof (line), "firmware.version2=0x%08X\n", info.fwVersion2Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version3=0x%08X\n", info.fwVersion3Value());
+    snprintf(line, sizeof (line), "firmware.version3=0x%08X\n", info.fwVersion3Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.crc=0x%08X\n", info.crcValue());
+    snprintf(line, sizeof (line), "firmware.crc=0x%08X\n", info.crcValue());
     append(line);
-    snprintf(line, sizeof(line), "firmware.vibration_v2=%s\n",
+    snprintf(line, sizeof (line), "firmware.vibration_v2=%s\n",
              info.usesVibrationV2() ? "true" : "false");
     append(line);
     const auto *raw = reinterpret_cast<const uint8_t *>(&info);
     h = 0;
-    for (size_t i = 0; i < sizeof(info); i++) {
-      int n = snprintf(hex + h, sizeof(hex) - h, "%02x", static_cast<unsigned>(raw[i]));
+    for (size_t i = 0; i < sizeof (info); i++) {
+      int n = snprintf(hex + h, sizeof (hex) - h, "%02x", static_cast<unsigned>(raw[i]));
       if (n > 0) h += static_cast<size_t>(n);
     }
-    snprintf(line, sizeof(line), "firmware.raw=%s\n", hex);
+    snprintf(line, sizeof (line), "firmware.raw=%s\n", hex);
     append(line);
     return static_cast<int>(o);
   }
@@ -731,13 +731,13 @@ public:
 private:
   void sendMuteLed(bool on) {
     char fields[64];
-    snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
+    snprintf(fields, sizeof (fields), "mute_button_led=%d", on ? 1 : 0);
 
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
       if (!padwave_fields::apply_fields(&report.body(), fields)) return;
-      writeDevice(&report, sizeof(report));
+      writeDevice(&report, sizeof (report));
       return;
     }
 
@@ -745,7 +745,7 @@ private:
     report.init(output_sequence);
     if (!padwave_fields::apply_fields(&report.body(), fields)) return;
     report.sign();
-    if (!writeDevice(&report, sizeof(report))) return;
+    if (!writeDevice(&report, sizeof (report))) return;
   }
 
   bool openHapticResampler() {
@@ -772,7 +772,7 @@ private:
     int got = swr_convert(haptic_swr, outbuf, 128, in, IN_FRAMES);
     if (got <= 0) return;
     size_t bytes = static_cast<size_t>(got) * CHANNELS;
-    if (haptic_pending_len + bytes > sizeof(haptic_pending)) return;
+    if (haptic_pending_len + bytes > sizeof (haptic_pending)) return;
     memcpy(haptic_pending + haptic_pending_len, converted, bytes);
     haptic_pending_len += bytes;
 
@@ -780,23 +780,23 @@ private:
     const float hgain = vgain * static_cast<float>(haptic_gain) / 100.0f;
     while (haptic_pending_len >= dualsense::HapticsReport::sampleBytes) {
       uint8_t samples[dualsense::HapticsReport::sampleBytes];
-      for (size_t i = 0; i < sizeof(samples); i++) {
+      for (size_t i = 0; i < sizeof (samples); i++) {
         int sample = static_cast<int>(
             static_cast<float>(static_cast<int>(haptic_pending[i]) - 128) * hgain);
         if (sample < -128) sample = -128;
         if (sample > 127) sample = 127;
         samples[i] = static_cast<uint8_t>(static_cast<int8_t>(sample));
       }
-      memmove(haptic_pending, haptic_pending + sizeof(samples),
-              haptic_pending_len - sizeof(samples));
-      haptic_pending_len -= sizeof(samples);
+      memmove(haptic_pending, haptic_pending + sizeof (samples),
+              haptic_pending_len - sizeof (samples));
+      haptic_pending_len -= sizeof (samples);
 
       dualsense::HapticsReport report;
       report.init();
-      report.setSamples(samples, sizeof(samples));
+      report.setSamples(samples, sizeof (samples));
       report.setSequence(haptics_sequence++);
       report.sign();
-      if (writeDevice(&report, sizeof(report))) sent++;
+      if (writeDevice(&report, sizeof (report))) sent++;
     }
   }
 
@@ -833,8 +833,8 @@ private:
         hidraw_retry = 5;
     }
     if (hidraw >= 0) {
-      ssize_t n = write(hidraw, &report, sizeof(report));
-      if (n != static_cast<ssize_t>(sizeof(report))) {
+      ssize_t n = write(hidraw, &report, sizeof (report));
+      if (n != static_cast<ssize_t>(sizeof (report))) {
         dropDevice();
         hidraw_retry = 5;
       }
@@ -866,7 +866,7 @@ private:
             avcodec_flush_buffers(nxt.dec);
             nxt.resetFilter();
           }
-          snprintf(manual_path, sizeof(manual_path), "%s", line_path);
+          snprintf(manual_path, sizeof (manual_path), "%s", line_path);
           manual_fade = true;
           manual_pending = true;
           base_ms = value;
@@ -910,7 +910,7 @@ private:
     // that once the promotion is reported.
     if (sscanf(line, "queue %1023[^\n]", line_path) == 1) {
       if (!has_next) {
-        snprintf(next_path, sizeof(next_path), "%s", line_path);
+        snprintf(next_path, sizeof (next_path), "%s", line_path);
         has_next = true;
         next_warmed = false;
         warmFile(line_path);
@@ -928,12 +928,12 @@ private:
         dualsense::UsbOutputReport report{};
         report.init();
         if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
-        if (!writeDevice(&report, sizeof(report))) return;
+        if (!writeDevice(&report, sizeof (report))) return;
       } else {
         out.init(output_sequence);
         if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
         out.sign();
-        if (!writeDevice(&out, sizeof(out))) return;
+        if (!writeDevice(&out, sizeof (out))) return;
       }
       padwave_fields::apply_fields(&state, line + 7);
       // One-shot 0x31 features must not be re-claimed by the 0x36 snapshot.
@@ -1047,11 +1047,11 @@ private:
         /* The prefetched side is not ready yet: keep playing the current one
          * without advancing the fade. */
         if (have_old) {
-          memcpy(block, old, sizeof(block));
+          memcpy(block, old, sizeof (block));
           advanceConsumed();
         } else {
           underruns++;
-          memset(block, 0, sizeof(block));
+          memset(block, 0, sizeof (block));
         }
       } else {
         float g =
@@ -1078,7 +1078,7 @@ private:
 
       if (!have) {
         underruns++;
-        memset(block, 0, sizeof(block)); /* keep the stream alive with silence */
+        memset(block, 0, sizeof (block)); /* keep the stream alive with silence */
       } else {
         advanceConsumed();
       }
@@ -1175,7 +1175,7 @@ public:
     usb = false;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
-      if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
+      if (hidraw >= 0) snprintf(node_name, sizeof (node_name), "%s", node);
     } else {
       openDevice();
     }
@@ -1228,7 +1228,7 @@ public:
   void setTick(long ns) {
     if (tfd < 0 || tick_ns == ns) return;
     struct itimerspec its;
-    memset(&its, 0, sizeof(its));
+    memset(&its, 0, sizeof (its));
     its.it_interval.tv_nsec = ns;
     its.it_value = its.it_interval;
     if (timerfd_settime(tfd, 0, &its, nullptr) == 0) tick_ns = ns;
@@ -1237,7 +1237,7 @@ public:
   void command(const char *line) {
     if (!line) return;
     char buf[1200];
-    snprintf(buf, sizeof(buf), "%s", line);
+    snprintf(buf, sizeof (buf), "%s", line);
     char *p = buf;
     char *nl;
     while ((nl = strchr(p, '\n')) != nullptr) {
@@ -1299,7 +1299,7 @@ public:
     if (!primed && ringLen() >= RING_PRIME) primed = true;
 
     uint64_t expirations = 0;
-    if (tfd >= 0 && read(tfd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+    if (tfd >= 0 && read(tfd, &expirations, sizeof (expirations)) == sizeof (expirations)) {
       if (primed && playing && !paused) {
         for (uint64_t i = 0; i < expirations && i < 4; i++) tick();
       }

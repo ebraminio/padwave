@@ -113,6 +113,11 @@ static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
+struct OutputBodyProbe;
+struct AudioReportProbe;
+struct ReportProbe;
+} // namespace internal
+
 // Report ordinals, common to every schema. 0x31 is both the input and the
 // output state report; the direction is the stream, not the id.
 
@@ -310,11 +315,6 @@ inline constexpr CommandInfo kCommandTable[] = {
     {"NVS Lock Status", Packet::CommandHost, CommandDevice::Nvs,
      3, 0, false, "0 = Unlocked; 1 = Locked"},
 };
-
-struct OutputBodyProbe;
-struct AudioReportProbe;
-struct ReportProbe;
-} // namespace internal
 
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
@@ -1137,7 +1137,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t tag      = 0x10;
 
 public:
@@ -1193,7 +1193,7 @@ protected:
   DSUINT8 reserved[15];  // 0x30..0x3e
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::OutputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::OutputUsb);
 
 public:
   constexpr void init() {
@@ -1533,7 +1533,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t crcSeed  = 0xA1;
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
@@ -1561,7 +1561,7 @@ struct UsbInputReport {
 
 private:
   using DSUINT8 = internal::DSUINT8;
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::InputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::InputUsb);
 
 protected:
   DSUINT8 reportIdValue; // 0x00  Packet::InputUsb
@@ -1725,7 +1725,7 @@ public:
   };
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Audio);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Audio);
   static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr uint8_t stateSize = 63;
   static constexpr uint8_t opusSize  = 200;
@@ -1997,16 +1997,18 @@ protected:
   DSUINT32 fwVersion3;      // 0x38..0x3b  Spider DSP
   DSUINT32 crc;             // 0x3c..0x3f  CRC-32, seed 0xA3
 
-private:
+public:
+  // Non-owning byte view into one of the fixed wire fields below.
   struct String {
     template <typename Type, size_t n>
-    constexpr String(Type (&value_)[n]) : value(reinterpret_cast<const uint8_t *>(value_)), length(n) {}
+    constexpr String(Type (&value_)[n])
+        : value(reinterpret_cast<const uint8_t *>(value_)), length(n) {}
+
     const uint8_t *value;
     size_t length;
   };
 
-public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeatureFirmware);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
   static constexpr uint8_t crcSeed  = 0xA3;
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
@@ -2060,7 +2062,7 @@ protected:
   DSUINT32 crc;          // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Haptics);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Haptics);
   static constexpr uint8_t crcSeed  = 0xA2;
 
 public:
@@ -2159,7 +2161,7 @@ struct MicFrame {
 #endif
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
   static constexpr uint8_t toc      = 0xD4;
   static constexpr size_t crcBytes  = 4;
 

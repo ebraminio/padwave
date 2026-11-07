@@ -28,7 +28,7 @@ namespace padwave_ui {
 static const unsigned char kIndexHtml[] = {
 #embed "index.html"
 };
-static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
+static const size_t kIndexHtmlSize = sizeof (kIndexHtml);
 } // namespace padwave_ui
 
 struct Server {
@@ -73,11 +73,11 @@ public:
                      "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                      "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                      padwave_ui::kIndexHtmlSize);
-    if (static_cast<size_t>(n) + padwave_ui::kIndexHtmlSize >= sizeof(index_response)) {
+    if (static_cast<size_t>(n) + padwave_ui::kIndexHtmlSize >= sizeof (index_response)) {
       fprintf(stderr, "padwave: UI too large for the static buffer\n");
       return 1;
     }
-    snprintf(index_response, sizeof(index_response),
+    snprintf(index_response, sizeof (index_response),
              "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
              "Content-Length: %zu\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
              padwave_ui::kIndexHtmlSize);
@@ -90,16 +90,16 @@ public:
       return 1;
     }
     int one = 1;
-    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
     int flags = fcntl(listen_fd, F_GETFL, 0);
     fcntl(listen_fd, F_SETFL, flags | O_NONBLOCK);
 
     struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
+    memset(&addr, 0, sizeof (addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(static_cast<uint16_t>(port));
-    if (bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {
+    if (bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof (addr)) < 0) {
       perror("bind");
       close(listen_fd);
       return 1;
@@ -124,7 +124,7 @@ public:
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (timer_fd >= 0) {
       struct itimerspec its;
-      memset(&its, 0, sizeof(its));
+      memset(&its, 0, sizeof (its));
       its.it_interval.tv_nsec = 500000000;
       its.it_value = its.it_interval;
       timerfd_settime(timer_fd, 0, &its, nullptr);
@@ -179,7 +179,7 @@ public:
         }
         if (fd == timer_fd) {
           uint64_t expirations = 0;
-          if (read(timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+          if (read(timer_fd, &expirations, sizeof (expirations)) == sizeof (expirations)) {
             app->tick();
             int tick_fds[4];
             int tick_fd_count = app->fds(tick_fds, 4);
@@ -194,7 +194,7 @@ public:
         }
         if (fd == signal_fd) {
           struct signalfd_siginfo info;
-          if (read(signal_fd, &info, sizeof(info)) == sizeof(info)) running = false;
+          if (read(signal_fd, &info, sizeof (info)) == sizeof (info)) running = false;
           continue;
         }
 
@@ -273,7 +273,7 @@ private:
 
   bool addFd(int fd, uint32_t events, Conn *owner) {
     struct epoll_event ev;
-    memset(&ev, 0, sizeof(ev));
+    memset(&ev, 0, sizeof (ev));
     ev.events = events;
     ev.data.fd = fd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) != 0) return false;
@@ -283,7 +283,7 @@ private:
 
   bool modFd(int fd, uint32_t events) {
     struct epoll_event ev;
-    memset(&ev, 0, sizeof(ev));
+    memset(&ev, 0, sizeof (ev));
     ev.events = events;
     ev.data.fd = fd;
     return epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev) == 0;
@@ -333,7 +333,7 @@ private:
         static const char body[] = "track not found\n";
         c->static_reply = true;
         c->out_len = static_cast<size_t>(
-            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+            makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
@@ -344,7 +344,7 @@ private:
         static const char body[] = "cannot open track\n";
         c->static_reply = true;
         c->out_len = static_cast<size_t>(
-            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+            makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
@@ -370,10 +370,10 @@ private:
           static const char body[] = "range not satisfiable\n";
           c->static_reply = true;
           c->out_len = static_cast<size_t>(snprintf(
-              c->out, sizeof(c->out),
+              c->out, sizeof (c->out),
               "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: text/plain\r\n"
               "Content-Range: bytes */%lld\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
-              static_cast<long long>(size), sizeof(body) - 1, body));
+              static_cast<long long>(size), sizeof (body) - 1, body));
           modFd(c->fd, EPOLLOUT);
           return;
         }
@@ -389,17 +389,17 @@ private:
       long long length = static_cast<long long>(end - start + 1);
       char header[512];
       int hn = partial
-                   ? snprintf(header, sizeof(header),
+                   ? snprintf(header, sizeof (header),
                               "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
                               "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
                               "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                               mime, static_cast<long long>(start), static_cast<long long>(end),
                               static_cast<long long>(size), length)
-                   : snprintf(header, sizeof(header),
+                   : snprintf(header, sizeof (header),
                               "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
                               "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
                               mime, length);
-      if (hn <= 0 || static_cast<size_t>(hn) >= sizeof(c->out)) {
+      if (hn <= 0 || static_cast<size_t>(hn) >= sizeof (c->out)) {
         close(fd);
         closeConn(c);
         return;
@@ -416,10 +416,10 @@ private:
 
     if (strcmp(path, "/api/status") == 0) {
       static char body[8192];
-      int len = app->statusText(body, sizeof(body));
+      int len = app->statusText(body, sizeof (body));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -427,7 +427,7 @@ private:
     if (strcmp(path, "/api/events") == 0) {
       c->status_sse = true;
       c->out_len =
-          static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+          static_cast<size_t>(snprintf(c->out, sizeof (c->out),
                                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
                                        "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
                                        "Connection: keep-alive\r\n\r\n"));
@@ -440,7 +440,7 @@ private:
       int len = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
       c->out_len =
-          static_cast<size_t>(makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
+          static_cast<size_t>(makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8",
                                          body ? body : "", body ? static_cast<size_t>(len) : 0));
       free(body);
       modFd(c->fd, EPOLLOUT);
@@ -453,25 +453,25 @@ private:
         static const char ok[] = "ok=true\n";
         c->static_reply = true;
         c->out_len = static_cast<size_t>(
-            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok, sizeof(ok) - 1));
+            makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", ok, sizeof (ok) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char body[1024];
-      int len = app->configText(body, sizeof(body));
+      int len = app->configText(body, sizeof (body));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
     if (strcmp(path, "/api/schema") == 0) {
       char body[1024];
-      int len = bindingsText(body, sizeof(body));
+      int len = bindingsText(body, sizeof (body));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -480,17 +480,17 @@ private:
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
         c->out_len =
-            static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+            static_cast<size_t>(snprintf(c->out, sizeof (c->out),
                                          "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
                                          "Connection: close\r\n\r\n"));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char result[512];
-      int len = app->handleCommand(c->in + head_len, body_len, result, sizeof(result));
+      int len = app->handleCommand(c->in + head_len, body_len, result, sizeof (result));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -499,27 +499,27 @@ private:
       if (strcmp(method, "POST") != 0) {
         c->static_reply = true;
         c->out_len =
-            static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+            static_cast<size_t>(snprintf(c->out, sizeof (c->out),
                                          "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n"
                                          "Connection: close\r\n\r\n"));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char result[2048];
-      int len = app->output(c->in + head_len, result, sizeof(result));
+      int len = app->output(c->in + head_len, result, sizeof (result));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
     if (strcmp(path, "/api/debug/trigger") == 0) {
       char result[256];
-      int len = app->debugTrigger(c->in + head_len, result, sizeof(result));
+      int len = app->debugTrigger(c->in + head_len, result, sizeof (result));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -529,7 +529,7 @@ private:
       static const char body[] = "ok=true\n";
       c->static_reply = true;
       c->out_len = static_cast<size_t>(
-          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+          makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -538,7 +538,7 @@ private:
       static const char body[] = "ok=true\nreloaded=0\n";
       c->static_reply = true;
       c->out_len = static_cast<size_t>(
-          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+          makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -548,7 +548,7 @@ private:
       static const char body[] = "ok=false\nerror=not implemented\n";
       c->static_reply = true;
       c->out_len = static_cast<size_t>(
-          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+          makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -556,7 +556,7 @@ private:
     if (strcmp(path, "/api/front/events") == 0) {
       c->front_sse = true;
       c->out_len =
-          static_cast<size_t>(snprintf(c->out, sizeof(c->out),
+          static_cast<size_t>(snprintf(c->out, sizeof (c->out),
                                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
                                        "Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n"
                                        "Connection: keep-alive\r\n\r\n"));
@@ -566,10 +566,10 @@ private:
 
     if (strcmp(path, "/api/front") == 0) {
       char body[1024];
-      int len = frontText(body, sizeof(body));
+      int len = frontText(body, sizeof (body));
       c->static_reply = true;
       c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
+          c->out, sizeof (c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -578,9 +578,9 @@ private:
     if (strcmp(path, "/health") == 0) {
       static const char body[] = "ok=true\n";
       c->out_len = static_cast<size_t>(
-          makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+          makeStatic(c->out, sizeof (c->out), "text/plain; charset=utf-8", body, sizeof (body) - 1));
     } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-      if (index_len <= sizeof(c->out)) {
+      if (index_len <= sizeof (c->out)) {
         memcpy(c->out, index_response, index_len);
         c->out_len = index_len;
       } else {
@@ -588,10 +588,10 @@ private:
       }
     } else {
       static const char body[] = "not found\n";
-      int written = snprintf(c->out, sizeof(c->out),
+      int written = snprintf(c->out, sizeof (c->out),
                              "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
                              "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
-                             sizeof(body) - 1, body);
+                             sizeof (body) - 1, body);
       c->out_len = static_cast<size_t>(written);
     }
     modFd(c->fd, EPOLLOUT);
@@ -620,7 +620,7 @@ private:
         return;
       }
       size_t want = static_cast<size_t>(c->file_end - c->file_off + 1);
-      if (want > sizeof(c->out)) want = sizeof(c->out);
+      if (want > sizeof (c->out)) want = sizeof (c->out);
       ssize_t n = read(c->file_fd, c->out, want);
       if (n <= 0) {
         closeConn(c);
@@ -685,7 +685,7 @@ private:
     memcpy(chunk + o, "\r\n", 2);
     o += 2;
 
-    if (c->out_len + o <= sizeof(c->out)) {
+    if (c->out_len + o <= sizeof (c->out)) {
       memcpy(c->out + c->out_len, chunk, o);
       c->out_len += o;
       modFd(c->fd, EPOLLOUT);
@@ -695,13 +695,13 @@ private:
 
   void appendStatusEvent(Conn *c) {
     char body[8192];
-    int n = app->statusText(body, sizeof(body));
+    int n = app->statusText(body, sizeof (body));
     if (n > 0) appendSse(c, body, static_cast<size_t>(n));
   }
 
   void appendFrontEvent(Conn *c) {
     char body[1024];
-    int n = frontText(body, sizeof(body));
+    int n = frontText(body, sizeof (body));
     if (n > 0) appendSse(c, body, static_cast<size_t>(n));
   }
 };

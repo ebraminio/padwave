@@ -188,7 +188,7 @@ private:
 
   static long kvNumber(const char *body, const char *key, long fallback) {
     char tmp[32];
-    if (!kvGet(body, key, tmp, sizeof(tmp))) return fallback;
+    if (!kvGet(body, key, tmp, sizeof (tmp))) return fallback;
     return atol(tmp);
   }
 
@@ -379,21 +379,21 @@ public:
     const char *roots = getenv("PADWAVE_ROOTS");
     if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
     char rootbuf[2048];
-    snprintf(rootbuf, sizeof(rootbuf), "%s", roots);
+    snprintf(rootbuf, sizeof (rootbuf), "%s", roots);
 
     char *save = nullptr;
     for (char *dir = strtok_r(rootbuf, ":", &save); dir; dir = strtok_r(nullptr, ":", &save)) {
       if (strstr(dir, "$HOME")) {
         const char *home = getenv("HOME");
         char expanded[2048];
-        snprintf(expanded, sizeof(expanded), "%s%s", home ? home : "", dir + 5);
+        snprintf(expanded, sizeof (expanded), "%s%s", home ? home : "", dir + 5);
         scanDir(expanded, "");
       } else {
         scanDir(dir, "");
       }
     }
 
-    qsort(this->tracks, static_cast<size_t>(this->count), sizeof(Track), compareTracks);
+    qsort(this->tracks, static_cast<size_t>(this->count), sizeof (Track), compareTracks);
     srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
     this->player_timer_fd = -1;
     configLoad();
@@ -499,7 +499,7 @@ public:
     }
     if (this->input.fd() >= 0 && fd == this->input.fd()) {
       uint8_t buf[512];
-      ssize_t n = read(fd, buf, sizeof(buf));
+      ssize_t n = read(fd, buf, sizeof (buf));
       if (n > 0) {
         this->input.feed(buf, static_cast<size_t>(n));
       } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
@@ -650,13 +650,13 @@ public:
     kvAdd(buf, cap, &o, "controller.fields.trigger_effect_left", "%u", this->trigger_effect_l);
     for (int t = 0; t < 2; t++) {
       char key[48];
-      snprintf(key, sizeof(key), "controller.touches.%d.active", t);
+      snprintf(key, sizeof (key), "controller.touches.%d.active", t);
       kvAdd(buf, cap, &o, key, "%s", this->touch_active[t] ? "true" : "false");
-      snprintf(key, sizeof(key), "controller.touches.%d.id", t);
+      snprintf(key, sizeof (key), "controller.touches.%d.id", t);
       kvAdd(buf, cap, &o, key, "%u", this->touch_id[t]);
-      snprintf(key, sizeof(key), "controller.touches.%d.x", t);
+      snprintf(key, sizeof (key), "controller.touches.%d.x", t);
       kvAdd(buf, cap, &o, key, "%u", this->touch_x[t]);
-      snprintf(key, sizeof(key), "controller.touches.%d.y", t);
+      snprintf(key, sizeof (key), "controller.touches.%d.y", t);
       kvAdd(buf, cap, &o, key, "%u", this->touch_y[t]);
     }
     kvAdd(buf, cap, &o, "controller.l2", "%d", this->l2);
@@ -760,66 +760,66 @@ public:
     noteActivity();
     char value[64];
 
-    if (kvGet(body, "idle_timeout_ms", value, sizeof(value))) {
+    if (kvGet(body, "idle_timeout_ms", value, sizeof (value))) {
       long v = atol(value);
       this->idle_timeout_ms = static_cast<int>((v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v)));
     }
-    if (kvGet(body, "idle_warn_grace_ms", value, sizeof(value))) {
+    if (kvGet(body, "idle_warn_grace_ms", value, sizeof (value))) {
       long v = atol(value);
       this->idle_warn_grace_ms = static_cast<int>((v < 0 ? 0 : (v > 600000 ? 600000 : v)));
     }
-    if (kvGet(body, "poweroff_when_idle_ms", value, sizeof(value))) {
+    if (kvGet(body, "poweroff_when_idle_ms", value, sizeof (value))) {
       long v = atol(value);
       this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
     }
-    if (kvGet(body, "trigger_effect_amplitude", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_amplitude", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
     }
-    if (kvGet(body, "trigger_effect_position", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_position", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
     }
-    if (kvGet(body, "trigger_effect_frequency", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_frequency", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
     }
-    if (kvGet(body, "trigger_effect_end", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_end", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_end = v < 0 ? 0 : (v > 9 ? 9 : v);
     }
-    if (kvGet(body, "trigger_effect_period", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_period", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_period = v < 0 ? 0 : (v > 255 ? 255 : v);
     }
-    if (kvGet(body, "trigger_effect_amplitude_b", value, sizeof(value))) {
+    if (kvGet(body, "trigger_effect_amplitude_b", value, sizeof (value))) {
       int v = atoi(value);
       this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
     }
-    if (kvGet(body, "trigger_effect_preset", value, sizeof(value))) {
-      snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
+    if (kvGet(body, "trigger_effect_preset", value, sizeof (value))) {
+      snprintf(this->trigger_effect_preset, sizeof (this->trigger_effect_preset), "%s",
                value[0] ? value : "custom");
     }
-    if (kvGet(body, "haptic_subwoofer", value, sizeof(value))) {
+    if (kvGet(body, "haptic_subwoofer", value, sizeof (value))) {
       this->haptic_subwoofer = strcmp(value, "true") == 0 || atoi(value) != 0;
     }
-    if (kvGet(body, "haptics_only", value, sizeof(value))) {
+    if (kvGet(body, "haptics_only", value, sizeof (value))) {
       this->haptics_only = strcmp(value, "true") == 0 || atoi(value) != 0;
     }
-    if (kvGet(body, "haptic_cutoff_hz", value, sizeof(value))) {
+    if (kvGet(body, "haptic_cutoff_hz", value, sizeof (value))) {
       int v = atoi(value);
       this->haptic_cutoff_hz = v < 20 ? 20 : (v > 2000 ? 2000 : v);
     }
-    if (kvGet(body, "haptic_gain", value, sizeof(value))) {
+    if (kvGet(body, "haptic_gain", value, sizeof (value))) {
       int v = atoi(value);
       this->haptic_gain = v < 0 ? 0 : (v > 200 ? 200 : v);
     }
-    if (kvGet(body, "trigger_effects", value, sizeof(value)))
+    if (kvGet(body, "trigger_effects", value, sizeof (value)))
       this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
-    if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
+    if (kvGet(body, "volume", value, sizeof (value))) setVolume(atoi(value));
     if (this->player) {
       char line[64];
-      snprintf(line, sizeof(line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+      snprintf(line, sizeof (line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
                this->haptic_cutoff_hz, this->haptic_gain, this->haptics_only ? 1 : 0);
       playerSend(line);
     }
@@ -860,7 +860,7 @@ public:
 
   int output(const char *body, char *out, size_t out_cap) {
     char kind[32];
-    if (!kvGet(body, "kind", kind, sizeof(kind)))
+    if (!kvGet(body, "kind", kind, sizeof (kind)))
       return snprintf(out, out_cap, "ok=false\nerror=missing kind\n");
     if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
 
@@ -869,7 +869,7 @@ public:
     if (strcmp(kind, "lightbar") == 0) {
       char rgb[64] = "0,0,0";
       int r = 0, g = 0, b = 0;
-      kvGet(body, "rgb", rgb, sizeof(rgb));
+      kvGet(body, "rgb", rgb, sizeof (rgb));
       sscanf(rgb, "%d,%d,%d", &r, &g, &b);
       r = r < 0 ? 0 : (r > 255 ? 255 : r);
       g = g < 0 ? 0 : (g > 255 ? 255 : g);
@@ -915,7 +915,7 @@ public:
       if (this->padwaveDisabled())
         return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
       int v = static_cast<int>(kvNumber(body, "value", 0));
-      snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
+      snprintf(fields, sizeof (fields), "led_brightness=%d", v & 0xFF);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
     }
@@ -942,7 +942,7 @@ public:
     if (strcmp(kind, "power_save") == 0) {
       if (this->power_save_mode) setPowerSaveMode(false);
       char bits[64] = "";
-      kvGet(body, "bits", bits, sizeof(bits));
+      kvGet(body, "bits", bits, sizeof (bits));
       int mask = 0;
       char *save = nullptr;
       for (char *tok = strtok_r(bits, ",", &save); tok; tok = strtok_r(nullptr, ",", &save)) {
@@ -950,7 +950,7 @@ public:
         if (bit >= 0 && bit < 8) mask |= 1 << bit;
       }
       this->power_save_mask = mask;
-      snprintf(fields, sizeof(fields), "power_save_control=%d", mask);
+      snprintf(fields, sizeof (fields), "power_save_control=%d", mask);
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=power save 0x%02x\n",
                       static_cast<unsigned>(mask));
@@ -972,7 +972,7 @@ public:
       // The main motors need both ValidFlag0 bits: Rumble (0x01) and Haptics
       // (0x02). DS4Windows and dualsense-tester both set the pair; bit 0 alone
       // is ignored by the controller.
-      snprintf(fields, sizeof(fields), "motor_left=%d;motor_right=%d", left, right);
+      snprintf(fields, sizeof (fields), "motor_left=%d;motor_right=%d", left, right);
       outputFields(fields);
       this->idle_rumble_until = 0;
       this->rumble_left = left;
@@ -985,9 +985,9 @@ public:
       char side[16] = "right";
       char preset[32] = "";
       char effect[32] = "vibration";
-      kvGet(body, "side", side, sizeof(side));
-      kvGet(body, "preset", preset, sizeof(preset));
-      kvGet(body, "effect", effect, sizeof(effect));
+      kvGet(body, "side", side, sizeof (side));
+      kvGet(body, "preset", preset, sizeof (preset));
+      kvGet(body, "effect", effect, sizeof (effect));
       int position = static_cast<int>(kvNumber(body, "position", 2));
       int amplitude = static_cast<int>(kvNumber(body, "amplitude", 6));
       int frequency = static_cast<int>(kvNumber(body, "frequency", 25));
@@ -1006,7 +1006,7 @@ public:
         const TriggerPreset *found = findTriggerPreset(preset);
         if (!found) return snprintf(out, out_cap, "ok=false\nerror=unknown trigger preset\n");
         mode = encodeTriggerPreset(*found, params);
-        snprintf(label, sizeof(label), "%s", found->id);
+        snprintf(label, sizeof (label), "%s", found->id);
       } else if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
         mode = 0x05;
       } else {
@@ -1082,18 +1082,18 @@ public:
         if (!applied) fx.off();
         mode = fx.mode();
         for (size_t i = 0; i < 10; ++i) params[i] = fx.parameter(i);
-        snprintf(label, sizeof(label), "%s", effect);
+        snprintf(label, sizeof (label), "%s", effect);
       }
 
-      if (mode == 0x05) memset(params, 0, sizeof(params));
+      if (mode == 0x05) memset(params, 0, sizeof (params));
       char param_text[96];
-      snprintf(param_text, sizeof(param_text), "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", params[0],
+      snprintf(param_text, sizeof (param_text), "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", params[0],
                params[1], params[2], params[3], params[4], params[5], params[6], params[7],
                params[8], params[9]);
 
       bool left = strcmp(side, "left") == 0;
       const char *prefix = left ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x%02x;%s_trigger_params=%s", prefix,
+      snprintf(fields, sizeof (fields), "%s_trigger_mode=0x%02x;%s_trigger_params=%s", prefix,
                static_cast<unsigned>(mode), prefix, param_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
@@ -1105,13 +1105,13 @@ public:
     if (strcmp(kind, "firmware_info") == 0) {
       if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
       char info[1024];
-      int n = this->player.firmwareInfo(info, sizeof(info));
+      int n = this->player.firmwareInfo(info, sizeof (info));
       if (n <= 0) return snprintf(out, out_cap, "ok=false\nerror=firmware read failed\n");
       return snprintf(out, out_cap, "%s", info);
     }
 
     if (strcmp(kind, "fields") == 0) {
-      if (!kvGet(body, "fields", fields, sizeof(fields)))
+      if (!kvGet(body, "fields", fields, sizeof (fields)))
         return snprintf(out, out_cap, "ok=false\nerror=missing fields\n");
       outputFields(fields);
       return snprintf(out, out_cap, "ok=true\nnote=fields\n");
@@ -1119,7 +1119,7 @@ public:
 
     if (strcmp(kind, "mic_monitor") == 0) {
       char value[16] = "false";
-      kvGet(body, "enabled", value, sizeof(value));
+      kvGet(body, "enabled", value, sizeof (value));
       setMicMonitor(strcmp(value, "true") == 0 || atoi(value) != 0);
       return snprintf(out, out_cap, "ok=true\nnote=mic monitor %s\n",
                       this->mic_monitor ? "on" : "off");
@@ -1133,7 +1133,7 @@ public:
         strcmp(this->trigger_effect_preset, "off") == 0)
       return snprintf(out, cap, "ok=true\nnote=trigger off\n");
     char request[256];
-    snprintf(request, sizeof(request),
+    snprintf(request, sizeof (request),
              "kind=trigger\nside=%s\neffect=%s\nstart=%d\nend=%d\nlevel=%d\n"
              "amplitude_b=%d\nfrequency=%d\nperiod=%d\nms=%ld",
              side, this->trigger_effect_preset, this->trigger_effect_position,
@@ -1146,14 +1146,14 @@ public:
   int debugTrigger(const char *body, char *out, size_t cap) {
     char side[16] = "right";
     char tmp[16];
-    if (kvGet(body, "side", tmp, sizeof(tmp))) snprintf(side, sizeof(side), "%s", tmp);
+    if (kvGet(body, "side", tmp, sizeof (tmp))) snprintf(side, sizeof (side), "%s", tmp);
     long ms = kvNumber(body, "ms", 700);
     return triggerTest(side, ms, out, cap);
   }
 
   int handleCommand(const char *body, size_t len, char *out, size_t cap) {
     char action[64];
-    if (!kvGet(body, "action", action, sizeof(action)))
+    if (!kvGet(body, "action", action, sizeof (action)))
       return snprintf(out, cap, "ok=false\nerror=missing action\n");
     return command(action, body, len, out, cap);
   }
@@ -1164,17 +1164,17 @@ private:
   void addTrack(const char *path, const char *folder) {
     if (this->count >= kMaxTracks) return;
     Track *s = &this->tracks[this->count];
-    snprintf(s->path, sizeof(s->path), "%s", path);
+    snprintf(s->path, sizeof (s->path), "%s", path);
 
     const char *base = strrchr(path, '/');
-    snprintf(s->title, sizeof(s->title), "%.*s", static_cast<int>(sizeof(s->title)) - 1,
+    snprintf(s->title, sizeof (s->title), "%.*s", static_cast<int>(sizeof (s->title)) - 1,
              base ? base + 1 : path);
     char *dot = strrchr(s->title, '.');
     if (dot) *dot = 0;
 
-    snprintf(s->folder, sizeof(s->folder), "%.*s", static_cast<int>(sizeof(s->folder)) - 1, folder);
+    snprintf(s->folder, sizeof (s->folder), "%.*s", static_cast<int>(sizeof (s->folder)) - 1, folder);
     const char *d = strrchr(path, '.');
-    snprintf(s->ext, sizeof(s->ext), "%s", d ? d + 1 : "");
+    snprintf(s->ext, sizeof (s->ext), "%s", d ? d + 1 : "");
     makeId(path, s->id);
     this->count++;
   }
@@ -1186,7 +1186,7 @@ private:
     while ((e = readdir(d))) {
       if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
       char path[kMaxPath];
-      snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+      snprintf(path, sizeof (path), "%s/%s", dir, e->d_name);
       struct stat st;
       if (lstat(path, &st) != 0) continue;
       if (S_ISDIR(st.st_mode)) {
@@ -1215,7 +1215,7 @@ private:
     if (this->history_len < kMaxHistory) {
       this->history[this->history_len++] = index;
     } else {
-      memmove(this->history, this->history + 1, sizeof(int) * (kMaxHistory - 1));
+      memmove(this->history, this->history + 1, sizeof (int) * (kMaxHistory - 1));
       this->history[kMaxHistory - 1] = index;
     }
   }
@@ -1231,11 +1231,11 @@ private:
     this->player_timer_fd = this->player.timerFd();
     applyOutputRoute();
     char line[32];
-    snprintf(line, sizeof(line), "volume %d\n", this->volume);
+    snprintf(line, sizeof (line), "volume %d\n", this->volume);
     playerSend(line);
-    snprintf(line, sizeof(line), "speed %d\n", this->speed);
+    snprintf(line, sizeof (line), "speed %d\n", this->speed);
     playerSend(line);
-    snprintf(line, sizeof(line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
+    snprintf(line, sizeof (line), "haptic %d %d %d %d\n", this->haptic_subwoofer ? 1 : 0,
              this->haptic_cutoff_hz, this->haptic_gain, this->haptics_only ? 1 : 0);
     playerSend(line);
     if (this->paused) playerSend("pause 1\n");
@@ -1250,8 +1250,8 @@ private:
       this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
     }
-    snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
-    snprintf(this->controller_mac, sizeof(this->controller_mac), "%s", this->input.mac());
+    snprintf(this->input_node, sizeof (this->input_node), "%s", this->input.node());
+    snprintf(this->controller_mac, sizeof (this->controller_mac), "%s", this->input.mac());
     this->input.attach(this);
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
@@ -1317,7 +1317,7 @@ private:
   void queueTrack(int index) {
     if (index < 0 || index >= this->count || this->count <= 1) return;
     char line[kMaxPath + 16];
-    snprintf(line, sizeof(line), "queue %s\n", this->tracks[index].path);
+    snprintf(line, sizeof (line), "queue %s\n", this->tracks[index].path);
     playerSend(line);
   }
 
@@ -1334,7 +1334,7 @@ private:
     ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
-    snprintf(line, sizeof(line), "fade 1500\nplay %ld %s\n", start_ms, this->tracks[index].path);
+    snprintf(line, sizeof (line), "fade 1500\nplay %ld %s\n", start_ms, this->tracks[index].path);
     playerSend(line);
 
     if (this->current >= 0 && this->current != index && this->history_len == 0)
@@ -1427,7 +1427,7 @@ private:
     if (percent == this->speed) return;
     this->speed = percent;
     char line[32];
-    snprintf(line, sizeof(line), "speed %d\n", percent);
+    snprintf(line, sizeof (line), "speed %d\n", percent);
     playerSend(line);
     configSave();
   }
@@ -1443,7 +1443,7 @@ private:
     }
     this->volume = v;
     char line[32];
-    snprintf(line, sizeof(line), "volume %d\n", v);
+    snprintf(line, sizeof (line), "volume %d\n", v);
     playerSend(line);
 
     if (v == 0) {
@@ -1473,7 +1473,7 @@ private:
     if (ms < 0) ms = 0;
     if (this->dur_ms > 0 && ms > this->dur_ms) ms = this->dur_ms;
     char line[32];
-    snprintf(line, sizeof(line), "seek %ld\n", ms);
+    snprintf(line, sizeof (line), "seek %ld\n", ms);
     playerSend(line);
     this->pos_ms = ms;
     this->playhead_dirty = true;
@@ -1581,21 +1581,21 @@ private:
       }
     }
     this->temp = b.temperature();
-    snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.dpad()));
-    buttonsToString(b.buttons(), this->buttons, sizeof(this->buttons));
+    snprintf(this->dpad, sizeof (this->dpad), "%s", dpadName(b.dpad()));
+    buttonsToString(b.buttons(), this->buttons, sizeof (this->buttons));
     this->raw[0] = 0;
-    size_t r = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;
+    size_t r = len < (sizeof (this->raw) - 1) / 2 ? len : (sizeof (this->raw) - 1) / 2;
     for (size_t i = 0; i < r; i++)
-      snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
+      snprintf(this->raw + i * 2, sizeof (this->raw) - i * 2, "%02x", raw_buf[i]);
     {
       using PowerState = dualsense::InputBody::PowerState;
       PowerState power = b.powerState();
-      snprintf(this->charging, sizeof(this->charging), "%s",
+      snprintf(this->charging, sizeof (this->charging), "%s",
                power == PowerState::Charging      ? "charging"
                : power == PowerState::Complete    ? "full"
                : power == PowerState::Discharging ? "discharging"
                                                   : "unknown");
-      snprintf(this->powerState, sizeof(this->powerState), "%s",
+      snprintf(this->powerState, sizeof (this->powerState), "%s",
                power == PowerState::Discharging         ? "discharging"
                : power == PowerState::Charging          ? "charging"
                : power == PowerState::Complete          ? "complete"
@@ -1681,7 +1681,7 @@ private:
     bool was_suspended = this->suspended;
     noteActivity();
     if (was_suspended && (strcmp(name, "toggle_pause") == 0 || strcmp(name, "play") == 0)) {
-      snprintf(this->last_action, sizeof(this->last_action), "%s", name);
+      snprintf(this->last_action, sizeof (this->last_action), "%s", name);
       return;
     }
 
@@ -1704,7 +1704,7 @@ private:
       setVolume(this->volume + value);
       if (this->trigger_effects && this->volume != before && this->volume > 0) {
         char result[64];
-        triggerTest(value < 0 ? "left" : "right", 180, result, sizeof(result));
+        triggerTest(value < 0 ? "left" : "right", 180, result, sizeof (result));
       }
     } else if (strcmp(name, "seek") == 0) {
       seek(this->pos_ms + static_cast<long>(value) * 1000);
@@ -1735,17 +1735,17 @@ private:
         }
       }
     }
-    snprintf(this->last_action, sizeof(this->last_action), "%s", name);
+    snprintf(this->last_action, sizeof (this->last_action), "%s", name);
   }
 
   void configLoad() {
     char path[512];
-    if (!configPath(path, sizeof(path))) return;
+    if (!configPath(path, sizeof (path))) return;
     FILE *f = fopen(path, "r");
     if (!f) return;
 
     char line[kMaxPath + 64];
-    while (fgets(line, sizeof(line), f)) {
+    while (fgets(line, sizeof (line), f)) {
       char *eq = strchr(line, '=');
       if (!eq) continue;
       *eq = 0;
@@ -1781,7 +1781,7 @@ private:
         int v = atoi(value);
         this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
       } else if (strcmp(line, "trigger_effect_preset") == 0) {
-        snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
+        snprintf(this->trigger_effect_preset, sizeof (this->trigger_effect_preset), "%s",
                  value[0] ? value : "custom");
       } else if (strcmp(line, "trigger_effects") == 0) {
         this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
@@ -1795,7 +1795,7 @@ private:
         int v = atoi(value);
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
       } else if (strcmp(line, "play_path") == 0) {
-        snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
+        snprintf(this->resume_path, sizeof (this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
         this->resume_pos_ms = atol(value);
       } else if (strcmp(line, "haptics_only") == 0) {
@@ -1809,10 +1809,10 @@ private:
 
   void configSave() {
     char path[512];
-    if (!configPath(path, sizeof(path))) return;
+    if (!configPath(path, sizeof (path))) return;
 
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s", path);
+    snprintf(dir, sizeof (dir), "%s", path);
     char *slash = strrchr(dir, '/');
     if (slash) {
       *slash = 0;
@@ -1858,7 +1858,7 @@ private:
   void endIdle() {
     if (this->idle_volume_saved) {
       char line[32];
-      snprintf(line, sizeof(line), "volume %d\n", this->idle_volume);
+      snprintf(line, sizeof (line), "volume %d\n", this->idle_volume);
       playerSend(line);
       this->idle_volume_saved = false;
     }
@@ -1928,7 +1928,7 @@ private:
     if (target != this->idle_fade_volume) {
       this->idle_fade_volume = target;
       char line[32];
-      snprintf(line, sizeof(line), "volume %d\n", target);
+      snprintf(line, sizeof (line), "volume %d\n", target);
       playerSend(line);
     }
 
@@ -1962,7 +1962,7 @@ private:
       this->lightbar_on = this->lightbar_saved_on;
       this->power_save_leds_applied = false;
       char fields[48];
-      snprintf(fields, sizeof(fields), "power_save_control=%d", this->power_save_mask);
+      snprintf(fields, sizeof (fields), "power_save_control=%d", this->power_save_mask);
       outputFields(fields);
       this->led_force = true;
       this->led_last_rgb[0] = this->led_last_rgb[1] = this->led_last_rgb[2] = -1;
@@ -1980,15 +1980,15 @@ private:
     if (this->player.isUsb() || this->plugged_usb_data || this->pluggedUsbPower) return false;
     char mac[32] = "";
     if (this->controller_mac[0]) {
-      snprintf(mac, sizeof(mac), "%s", this->controller_mac);
+      snprintf(mac, sizeof (mac), "%s", this->controller_mac);
     } else {
       DualSenseDevice device{};
       if (!device.isValid()) return false;
-      snprintf(mac, sizeof(mac), "%s", device.mac);
+      snprintf(mac, sizeof (mac), "%s", device.mac);
     }
 
     char command[160];
-    snprintf(command, sizeof(command), "timeout 5 bluetoothctl disconnect %s >/dev/null 2>&1", mac);
+    snprintf(command, sizeof (command), "timeout 5 bluetoothctl disconnect %s >/dev/null 2>&1", mac);
     int rc = system(command);
     if (rc != 0) {
       fprintf(stderr, "padwave: bluetoothctl disconnect %s failed (%d)\n", mac, rc);
@@ -2002,7 +2002,7 @@ private:
     if (this->padwaveDisabled()) return;
     if (setup == dualsense::OutputBody::LightbarSetup::LightOn) this->led_force = true;
     char fields[32];
-    snprintf(fields, sizeof(fields), "lightbar_setup=%d", static_cast<int>(setup));
+    snprintf(fields, sizeof (fields), "lightbar_setup=%d", static_cast<int>(setup));
     outputFields(fields);
     playerSend("state_clear_lightbar\n");
   }
@@ -2010,7 +2010,7 @@ private:
   void outputFields(const char *fields) {
     if (!this->player) return;
     char line[1200];
-    snprintf(line, sizeof(line), "fields %s\n", fields);
+    snprintf(line, sizeof (line), "fields %s\n", fields);
     playerSend(line);
   }
 
@@ -2039,7 +2039,7 @@ private:
         this->led_last_rgb[2] == b)
       return true;
     char fields[160];
-    snprintf(fields, sizeof(fields), "lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+    snprintf(fields, sizeof (fields), "lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
     outputFields(fields);
     this->led_last_rgb[0] = r;
     this->led_last_rgb[1] = g;
@@ -2051,7 +2051,7 @@ private:
     if (!this->player) return false;
     if (!force && this->led_last_player == mask) return true;
     char fields[96];
-    snprintf(fields, sizeof(fields), "player_leds=%d", mask);
+    snprintf(fields, sizeof (fields), "player_leds=%d", mask);
     outputFields(fields);
     this->led_last_player = mask;
     return true;
@@ -2066,7 +2066,7 @@ private:
       if (!this->power_save_leds_applied && !this->padwaveDisabled()) {
         this->power_save_leds_applied = true;
         char fields[192];
-        snprintf(fields, sizeof(fields),
+        snprintf(fields, sizeof (fields),
                  "power_save_control=%d;lightbar_setup=2;led_brightness=0;"
                  "player_leds=0;lightbar_red=0;lightbar_green=0;lightbar_blue=0;"
                  "mute_button_led=0",
@@ -2288,7 +2288,7 @@ private:
     if (this->trigger_until && now >= this->trigger_until) {
       char fields[192];
       const char *prefix = this->trigger_side == 1 ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0",
+      snprintf(fields, sizeof (fields), "%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0",
                prefix, prefix);
       outputFields(fields);
       this->trigger_until = 0;
@@ -2302,7 +2302,7 @@ private:
     bool was_suspended = this->suspended;
     noteActivity();
     if (was_suspended && strcmp(action, "pause") == 0) {
-      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      snprintf(this->last_action, sizeof (this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
     }
 
@@ -2330,7 +2330,7 @@ private:
       seek(kvNumber(body, "position", this->pos_ms / 1000) * 1000);
     } else if (strcmp(action, "play_track") == 0) {
       char id[64];
-      if (kvGet(body, "id", id, sizeof(id))) {
+      if (kvGet(body, "id", id, sizeof (id))) {
         int idx = findId(id);
         if (idx >= 0) play(idx, 0);
       }
@@ -2338,7 +2338,7 @@ private:
       return snprintf(out, out_cap, "ok=false\nerror=unknown action\n");
     }
 
-    snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+    snprintf(this->last_action, sizeof (this->last_action), "%s", action);
     return snprintf(out, out_cap, "ok=true\n");
   }
 };
