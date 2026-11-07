@@ -49,7 +49,7 @@ inline const u8_field kU8Fields[] = {
     {"left_trigger_mode", &Body::setLeftTriggerMode},
     {"motor_power_level", &Body::setMotorPowerLevel},
     {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
-    {"audio_control2", &Body::setAudioControl2},
+    {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
     {"lightbar_setup", nullptr},
     {"led_brightness", &Body::setLedBrightness},
     {"player_leds", &Body::setPlayerLedsMask},

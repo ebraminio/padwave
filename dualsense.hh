@@ -712,7 +712,7 @@ protected:
   TriggerEffect leftTrigger;   // +0x15  11-byte effect block
   DSUINT32 hostTimestamp;      // +0x20  mirrored input sensor timestamp
   DSUINT8 motorPowerLevel;     // +0x24  trigger:rumble reduction nibbles
-  DSUINT8 audioControl2;       // +0x25  speaker preamp gain
+  DSUINT8 audioControl2;       // +0x25  bits 0..2: SP preamp gain; other bits unknown
   DSUINT8 validFlag2;          // +0x26  ValidFlag2 bits
   DSUINT8 hapticLowPassFilter; // +0x27  hardware haptic LPF enable
   DSUINT8 reserved40;          // +0x28
@@ -893,9 +893,11 @@ public:
   constexpr void setHapticLowPassFilter(uint8_t v) { setHapticLowPassFilter(v != 0); }
   constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
 
-  constexpr void setAudioControl2(uint8_t v) {
+  // Sets the low three bits of audioControl2. 0x2 is +6 dB; the other gain
+  // codes are not documented. Upper bits of the byte are preserved.
+  constexpr void setSpeakerPreampGain(uint8_t gainCode) {
     claim(ValidFlag1::AudioControl2Enable);
-    audioControl2 = v;
+    audioControl2 = static_cast<uint8_t>((audioControl2 & 0xF8) | (gainCode & 0x07));
   }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
