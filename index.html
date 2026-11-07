@@ -534,9 +534,9 @@
           A map of field name to byte value (or array of bytes), framed and CRC-signed for you.
           Validity bits are claimed automatically by the field setters.
           Field names and offsets live in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> (also at <code style="font-family:var(--mono)">/api/schema</code>) — try <code style="font-family:var(--mono)">{ "lightbar_setup": 2 }</code>
-          or <code style="font-family:var(--mono)">{ "lightbar_red": 255, "led_brightness": 60 }</code>.
+          or <code style="font-family:var(--mono)">{ "lightbar_rgb": [255, 0, 0], "led_brightness": 60 }</code>.
         </p>
-        <textarea id="labRaw">{ "lightbar_red": 0, "lightbar_green": 160, "lightbar_blue": 255 }</textarea>
+        <textarea id="labRaw">{ "lightbar_rgb": [0, 160, 255] }</textarea>
         <div class="lab-row"><button id="labRawSend">send report</button><span id="labRawMsg"></span></div>
       </details>
     </section>

@@ -913,19 +913,11 @@ public:
     playerLeds = v;
   }
 
-  constexpr void setLightbarRed(uint8_t v) {
+  constexpr void setLightbar(uint8_t red, uint8_t green, uint8_t blue) {
     claim(ValidFlag1::LightbarControlEnable);
-    lightbarRed = v;
-  }
-
-  constexpr void setLightbarGreen(uint8_t v) {
-    claim(ValidFlag1::LightbarControlEnable);
-    lightbarGreen = v;
-  }
-
-  constexpr void setLightbarBlue(uint8_t v) {
-    claim(ValidFlag1::LightbarControlEnable);
-    lightbarBlue = v;
+    lightbarRed   = red;
+    lightbarGreen = green;
+    lightbarBlue  = blue;
   }
 
   constexpr void setRightTriggerParams(const uint8_t *v) {

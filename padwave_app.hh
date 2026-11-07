@@ -2039,7 +2039,7 @@ private:
         this->led_last_rgb[2] == b)
       return true;
     char fields[160];
-    snprintf(fields, sizeof(fields), "lightbar_red=%d;lightbar_green=%d;lightbar_blue=%d", r, g, b);
+    snprintf(fields, sizeof(fields), "lightbar_rgb=%d,%d,%d", r, g, b);
     outputFields(fields);
     this->led_last_rgb[0] = r;
     this->led_last_rgb[1] = g;
@@ -2068,7 +2068,7 @@ private:
         char fields[192];
         snprintf(fields, sizeof(fields),
                  "power_save_control=%d;lightbar_setup=2;led_brightness=0;"
-                 "player_leds=0;lightbar_red=0;lightbar_green=0;lightbar_blue=0;"
+                 "player_leds=0;lightbar_rgb=0,0,0;"
                  "mute_button_led=0",
                  this->power_save_mask);
         outputFields(fields);

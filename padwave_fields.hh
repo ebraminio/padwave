@@ -53,9 +53,6 @@ inline const u8_field kU8Fields[] = {
     {"lightbar_setup", nullptr},
     {"led_brightness", &Body::setLedBrightness},
     {"player_leds", &Body::setPlayerLedsMask},
-    {"lightbar_red", &Body::setLightbarRed},
-    {"lightbar_green", &Body::setLightbarGreen},
-    {"lightbar_blue", &Body::setLightbarBlue},
 };
 
 inline const array_field kArrayFields[] = {
@@ -85,6 +82,14 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     *eq = 0;
     const char *name = pair;
     const char *value = eq + 1;
+
+    if (strcmp(name, "lightbar_rgb") == 0) {
+      unsigned red = 0, green = 0, blue = 0;
+      if (sscanf(value, "%u,%u,%u", &red, &green, &blue) != 3) return false;
+      body->setLightbar(static_cast<uint8_t>(red), static_cast<uint8_t>(green),
+                        static_cast<uint8_t>(blue));
+      continue;
+    }
 
     bool found = false;
     for (size_t i = 0; i < sizeof(kU8Fields) / sizeof(kU8Fields[0]); i++) {
