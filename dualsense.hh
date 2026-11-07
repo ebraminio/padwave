@@ -135,12 +135,21 @@ enum class Packet : uint8_t {
   Audio              = 0x36,
   CommandHost        = 0x80,
   CommandStatus      = 0x81,
+  FeatureMode        = 0x08,
+  FeatureSetup       = 0x0B,
+  Command82          = 0x82,
+  Command83          = 0x83,
+  Command84          = 0x84,
+  Command85          = 0x85,
   CommandGyro        = 0x90,
   CommandGyroStatus  = 0x91,
   CommandCodec       = 0xA0,
   CommandQuery       = 0xA4,
   CommandTable       = 0xA5,
   CommandFlash       = 0xF0,
+  AuthChallenge      = 0xF0, // same ID observed as the authentication challenge
+  AuthResponse       = 0xF1,
+  AuthStatus         = 0xF2,
 };
 
 // psdevwiki HID command metadata. Command report IDs are part of Packet above;
@@ -317,6 +326,109 @@ inline constexpr CommandInfo kCommandTable[] = {
     {"NVS Lock Status", Packet::CommandHost, CommandDevice::Nvs,
      3, 0, false, "0 = Unlocked; 1 = Locked"},
 };
+
+// Feature-report map captured from a PS5 <-> DualSense USB session
+// (0xThreadz/dualsense-ps5-usb-research, fw 0x0110002a / hw 0x00000621).
+// 0x02 is a GET report of 37 bytes in that descriptor, but was never exercised;
+// it is omitted here because the same ID is the USB output report in this header.
+// 0x08 SET was observed as 17 bytes with payload 08 11 00...; its purpose is
+// unclear. 0x20 is a 64-byte config/calibration blob containing ASCII build
+// date strings. 0x80..0x85 and 0xA0 are 64-byte GET/SET vendor reports; the PS5
+// capture did not exercise them.
+enum class FeatureAccess : uint8_t {
+  Get,
+  Set,
+  GetSet,
+};
+
+struct FeatureReportInfo {
+  Packet id;
+  uint8_t length;
+  FeatureAccess access;
+  const char *purpose;
+};
+
+inline constexpr FeatureReportInfo kFeatureReports[] = {
+    {Packet::FeatureCalibration, 41, FeatureAccess::Get, "calibration-adjacent setup"},
+    {Packet::FeatureMode, 17, FeatureAccess::Set, "mode/feature negotiation"},
+    {Packet::FeaturePairing, 20, FeatureAccess::Get, "pairing info"},
+    {Packet::FeatureSetup, 38, FeatureAccess::Get, "initial setup"},
+    {Packet::FeatureFirmware, 64, FeatureAccess::Get, "config/firmware/calibration"},
+    {Packet::CommandHost, 64, FeatureAccess::GetSet, "host command"},
+    {Packet::CommandStatus, 64, FeatureAccess::Get, "host status"},
+    {Packet::Command82, 64, FeatureAccess::GetSet, "vendor feature"},
+    {Packet::Command83, 64, FeatureAccess::GetSet, "vendor feature"},
+    {Packet::Command84, 64, FeatureAccess::GetSet, "vendor feature"},
+    {Packet::Command85, 64, FeatureAccess::GetSet, "vendor feature"},
+    {Packet::CommandCodec, 64, FeatureAccess::GetSet, "codec/vendor command"},
+    {Packet::AuthChallenge, 64, FeatureAccess::Set, "authentication challenge chunk"},
+    {Packet::AuthResponse, 0, FeatureAccess::Get, "authentication response; never observed"},
+    {Packet::AuthStatus, 16, FeatureAccess::Get, "authentication status poll"},
+};
+
+// USB authentication challenge, 64 bytes. Four chunks carry 56 payload bytes
+// each (224 total). Byte 3 is the chunk index 0..3. The final four bytes appear
+// to be a checksum over the 256-byte challenge; the algorithm is unknown, and
+// the final chunk is zero-padded.
+struct AuthenticationChallenge {
+  using DSUINT8 = internal::DSUINT8;
+
+  DSUINT8 reportIdValue; // 0x00  0xF0
+  DSUINT8 type;          // 0x01  observed 0x01
+  DSUINT8 subtype;       // 0x02  observed 0x01
+  DSUINT8 chunk;         // 0x03  0..3
+  DSUINT8 payload[56];   // 0x04..0x3b
+  DSUINT8 checksum[4];   // 0x3c..0x3f  final chunk only; algorithm unknown
+
+  static constexpr uint8_t reportId = 0xF0;
+  static constexpr size_t size      = 64;
+};
+static_assert(sizeof(AuthenticationChallenge) == 64, "0xF0 must stay 64 bytes");
+
+// 16-byte authentication status poll. Every observed response was identical:
+// f2 00 01 11 followed by twelve zero bytes.
+struct AuthenticationStatus {
+  using DSUINT8 = internal::DSUINT8;
+
+  DSUINT8 reportIdValue; // 0x00  0xF2
+  DSUINT8 payload[15];   // 0x01..0x0f
+
+  static constexpr uint8_t reportId = 0xF2;
+  static constexpr size_t size      = 16;
+};
+static_assert(sizeof(AuthenticationStatus) == 16, "0xF2 must stay 16 bytes");
+
+// PS5 authentication sequence observed on every controller connection:
+//   SET feature 0x08, 17 bytes, repeated a few times (purpose unclear)
+//   SET feature 0xF0, four 64-byte challenge chunks (sequence 0,1,2,3)
+//   GET feature 0xF2, three times, 16-byte status poll
+// If 0xF2 never leaves f2 00 01 11 ..., the sequence repeats every ~10-15 s.
+// 0xF1 (signed response) was never requested. All control transfers completed in
+// under ~2 ms with exact lengths and zero USB errors; serializing control and
+// interrupt traffic changed nothing, and usbmon matched the proxy byte-for-byte.
+// Corruption, concurrency and transport errors are therefore ruled out; direct-
+// connection timing or missing protocol state remains the explanation. This
+// header models the traffic but does not claim it can authenticate.
+
+// USB topology observed on a Raspberry Pi 5, USB VID 054C PID 0CE6:
+//
+//   interface 0  Audio (0x01) / AudioControl (0x01)    no endpoints
+//   interface 1  Audio (0x01) / AudioStreaming (0x02)  alt 1: OUT iso 392 B,
+//                                                       interval 4 (mic)
+//   interface 2  Audio (0x01) / AudioStreaming (0x02)  alt 1: IN iso 196 B,
+//                                                       interval 4 (speaker)
+//   interface 3  HID (0x03)                            IN/OUT interrupt 64 B,
+//                                                       interval 6 (gamepad)
+//
+// Interfaces 1 and 2 use alt 0 for zero bandwidth and alt 1 while streaming.
+// The HID report descriptor is 289 bytes.
+//
+// FunctionFS notes from the same research (Linux-specific, not DualSense wire
+// protocol): class-specific Audio descriptors 0x24/0x25 are rejected with
+// EINVAL and must be stripped from a copied config descriptor; endpoint
+// addresses are silently renumbered by position; epN files block until
+// SET_CONFIGURATION; raw-gadget was not available on the stock Raspberry Pi
+// kernel, while FunctionFS/usb_f_fs was.
 
 struct OutputBodyProbe;
 struct AudioReportProbe;
