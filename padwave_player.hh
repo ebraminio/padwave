@@ -960,7 +960,7 @@ private:
 
     if (sscanf(line, "mic %ld", &value) == 1) {
       mic = value != 0;
-      state.setMic(mic != 0);
+      state.setMic(mic ? dualsense::OutputBody::micMaxVolume : 0);
       // The controller only starts/stops microphone capture when it sees a
       // 0x36 report with the enable-mask bit changed. Send the state packet
       // immediately, and reassert the pause-only mute LED with a one-shot

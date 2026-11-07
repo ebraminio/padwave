@@ -724,6 +724,8 @@ protected:
   DSUINT8 lightbarBlue;        // +0x2e
 
 public:
+  static constexpr uint8_t micMaxVolume = 0x40;
+
   constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
   constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
 
@@ -980,14 +982,18 @@ public:
     audioControl2    = 0x0A;
   }
 
-  constexpr void setMic(bool on) {
-    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::PowerSaveControlEnable));
-    if (on) {
-      powerSaveControl = static_cast<uint8_t>(powerSaveControl & ~0x10);
-      micVolume        = 0x40;
-    } else {
-      powerSaveControl = static_cast<uint8_t>(powerSaveControl | 0x10);
-    }
+  constexpr void setMicMuted(bool muted) {
+    claim(ValidFlag1::PowerSaveControlEnable);
+    constexpr uint8_t mask = static_cast<uint8_t>(PowerSave::MicMute);
+    powerSaveControl =
+        muted ? static_cast<uint8_t>(powerSaveControl | mask)
+              : static_cast<uint8_t>(powerSaveControl & ~mask);
+  }
+
+  // 0 mutes capture; 1..micMaxVolume enables it at that volume.
+  constexpr void setMic(uint8_t volume) {
+    setMicVolume(volume > micMaxVolume ? micMaxVolume : volume);
+    setMicMuted(volume == 0);
   }
 
   constexpr void clearPlayerLeds() {
