@@ -1312,8 +1312,12 @@ document.querySelectorAll("[data-trigger]").forEach((row) => {
     labSend(triggerPayloadFor(row));
   };
   row.querySelector(".trigMode").addEventListener("change", apply);
-  for (const input of row.querySelectorAll("input"))
-    input.addEventListener("change", apply);
+  for (const input of row.querySelectorAll("input")) {
+    input.addEventListener("input", () => {
+      if (input.value === "") return;
+      apply();
+    });
+  }
   syncTriggerRow(row);
 });
 
