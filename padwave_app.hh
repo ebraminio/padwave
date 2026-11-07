@@ -911,13 +911,15 @@ public:
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
     }
 
-    if (strcmp(kind, "lightbar_brightness") == 0) {
+    if (strcmp(kind, "player_led_brightness") == 0) {
       if (this->padwaveDisabled())
         return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
-      int v = static_cast<int>(kvNumber(body, "value", 0));
-      snprintf(fields, sizeof(fields), "led_brightness=%d", v & 0xFF);
+      int value = static_cast<int>(kvNumber(body, "value", 0));
+      if (value < 0 || value > 2)
+        return snprintf(out, out_cap, "ok=false\nerror=brightness must be 0..2\n");
+      snprintf(fields, sizeof(fields), "player_led_brightness=%d", value);
       outputFields(fields);
-      return snprintf(out, out_cap, "ok=true\nnote=brightness %d\n", v & 0xFF);
+      return snprintf(out, out_cap, "ok=true\nnote=player brightness %d\n", value);
     }
 
     if (strcmp(kind, "controller_input") == 0) {
@@ -2067,7 +2069,7 @@ private:
         this->power_save_leds_applied = true;
         char fields[192];
         snprintf(fields, sizeof(fields),
-                 "power_save_control=%d;lightbar_setup=2;led_brightness=0;"
+                 "power_save_control=%d;lightbar_setup=2;player_led_brightness=0;"
                  "player_leds=0;lightbar_rgb=0,0,0;"
                  "mute_button_led=0",
                  this->power_save_mask);

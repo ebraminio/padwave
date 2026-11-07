@@ -402,7 +402,6 @@
         <input type="color" id="labColor" value="#00a0ff" title="override the lightbar colour">
         <button id="labBarApply">apply</button>
         <button id="labBarReset">reset</button>
-        <label>brightness <input type="range" id="labBright" min="0" max="255" value="255" style="width:80px"></label>
         <button id="labBarOn" title="lightbar_setup 1: lightbar on">on</button>
         <button id="labBarFade" title="lightbar_setup 2: lightbar off">off</button>
         <label>setup <input type="number" id="labSetup" min="1" max="2" value="1" style="width:58px" title="lightbar_setup (1 = on, 2 = off)"></label>
@@ -420,6 +419,13 @@
         <button id="labLedsReset">reset</button>
         <label title="suppress the slow fade-in (player_leds bit 5)">
           <input type="checkbox" id="labLedInstant"> instant
+        </label>
+        <label>brightness
+          <select id="labLedBright" title="shared brightness for the five player LEDs">
+            <option value="0">high</option>
+            <option value="1">medium</option>
+            <option value="2">low</option>
+          </select>
         </label>
       </div>
 
@@ -534,7 +540,7 @@
           A map of field name to byte value (or array of bytes), framed and CRC-signed for you.
           Validity bits are claimed automatically by the field setters.
           Field names and offsets live in <code style="font-family:var(--mono)">lib/padwave/schemas/</code> (also at <code style="font-family:var(--mono)">/api/schema</code>) — try <code style="font-family:var(--mono)">{ "lightbar_setup": 2 }</code>
-          or <code style="font-family:var(--mono)">{ "lightbar_rgb": [255, 0, 0], "led_brightness": 60 }</code>.
+          or <code style="font-family:var(--mono)">{ "lightbar_rgb": [255, 0, 0], "player_led_brightness": 0 }</code>.
         </p>
         <textarea id="labRaw">{ "lightbar_rgb": [0, 160, 255] }</textarea>
         <div class="lab-row"><button id="labRawSend">send report</button><span id="labRawMsg"></span></div>
@@ -1213,7 +1219,8 @@ $("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
 $("#labBarOn").onclick = () => labSend({ kind: "lightbar_setup", value: 1 });
 $("#labBarFade").onclick = () => labSend({ kind: "lightbar_setup", value: 2 });
 $("#labBarSetup").onclick = () => labSend({ kind: "lightbar_setup", value: Number($("#labSetup").value) });
-$("#labBright").onchange = (e) => labSend({ kind: "lightbar_brightness", value: Number(e.target.value) });
+$("#labLedBright").onchange = (e) =>
+  labSend({ kind: "player_led_brightness", value: Number(e.target.value) });
 $("#labLedsReset").onclick = () => {
   labLedMask = kernelLedMask;
   labLedInstant = false;

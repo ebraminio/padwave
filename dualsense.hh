@@ -717,7 +717,7 @@ protected:
   DSUINT8 hapticLowPassFilter; // +0x27  hardware haptic LPF enable
   DSUINT8 reserved40;          // +0x28
   DSUINT8 lightbarSetup;       // +0x29  validFlag2 bit 1; 0x02 fades out
-  DSUINT8 ledBrightness;       // +0x2a
+  DSUINT8 playerLedBrightness; // +0x2a  0=high, 1=medium, 2=low
   DSUINT8 playerLeds;          // +0x2b  PlayerLeds bits
   DSUINT8 lightbarRed;         // +0x2c
   DSUINT8 lightbarGreen;       // +0x2d
@@ -758,11 +758,10 @@ private:
     AudioControl2Enable          = 1u << 7, //       bit 7
   };
 
-  // +0x26. Only two bits are documented anywhere in the references: bit 0
-  // changes the LED brightness and bit 1 enables the fade-out control. Bits
-  // 3-7 are reserved.
+  // +0x26. Bit 0 applies playerLedBrightness; bit 1 enables the lightbar
+  // fade control. Bits 3-7 are reserved.
   enum class ValidFlag2 : uint8_t {
-    LedBrightnessControlEnable = 1u << 0, // bit 0
+    PlayerLedBrightnessControlEnable = 1u << 0, // bit 0
     LightbarSetupControlEnable = 1u << 1, // bit 1: enables the lightbarSetup fade control
     CompatibleVibration2       = 1u << 2, // bit 2
   };
@@ -793,6 +792,14 @@ private:
   };
 
 public:
+  // Shared brightness of the five player indicator LEDs. Firmware encoding is
+  // inverted: lower values are brighter. This does not affect the RGB lightbar.
+  enum class PlayerLedBrightness : uint8_t {
+    High   = 0,
+    Medium = 1,
+    Low    = 2,
+  };
+
   enum class LightbarSetup : uint8_t {
     LightOn  = 1u << 0,
     LightOut = 1u << 1,
@@ -905,9 +912,9 @@ public:
     lightbarSetup = static_cast<uint8_t>(v);
   }
 
-  constexpr void setLedBrightness(uint8_t v) {
-    claim(ValidFlag2::LedBrightnessControlEnable);
-    ledBrightness = v;
+  constexpr void setPlayerLedBrightness(PlayerLedBrightness level) {
+    claim(ValidFlag2::PlayerLedBrightnessControlEnable);
+    playerLedBrightness = static_cast<uint8_t>(level);
   }
 
   constexpr void setPlayerLeds(bool led1, bool led2, bool led3, bool led4, bool led5,

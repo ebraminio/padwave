@@ -51,7 +51,6 @@ inline const u8_field kU8Fields[] = {
     {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
     {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
     {"lightbar_setup", nullptr},
-    {"led_brightness", &Body::setLedBrightness},
 };
 
 inline const array_field kArrayFields[] = {
@@ -81,6 +80,13 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     *eq = 0;
     const char *name = pair;
     const char *value = eq + 1;
+
+    if (strcmp(name, "player_led_brightness") == 0) {
+      unsigned level = static_cast<unsigned>(strtoul(value, nullptr, 0));
+      if (level > 2) return false;
+      body->setPlayerLedBrightness(static_cast<Body::PlayerLedBrightness>(level));
+      continue;
+    }
 
     if (strcmp(name, "player_leds") == 0) {
       uint8_t mask = static_cast<uint8_t>(strtoul(value, nullptr, 0));
