@@ -472,6 +472,8 @@ public:
     static constexpr uint8_t maxLevel = 8;
     uint8_t block[11] = {};
 
+    constexpr uint8_t mode() const { return block[0]; }
+
   public:
     constexpr TriggerEffect() { clearBlock(); }
 
@@ -479,7 +481,6 @@ public:
       for (size_t i = 0; i < sizeof(block); ++i) block[i] = 0;
     }
 
-    constexpr uint8_t mode() const { return block[0]; }
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
     constexpr void zero() {

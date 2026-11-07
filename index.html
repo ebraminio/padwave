@@ -1198,22 +1198,23 @@ $("#labRumBuzz").onclick = () => labSend({
 $("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms: 0 });
 
 const triggerModeGroups = [
-  ["official", [["feedback", "feedback"], ["weapon", "weapon"],
-                ["vibration", "vibration"], ["slope", "slope feedback"]]],
+  ["official", [["feedback", "multiplePositionFeedback"], ["weapon", "weapon"],
+                ["vibration", "multiplePositionVibration"],
+                ["slope", "slopeFeedback"]]],
   ["unofficial", [["bow", "bow"], ["galloping", "galloping"], ["machine", "machine"]]],
-  ["simple", [["simple-feedback", "simple feedback"],
-              ["simple-weapon", "simple weapon"],
-              ["simple-vibration", "simple vibration"]]],
-  ["limited", [["limited-feedback", "limited feedback"],
-               ["limited-weapon", "limited weapon"]]],
-  ["reWASD", [["rewasd-full", "full press"], ["rewasd-soft", "soft press"],
-              ["rewasd-medium", "medium press"], ["rewasd-hard", "hard press"],
-              ["rewasd-pulse", "pulse"], ["rewasd-choppy", "choppy"],
-              ["rewasd-soft-rigidity", "soft rigidity"],
-              ["rewasd-medium-rigidity", "medium rigidity"],
-              ["rewasd-max-rigidity", "max rigidity"],
-              ["rewasd-half-press", "half press"],
-              ["rewasd-rifle", "rifle"], ["rewasd-vibration", "vibration"]]],
+  ["simple", [["simple-feedback", "simpleFeedback"],
+              ["simple-weapon", "simpleWeapon"],
+              ["simple-vibration", "simpleVibration"]]],
+  ["limited", [["limited-feedback", "limitedFeedback"],
+               ["limited-weapon", "limitedWeapon"]]],
+  ["reWASD", [["rewasd-full", "rewasdFullPress"], ["rewasd-soft", "rewasdSoftPress"],
+              ["rewasd-medium", "rewasdMediumPress"], ["rewasd-hard", "rewasdHardPress"],
+              ["rewasd-pulse", "rewasdPulse"], ["rewasd-choppy", "rewasdChoppy"],
+              ["rewasd-soft-rigidity", "rewasdSoftRigidity"],
+              ["rewasd-medium-rigidity", "rewasdMediumRigidity"],
+              ["rewasd-max-rigidity", "rewasdMaxRigidity"],
+              ["rewasd-half-press", "rewasdHalfPress"],
+              ["rewasd-rifle", "rewasdRifle"], ["rewasd-vibration", "rewasdVibration"]]],
 ];
 
 const triggerRangeHints = {

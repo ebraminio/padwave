@@ -922,7 +922,8 @@ public:
 
       dualsense::OutputBody::TriggerEffect fx;
       char label[40] = "off";
-      if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
+      bool off = strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0;
+      if (off) {
         fx.off();
       } else {
         bool applied = false;
@@ -993,7 +994,10 @@ public:
         } else {
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
-        if (!applied) fx.off();
+        if (!applied) {
+          fx.off();
+          off = true;
+        }
         snprintf(label, sizeof(label), "%s", effect);
       }
 
@@ -1001,11 +1005,9 @@ public:
 
       bool left = strcmp(side, "left") == 0;
       this->player.setTriggerEffect(left, fx);
-      const int mode = fx.mode();
       this->trigger_side = left ? 1 : 2;
-      this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
-      return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side,
-                      static_cast<unsigned>(mode), label);
+      this->trigger_until = (ms > 0 && !off) ? nowMs() + ms : 0;
+      return snprintf(out, out_cap, "ok=true\nnote=trigger %s %s\n", side, label);
     }
 
     if (strcmp(kind, "firmware_info") == 0) {
