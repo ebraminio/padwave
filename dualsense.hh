@@ -436,6 +436,15 @@ public:
 
     constexpr TriggerEffect(Type modeValue = Type::Invalid) : mode(modeValue), parameters() {}
 
+    // Apple-style normalized [0,1] adapters from the same generator.
+    static constexpr uint8_t normalize(float value, float scale) {
+      if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
+      if (value < 0) value = 0;
+      if (value > 1) value = 1;
+      int scaled = static_cast<int>(value * scale + 0.5f);
+      return static_cast<uint8_t>(scaled);
+    }
+
   public:
     constexpr bool isValid() const { return this->mode != Type::Invalid; }
 
@@ -663,15 +672,6 @@ public:
       effect.parameters[1] = end;
       effect.parameters[2] = strength;
       return effect;
-    }
-
-    // Apple-style normalized [0,1] adapters from the same generator.
-    static constexpr uint8_t normalize(float value, float scale) {
-      if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-      if (value < 0) value = 0;
-      if (value > 1) value = 1;
-      int scaled = static_cast<int>(value * scale + 0.5f);
-      return static_cast<uint8_t>(scaled);
     }
 
     static constexpr const TriggerEffect appleFeedbackWithStartPosition(float start,
