@@ -995,15 +995,6 @@ public:
     powerSaveControl = v;
   }
 
-  constexpr void setRightTriggerMode(uint8_t v) {
-    claim(ValidFlag0::RightTriggerMotorEnable);
-    rightTrigger.block[0] = v;
-  }
-
-  constexpr void setLeftTriggerMode(uint8_t v) {
-    claim(ValidFlag0::LeftTriggerMotorEnable);
-    leftTrigger.block[0] = v;
-  }
 
   constexpr void setMotorPowerLevel(uint8_t v) {
     claim(ValidFlag1::VibrationAttenuationEnable);
@@ -1054,9 +1045,6 @@ public:
     lightbarGreen = green;
     lightbarBlue  = blue;
   }
-
-  constexpr uint8_t rightTriggerMode() const { return rightTrigger.mode(); }
-  constexpr uint8_t leftTriggerMode() const { return leftTrigger.mode(); }
 
   constexpr void setRightTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::RightTriggerMotorEnable);

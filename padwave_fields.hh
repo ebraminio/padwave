@@ -1,8 +1,8 @@
 // padwave_fields.hh — the 0x31 field-map parser.
 //
 // Names are the OutputBody fields; each setter claims its own validity bits.
-// The two trigger parameter blocks are hex. Used by the player's 0x31 writer
-// and by the field fuzzer.
+// Trigger effects are one 22-hex-character byte string per side. Used by the
+// player's 0x31 writer and by the field fuzzer.
 #pragma once
 
 #include <stdbool.h>
@@ -39,8 +39,6 @@ inline const u8_field kU8Fields[] = {
     {"audio_control", &Body::setAudioRouting},
     {"mute_button_led", &Body::setMuteButtonLed},
     {"power_save_control", &Body::setPowerSaveControl},
-    {"right_trigger_mode", &Body::setRightTriggerMode},
-    {"left_trigger_mode", &Body::setLeftTriggerMode},
     {"motor_power_level", &Body::setMotorPowerLevel},
     {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
     {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
@@ -92,20 +90,11 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
       continue;
     }
 
-    if (strcmp(name, "right_trigger_params") == 0 || strcmp(name, "left_trigger_params") == 0) {
-      bool left = name[0] == 'l';
+    if (strcmp(name, "right_trigger_effect") == 0 ||
+        strcmp(name, "left_trigger_effect") == 0) {
       uint8_t effect[11] = {};
-      effect[0] = left ? body->leftTriggerMode() : body->rightTriggerMode();
-      if (!hex_to_bytes(value, effect + 1, 10)) {
-        size_t index = 0;
-        char params_copy[256];
-        snprintf(params_copy, sizeof(params_copy), "%s", value);
-        char *save = nullptr;
-        for (char *byte = strtok_r(params_copy, ",", &save); byte && index < 10;
-             byte = strtok_r(nullptr, ",", &save))
-          effect[1 + index++] = static_cast<uint8_t>(strtoul(byte, nullptr, 0));
-      }
-      if (left)
+      if (!hex_to_bytes(value, effect, sizeof(effect))) return false;
+      if (name[0] == 'l')
         body->setLeftTriggerEffect(Body::TriggerEffect(effect));
       else
         body->setRightTriggerEffect(Body::TriggerEffect(effect));

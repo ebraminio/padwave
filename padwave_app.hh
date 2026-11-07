@@ -1083,15 +1083,16 @@ public:
       }
 
       if (mode == 0x05) memset(params, 0, sizeof(params));
-      char param_text[96];
-      snprintf(param_text, sizeof(param_text), "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", params[0],
-               params[1], params[2], params[3], params[4], params[5], params[6], params[7],
-               params[8], params[9]);
+      uint8_t effect_bytes[11] = {};
+      effect_bytes[0] = static_cast<uint8_t>(mode);
+      memcpy(effect_bytes + 1, params, sizeof(params));
+      char effect_text[23];
+      for (size_t i = 0; i < sizeof(effect_bytes); i++)
+        snprintf(effect_text + i * 2, sizeof(effect_text) - i * 2, "%02x", effect_bytes[i]);
 
       bool left = strcmp(side, "left") == 0;
       const char *prefix = left ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x%02x;%s_trigger_params=%s", prefix,
-               static_cast<unsigned>(mode), prefix, param_text);
+      snprintf(fields, sizeof(fields), "%s_trigger_effect=%s", prefix, effect_text);
       outputFields(fields);
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
@@ -2282,8 +2283,7 @@ private:
     if (this->trigger_until && now >= this->trigger_until) {
       char fields[192];
       const char *prefix = this->trigger_side == 1 ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_mode=0x05;%s_trigger_params=0,0,0,0,0,0,0,0,0,0",
-               prefix, prefix);
+      snprintf(fields, sizeof(fields), "%s_trigger_effect=0500000000000000000000", prefix);
       outputFields(fields);
       this->trigger_until = 0;
       this->trigger_side = 0;
