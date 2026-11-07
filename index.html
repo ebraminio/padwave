@@ -1242,7 +1242,52 @@ function fillTriggerModes(row) {
   select.value = "off";
 }
 
-function syncTriggerRow(row) {
+function triggerRanges(effect) {
+  if (effect === "off" || (effect.startsWith("rewasd-") &&
+      !["rewasd-rifle", "rewasd-vibration"].includes(effect))) return null;
+
+  const ranges = {
+    start: [0, 9], end: [0, 9], level: [0, 8],
+    freq: [1, 255], period: [0, 255], b: [0, 7],
+  };
+  switch (effect) {
+    case "weapon":
+      ranges.start = [2, 7]; ranges.end = [3, 8]; ranges.level = [1, 8];
+      break;
+    case "vibration":
+      ranges.level = [1, 8];
+      break;
+    case "slope":
+      ranges.start = [0, 8]; ranges.end = [1, 9]; ranges.level = [1, 8]; ranges.b = [1, 8];
+      break;
+    case "bow":
+      ranges.start = [0, 7]; ranges.end = [1, 8]; ranges.level = [1, 8]; ranges.b = [1, 8];
+      break;
+    case "galloping":
+      ranges.start = [0, 8]; ranges.end = [1, 9]; ranges.level = [0, 6]; ranges.b = [0, 7];
+      break;
+    case "machine":
+      ranges.start = [0, 8]; ranges.end = [1, 9]; ranges.level = [0, 7]; ranges.b = [0, 7];
+      break;
+    case "limited-feedback":
+      ranges.level = [0, 10];
+      break;
+    case "limited-weapon":
+      ranges.start = [16, 255]; ranges.end = [16, 255]; ranges.level = [0, 10];
+      break;
+    case "rewasd-rifle":
+      ranges.freq = [2, 20];
+      break;
+    case "rewasd-vibration":
+      ranges.level = [1, 8];
+      break;
+    default:
+      break;
+  }
+  return ranges;
+}
+
+function syncTriggerRow(row, clampValues = false) {
   const effect = row.querySelector(".trigMode").value;
   const rewasdPreset = effect.startsWith("rewasd-") &&
                        !["rewasd-rifle", "rewasd-vibration"].includes(effect);
@@ -1255,14 +1300,53 @@ function syncTriggerRow(row) {
                     "rewasd-rifle", "rewasd-vibration"].includes(effect);
   const usesPeriod = effect === "machine";
   const usesB = ["bow", "galloping", "slope", "machine"].includes(effect);
+
+  const inputs = {
+    start: row.querySelector(".trigStart"), end: row.querySelector(".trigEnd"),
+    level: row.querySelector(".trigLevel"), freq: row.querySelector(".trigFreq"),
+    period: row.querySelector(".trigPeriod"), b: row.querySelector(".trigB"),
+  };
+  const ranges = triggerRanges(effect);
+  if (ranges) {
+    for (const [name, input] of Object.entries(inputs)) {
+      const [min, max] = ranges[name];
+      input.min = String(min);
+      input.max = String(max);
+      if (!clampValues || input.value === "") continue;
+      let value = Number(input.value);
+      if (!Number.isFinite(value)) continue;
+      value = Math.min(max, Math.max(min, value));
+      input.value = String(value);
+    }
+    if (clampValues) {
+      const get = (name) => Number(inputs[name].value);
+      const set = (name, value) => { inputs[name].value = String(value); };
+      if (["weapon", "slope", "bow", "galloping", "machine"].includes(effect)) {
+        let start = get("start"), end = get("end");
+        const endMax = Number(inputs.end.max);
+        if (end <= start) end = Math.min(endMax, start + 1);
+        if (end <= start) start = Math.max(Number(inputs.start.min), end - 1);
+        set("start", start); set("end", end);
+      } else if (effect === "limited-weapon") {
+        let start = get("start"), end = get("end");
+        if (end < start) end = start;
+        if (end > start + 100) end = Math.min(255, start + 100);
+        set("end", end);
+      }
+      if (effect === "galloping") {
+        let first = get("level"), second = get("b");
+        if (second <= first) second = Math.min(7, first + 1);
+        if (second <= first) first = Math.max(0, second - 1);
+        set("level", first); set("b", second);
+      }
+    }
+  }
+
   for (const [cls, show] of [["trigStart", usesStart], ["trigEnd", usesEnd],
                              ["trigLevel", usesLevel], ["trigFreq", usesFreq],
                              ["trigPeriod", usesPeriod], ["trigB", usesB]])
     row.querySelector(`.${cls}`).closest("label").hidden = !show;
-  row.querySelector(".trigStart").max = effect === "limited-weapon" ? 255 : 9;
-  row.querySelector(".trigEnd").max = effect === "limited-weapon" ? 255 : 9;
-  row.querySelector(".trigLevel").max =
-      ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
+
   const hint = row.querySelector(".trigHint");
   hint.textContent = triggerRangeHints[effect] || "";
   hint.hidden = !triggerRangeHints[effect];
@@ -1284,15 +1368,15 @@ function triggerPayloadFor(row) {
 
 document.querySelectorAll("[data-trigger]").forEach((row) => {
   fillTriggerModes(row);
-  const apply = () => {
-    syncTriggerRow(row);
+  const apply = (clampValues) => {
+    syncTriggerRow(row, clampValues);
     labSend(triggerPayloadFor(row));
   };
-  row.querySelector(".trigMode").addEventListener("change", apply);
+  row.querySelector(".trigMode").addEventListener("change", () => apply(true));
   for (const input of row.querySelectorAll("input")) {
     input.addEventListener("input", () => {
       if (input.value === "") return;
-      apply();
+      apply(false);
     });
   }
   syncTriggerRow(row);
