@@ -474,10 +474,6 @@ public:
 
     constexpr uint8_t mode() const { return block[0]; }
 
-    constexpr void clearBlock() {
-      for (size_t i = 0; i < sizeof(block); ++i) block[i] = 0;
-    }
-
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
 
     constexpr void zero() {
@@ -485,11 +481,14 @@ public:
     }
 
   public:
-    constexpr TriggerEffect() { clearBlock(); }
+    constexpr TriggerEffect() {
+      block[0] = 0;
+      zero();
+    }
 
     constexpr bool off() {
-      clearBlock();
       block[0] = static_cast<uint8_t>(Type::Off);
+      zero();
       return true;
     }
 
