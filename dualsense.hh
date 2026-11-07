@@ -6,10 +6,10 @@
 // dualsense::internal. No STL, RTTI, exceptions, heap allocation or platform
 // I/O. DS_HAVE_OPUS enables the optional Opus packet encoder.
 #pragma once
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-#include <math.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <cmath>
 
 #ifdef DS_HAVE_OPUS
 #include <opus/opus.h>
