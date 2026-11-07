@@ -917,13 +917,13 @@ public:
       int amplitude_b = static_cast<int>(kvNumber(body, "amplitude_b", 0));
       int period = static_cast<int>(kvNumber(body, "period", 0));
 
-      dualsense::OutputBody::TriggerEffect fx;
+      using TriggerEffect = dualsense::OutputBody::TriggerEffect;
+      TriggerEffect fx;
       char label[40] = "off";
       bool off = strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0;
       if (off) {
-        fx.off();
+        fx = TriggerEffect::off();
       } else {
-        bool applied = false;
         const uint8_t level8 = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
         if (strcmp(effect, "feedback") == 0) {
@@ -931,68 +931,67 @@ public:
           int last = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
             levels[zone] = level8;
-          applied = fx.multiplePositionFeedback(levels);
+          fx = TriggerEffect::multiplePositionFeedback(levels);
         } else if (strcmp(effect, "weapon") == 0) {
-          applied = fx.weapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx = TriggerEffect::weapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "vibration") == 0) {
           uint8_t amplitudes[10] = {};
           int last = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
             amplitudes[zone] = level8;
-          applied = fx.multiplePositionVibration(frequency8, amplitudes);
+          fx = TriggerEffect::multiplePositionVibration(frequency8, amplitudes);
         } else if (strcmp(effect, "machine") == 0) {
-          applied = fx.machine(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+          fx = TriggerEffect::machine(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
                                static_cast<uint8_t>(amplitude_b), frequency8,
                                static_cast<uint8_t>(period));
         } else if (strcmp(effect, "bow") == 0) {
-          applied = fx.bow(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+          fx = TriggerEffect::bow(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
                            static_cast<uint8_t>(amplitude_b));
         } else if (strcmp(effect, "galloping") == 0) {
-          applied = fx.galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+          fx = TriggerEffect::galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
                                  static_cast<uint8_t>(amplitude_b), frequency8);
         } else if (strcmp(effect, "slope") == 0) {
-          applied = fx.slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
+          fx = TriggerEffect::slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
                                      static_cast<uint8_t>(amplitude_b));
         } else if (strcmp(effect, "simple-feedback") == 0) {
-          applied = fx.simpleFeedback(static_cast<uint8_t>(start), level8);
+          fx = TriggerEffect::simpleFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "simple-weapon") == 0) {
-          applied = fx.simpleWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx = TriggerEffect::simpleWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "simple-vibration") == 0) {
-          applied = fx.simpleVibration(static_cast<uint8_t>(start), level8, frequency8);
+          fx = TriggerEffect::simpleVibration(static_cast<uint8_t>(start), level8, frequency8);
         } else if (strcmp(effect, "limited-feedback") == 0) {
-          applied = fx.limitedFeedback(static_cast<uint8_t>(start), level8);
+          fx = TriggerEffect::limitedFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "limited-weapon") == 0) {
-          applied =
-              fx.limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx = TriggerEffect::limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "rewasd-full") == 0) {
-          applied = fx.rewasdFullPress();
+          fx = TriggerEffect::rewasdFullPress();
         } else if (strcmp(effect, "rewasd-soft") == 0) {
-          applied = fx.rewasdSoftPress();
+          fx = TriggerEffect::rewasdSoftPress();
         } else if (strcmp(effect, "rewasd-medium") == 0) {
-          applied = fx.rewasdMediumPress();
+          fx = TriggerEffect::rewasdMediumPress();
         } else if (strcmp(effect, "rewasd-hard") == 0) {
-          applied = fx.rewasdHardPress();
+          fx = TriggerEffect::rewasdHardPress();
         } else if (strcmp(effect, "rewasd-pulse") == 0) {
-          applied = fx.rewasdPulse();
+          fx = TriggerEffect::rewasdPulse();
         } else if (strcmp(effect, "rewasd-choppy") == 0) {
-          applied = fx.rewasdChoppy();
+          fx = TriggerEffect::rewasdChoppy();
         } else if (strcmp(effect, "rewasd-soft-rigidity") == 0) {
-          applied = fx.rewasdSoftRigidity();
+          fx = TriggerEffect::rewasdSoftRigidity();
         } else if (strcmp(effect, "rewasd-medium-rigidity") == 0) {
-          applied = fx.rewasdMediumRigidity();
+          fx = TriggerEffect::rewasdMediumRigidity();
         } else if (strcmp(effect, "rewasd-max-rigidity") == 0) {
-          applied = fx.rewasdMaxRigidity();
+          fx = TriggerEffect::rewasdMaxRigidity();
         } else if (strcmp(effect, "rewasd-half-press") == 0) {
-          applied = fx.rewasdHalfPress();
+          fx = TriggerEffect::rewasdHalfPress();
         } else if (strcmp(effect, "rewasd-rifle") == 0) {
-          applied = fx.rewasdRifle(frequency8);
+          fx = TriggerEffect::rewasdRifle(frequency8);
         } else if (strcmp(effect, "rewasd-vibration") == 0) {
-          applied = fx.rewasdVibration(level8, frequency8);
+          fx = TriggerEffect::rewasdVibration(level8, frequency8);
         } else {
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
-        if (!applied) {
-          fx.off();
+        if (!fx.isValid()) {
+          fx = TriggerEffect::off();
           off = true;
         }
         snprintf(label, sizeof(label), "%s", effect);
