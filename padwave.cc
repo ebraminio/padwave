@@ -514,15 +514,7 @@ private:
       return;
     }
 
-    if (strcmp(path, "/api/debug/trigger") == 0) {
-      char result[256];
-      int len = app->debugTrigger(c->in + head_len, result, sizeof(result));
-      c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
-          c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
-      modFd(c->fd, EPOLLOUT);
-      return;
-    }
+
 
     if (strcmp(path, "/api/mic/reset") == 0) {
       app->micReset();

@@ -249,6 +249,8 @@ private:
   dualsense::OutputReport out{};
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
+  dualsense::OutputBody::TriggerEffect left_effect{};
+  dualsense::OutputBody::TriggerEffect right_effect{};
   bool mic = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
@@ -653,31 +655,30 @@ private:
 
 public:
   void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
-    if (left)
+    if (left) {
+      left_effect = effect;
       state.setLeftTriggerEffect(effect);
-    else
+    } else {
+      right_effect = effect;
       state.setRightTriggerEffect(effect);
+    }
     state.clearPlayerLeds();
     state.clearOneShotLightbar();
 
-    // Send a fresh report carrying only this trigger block. Copying the whole
-    // saved state here made the other trigger inherit stale claims.
+    // Claim both trigger blocks. The untouched side is re-sent unchanged, so
+    // the firmware never has to infer it from a one-sided update.
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
-      if (left)
-        report.body().setLeftTriggerEffect(effect);
-      else
-        report.body().setRightTriggerEffect(effect);
+      report.body().setLeftTriggerEffect(left_effect);
+      report.body().setRightTriggerEffect(right_effect);
       writeDevice(&report, sizeof(report));
       return;
     }
     dualsense::OutputReport report{};
     report.init(output_sequence);
-    if (left)
-      report.body().setLeftTriggerEffect(effect);
-    else
-      report.body().setRightTriggerEffect(effect);
+    report.body().setLeftTriggerEffect(left_effect);
+    report.body().setRightTriggerEffect(right_effect);
     report.sign();
     writeDevice(&report, sizeof(report));
   }

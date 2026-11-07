@@ -293,14 +293,6 @@ private:
   int idle_timeout_ms = 900000;
   int idle_warn_grace_ms = 60000;
   int poweroff_when_idle_ms = 60000;
-  int trigger_effect_amplitude = 2;
-  int trigger_effect_position = 2;
-  int trigger_effect_frequency = 25;
-  int trigger_effect_end = 8;
-  int trigger_effect_period = 10;
-  int trigger_effect_amplitude_b = 4;
-  bool trigger_effects = false;
-  char trigger_effect_preset[32] = "none";
   bool haptic_subwoofer = false;
   bool haptics_only = false;
   int haptic_cutoff_hz = 150;
@@ -311,28 +303,6 @@ private:
   long idle_rumble_until = 0;
   int trigger_side = 0; // 1 left, 2 right; 0 idle
   long trigger_until = 0;
-
-  // DS4Windows Trigger Lab's built-in presets. Percent values are converted
-  // the same way: start/end to zones 0-9, force to 1-8, wall to Hz for 0x26.
-  struct TriggerPreset {
-    const char *id;
-    uint8_t mode;
-    int start_pct;
-    int wall_pct;
-    int force_pct;
-  };
-
-  static constexpr TriggerPreset kTriggerPresets[] = {
-      {"none", 0x05, 0, 0, 0},
-      {"balanced-weapon", 0x25, 20, 60, 85},
-      {"soft-resistance", 0x21, 10, 50, 30},
-      {"firm-resistance", 0x21, 5, 50, 75},
-      {"hair-trigger", 0x25, 5, 25, 65},
-      {"pistol-break", 0x25, 20, 55, 95},
-      {"rifle-break", 0x25, 35, 75, 100},
-      {"machine-gun", 0x26, 15, 80, 85},
-      {"road-texture", 0x26, 5, 35, 45},
-  };
 
   // The state-coloured lightbar and the player-LED ownership. The player's
   // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
@@ -671,15 +641,6 @@ public:
     kvAdd(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
     kvAdd(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
     kvAdd(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
-    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
-    kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
-    kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
-    kvAdd(buf, cap, &o, "config.trigger_effect_end", "%d", this->trigger_effect_end);
-    kvAdd(buf, cap, &o, "config.trigger_effect_period", "%d", this->trigger_effect_period);
-    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude_b", "%d",
-          this->trigger_effect_amplitude_b);
-    kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
-    kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptics_only", "%s", this->haptics_only ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
@@ -722,15 +683,6 @@ public:
     kvAdd(buf, cap, &o, "config.idle_timeout_ms", "%d", this->idle_timeout_ms);
     kvAdd(buf, cap, &o, "config.idle_warn_grace_ms", "%d", this->idle_warn_grace_ms);
     kvAdd(buf, cap, &o, "config.poweroff_when_idle_ms", "%d", this->poweroff_when_idle_ms);
-    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude", "%d", this->trigger_effect_amplitude);
-    kvAdd(buf, cap, &o, "config.trigger_effect_position", "%d", this->trigger_effect_position);
-    kvAdd(buf, cap, &o, "config.trigger_effect_frequency", "%d", this->trigger_effect_frequency);
-    kvAdd(buf, cap, &o, "config.trigger_effect_end", "%d", this->trigger_effect_end);
-    kvAdd(buf, cap, &o, "config.trigger_effect_period", "%d", this->trigger_effect_period);
-    kvAdd(buf, cap, &o, "config.trigger_effect_amplitude_b", "%d",
-          this->trigger_effect_amplitude_b);
-    kvText(buf, cap, &o, "config.trigger_effect_preset", this->trigger_effect_preset);
-    kvAdd(buf, cap, &o, "config.trigger_effects", "%s", this->trigger_effects ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_subwoofer", "%s", this->haptic_subwoofer ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptics_only", "%s", this->haptics_only ? "true" : "false");
     kvAdd(buf, cap, &o, "config.haptic_cutoff_hz", "%d", this->haptic_cutoff_hz);
@@ -767,34 +719,6 @@ public:
       long v = atol(value);
       this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
     }
-    if (kvGet(body, "trigger_effect_amplitude", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
-    }
-    if (kvGet(body, "trigger_effect_position", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
-    }
-    if (kvGet(body, "trigger_effect_frequency", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
-    }
-    if (kvGet(body, "trigger_effect_end", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_end = v < 0 ? 0 : (v > 9 ? 9 : v);
-    }
-    if (kvGet(body, "trigger_effect_period", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_period = v < 0 ? 0 : (v > 255 ? 255 : v);
-    }
-    if (kvGet(body, "trigger_effect_amplitude_b", value, sizeof(value))) {
-      int v = atoi(value);
-      this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
-    }
-    if (kvGet(body, "trigger_effect_preset", value, sizeof(value))) {
-      snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
-               value[0] ? value : "custom");
-    }
     if (kvGet(body, "haptic_subwoofer", value, sizeof(value))) {
       this->haptic_subwoofer = strcmp(value, "true") == 0 || atoi(value) != 0;
     }
@@ -809,8 +733,6 @@ public:
       int v = atoi(value);
       this->haptic_gain = v < 0 ? 0 : (v > 200 ? 200 : v);
     }
-    if (kvGet(body, "trigger_effects", value, sizeof(value)))
-      this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
     if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
     if (this->player) {
       char line[64];
@@ -981,13 +903,11 @@ public:
     if (strcmp(kind, "trigger") == 0 || strcmp(kind, "left_trigger") == 0 ||
         strcmp(kind, "right_trigger") == 0) {
       char side[16] = "right";
-      char preset[32] = "";
       char effect[32] = "vibration";
       if (strcmp(kind, "left_trigger") == 0)
         snprintf(side, sizeof(side), "left");
       else if (strcmp(kind, "trigger") == 0)
         kvGet(body, "side", side, sizeof(side));
-      kvGet(body, "preset", preset, sizeof(preset));
       kvGet(body, "effect", effect, sizeof(effect));
       int position = static_cast<int>(kvNumber(body, "position", 2));
       int amplitude = static_cast<int>(kvNumber(body, "amplitude", 6));
@@ -1001,20 +921,10 @@ public:
       long ms = kvNumber(body, "ms", 0);
 
       dualsense::OutputBody::TriggerEffect fx;
-      bool direct = false;
-      uint8_t params[10] = {};
-      int mode = 0x05;
       char label[40] = "off";
-      if (preset[0]) {
-        const TriggerPreset *found = findTriggerPreset(preset);
-        if (!found) return snprintf(out, out_cap, "ok=false\nerror=unknown trigger preset\n");
-        mode = encodeTriggerPreset(*found, params);
-        snprintf(label, sizeof(label), "%s", found->id);
-      } else if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
+      if (strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0) {
         fx.off();
-        direct = true;
       } else {
-        direct = true;
         bool applied = false;
         const uint8_t level8 = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
@@ -1084,26 +994,14 @@ public:
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
         if (!applied) fx.off();
-        mode = fx.mode();
-        for (size_t i = 0; i < 10; ++i) params[i] = fx.parameter(i);
         snprintf(label, sizeof(label), "%s", effect);
       }
 
       if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
 
       bool left = strcmp(side, "left") == 0;
-      if (direct) {
-        this->player.setTriggerEffect(left, fx);
-        mode = fx.mode();
-      } else {
-        // Legacy preset path: its encoder still produces a mode plus ten raw
-        // parameter bytes rather than a TriggerEffect object.
-        uint8_t effect_bytes[11] = {};
-        effect_bytes[0] = static_cast<uint8_t>(mode);
-        memcpy(effect_bytes + 1, params, sizeof(params));
-        this->player.setTriggerEffect(
-            left, reinterpret_cast<const dualsense::OutputBody::TriggerEffect &>(effect_bytes));
-      }
+      this->player.setTriggerEffect(left, fx);
+      const int mode = fx.mode();
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side,
@@ -1134,29 +1032,6 @@ public:
     }
 
     return snprintf(out, out_cap, "ok=false\nerror=unknown kind\n");
-  }
-
-  int triggerTest(const char *side, long ms, char *out, size_t cap) {
-    if (strcmp(this->trigger_effect_preset, "none") == 0 ||
-        strcmp(this->trigger_effect_preset, "off") == 0)
-      return snprintf(out, cap, "ok=true\nnote=trigger off\n");
-    char request[256];
-    snprintf(request, sizeof(request),
-             "kind=trigger\nside=%s\neffect=%s\nstart=%d\nend=%d\nlevel=%d\n"
-             "amplitude_b=%d\nfrequency=%d\nperiod=%d\nms=%ld",
-             side, this->trigger_effect_preset, this->trigger_effect_position,
-             this->trigger_effect_end, this->trigger_effect_amplitude,
-             this->trigger_effect_amplitude_b, this->trigger_effect_frequency,
-             this->trigger_effect_period, ms);
-    return output(request, out, cap);
-  }
-
-  int debugTrigger(const char *body, char *out, size_t cap) {
-    char side[16] = "right";
-    char tmp[16];
-    if (kvGet(body, "side", tmp, sizeof(tmp))) snprintf(side, sizeof(side), "%s", tmp);
-    long ms = kvNumber(body, "ms", 700);
-    return triggerTest(side, ms, out, cap);
   }
 
   int handleCommand(const char *body, size_t len, char *out, size_t cap) {
@@ -1705,12 +1580,7 @@ private:
     } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
       toggleMute();
     } else if (strcmp(name, "volume") == 0) {
-      int before = this->volume;
       setVolume(this->volume + value);
-      if (this->trigger_effects && this->volume != before && this->volume > 0) {
-        char result[64];
-        triggerTest(value < 0 ? "left" : "right", 180, result, sizeof(result));
-      }
     } else if (strcmp(name, "seek") == 0) {
       seek(this->pos_ms + static_cast<long>(value) * 1000);
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
@@ -1767,29 +1637,6 @@ private:
       } else if (strcmp(line, "poweroff_when_idle_ms") == 0) {
         long v = atol(value);
         this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
-      } else if (strcmp(line, "trigger_effect_amplitude") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_amplitude = v < 0 ? 0 : (v > 8 ? 8 : v);
-      } else if (strcmp(line, "trigger_effect_position") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_position = v < 0 ? 0 : (v > 9 ? 9 : v);
-      } else if (strcmp(line, "trigger_effect_frequency") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_frequency = v < 1 ? 1 : (v > 255 ? 255 : v);
-      } else if (strcmp(line, "trigger_effect_end") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_end = v < 0 ? 0 : (v > 9 ? 9 : v);
-      } else if (strcmp(line, "trigger_effect_period") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_period = v < 0 ? 0 : (v > 255 ? 255 : v);
-      } else if (strcmp(line, "trigger_effect_amplitude_b") == 0) {
-        int v = atoi(value);
-        this->trigger_effect_amplitude_b = v < 0 ? 0 : (v > 7 ? 7 : v);
-      } else if (strcmp(line, "trigger_effect_preset") == 0) {
-        snprintf(this->trigger_effect_preset, sizeof(this->trigger_effect_preset), "%s",
-                 value[0] ? value : "custom");
-      } else if (strcmp(line, "trigger_effects") == 0) {
-        this->trigger_effects = strcmp(value, "true") == 0 || atoi(value) != 0;
       } else if (strcmp(line, "volume") == 0) {
         int v = atoi(value);
         this->volume = v < 0 ? 0 : (v > 100 ? 100 : v);
@@ -1829,14 +1676,6 @@ private:
     fprintf(f, "idle_timeout_ms=%d\n", this->idle_timeout_ms);
     fprintf(f, "idle_warn_grace_ms=%d\n", this->idle_warn_grace_ms);
     fprintf(f, "poweroff_when_idle_ms=%d\n", this->poweroff_when_idle_ms);
-    fprintf(f, "trigger_effect_amplitude=%d\n", this->trigger_effect_amplitude);
-    fprintf(f, "trigger_effect_position=%d\n", this->trigger_effect_position);
-    fprintf(f, "trigger_effect_frequency=%d\n", this->trigger_effect_frequency);
-    fprintf(f, "trigger_effect_end=%d\n", this->trigger_effect_end);
-    fprintf(f, "trigger_effect_period=%d\n", this->trigger_effect_period);
-    fprintf(f, "trigger_effect_amplitude_b=%d\n", this->trigger_effect_amplitude_b);
-    fprintf(f, "trigger_effect_preset=%s\n", this->trigger_effect_preset);
-    fprintf(f, "trigger_effects=%s\n", this->trigger_effects ? "true" : "false");
     fprintf(f, "haptic_subwoofer=%s\n", this->haptic_subwoofer ? "true" : "false");
     fprintf(f, "haptic_cutoff_hz=%d\n", this->haptic_cutoff_hz);
     fprintf(f, "haptic_gain=%d\n", this->haptic_gain);
@@ -2194,79 +2033,6 @@ private:
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;
-  }
-
-  static int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
-
-  static int triggerZone(int pct) {
-    int zone = (clampInt(pct, 0, 100) + 5) / 10;
-    return zone > 9 ? 9 : zone;
-  }
-
-  static int triggerStrength(int pct) {
-    if (pct <= 0) return 0;
-    int strength = (clampInt(pct, 0, 100) * 8 + 99) / 100;
-    return clampInt(strength, 1, 8);
-  }
-
-  static int triggerFrequency(int pct) {
-    int hz = (clampInt(pct, 0, 100) * 28 + 50) / 100;
-    return hz < 1 ? 1 : hz;
-  }
-
-  static bool encodeTriggerZones(uint8_t *params, int start, int strength, int frequency) {
-    memset(params, 0, 10);
-    if (strength <= 0) return false;
-    start = clampInt(start, 0, 9);
-    uint16_t zones = 0;
-    uint32_t packed = 0;
-    uint32_t value = static_cast<uint32_t>(((strength - 1) & 7));
-    for (int zone = start; zone < 10; zone++) {
-      zones |= static_cast<uint16_t>((1u << zone));
-      packed |= value << (3 * zone);
-    }
-    params[0] = static_cast<uint8_t>((zones & 0xFF));
-    params[1] = static_cast<uint8_t>((zones >> 8));
-    params[2] = static_cast<uint8_t>((packed & 0xFF));
-    params[3] = static_cast<uint8_t>(((packed >> 8) & 0xFF));
-    params[4] = static_cast<uint8_t>(((packed >> 16) & 0xFF));
-    params[5] = static_cast<uint8_t>(((packed >> 24) & 0xFF));
-    params[9] = static_cast<uint8_t>(frequency);
-    return true;
-  }
-
-  static bool encodeTriggerWeapon(uint8_t *params, int start, int end, int strength) {
-    memset(params, 0, 10);
-    if (strength <= 0) return false;
-    start = clampInt(start, 2, 7);
-    end = clampInt(end, start + 1, 8);
-    uint16_t zones = static_cast<uint16_t>(((1u << start) | (1u << end)));
-    params[0] = static_cast<uint8_t>((zones & 0xFF));
-    params[1] = static_cast<uint8_t>((zones >> 8));
-    params[2] = static_cast<uint8_t>(((strength - 1) & 7));
-    return true;
-  }
-
-  static const TriggerPreset *findTriggerPreset(const char *id) {
-    for (const TriggerPreset &preset : kTriggerPresets)
-      if (strcmp(preset.id, id) == 0) return &preset;
-    return nullptr;
-  }
-
-  static int encodeTriggerPreset(const TriggerPreset &preset, uint8_t *params) {
-    int start = triggerZone(preset.start_pct);
-    int strength = triggerStrength(preset.force_pct);
-    if (strength <= 0) {
-      memset(params, 0, 10);
-      return 0x05;
-    }
-    if (preset.mode == 0x25)
-      encodeTriggerWeapon(params, start, triggerZone(preset.wall_pct), strength);
-    else if (preset.mode == 0x26)
-      encodeTriggerZones(params, start, strength, triggerFrequency(preset.wall_pct));
-    else
-      encodeTriggerZones(params, start, strength, 0);
-    return preset.mode;
   }
 
   void pulseIdleWarning() {
