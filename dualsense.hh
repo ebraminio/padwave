@@ -446,16 +446,16 @@ public:
     constexpr bool isValid() const { return this->mode != Type::Invalid; }
 
     static constexpr const TriggerEffect off() {
-      TriggerEffect effect;
+      TriggerEffect effect{};
       effect.mode = Type::Off;
       return effect;
     }
 
     // Official: constant resistance from `position` to the end.
     static constexpr const TriggerEffect feedback(uint8_t position, uint8_t strength) {
-      TriggerEffect effect;
       if (position > 9 || strength > 8) return TriggerEffect{};
       if (strength == 0) return off();
+      TriggerEffect effect{};
       effect.mode     = Type::Feedback;
       uint16_t active = 0;
       uint32_t force  = 0;
@@ -475,9 +475,9 @@ public:
 
     // Official: resistance between start and end, releasing past the end.
     static constexpr const TriggerEffect weapon(uint8_t start, uint8_t end, uint8_t strength) {
-      TriggerEffect effect;
       if (start > 7 || start < 2 || end > 8 || end <= start || strength > 8) return TriggerEffect{};
       if (strength == 0) return off();
+      TriggerEffect effect{};
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       effect.mode          = Type::Weapon;
       effect.parameters[0] = static_cast<uint8_t>(zones & 0xFF);
@@ -489,9 +489,9 @@ public:
     // Official: vibration from `position` onward.
     static constexpr const TriggerEffect vibration(uint8_t position, uint8_t amplitude,
                                                    uint8_t frequency) {
-      TriggerEffect effect;
       if (position > 9 || amplitude > 8) return TriggerEffect{};
       if (amplitude == 0 || frequency == 0) return off();
+      TriggerEffect effect{};
       effect.mode     = Type::Vibration;
       uint16_t active = 0;
       uint32_t levels = 0;
@@ -512,11 +512,11 @@ public:
 
     // Official: per-zone resistance levels (0..8).
     static constexpr const TriggerEffect multiplePositionFeedback(const uint8_t *strength) {
-      TriggerEffect effect;
       bool any = false;
       for (unsigned i = 0; i < 10; ++i)
         if (strength[i] > 0) any = true;
       if (!any) return off();
+      TriggerEffect effect{};
       effect.mode     = Type::Feedback;
       uint16_t active = 0;
       uint32_t force  = 0;
@@ -558,11 +558,11 @@ public:
     // Official: per-zone vibration amplitudes with one frequency.
     static constexpr const TriggerEffect multiplePositionVibration(uint8_t frequency,
                                                                    const uint8_t *amplitude) {
-      TriggerEffect effect;
       bool any = false;
       for (unsigned i = 0; i < 10; ++i)
         if (amplitude[i] > 0) any = true;
       if (frequency == 0 || !any) return off();
+      TriggerEffect effect{};
       effect.mode     = Type::Vibration;
       uint16_t active = 0;
       uint32_t levels = 0;
@@ -585,9 +585,9 @@ public:
     // Unofficial firmware effects.
     static constexpr const TriggerEffect bow(uint8_t start, uint8_t end, uint8_t strength,
                                              uint8_t snap) {
-      TriggerEffect effect;
       if (start > 8 || end > 8 || start >= end || strength > 8 || snap > 8) return TriggerEffect{};
       if (end == 0 || strength == 0 || snap == 0) return off();
+      TriggerEffect effect{};
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t pair        = static_cast<uint32_t>((strength - 1) & 0x07) |
                              (static_cast<uint32_t>((snap - 1) & 0x07) << 3);
@@ -601,11 +601,11 @@ public:
 
     static constexpr const TriggerEffect galloping(uint8_t start, uint8_t end, uint8_t first_foot,
                                                    uint8_t second_foot, uint8_t frequency) {
-      TriggerEffect effect;
       if (start > 8 || end > 9 || start >= end || second_foot > 7 || first_foot > 6 ||
           first_foot >= second_foot)
         return TriggerEffect{};
       if (frequency == 0) return off();
+      TriggerEffect effect{};
       uint16_t zones       = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint32_t ratio       = static_cast<uint32_t>(second_foot & 0x07) |
                              (static_cast<uint32_t>(first_foot & 0x07) << 3);
@@ -620,10 +620,10 @@ public:
     static constexpr const TriggerEffect machine(uint8_t start, uint8_t end, uint8_t amplitude_a,
                                                  uint8_t amplitude_b, uint8_t frequency,
                                                  uint8_t period) {
-      TriggerEffect effect;
       if (start > 8 || end > 9 || end <= start || amplitude_a > 7 || amplitude_b > 7)
         return TriggerEffect{};
       if (frequency == 0) return off();
+      TriggerEffect effect{};
       uint16_t zones = static_cast<uint16_t>((uint16_t{1} << start) | (uint16_t{1} << end));
       uint8_t pair   = static_cast<uint8_t>((amplitude_a & 0x07) | ((amplitude_b & 0x07) << 3));
       effect.mode    = Type::Machine;
@@ -637,7 +637,7 @@ public:
 
     // Firmware leftovers with simpler logic and no parameter validation.
     static constexpr const TriggerEffect simpleFeedback(uint8_t position, uint8_t strength) {
-      TriggerEffect effect;
+      TriggerEffect effect{};
       effect.mode          = Type::SimpleFeedback;
       effect.parameters[0] = position;
       effect.parameters[1] = strength;
@@ -646,7 +646,7 @@ public:
 
     static constexpr const TriggerEffect simpleWeapon(uint8_t start, uint8_t end,
                                                       uint8_t strength) {
-      TriggerEffect effect;
+      TriggerEffect effect{};
       effect.mode          = Type::SimpleWeapon;
       effect.parameters[0] = start;
       effect.parameters[1] = end;
@@ -656,8 +656,8 @@ public:
 
     static constexpr const TriggerEffect simpleVibration(uint8_t position, uint8_t amplitude,
                                                          uint8_t frequency) {
-      TriggerEffect effect;
       if (frequency == 0 || amplitude == 0) return off();
+      TriggerEffect effect{};
       effect.mode          = Type::SimpleVibration;
       effect.parameters[0] = frequency;
       effect.parameters[1] = amplitude;
@@ -667,9 +667,9 @@ public:
 
     // Firmware leftovers with narrower validation ranges.
     static constexpr const TriggerEffect limitedFeedback(uint8_t position, uint8_t strength) {
-      TriggerEffect effect;
       if (strength > 10) return TriggerEffect{};
       if (strength == 0) return off();
+      TriggerEffect effect{};
       effect.mode          = Type::LimitedFeedback;
       effect.parameters[0] = position;
       effect.parameters[1] = strength;
@@ -678,9 +678,9 @@ public:
 
     static constexpr const TriggerEffect limitedWeapon(uint8_t start, uint8_t end,
                                                        uint8_t strength) {
-      TriggerEffect effect;
       if (start < 0x10 || end < start || end > start + 100 || strength > 10) return TriggerEffect{};
       if (strength == 0) return off();
+      TriggerEffect effect{};
       effect.mode          = Type::LimitedWeapon;
       effect.parameters[0] = start;
       effect.parameters[1] = end;
@@ -747,7 +747,7 @@ public:
     static constexpr const TriggerEffect rewasdPulse() { return simpleWeapon(0x00, 0x00, 0x00); }
 
     static constexpr const TriggerEffect rewasdChoppy() {
-      TriggerEffect effect;
+      TriggerEffect effect{};
       effect.mode          = Type::Feedback;
       effect.parameters[0] = 0x02;
       effect.parameters[1] = 0x27;
@@ -766,8 +766,8 @@ public:
     static constexpr const TriggerEffect rewasdHalfPress() { return simpleFeedback(0x55, 0x64); }
 
     static constexpr const TriggerEffect rewasdRifle(uint8_t frequency = 10) {
-      TriggerEffect effect;
       if (frequency < 2 || frequency > 20) return TriggerEffect{};
+      TriggerEffect effect{};
       effect.mode          = Type::Vibration;
       effect.parameters[1] = 0x03;
       effect.parameters[5] = 0x3F;
@@ -777,8 +777,8 @@ public:
 
     static constexpr const TriggerEffect rewasdVibration(uint8_t strength  = 220,
                                                          uint8_t frequency = 30) {
-      TriggerEffect effect;
       if (strength < 1 || frequency < 1) return TriggerEffect{};
+      TriggerEffect effect{};
       effect.mode          = Type::Vibration;
       effect.parameters[1] = 0x03;
       effect.parameters[5] = strength;
