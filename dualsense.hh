@@ -470,10 +470,14 @@ public:
   private:
     static constexpr int zoneCount    = 10;
     static constexpr uint8_t maxLevel = 8;
-    uint8_t block[11] = {static_cast<uint8_t>(Type::Off)};
+    uint8_t block[11] = {};
 
   public:
-    constexpr TriggerEffect() { off(); }
+    constexpr TriggerEffect() { clearBlock(); }
+
+    constexpr void clearBlock() {
+      for (size_t i = 0; i < sizeof(block); ++i) block[i] = 0;
+    }
 
     constexpr uint8_t mode() const { return block[0]; }
     constexpr uint8_t parameter(size_t index) const { return block[index + 1]; }
@@ -483,8 +487,8 @@ public:
     }
 
     constexpr bool off() {
+      clearBlock();
       block[0] = static_cast<uint8_t>(Type::Off);
-      zero();
       return true;
     }
 

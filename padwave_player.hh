@@ -665,20 +665,24 @@ public:
     state.clearPlayerLeds();
     state.clearOneShotLightbar();
 
-    // Claim both trigger blocks. The untouched side is re-sent unchanged, so
-    // the firmware never has to infer it from a one-sided update.
+    // One-sided update: the untouched block stays all zero, matching the
+    // reference one-sided writers. Only the selected valid bit is claimed.
     if (usb) {
       dualsense::UsbOutputReport report{};
       report.init();
-      report.body().setLeftTriggerEffect(left_effect);
-      report.body().setRightTriggerEffect(right_effect);
+      if (left)
+        report.body().setLeftTriggerEffect(effect);
+      else
+        report.body().setRightTriggerEffect(effect);
       writeDevice(&report, sizeof(report));
       return;
     }
     dualsense::OutputReport report{};
     report.init(output_sequence);
-    report.body().setLeftTriggerEffect(left_effect);
-    report.body().setRightTriggerEffect(right_effect);
+    if (left)
+      report.body().setLeftTriggerEffect(effect);
+    else
+      report.body().setRightTriggerEffect(effect);
     report.sign();
     writeDevice(&report, sizeof(report));
   }
