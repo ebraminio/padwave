@@ -470,59 +470,32 @@
         <button id="labRumStop">stop</button>
       </div>
 
-      <div class="lab-row">
-        <b>trigger effect</b>
-        <select id="labTrigSide"><option value="left">left</option><option value="right" selected>right</option></select>
-        <select id="labTrigPreset" title="TriggerEffect type">
-          <option value="off" selected>off</option>
-          <optgroup label="official">
-            <option value="feedback">feedback</option>
-            <option value="weapon">weapon</option>
-            <option value="vibration">vibration</option>
-            <option value="slope">slope feedback</option>
-          </optgroup>
-          <optgroup label="unofficial">
-            <option value="bow">bow</option>
-            <option value="galloping">galloping</option>
-            <option value="machine">machine</option>
-          </optgroup>
-          <optgroup label="simple">
-            <option value="simple-feedback">simple feedback</option>
-            <option value="simple-weapon">simple weapon</option>
-            <option value="simple-vibration">simple vibration</option>
-          </optgroup>
-          <optgroup label="limited">
-            <option value="limited-feedback">limited feedback</option>
-            <option value="limited-weapon">limited weapon</option>
-          </optgroup>
-          <optgroup label="reWASD">
-            <option value="rewasd-full">full press</option>
-            <option value="rewasd-soft">soft press</option>
-            <option value="rewasd-medium">medium press</option>
-            <option value="rewasd-hard">hard press</option>
-            <option value="rewasd-pulse">pulse</option>
-            <option value="rewasd-choppy">choppy</option>
-            <option value="rewasd-soft-rigidity">soft rigidity</option>
-            <option value="rewasd-medium-rigidity">medium rigidity</option>
-            <option value="rewasd-max-rigidity">max rigidity</option>
-            <option value="rewasd-half-press">half press</option>
-            <option value="rewasd-rifle">rifle</option>
-            <option value="rewasd-vibration">vibration</option>
-          </optgroup>
-        </select>
-        <label>start <input type="number" id="labP0" value="2" min="0" max="9" style="width:52px"></label>
-        <label>end <input type="number" id="labTrigEnd" value="8" min="0" max="9" style="width:52px"></label>
-        <label>level <input type="number" id="labP1" value="2" min="0" max="8" style="width:52px"></label>
-        <label>Hz <input type="number" id="labP2" value="25" min="1" max="255" style="width:58px"></label>
-        <label>period <input type="number" id="labTrigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-        <label>B <input type="number" id="labTrigAmpB" value="4" min="0" max="7" style="width:48px"></label>
-        <span id="labTrigHint" style="font-size:11px">off</span>
-        <button id="labTrigFire">fire 900ms</button>
-        <label title="apply this trigger effect while R2/L2 changes the volume"><input type="checkbox" id="teOn"> on volume</label>
-        <button id="teTestL" title="apply the selected effect to the left trigger">test L</button>
-        <button id="teTestR" title="apply the selected effect to the right trigger">test R</button>
+      <div class="lab-row" data-trigger="left">
+        <b>L trigger</b>
+        <select class="trigMode" title="TriggerEffect method"></select>
+        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <button class="trigApply">apply</button>
+        <button class="trigOff">off</button>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
       </div>
-
+      <div class="lab-row" data-trigger="right">
+        <b>R trigger</b>
+        <select class="trigMode" title="TriggerEffect method"></select>
+        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <button class="trigApply">apply</button>
+        <button class="trigOff">off</button>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)">off</span>
+      </div>
       <div class="lab-row">
         <b>haptic sub</b>
         <label title="low-pass music into the DualSense actuators (USB channels 3/4 or BT haptic PCM)">
@@ -759,18 +732,6 @@ function render(s) {
 
   const cfg = s.config || {};
 
-  if (document.activeElement !== $("#labP0") && cfg.trigger_effect_position != null)
-    $("#labP0").value = cfg.trigger_effect_position;
-  if (document.activeElement !== $("#labP1") && cfg.trigger_effect_amplitude != null)
-    $("#labP1").value = cfg.trigger_effect_amplitude;
-  if (document.activeElement !== $("#labP2") && cfg.trigger_effect_frequency != null)
-    $("#labP2").value = cfg.trigger_effect_frequency;
-  if (document.activeElement !== $("#labTrigEnd") && cfg.trigger_effect_end != null)
-    $("#labTrigEnd").value = cfg.trigger_effect_end;
-  if (document.activeElement !== $("#labTrigPeriod") && cfg.trigger_effect_period != null)
-    $("#labTrigPeriod").value = cfg.trigger_effect_period;
-  if (document.activeElement !== $("#labTrigAmpB") && cfg.trigger_effect_amplitude_b != null)
-    $("#labTrigAmpB").value = cfg.trigger_effect_amplitude_b;
   if (document.activeElement !== $("#hapticSub"))
     $("#hapticSub").checked = cfg.haptic_subwoofer === true;
   if (document.activeElement !== $("#hapticOnly"))
@@ -779,17 +740,6 @@ function render(s) {
     $("#hapticCutoff").value = cfg.haptic_cutoff_hz;
   if (document.activeElement !== $("#hapticGain") && cfg.haptic_gain != null)
     $("#hapticGain").value = cfg.haptic_gain;
-  if (document.activeElement !== $("#labTrigPreset")) {
-    let effect = cfg.trigger_effect_preset || "off";
-    if (effect === "none") effect = "off";
-    const effects = [...$("#labTrigPreset").options].map(o => o.value);
-    if (!effects.includes(effect)) effect = "off";
-    $("#labTrigPreset").value = effect;
-    syncTriggerControls();
-  }
-  if (document.activeElement !== $("#teOn"))
-    $("#teOn").checked = cfg.trigger_effects !== false;
-
   if (document.activeElement !== $("#idleMin") && cfg.idle_timeout_ms)
     $("#idleMin").value = Math.round(cfg.idle_timeout_ms / 60000);
   if (document.activeElement !== $("#warnSec") && cfg.idle_warn_grace_ms)
@@ -1251,99 +1201,122 @@ $("#labRumBuzz").onclick = () => labSend({
 });
 $("#labRumStop").onclick = () => labSend({ kind: "rumble", left: 0, right: 0, ms: 0 });
 
-function syncTriggerControls() {
-  const effect = $("#labTrigPreset").value;
+const triggerModeGroups = [
+  ["official", [["feedback", "feedback"], ["weapon", "weapon"],
+                ["vibration", "vibration"], ["slope", "slope feedback"]]],
+  ["unofficial", [["bow", "bow"], ["galloping", "galloping"], ["machine", "machine"]]],
+  ["simple", [["simple-feedback", "simple feedback"],
+              ["simple-weapon", "simple weapon"],
+              ["simple-vibration", "simple vibration"]]],
+  ["limited", [["limited-feedback", "limited feedback"],
+               ["limited-weapon", "limited weapon"]]],
+  ["reWASD", [["rewasd-full", "full press"], ["rewasd-soft", "soft press"],
+              ["rewasd-medium", "medium press"], ["rewasd-hard", "hard press"],
+              ["rewasd-pulse", "pulse"], ["rewasd-choppy", "choppy"],
+              ["rewasd-soft-rigidity", "soft rigidity"],
+              ["rewasd-medium-rigidity", "medium rigidity"],
+              ["rewasd-max-rigidity", "max rigidity"],
+              ["rewasd-half-press", "half press"],
+              ["rewasd-rifle", "rifle"], ["rewasd-vibration", "vibration"]]],
+];
+
+const triggerHints = {
+  off: "off",
+  feedback: "start..end, level",
+  weapon: "start..end, level",
+  vibration: "start..end, level, Hz",
+  slope: "start/end, start level, end level in B",
+  machine: "start/end, levels A/B, Hz, period",
+  bow: "start/end, level, snap force in B",
+  galloping: "start/end, foot A/B, Hz",
+  "simple-feedback": "start, level",
+  "simple-weapon": "start/end, level",
+  "simple-vibration": "start, level, Hz",
+  "limited-feedback": "start, level 0..10",
+  "limited-weapon": "start >=16, end, level 0..10",
+  "rewasd-rifle": "Hz 2..20",
+  "rewasd-vibration": "level, Hz",
+  "rewasd-full": "full press preset",
+  "rewasd-soft": "soft press preset",
+  "rewasd-medium": "medium press preset",
+  "rewasd-hard": "hard press preset",
+  "rewasd-pulse": "pulse preset",
+  "rewasd-choppy": "choppy preset",
+  "rewasd-soft-rigidity": "soft rigidity preset",
+  "rewasd-medium-rigidity": "medium rigidity preset",
+  "rewasd-max-rigidity": "max rigidity preset",
+  "rewasd-half-press": "half-press preset",
+};
+
+function fillTriggerModes(row) {
+  const select = row.querySelector(".trigMode");
+  const off = document.createElement("option");
+  off.value = "off";
+  off.textContent = "off";
+  select.appendChild(off);
+  for (const [label, entries] of triggerModeGroups) {
+    const group = document.createElement("optgroup");
+    group.label = label;
+    for (const [value, text] of entries) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+  select.value = "off";
+}
+
+function syncTriggerRow(row) {
+  const effect = row.querySelector(".trigMode").value;
   const rewasdPreset = effect.startsWith("rewasd-") &&
                        !["rewasd-rifle", "rewasd-vibration"].includes(effect);
-  const noParams = effect === "off" || effect === "none" || rewasdPreset;
+  const noParams = effect === "off" || rewasdPreset;
   const usesStart = !noParams && !["rewasd-rifle", "rewasd-vibration"].includes(effect);
-  const usesEnd = usesStart && !["simple-feedback", "limited-feedback", "simple-vibration"].includes(effect);
+  const usesEnd = usesStart &&
+                  !["simple-feedback", "limited-feedback", "simple-vibration"].includes(effect);
   const usesLevel = !noParams && effect !== "rewasd-rifle";
   const usesFreq = ["vibration", "machine", "galloping", "simple-vibration",
-                     "rewasd-rifle", "rewasd-vibration"].includes(effect);
+                    "rewasd-rifle", "rewasd-vibration"].includes(effect);
   const usesPeriod = effect === "machine";
   const usesB = ["bow", "galloping", "slope", "machine"].includes(effect);
-  $("#labP0").disabled = !usesStart;
-  $("#labTrigEnd").disabled = !usesEnd;
-  $("#labP1").disabled = !usesLevel;
-  $("#labP2").disabled = !usesFreq;
-  $("#labTrigPeriod").disabled = !usesPeriod;
-  $("#labTrigAmpB").disabled = !usesB;
-  $("#labP0").max = effect === "limited-weapon" ? 255 : 9;
-  $("#labTrigEnd").max = effect === "limited-weapon" ? 255 : 9;
-  $("#labP1").max = ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
-  const hints = {
-    off: "off",
-    feedback: "feedback: start..end, level",
-    weapon: "weapon: start 2..7, end start+1..8, level",
-    vibration: "vibration: start..end, level, Hz",
-    slope: "slope: start/end, start level, end level in B",
-    machine: "machine: start/end, levels A/B, Hz, period",
-    bow: "bow: start/end, level, snap force in B",
-    galloping: "galloping: start/end, foot A/B, Hz",
-    "simple-feedback": "simple feedback: start, level (unchecked)",
-    "simple-weapon": "simple weapon: start/end, level (unchecked)",
-    "simple-vibration": "simple vibration: start, level, Hz (unchecked)",
-    "limited-feedback": "limited feedback: start, level 0..10",
-    "limited-weapon": "limited weapon: start >=16, end, level 0..10",
-    "rewasd-rifle": "reWASD rifle: Hz 2..20",
-    "rewasd-vibration": "reWASD vibration: level, Hz",
-    "rewasd-full": "reWASD full press preset",
-    "rewasd-soft": "reWASD soft press preset",
-    "rewasd-medium": "reWASD medium press preset",
-    "rewasd-hard": "reWASD hard press preset",
-    "rewasd-pulse": "reWASD pulse preset",
-    "rewasd-choppy": "reWASD choppy preset",
-    "rewasd-soft-rigidity": "reWASD soft rigidity preset",
-    "rewasd-medium-rigidity": "reWASD medium rigidity preset",
-    "rewasd-max-rigidity": "reWASD max rigidity preset",
-    "rewasd-half-press": "reWASD half-press preset",
-  };
-  $("#labTrigHint").textContent = hints[effect] || "off";
+  row.querySelector(".trigStart").disabled = !usesStart;
+  row.querySelector(".trigEnd").disabled = !usesEnd;
+  row.querySelector(".trigLevel").disabled = !usesLevel;
+  row.querySelector(".trigFreq").disabled = !usesFreq;
+  row.querySelector(".trigPeriod").disabled = !usesPeriod;
+  row.querySelector(".trigB").disabled = !usesB;
+  row.querySelector(".trigStart").max = effect === "limited-weapon" ? 255 : 9;
+  row.querySelector(".trigEnd").max = effect === "limited-weapon" ? 255 : 9;
+  row.querySelector(".trigLevel").max =
+      ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
+  row.querySelector(".trigHint").textContent = triggerHints[effect] || "off";
 }
 
-function triggerPayload(side, ms) {
-  const effect = $("#labTrigPreset").value;
-  const payload = {
+function triggerPayloadFor(row) {
+  return {
     kind: "trigger",
-    side,
-    effect: effect === "none" ? "off" : effect,
-    start: Number($("#labP0").value),
-    end: Number($("#labTrigEnd").value),
-    level: Number($("#labP1").value),
-    frequency: Number($("#labP2").value),
-    period: Number($("#labTrigPeriod").value),
-    amplitude_b: Number($("#labTrigAmpB").value),
-    ms,
+    side: row.dataset.trigger,
+    effect: row.querySelector(".trigMode").value,
+    start: Number(row.querySelector(".trigStart").value),
+    end: Number(row.querySelector(".trigEnd").value),
+    level: Number(row.querySelector(".trigLevel").value),
+    frequency: Number(row.querySelector(".trigFreq").value),
+    period: Number(row.querySelector(".trigPeriod").value),
+    amplitude_b: Number(row.querySelector(".trigB").value),
+    ms: 0,
   };
-  if (payload.effect === "off") payload.ms = 0;
-  return payload;
 }
 
-$("#labTrigPreset").addEventListener("change", () => {
-  syncTriggerControls();
-  pushTriggerConfig({ trigger_effect_preset: $("#labTrigPreset").value });
-});
-syncTriggerControls();
-
-$("#labTrigFire").onclick = () => labSend(triggerPayload($("#labTrigSide").value, 900));
-for (const [id, side] of [["teTestL", "left"], ["teTestR", "right"]]) {
-  $(`#${id}`).onclick = () => labSend(triggerPayload(side, 700));
-}
-
-for (const [id, key] of [["labP0", "trigger_effect_position"],
-                         ["labP1", "trigger_effect_amplitude"],
-                         ["labP2", "trigger_effect_frequency"],
-                         ["labTrigEnd", "trigger_effect_end"],
-                         ["labTrigPeriod", "trigger_effect_period"],
-                         ["labTrigAmpB", "trigger_effect_amplitude_b"]]) {
-  $(`#${id}`).addEventListener("input", (e) => {
-    pushTriggerConfig({ [key]: Number(e.target.value) });
-  });
-}
-
-$("#teOn").addEventListener("change", (e) => {
-  pushTriggerConfig({ trigger_effects: e.target.checked });
+document.querySelectorAll("[data-trigger]").forEach((row) => {
+  fillTriggerModes(row);
+  const select = row.querySelector(".trigMode");
+  select.addEventListener("change", () => syncTriggerRow(row));
+  row.querySelector(".trigApply").onclick = () => labSend(triggerPayloadFor(row));
+  row.querySelector(".trigOff").onclick = () =>
+    labSend({ kind: "trigger", side: row.dataset.trigger, effect: "off", ms: 0 });
+  syncTriggerRow(row);
 });
 
 $("#labRawSend").onclick = async () => {
