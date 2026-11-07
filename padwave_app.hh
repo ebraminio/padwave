@@ -287,6 +287,7 @@ private:
   bool idle_volume_saved = false;
   int idle_volume = 0;
   int idle_fade_volume = -1;
+  long idle_activity_ignore_until = 0;
   long poweroff_at = 0;
   bool powered_off = false;
 
@@ -1646,6 +1647,7 @@ private:
 
   void inputEvent(const char *) {
     if (this->padwaveDisabled()) return;
+    if (this->idle_warning && nowMs() < this->idle_activity_ignore_until) return;
     noteActivity();
   }
 
@@ -2267,6 +2269,9 @@ private:
     if (this->rumble_until || this->idle_rumble_until) return;
     outputFields("motor_left=64;motor_right=64");
     this->idle_rumble_until = nowMs() + 300;
+    // The controller's own accelerometer reports the pulse as motion; do not
+    // let that motion cancel the warning/fade.
+    this->idle_activity_ignore_until = nowMs() + 1200;
   }
 
   void serviceOutput() {
