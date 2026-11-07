@@ -479,6 +479,7 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
       </div>
       <div class="lab-row" data-trigger="right">
         <b>R trigger</b>
@@ -489,6 +490,7 @@
         <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
         <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
       </div>
       <div class="lab-row">
         <b>haptic sub</b>
@@ -1214,6 +1216,12 @@ const triggerModeGroups = [
               ["rewasd-rifle", "rifle"], ["rewasd-vibration", "vibration"]]],
 ];
 
+const triggerRangeHints = {
+  "limited-feedback": "level 0..10",
+  "limited-weapon": "start 16..255, end start..start+100, level 0..10",
+  "rewasd-rifle": "Hz 2..20",
+};
+
 function fillTriggerModes(row) {
   const select = row.querySelector(".trigMode");
   const off = document.createElement("option");
@@ -1255,6 +1263,9 @@ function syncTriggerRow(row) {
   row.querySelector(".trigEnd").max = effect === "limited-weapon" ? 255 : 9;
   row.querySelector(".trigLevel").max =
       ["limited-feedback", "limited-weapon"].includes(effect) ? 10 : 8;
+  const hint = row.querySelector(".trigHint");
+  hint.textContent = triggerRangeHints[effect] || "";
+  hint.hidden = !triggerRangeHints[effect];
 }
 
 function triggerPayloadFor(row) {
