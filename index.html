@@ -1277,12 +1277,10 @@ function syncTriggerRow(row) {
                     "rewasd-rifle", "rewasd-vibration"].includes(effect);
   const usesPeriod = effect === "machine";
   const usesB = ["bow", "galloping", "slope", "machine"].includes(effect);
-  row.querySelector(".trigStart").disabled = !usesStart;
-  row.querySelector(".trigEnd").disabled = !usesEnd;
-  row.querySelector(".trigLevel").disabled = !usesLevel;
-  row.querySelector(".trigFreq").disabled = !usesFreq;
-  row.querySelector(".trigPeriod").disabled = !usesPeriod;
-  row.querySelector(".trigB").disabled = !usesB;
+  for (const [cls, show] of [["trigStart", usesStart], ["trigEnd", usesEnd],
+                             ["trigLevel", usesLevel], ["trigFreq", usesFreq],
+                             ["trigPeriod", usesPeriod], ["trigB", usesB]])
+    row.querySelector(`.${cls}`).closest("label").hidden = !show;
   row.querySelector(".trigStart").max = effect === "limited-weapon" ? 255 : 9;
   row.querySelector(".trigEnd").max = effect === "limited-weapon" ? 255 : 9;
   row.querySelector(".trigLevel").max =
@@ -1292,8 +1290,7 @@ function syncTriggerRow(row) {
 
 function triggerPayloadFor(row) {
   return {
-    kind: "trigger",
-    side: row.dataset.trigger,
+    kind: `${row.dataset.trigger}_trigger`,
     effect: row.querySelector(".trigMode").value,
     start: Number(row.querySelector(".trigStart").value),
     end: Number(row.querySelector(".trigEnd").value),

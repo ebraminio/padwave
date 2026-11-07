@@ -45,16 +45,6 @@ inline const u8_field kU8Fields[] = {
     {"lightbar_setup", nullptr},
 };
 
-inline bool hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
-  if (strlen(hex) != len * 2) return false;
-  for (size_t i = 0; i < len; i++) {
-    unsigned value = 0;
-    if (sscanf(hex + i * 2, "%2x", &value) != 1) return false;
-    out[i] = static_cast<uint8_t>(value);
-  }
-  return true;
-}
-
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
 inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
   char copy[4096];
@@ -87,18 +77,6 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
       if (sscanf(value, "%u,%u,%u", &red, &green, &blue) != 3) return false;
       body->setLightbar(static_cast<uint8_t>(red), static_cast<uint8_t>(green),
                         static_cast<uint8_t>(blue));
-      continue;
-    }
-
-    if (strcmp(name, "right_trigger_effect") == 0 ||
-        strcmp(name, "left_trigger_effect") == 0) {
-      uint8_t effect[11] = {};
-      static_assert(sizeof(Body::TriggerEffect) == sizeof(effect), "TriggerEffect must be 11 bytes");
-      if (!hex_to_bytes(value, effect, sizeof(effect))) return false;
-      if (name[0] == 'l')
-        body->setLeftTriggerEffect(reinterpret_cast<const Body::TriggerEffect &>(effect));
-      else
-        body->setRightTriggerEffect(reinterpret_cast<const Body::TriggerEffect &>(effect));
       continue;
     }
 

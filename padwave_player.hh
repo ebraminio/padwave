@@ -652,6 +652,28 @@ private:
   }
 
 public:
+  void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
+    if (left)
+      state.setLeftTriggerEffect(effect);
+    else
+      state.setRightTriggerEffect(effect);
+    state.clearPlayerLeds();
+    state.clearOneShotLightbar();
+
+    if (usb) {
+      dualsense::UsbOutputReport report{};
+      report.init();
+      report.body() = state;
+      writeDevice(&report, sizeof(report));
+      return;
+    }
+    dualsense::OutputReport report{};
+    report.init(output_sequence);
+    report.body() = state;
+    report.sign();
+    writeDevice(&report, sizeof(report));
+  }
+
   int firmwareInfo(char *dest, size_t cap) {
     if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
     dualsense::Firmware info{};

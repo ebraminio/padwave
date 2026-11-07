@@ -978,11 +978,15 @@ public:
       return snprintf(out, out_cap, "ok=true\nnote=rumble %d/%d\n", left, right);
     }
 
-    if (strcmp(kind, "trigger") == 0) {
+    if (strcmp(kind, "trigger") == 0 || strcmp(kind, "left_trigger") == 0 ||
+        strcmp(kind, "right_trigger") == 0) {
       char side[16] = "right";
       char preset[32] = "";
       char effect[32] = "vibration";
-      kvGet(body, "side", side, sizeof(side));
+      if (strcmp(kind, "left_trigger") == 0)
+        snprintf(side, sizeof(side), "left");
+      else if (strcmp(kind, "trigger") == 0)
+        kvGet(body, "side", side, sizeof(side));
       kvGet(body, "preset", preset, sizeof(preset));
       kvGet(body, "effect", effect, sizeof(effect));
       int position = static_cast<int>(kvNumber(body, "position", 2));
@@ -1086,14 +1090,11 @@ public:
       uint8_t effect_bytes[11] = {};
       effect_bytes[0] = static_cast<uint8_t>(mode);
       memcpy(effect_bytes + 1, params, sizeof(params));
-      char effect_text[23];
-      for (size_t i = 0; i < sizeof(effect_bytes); i++)
-        snprintf(effect_text + i * 2, sizeof(effect_text) - i * 2, "%02x", effect_bytes[i]);
+      if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
 
       bool left = strcmp(side, "left") == 0;
-      const char *prefix = left ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_effect=%s", prefix, effect_text);
-      outputFields(fields);
+      this->player.setTriggerEffect(
+          left, reinterpret_cast<const dualsense::OutputBody::TriggerEffect &>(effect_bytes));
       this->trigger_side = left ? 1 : 2;
       this->trigger_until = (ms > 0 && mode != 0x05) ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=trigger %s 0x%02x %s\n", side,
@@ -2281,10 +2282,8 @@ private:
       this->rumble_until = 0;
     }
     if (this->trigger_until && now >= this->trigger_until) {
-      char fields[192];
-      const char *prefix = this->trigger_side == 1 ? "left" : "right";
-      snprintf(fields, sizeof(fields), "%s_trigger_effect=0500000000000000000000", prefix);
-      outputFields(fields);
+      dualsense::OutputBody::TriggerEffect off;
+      if (this->player) this->player.setTriggerEffect(this->trigger_side == 1, off);
       this->trigger_until = 0;
       this->trigger_side = 0;
     }
