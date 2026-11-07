@@ -1580,10 +1580,12 @@ private:
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
+#ifdef DS_FUZZER_BUILD
   constexpr void init() {
     *this         = InputReport{};
     reportIdValue = reportId;
   }
+#endif
 
   constexpr const InputBody &body() const { return bodyData; }
   constexpr InputBody &body() { return bodyData; }
@@ -2204,12 +2206,14 @@ public:
   static constexpr uint32_t sampleRate = 48000;
   static constexpr uint32_t samples    = 480;
 
+#ifdef DS_FUZZER_BUILD
   static void init(uint8_t *buf, size_t len) {
     if (!buf || len < 3 + crcBytes) return;
     memset(buf, 0, len);
     buf[0] = reportId;
     buf[3] = toc;
   }
+#endif
 
   static const MicFrame *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len <= 3 + crcBytes || buf[0] != reportId || buf[3] != toc) return nullptr;

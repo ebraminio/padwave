@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#define DS_FUZZER_BUILD
 #include "dualsense.hh"
 
 static bool write_file(const char *dir, const char *name, const void *data, size_t len) {
