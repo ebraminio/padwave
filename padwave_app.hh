@@ -301,8 +301,6 @@ private:
   int rumble_left = 0, rumble_right = 0;
   long rumble_until = 0;
   long idle_rumble_until = 0;
-  int trigger_side = 0; // 1 left, 2 right; 0 idle
-  long trigger_until = 0;
 
   // The state-coloured lightbar and the player-LED ownership. The player's
   // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
@@ -918,7 +916,6 @@ public:
       int level = static_cast<int>(kvNumber(body, "level", amplitude));
       int amplitude_b = static_cast<int>(kvNumber(body, "amplitude_b", 0));
       int period = static_cast<int>(kvNumber(body, "period", 0));
-      long ms = kvNumber(body, "ms", 0);
 
       dualsense::OutputBody::TriggerEffect fx;
       char label[40] = "off";
@@ -1005,8 +1002,6 @@ public:
 
       bool left = strcmp(side, "left") == 0;
       this->player.setTriggerEffect(left, fx);
-      this->trigger_side = left ? 1 : 2;
-      this->trigger_until = (ms > 0 && !off) ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=trigger %s %s\n", side, label);
     }
 
@@ -2057,12 +2052,6 @@ private:
     if (this->rumble_until && now >= this->rumble_until) {
       outputFields("motor_left=0;motor_right=0");
       this->rumble_until = 0;
-    }
-    if (this->trigger_until && now >= this->trigger_until) {
-      dualsense::OutputBody::TriggerEffect off;
-      if (this->player) this->player.setTriggerEffect(this->trigger_side == 1, off);
-      this->trigger_until = 0;
-      this->trigger_side = 0;
     }
   }
 
