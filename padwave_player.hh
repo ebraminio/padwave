@@ -654,7 +654,7 @@ private:
 public:
   int firmwareInfo(char *dest, size_t cap) {
     if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
-    dualsense::internal::Firmware info{};
+    dualsense::Firmware info{};
     info.init();
     int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
     if (got < 0 || !info.valid())
@@ -667,9 +667,15 @@ public:
     };
     char line[192];
     append("ok=true\nfirmware.valid=true\n");
-    snprintf(line, sizeof(line), "firmware.build_date=%.*s\n", 11, info.buildDateText());
+    {
+      auto [value, length] = info.buildDateText();
+      snprintf(line, sizeof(line), "firmware.build_date=%.*s\n", static_cast<int>(length), value);
+    }
     append(line);
-    snprintf(line, sizeof(line), "firmware.build_time=%.*s\n", 8, info.buildTimeText());
+    {
+      auto [value, length] = info.buildTimeText();
+      snprintf(line, sizeof(line), "firmware.build_time=%.*s\n", static_cast<int>(length), value);
+    }
     append(line);
     snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.typeValue()));
     append(line);
@@ -681,10 +687,13 @@ public:
     append(line);
     char hex[129];
     size_t h = 0;
-    for (int i = 0; i < 12; i++) {
-      int n = snprintf(hex + h, sizeof(hex) - h, "%02x",
-                       static_cast<unsigned>(static_cast<unsigned char>(info.deviceInfoText()[i])));
-      if (n > 0) h += static_cast<size_t>(n);
+    {
+      auto [value, length] = info.deviceInfoText();
+      for (unsigned i = 0; i < length; ++i) {
+        int n = snprintf(hex + h, sizeof(hex) - h, "%02x",
+                        static_cast<unsigned>(value[i]));
+        if (n > 0) h += static_cast<size_t>(n);
+      }
     }
     snprintf(line, sizeof(line), "firmware.device_info=%s\n", hex);
     append(line);

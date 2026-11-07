@@ -113,11 +113,6 @@ static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
 // lightbar-only update safe while the audio stream is running.
 // ===========================================================================
 
-struct OutputBodyProbe;
-struct AudioReportProbe;
-struct ReportProbe;
-} // namespace internal
-
 // Report ordinals, common to every schema. 0x31 is both the input and the
 // output state report; the direction is the stream, not the id.
 
@@ -316,6 +311,10 @@ inline constexpr CommandInfo kCommandTable[] = {
      3, 0, false, "0 = Unlocked; 1 = Locked"},
 };
 
+struct OutputBodyProbe;
+struct AudioReportProbe;
+struct ReportProbe;
+} // namespace internal
 
 struct OutputBody {
   friend struct internal::OutputBodyProbe;
@@ -1138,7 +1137,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
   static constexpr uint8_t tag      = 0x10;
 
 public:
@@ -1194,7 +1193,7 @@ protected:
   DSUINT8 reserved[15];  // 0x30..0x3e
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::OutputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::OutputUsb);
 
 public:
   constexpr void init() {
@@ -1534,7 +1533,7 @@ protected:
   DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
   static constexpr uint8_t crcSeed  = 0xA1;
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 
@@ -1562,7 +1561,7 @@ struct UsbInputReport {
 
 private:
   using DSUINT8 = internal::DSUINT8;
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::InputUsb);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::InputUsb);
 
 protected:
   DSUINT8 reportIdValue; // 0x00  Packet::InputUsb
@@ -1726,7 +1725,7 @@ public:
   };
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Audio);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Audio);
   static constexpr uint8_t crcSeed  = 0xA2;
   static constexpr uint8_t stateSize = 63;
   static constexpr uint8_t opusSize  = 200;
@@ -1973,16 +1972,23 @@ public:
 };
 static_assert(sizeof (Pairing) == 20, "0x09 must stay 20 bytes");
 
+} // namespace internal
+
 struct Firmware {
+private:
+  using DSUINT8  = internal::DSUINT8;
+  using DSUINT16 = internal::DSUINT16;
+  using DSUINT32 = internal::DSUINT32;
+
 protected:
   DSUINT8 reportIdValue;    // 0x00  Packet::FeatureFirmware
-  char buildDate[11];       // 0x01..0x0b
-  char buildTime[8];        // 0x0c..0x13
+  DSUINT8 buildDate[11];    // 0x01..0x0b
+  DSUINT8 buildTime[8];     // 0x0c..0x13
   DSUINT16 fwType;          // 0x14..0x15
   DSUINT16 swSeries;        // 0x16..0x17
   DSUINT32 hardwareInfo;    // 0x18..0x1b  variation/generation
   DSUINT32 firmwareVersion; // 0x1c..0x1f
-  char deviceInfo[12];      // 0x20..0x2b
+  DSUINT8 deviceInfo[12];   // 0x20..0x2b
   DSUINT16 updateVersion;   // 0x2c..0x2d
   DSUINT8 updateImageInfo;  // 0x2e
   DSUINT8 updateUnk;        // 0x2f
@@ -1991,11 +1997,17 @@ protected:
   DSUINT32 fwVersion3;      // 0x38..0x3b  Spider DSP
   DSUINT32 crc;             // 0x3c..0x3f  CRC-32, seed 0xA3
 
-public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::FeatureFirmware);
-  static constexpr uint8_t crcSeed  = 0xA3;
-  static constexpr size_t size      = 64;
+private:
+  struct String {
+    template <typename Type, size_t n>
+    constexpr String(Type (&value_)[n]) : value(reinterpret_cast<const uint8_t *>(value_)), length(n) {}
+    const uint8_t *value;
+    size_t length;
+  };
 
+public:
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeatureFirmware);
+  static constexpr uint8_t crcSeed  = 0xA3;
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
   constexpr void init() {
@@ -2003,9 +2015,9 @@ public:
     reportIdValue = reportId;
   }
 
-  constexpr const char *buildDateText() const { return buildDate; }
-  constexpr const char *buildTimeText() const { return buildTime; }
-  constexpr const char *deviceInfoText() const { return deviceInfo; }
+  constexpr const String buildDateText() const { return {buildDate}; }
+  constexpr const String buildTimeText() const { return {buildTime}; }
+  constexpr const String deviceInfoText() const { return {deviceInfo}; }
   constexpr uint16_t typeValue() const { return fwType; }
   constexpr uint16_t seriesValue() const { return swSeries; }
   constexpr uint32_t hardwareInfoValue() const { return hardwareInfo; }
@@ -2021,9 +2033,7 @@ public:
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
   constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
 };
-static_assert(sizeof (Firmware) == Firmware::size, "0x20 must stay 64 bytes");
-
-} // namespace internal
+static_assert(sizeof (Firmware) == 64, "0x20 must stay 64 bytes");
 
 // ===========================================================================
 // 0x32: dedicated Bluetooth haptics stream (SAxense)
@@ -2050,7 +2060,7 @@ protected:
   DSUINT32 crc;          // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::Haptics);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Haptics);
   static constexpr uint8_t crcSeed  = 0xA2;
 
 public:
@@ -2082,8 +2092,7 @@ public:
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
-
-static_assert(sizeof(HapticsReport) == 142, "0x32 must stay 142 bytes");
+static_assert(sizeof (HapticsReport) == 142, "0x32 must stay 142 bytes");
 
 // ===========================================================================
 // Microphone frames inside the 0x31 input stream
@@ -2150,7 +2159,7 @@ struct MicFrame {
 #endif
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(Packet::StateBluetooth);
+  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
   static constexpr uint8_t toc      = 0xD4;
   static constexpr size_t crcBytes  = 4;
 
