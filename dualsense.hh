@@ -910,9 +910,17 @@ public:
     ledBrightness = v;
   }
 
-  constexpr void setPlayerLedsMask(uint8_t v) {
+  constexpr void setPlayerLeds(bool led1, bool led2, bool led3, bool led4, bool led5,
+                               bool instant) {
     claim(ValidFlag1::PlayerIndicatorControlEnable);
-    playerLeds = v;
+    uint8_t mask = 0;
+    if (led1) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Led1));
+    if (led2) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Led2));
+    if (led3) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Led3));
+    if (led4) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Led4));
+    if (led5) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Led5));
+    if (instant) mask = static_cast<uint8_t>(mask | static_cast<uint8_t>(PlayerLeds::Instant));
+    playerLeds = mask;
   }
 
   constexpr void setLightbar(uint8_t red, uint8_t green, uint8_t blue) {

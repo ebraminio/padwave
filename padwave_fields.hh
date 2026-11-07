@@ -52,7 +52,6 @@ inline const u8_field kU8Fields[] = {
     {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
     {"lightbar_setup", nullptr},
     {"led_brightness", &Body::setLedBrightness},
-    {"player_leds", &Body::setPlayerLedsMask},
 };
 
 inline const array_field kArrayFields[] = {
@@ -82,6 +81,13 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     *eq = 0;
     const char *name = pair;
     const char *value = eq + 1;
+
+    if (strcmp(name, "player_leds") == 0) {
+      uint8_t mask = static_cast<uint8_t>(strtoul(value, nullptr, 0));
+      body->setPlayerLeds((mask & 0x01) != 0, (mask & 0x02) != 0, (mask & 0x04) != 0,
+                          (mask & 0x08) != 0, (mask & 0x10) != 0, (mask & 0x20) != 0);
+      continue;
+    }
 
     if (strcmp(name, "lightbar_rgb") == 0) {
       unsigned red = 0, green = 0, blue = 0;
