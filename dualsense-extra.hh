@@ -169,9 +169,9 @@ struct FeatureReportInfo {
 };
 
 inline constexpr FeatureReportInfo kFeatureReports[] = {
-    {Packet::FeatureCalibration, 41, FeatureAccess::Get, "calibration-adjacent setup"},
+    {Packet::FeatureCalibration, 41, FeatureAccess::Get, "motion calibration: 17 x int16 LE"},
     {Packet::FeatureMode, 17, FeatureAccess::Set, "mode/feature negotiation"},
-    {Packet::FeaturePairing, 20, FeatureAccess::Get, "pairing info"},
+    {Packet::FeaturePairing, 20, FeatureAccess::Get, "controller MAC at 1..6, host MAC at 10..15"},
     {Packet::FeatureSetup, 42, FeatureAccess::Get, "initial setup"},
     {Packet::FeatureFirmware, 64, FeatureAccess::Get, "config/firmware/calibration"},
     {Packet::CommandHost, 64, FeatureAccess::GetSet, "host command"},

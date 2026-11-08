@@ -1765,10 +1765,16 @@ public:
 static_assert(sizeof(Calibration) == 41, "0x05 must stay 41 bytes");
 
 struct Pairing {
+private:
+  using DSUINT8  = internal::DSUINT8;
+  using DSUINT32 = internal::DSUINT32;
+
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::FeaturePairing
-  DSUINT8 mac[6];        // 0x01..0x06  the controller's own address
-  DSUINT8 unknown07[13]; // 0x07..0x13
+  DSUINT8 reportIdValue; // 0x00       internal::Packet::FeaturePairing
+  DSUINT8 mac[6];        // 0x01..0x06 controller address, reversed
+  DSUINT8 unknown07[3];  // 0x07..0x09
+  DSUINT8 hostMac[6];    // 0x0a..0x0f host address, reversed
+  DSUINT32 crc;          // 0x10..0x13 CRC-32 seed 0xA3 on BT, zero on USB
 
 public:
   static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeaturePairing);

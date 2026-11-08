@@ -154,5 +154,5 @@ between definitions, private class fields and compact guards. Run clang-format
 
 ## Protocol
 
-`dualsense.hh` is the wire description; `docs/protocol.md` has the longer
-notes.
+`dualsense.hh` is the core wire description. `dualsense-extra.hh` holds command,
+feature-report, authentication and USB-topology metadata.
