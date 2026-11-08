@@ -17,6 +17,7 @@ enum class CommandDevice : uint8_t {
   TouchPanel = 5,
   Audio      = 6, // audio codec command family; same ordinal as VenomFw
   VenomFw    = 6,
+  Stick      = 12,
   DeviceInfo = 9,
   Bluetooth  = 14,
   Venom      = 15,
@@ -251,6 +252,63 @@ static_assert(sizeof(AuthenticationStatus) == 16, "0xF2 must stay 16 bytes");
 // SET_CONFIGURATION; raw-gadget was not available on the stock kernel used
 // for the capture, while FunctionFS/usb_f_fs was.
 
+struct SerialNumber {
+  char value[18] = {};
+  uint8_t length   = 0;
+
+  constexpr SerialNumber() = default;
+
+  constexpr explicit SerialNumber(const char *text) {
+    while (length < 17 && text[length]) {
+      value[length] = text[length];
+      ++length;
+    }
+    value[length] = 0;
+  }
+
+  constexpr const char *colorName() const {
+    if (length < 6) return "Unknown";
+    struct Color {
+      char first;
+      char second;
+      const char *name;
+    };
+    static constexpr Color kColors[] = {
+        {'0', '0', "White"},
+        {'0', '1', "Midnight Black"},
+        {'0', '2', "Cosmic Red"},
+        {'0', '3', "Nova Pink"},
+        {'0', '4', "Galactic Purple"},
+        {'0', '5', "Starlight Blue"},
+        {'0', '6', "Grey Camouflage"},
+        {'0', '7', "Volcanic Red"},
+        {'0', '8', "Sterling Silver"},
+        {'0', '9', "Cobalt Blue"},
+        {'1', '0', "Chroma Teal"},
+        {'1', '1', "Chroma Indigo"},
+        {'1', '2', "Chroma Pearl"},
+        {'1', '3', "HyperPop Techno Red"},
+        {'1', '4', "HyperPop Remix Green"},
+        {'1', '5', "HyperPop Rhythm Blue"},
+        {'3', '0', "30th Anniversary"},
+        {'Z', '1', "God of War Ragnarok"},
+        {'Z', '2', "Spider-Man 2"},
+        {'Z', '3', "Astro Bot"},
+        {'Z', '4', "Fortnite"},
+        {'Z', '6', "The Last of Us"},
+        {'Z', 'A', "God of War 20th Anniversary"},
+        {'Z', 'B', "Icon Blue Limited Edition"},
+        {'Z', 'C', "Ghost of Yotei Limited Edition"},
+        {'Z', 'D', "Marathon Limited Edition"},
+        {'Z', 'E', "Genshin Impact Limited Edition"},
+        {'Z', 'F', "007 First Light Limited Edition"},
+    };
+    for (const Color &color : kColors)
+      if (value[4] == color.first && value[5] == color.second) return color.name;
+    return "Unknown";
+  }
+};
+
 // Command transport shared by the 0x80 command and 0x81 response reports.
 // A caller sends CommandRequest through feature report 0x80 and then reads
 // CommandResponse from feature report 0x81 until Complete/CompleteMore.
@@ -308,6 +366,22 @@ struct CommandResponse {
   }
 };
 static_assert(sizeof(CommandResponse) == 64, "0x81 response must stay 64 bytes");
+
+struct Finetune {
+  uint16_t values[12];
+  bool valid;
+};
+
+inline constexpr Finetune parseFinetune(const CommandResponse &response) {
+  Finetune result{};
+  if (!response.complete()) return result;
+  for (unsigned i = 0; i < 12; ++i)
+    result.values[i] = static_cast<uint16_t>(
+        static_cast<uint8_t>(response.payload[i * 2]) |
+        (static_cast<uint16_t>(static_cast<uint8_t>(response.payload[i * 2 + 1])) << 8));
+  result.valid = true;
+  return result;
+}
 
 struct McuUniqueId {
   uint64_t value;

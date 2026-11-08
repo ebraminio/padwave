@@ -535,54 +535,6 @@ private:
     writeDevice(&report, sizeof(report));
   }
 
-  static const char *boardModel(uint32_t hardware) {
-    switch ((hardware >> 8) & 0xFF) {
-      case 0x03: return "BDM-010";
-      case 0x04: return "BDM-020";
-      case 0x05: return "BDM-030";
-      case 0x06: return "BDM-040";
-      case 0x07:
-      case 0x08: return "BDM-050";
-      case 0x09: return "BDM-060R";
-      case 0x11: return "BDM-060M";
-      case 0x13: return "BDM-060X";
-      default: return "Unknown";
-    }
-  }
-
-  static const char *colorName(const char *serial) {
-    if (strlen(serial) < 6) return "Unknown";
-    struct Color {
-      const char *code;
-      const char *name;
-    };
-    static constexpr Color kColors[] = {
-        {"00", "White"},          {"01", "Midnight Black"}, {"02", "Cosmic Red"},
-        {"03", "Nova Pink"},      {"04", "Galactic Purple"}, {"05", "Starlight Blue"},
-        {"06", "Grey Camouflage"},{"07", "Volcanic Red"},    {"08", "Sterling Silver"},
-        {"09", "Cobalt Blue"},    {"10", "Chroma Teal"},     {"11", "Chroma Indigo"},
-        {"12", "Chroma Pearl"},   {"13", "HyperPop Techno Red"},
-        {"14", "HyperPop Remix Green"}, {"15", "HyperPop Rhythm Blue"},
-        {"30", "30th Anniversary"}, {"Z1", "God of War Ragnarok"}, {"Z2", "Spider-Man 2"},
-        {"Z3", "Astro Bot"},      {"Z4", "Fortnite"},         {"Z6", "The Last of Us"},
-        {"ZA", "God of War 20th Anniversary"}, {"ZB", "Icon Blue Limited Edition"},
-        {"ZC", "Ghost of Yotei Limited Edition"}, {"ZD", "Marathon Limited Edition"},
-        {"ZE", "Genshin Impact Limited Edition"}, {"ZF", "007 First Light Limited Edition"},
-    };
-    for (const auto &color : kColors)
-      if (serial[4] == color.code[0] && serial[5] == color.code[1]) return color.name;
-    return "Unknown";
-  }
-
-  static const char *deviceType(const char *buildDate) {
-    size_t length = strlen(buildDate);
-    if (length < 4) return "unknown";
-    int buildYear = atoi(buildDate + length - 4);
-    time_t now = time(nullptr);
-    struct tm *tm = localtime(&now);
-    return tm && buildYear > tm->tm_year + 1900 ? "clone" : "original";
-  }
-
   bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
                         dualsense::internal::CommandResponse &response) {
     using namespace dualsense::internal;
@@ -907,7 +859,8 @@ public:
     textField("extras.battery_barcode", CommandDevice::MainMcu, 24, 23, false, nullptr, 0);
     textField("extras.vcm_left_barcode", CommandDevice::MainMcu, 26, 16, false, nullptr, 0);
     textField("extras.vcm_right_barcode", CommandDevice::MainMcu, 28, 16, false, nullptr, 0);
-    snprintf(line, sizeof(line), "extras.color=%s\n", colorName(serial));
+    SerialNumber serialNumber(serial);
+    snprintf(line, sizeof(line), "extras.color=%s\n", serialNumber.colorName());
     append(line);
 
     if (readExtraCommand(CommandDevice::Audio, 3, response)) {
@@ -993,19 +946,27 @@ public:
       append("extras.spider_state=unavailable\n");
     }
 
+    bool finetuneValid = false;
+    if (readExtraCommand(CommandDevice::Stick, 2, response)) {
+      auto finetune = parseFinetune(response);
+      finetuneValid = finetune.valid;
+      append(finetuneValid ? "extras.finetune=ok\n" : "extras.finetune=invalid\n");
+    } else {
+      append("extras.finetune=unavailable\n");
+    }
+
     dualsense::Firmware firmware{};
     firmware.init();
     if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(firmware)), &firmware) >= 0 &&
         firmware.isValid(true)) {
       appendHex("extras.hw_model", firmware.hardwareInfoValue());
-      snprintf(line, sizeof(line), "extras.board_model=%s\n",
-               boardModel(firmware.hardwareInfoValue()));
+      snprintf(line, sizeof(line), "extras.board_model=%s\n", firmware.boardModel());
       append(line);
-      auto date = firmware.buildDateText();
-      char dateText[16] = {};
-      size_t n = date.length < sizeof(dateText) - 1 ? date.length : sizeof(dateText) - 1;
-      for (size_t i = 0; i < n; ++i) dateText[i] = static_cast<char>(date.value[i]);
-      snprintf(line, sizeof(line), "extras.device_type=%s\n", deviceType(dateText));
+      time_t now = time(nullptr);
+      struct tm *tm = localtime(&now);
+      int currentYear = tm ? tm->tm_year + 1900 : 0;
+      snprintf(line, sizeof(line), "extras.device_type=%s\n",
+               firmware.deviceType(finetuneValid, currentYear));
       append(line);
     } else {
       append("extras.hw_model=unavailable\n");

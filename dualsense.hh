@@ -1843,6 +1843,39 @@ public:
 
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
 
+  constexpr int buildYear() const {
+    auto date = buildDateText();
+    if (date.length < 4) return 0;
+    int year = 0;
+    for (size_t i = date.length - 4; i < date.length; ++i) {
+      if (date.value[i] < '0' || date.value[i] > '9') return 0;
+      year = year * 10 + (date.value[i] - '0');
+    }
+    return year;
+  }
+
+  constexpr const char *boardModel() const {
+    switch ((this->hardwareInfoValue() >> 8) & 0xFF) {
+      case 0x03: return "BDM-010";
+      case 0x04: return "BDM-020";
+      case 0x05: return "BDM-030";
+      case 0x06: return "BDM-040";
+      case 0x07:
+      case 0x08: return "BDM-050";
+      case 0x09: return "BDM-060R";
+      case 0x11: return "BDM-060M";
+      case 0x13: return "BDM-060X";
+      default: return "Unknown";
+    }
+  }
+
+  constexpr const char *deviceType(bool finetuneValid, int currentYear) const {
+    if (!finetuneValid) return "clone";
+    int year = buildYear();
+    if (year == 0 || year > currentYear) return "clone";
+    return "original";
+  }
+
   // Bluetooth feature reports carry the CRC; the USB feature transfer does not.
   constexpr bool isValid(bool isUsb) const {
     return reportIdValue == reportId && (isUsb || crc == internal::crc_of(*this, crcSeed));
