@@ -817,7 +817,7 @@ public:
   // Claims only what the audio path writes: the volumes and the routing.
   // Claiming anything else here is how one writer silently owns a feature
   // another writer is using.
-  constexpr void init(AudioControl routing = AudioControl::Headphones) {
+  constexpr void init(AudioControl routing) {
     *this      = OutputBody{};
     validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
@@ -963,7 +963,7 @@ public:
     reportIdValue = reportId;
     tagValue      = tag;
     seqTag        = 0;
-    bodyData.init();
+    // The body stays neutral; callers claim only the fields they write.
   }
 
   constexpr void init(Sequence &sequence) {
