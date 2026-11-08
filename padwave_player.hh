@@ -550,6 +550,13 @@ private:
     return false;
   }
 
+  bool readFeature(uint8_t reportId, uint8_t *data, size_t length) {
+    if (hidraw < 0) return false;
+    memset(data, 0, length);
+    data[0] = reportId;
+    return ioctl(hidraw, HIDIOCGFEATURE(length), data) >= 0;
+  }
+
   bool writeDevice(const void *data, size_t len) {
     if (hidraw < 0) {
       if (hidraw_retry > 0)
@@ -784,6 +791,16 @@ public:
       int n = snprintf(dest + o, cap > o ? cap - o : 0, "%s", text);
       if (n > 0) o += static_cast<size_t>(n);
     };
+    auto appendBytes = [&](const char *name, const uint8_t *data, size_t length) {
+      append(name);
+      append("=");
+      char hex[3];
+      for (size_t i = 0; i < length; ++i) {
+        snprintf(hex, sizeof(hex), "%02X", data[i]);
+        append(hex);
+      }
+      append("\n");
+    };
     auto appendU = [&](const char *name, unsigned value) {
       char line[64];
       snprintf(line, sizeof(line), "%s=%u\n", name, value);
@@ -877,6 +894,29 @@ public:
     } else {
       append("extras.spider_state=unavailable\n");
     }
+
+    if (readExtraCommand(CommandDevice::Bluetooth, 4, response)) {
+      appendBytes("extras.bt_patch", reinterpret_cast<const uint8_t *>(response.payload),
+                  sizeof(response.payload));
+    } else {
+      append("extras.bt_patch=unavailable\n");
+    }
+
+    auto feature = [&](const char *name, uint8_t id, size_t length) {
+      uint8_t bytes[64] = {};
+      if (readFeature(id, bytes, length))
+        appendBytes(name, bytes, length);
+      else {
+        append(name);
+        append("=unavailable\n");
+      }
+    };
+    feature("extras.feature_calibration", 0x05, 41);
+    feature("extras.feature_pairing", 0x09, 20);
+    feature("extras.feature_setup", 0x0B, 42);
+    feature("extras.feature_82", 0x82, 10);
+    feature("extras.feature_85", 0x85, 3);
+    feature("extras.feature_auth_status", 0xF2, 16);
 
     return static_cast<int>(o);
   }

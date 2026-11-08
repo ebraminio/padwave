@@ -172,7 +172,7 @@ inline constexpr FeatureReportInfo kFeatureReports[] = {
     {Packet::FeatureCalibration, 41, FeatureAccess::Get, "calibration-adjacent setup"},
     {Packet::FeatureMode, 17, FeatureAccess::Set, "mode/feature negotiation"},
     {Packet::FeaturePairing, 20, FeatureAccess::Get, "pairing info"},
-    {Packet::FeatureSetup, 38, FeatureAccess::Get, "initial setup"},
+    {Packet::FeatureSetup, 42, FeatureAccess::Get, "initial setup"},
     {Packet::FeatureFirmware, 64, FeatureAccess::Get, "config/firmware/calibration"},
     {Packet::CommandHost, 64, FeatureAccess::GetSet, "host command"},
     {Packet::CommandStatus, 64, FeatureAccess::Get, "host status"},

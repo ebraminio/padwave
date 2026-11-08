@@ -1013,7 +1013,7 @@ public:
 
     if (strcmp(kind, "extra_info") == 0) {
       if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
-      char info[1024];
+      char info[2048];
       int n = this->player.extraInfo(info, sizeof(info));
       if (n <= 0) return snprintf(out, out_cap, "ok=false\nerror=extra read failed\n");
       return snprintf(out, out_cap, "%s", info);
