@@ -823,7 +823,8 @@ private:
 
       dualsense::HapticsReport report;
       report.init();
-      report.setSamples(samples, sizeof(samples));
+      report.setSamples(samples, sizeof(samples),
+                        dualsense::HapticsReport::SampleFormat::Signed8);
       report.setSequence(haptics_sequence++);
       report.sign();
       if (writeDevice(&report, sizeof(report))) sent++;

@@ -1398,6 +1398,10 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 //   0x004  enable mask: bit 0 = microphone capture (0xFE shut, 0xFF open)
 //   0x005  5 × haptic block length (64)
 //   0x00a  free-running 8-bit counter
+//
+// The 0x11 data is therefore [mask, haptic_len0..4, counter]. The mask is the
+// same switch as the 0x32 container: clearing bit 0 keeps the gamepad input
+// clean, while setting it enables the 0xD4 microphone stream.
 //   0x00b  sub-packet 0x10 | 0x80 — state snapshot, length 63
 //   0x04c  sub-packet 0x12 | 0x80 — haptics PCM, length 64
 //   0x08e  sub-packet 0x13 | 0x80 — speaker Opus (0x16 = headphone jack), 200
@@ -1407,6 +1411,12 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 // Three details are the whole difficulty: the 10.667 ms frame interval (not
 // 10 ms), Opus CBR 160 kbps, and enable-mask bit 0, which turns on microphone
 // capture and floods the link if left set.
+//
+// Before streaming, 0x31 must select the speaker path: audio_control = 0x30
+// (headphones muted, right channel to the mono speaker), preamp gain in
+// audio_control2, and speaker volume in the firmware-accepted 0x3D..0x64 range.
+// The speaker sub-packet is 0x13 for the membrane and 0x16 for the headphone
+// jack; both carry the same 200-byte Opus frame.
 //
 // The microphone comes back inside the normal 0x31 input report (marker 0xD4,
 // Opus 48 kHz mono, 10 ms) when duplex is enabled; see MicFrame below for the
@@ -1835,59 +1845,99 @@ public:
 static_assert(sizeof(Firmware) == 64, "0x20 must stay 64 bytes");
 
 // ===========================================================================
-// 0x32: dedicated Bluetooth haptics stream (SAxense)
+// 0x32: Bluetooth haptics container
 //
-// SAxense by Sdore established this packet stream: a 142-byte report carrying
-// a 0x11 configuration packet and a 0x12 packet with 64 signed 8-bit PCM
-// samples at 3 kHz stereo. It feeds the controller's haptics actuator, not the
-// main motor channels; those remain motor_left/motor_right in 0x31/0x36.
+// 64 signed 8-bit samples at 3 kHz stereo. This is the haptics path, not the
+// speaker path; 0x36 carries the 6 kHz haptics and Opus speaker streams.
 // ===========================================================================
-
 struct HapticsReport {
   friend struct internal::ReportProbe;
 
 private:
   using DSUINT8  = internal::DSUINT8;
+  using DSINT8   = internal::DSINT8;
   using DSUINT32 = internal::DSUINT32;
 
+public:
+  struct PacketHeader {
+    DSUINT8 pid;    // bits 0..5 pid, bit 6 unknown, bit 7 sized
+    DSUINT8 length; // payload length
+  };
+
+  struct Config {
+    enum class Mask : uint8_t {
+      SpeakerOnly   = 0xFE, // bit 0 clear: no microphone capture
+      SpeakerAndMic = 0xFF, // bit 0 set: enables the 0xD4 microphone stream
+    };
+
+    Mask mask;
+    DSUINT8 route; // unconfirmed; suspected haptics/speaker selector
+    DSUINT8 reserved[3];
+    DSUINT8 unknown5; // 0xFF; meaning unconfirmed
+    DSUINT8 counter;  // increments once per 10.667 ms frame
+  };
+
+  struct ConfigPacket {
+    PacketHeader header;
+    Config config;
+  };
+
+  struct SamplePacket {
+    PacketHeader header;
+    DSINT8 samples[64]; // signed 8-bit stereo PCM, 32 frames at 3 kHz
+  };
+
 protected:
-  DSUINT8 reportIdValue; // 0x000  internal::Packet::Haptics
-  DSUINT8 tagValue;      // 0x001  low nibble tag, high nibble sequence
-  DSUINT8 packet0[9];    // 0x002..0x00a  0x11 config packet
-  DSUINT8 packet1[66];   // 0x00b..0x04c  0x12 sample packet
-  DSUINT8 reserved[61];  // 0x04d..0x089  SAxense leaves this zero
-  DSUINT32 crc;          // 0x08a..0x08d  CRC-32, seed 0xA2
+  DSUINT8 reportIdValue;     // 0x000  internal::Packet::Haptics
+  DSUINT8 tagValue;          // 0x001  low nibble tag, high nibble sequence
+  ConfigPacket configPacket; // 0x002..0x00a
+  SamplePacket samplePacket; // 0x00b..0x04c
+  DSUINT8 padding[61];       // 0x04d..0x089  container padding
+  DSUINT32 crc;              // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::Haptics);
-  static constexpr uint8_t crcSeed  = 0xA2;
+  static constexpr uint8_t reportId       = static_cast<uint8_t>(internal::Packet::Haptics);
+  static constexpr uint8_t crcSeed        = 0xA2;
+  static constexpr uint8_t configPacketId = 0x11;
+  static constexpr uint8_t samplePacketId = 0x12;
+  static constexpr uint8_t sizedBit       = 0x80;
 
 public:
+  enum class SampleFormat : uint8_t {
+    Signed8,
+    Unsigned8,
+  };
+
   static constexpr uint32_t sampleRate = 3000;
   static constexpr size_t sampleBytes  = 64;
   static constexpr size_t sampleFrames = sampleBytes / 2;
 
+  static_assert(sizeof(ConfigPacket) == 9, "0x32 config packet must stay 9 bytes");
+  static_assert(sizeof(SamplePacket) == 66, "0x32 sample packet must stay 66 bytes");
+
   constexpr void init() {
-    *this         = HapticsReport{};
-    reportIdValue = reportId;
-    // 0x11: enable haptics, seven-byte configuration.
-    packet0[0]    = 0x91; // packet id 0x11 | sized
-    packet0[1]    = 7;
-    packet0[2]    = 0xFE;
-    packet0[7]    = 0xFF;
-    // 0x12: 64 sample bytes, 32 stereo frames at 3 kHz.
-    packet1[0]    = 0x92; // packet id 0x12 | sized
-    packet1[1]    = sampleBytes;
+    *this                        = HapticsReport{};
+    reportIdValue                = reportId;
+    configPacket.header.pid      = static_cast<uint8_t>(configPacketId | sizedBit);
+    configPacket.header.length   = sizeof(Config);
+    configPacket.config.mask     = Config::Mask::SpeakerOnly;
+    configPacket.config.unknown5 = 0xFF;
+    samplePacket.header.pid      = static_cast<uint8_t>(samplePacketId | sizedBit);
+    samplePacket.header.length   = sampleBytes;
   }
 
-  constexpr void setSamples(const uint8_t *pcm, size_t len) {
+  // The wire format is signed 8-bit PCM; unsigned input is converted here.
+  constexpr void setSamples(const uint8_t *pcm, size_t len, SampleFormat format) {
     size_t n = len < sampleBytes ? len : sampleBytes;
-    for (size_t i = 0; i < n; ++i) packet1[2 + i] = pcm[i];
-    for (size_t i = n; i < sampleBytes; ++i) packet1[2 + i] = 0;
+    for (size_t i = 0; i < n; ++i) {
+      int sample = static_cast<int>(pcm[i]);
+      if (format == SampleFormat::Unsigned8) sample -= 128;
+      samplePacket.samples[i] = static_cast<int8_t>(sample);
+    }
+    for (size_t i = n; i < sampleBytes; ++i) samplePacket.samples[i] = 0;
   }
 
-  // SAxense advances the last config byte once per 10.67 ms frame.
-  constexpr void setSequence(uint8_t value) { packet0[8] = value; }
+  constexpr void setSequence(uint8_t value) { configPacket.config.counter = value; }
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
