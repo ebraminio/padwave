@@ -15,6 +15,7 @@ enum class CommandDevice : uint8_t {
   Gyro       = 2,
   Nvs        = 3,
   TouchPanel = 5,
+  Audio      = 6, // audio codec command family; same ordinal as VenomFw
   VenomFw    = 6,
   DeviceInfo = 9,
   Bluetooth  = 14,
