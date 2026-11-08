@@ -124,7 +124,7 @@ static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
 // Report ordinals, common to every schema. 0x31 is both the input and the
 // output state report; the direction is the stream, not the id.
 
-enum class Packet : uint8_t {
+enum class ReportId : uint8_t {
   InputUsb           = 0x01,
   OutputUsb          = 0x02,
   FeatureCalibration = 0x05,
@@ -931,16 +931,16 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::StateBluetooth
-  DSUINT8 seqTag;        // 0x01  high nibble = counter 0..15, low nibble = 0
-  DSUINT8 tagValue;      // 0x02  must be 0x10
-  OutputBody bodyData;   // 0x03..0x31
-  DSUINT8 reserved4[24]; // 0x32..0x49
-  DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::StateBluetooth
+  DSUINT8 seqTag;                   // 0x01  high nibble = counter 0..15, low nibble = 0
+  DSUINT8 tagValue;                 // 0x02  must be 0x10
+  OutputBody bodyData;              // 0x03..0x31
+  DSUINT8 reserved4[24];            // 0x32..0x49
+  DSUINT32 crc;                     // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
-  static constexpr uint8_t tag      = 0x10;
+  static constexpr internal::ReportId reportId = internal::ReportId::StateBluetooth;
+  static constexpr uint8_t tag                 = 0x10;
 
 public:
   // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
@@ -990,12 +990,12 @@ private:
   using DSUINT8 = internal::DSUINT8;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::OutputUsb
-  OutputBody bodyData;   // 0x01..0x2f
-  DSUINT8 reserved[15];  // 0x30..0x3e
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::OutputUsb
+  OutputBody bodyData;              // 0x01..0x2f
+  DSUINT8 reserved[15];             // 0x30..0x3e
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::OutputUsb);
+  static constexpr internal::ReportId reportId = internal::ReportId::OutputUsb;
 
 public:
   constexpr void init() {
@@ -1322,17 +1322,17 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::StateBluetooth
-  DSUINT8 seqTag;        // 0x01  high nibble = sequence tagValue, low nibble = 0
-  InputBody bodyData;    // 0x02..0x40
-  DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
-                         //             distinct values in a 150 s capture), the
-                         //             other eight were; unknown
-  DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::StateBluetooth
+  DSUINT8 seqTag;                   // 0x01  high nibble = sequence tagValue, low nibble = 0
+  InputBody bodyData;               // 0x02..0x40
+  DSUINT8 btReserved[9];            // 0x41..0x49  the first byte is not constant (30
+                                    //             distinct values in a 150 s capture), the
+                                    //             other eight were; unknown
+  DSUINT32 crc;                     // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
-  static constexpr uint8_t crcSeed  = 0xA1;
+  static constexpr internal::ReportId reportId = internal::ReportId::StateBluetooth;
+  static constexpr uint8_t crcSeed             = 0xA1;
   constexpr bool isValid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
@@ -1348,7 +1348,8 @@ public:
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < sizeof(InputReport) || buf[0] != reportId) return nullptr;
+    if (!buf || len < sizeof(InputReport) || buf[0] != static_cast<uint8_t>(reportId))
+      return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
     return r->isValid() ? r : nullptr;
   }
@@ -1360,12 +1361,12 @@ struct UsbInputReport {
   friend struct internal::ReportProbe;
 
 private:
-  using DSUINT8                     = internal::DSUINT8;
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::InputUsb);
+  using DSUINT8                                = internal::DSUINT8;
+  static constexpr internal::ReportId reportId = internal::ReportId::InputUsb;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::InputUsb
-  InputBody bodyData;    // 0x01..0x3f
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::InputUsb
+  InputBody bodyData;               // 0x01..0x3f
 
 public:
   constexpr void init() {
@@ -1376,7 +1377,8 @@ public:
   constexpr const InputBody &body() const { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < sizeof(UsbInputReport) || buf[0] != reportId) return nullptr;
+    if (!buf || len < sizeof(UsbInputReport) || buf[0] != static_cast<uint8_t>(reportId))
+      return nullptr;
     return reinterpret_cast<const UsbInputReport *>(buf);
   }
 };
@@ -1460,24 +1462,24 @@ private:
   static_assert(sizeof(State) == 63, "State must stay 63 bytes");
 
 protected:
-  DSUINT8 reportIdValue;    // 0x000  internal::Packet::Audio
-  DSUINT8 seqTag;           // 0x001  high nibble = counter, low nibble = 0
-  DSUINT8 configTag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  DSUINT8 configLength;     // 0x003  7
-  DSUINT8 enableMaskValue;  // 0x004  EnableMask bits
-  DSUINT8 hapticLengths[5]; // 0x005..0x009  64 each
-  DSUINT8 counter;          // 0x00a  free-running 8-bit counter
-  DSUINT8 stateTag;         // 0x00b  0x10 | 0x80
-  DSUINT8 stateLength;      // 0x00c  63
-  State state;              // 0x00d..0x04b
-  DSUINT8 hapticsTag;       // 0x04c  0x12 | 0x80
-  DSUINT8 hapticsLength;    // 0x04d  64
-  DSINT8 hapticsPcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  DSUINT8 speakerTagValue;  // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  DSUINT8 speakerLength;    // 0x08f  200
-  DSUINT8 opus[200];        // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  DSUINT8 padding[50];      // 0x158..0x189
-  DSUINT32 crc;             // 0x18a..0x18d  seed 0xA2
+  internal::ReportId reportIdValue; // 0x000  internal::ReportId::Audio
+  DSUINT8 seqTag;                   // 0x001  high nibble = counter, low nibble = 0
+  DSUINT8 configTag;                // 0x002  0x11 | 0x80 (more sub-packets follow)
+  DSUINT8 configLength;             // 0x003  7
+  DSUINT8 enableMaskValue;          // 0x004  EnableMask bits
+  DSUINT8 hapticLengths[5];         // 0x005..0x009  64 each
+  DSUINT8 counter;                  // 0x00a  free-running 8-bit counter
+  DSUINT8 stateTag;                 // 0x00b  0x10 | 0x80
+  DSUINT8 stateLength;              // 0x00c  63
+  State state;                      // 0x00d..0x04b
+  DSUINT8 hapticsTag;               // 0x04c  0x12 | 0x80
+  DSUINT8 hapticsLength;            // 0x04d  64
+  DSINT8 hapticsPcm[64];            // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  DSUINT8 speakerTagValue;          // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerLength;            // 0x08f  200
+  DSUINT8 opus[200];                // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  DSUINT8 padding[50];              // 0x158..0x189
+  DSUINT32 crc;                     // 0x18a..0x18d  seed 0xA2
 
 public:
 #ifdef DS_HAVE_OPUS
@@ -1535,10 +1537,10 @@ public:
   };
 
 private:
-  static constexpr uint8_t reportId  = static_cast<uint8_t>(internal::Packet::Audio);
-  static constexpr uint8_t crcSeed   = 0xA2;
-  static constexpr uint8_t stateSize = 63;
-  static constexpr uint8_t opusSize  = 200;
+  static constexpr internal::ReportId reportId = internal::ReportId::Audio;
+  static constexpr uint8_t crcSeed             = 0xA2;
+  static constexpr uint8_t stateSize           = 63;
+  static constexpr uint8_t opusSize            = 200;
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { counter = value; }
 
@@ -1628,7 +1630,9 @@ static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
 
 namespace internal {
 struct AudioReportProbe {
-  static constexpr uint8_t reportIdValue(const AudioReport &r) { return r.reportIdValue; }
+  static constexpr internal::ReportId reportIdValue(const AudioReport &r) {
+    return r.reportIdValue;
+  }
   static constexpr uint8_t seqTag(const AudioReport &r) { return r.seqTag; }
   static constexpr uint8_t configTag(const AudioReport &r) { return r.configTag; }
   static constexpr uint8_t configLength(const AudioReport &r) { return r.configLength; }
@@ -1709,7 +1713,7 @@ static_assert(sizeof(ImuCalibration) == 72, "IMU calibration must stay 72 bytes"
 
 struct Calibration {
 protected:
-  DSUINT8 reportIdValue; // 0x00  internal::Packet::FeatureCalibration
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::FeatureCalibration
 
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
@@ -1734,7 +1738,7 @@ protected:
   DSUINT8 unknown35[6]; // 0x23..0x28  not used by the kernel
 
 public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeatureCalibration);
+  static constexpr internal::ReportId reportId = internal::ReportId::FeatureCalibration;
 
   constexpr ImuCalibration imu() const {
     ImuCalibration result{};
@@ -1770,14 +1774,14 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue; // 0x00       internal::Packet::FeaturePairing
-  DSUINT8 mac[6];        // 0x01..0x06 controller address, reversed
-  DSUINT8 unknown07[3];  // 0x07..0x09
-  DSUINT8 hostMac[6];    // 0x0a..0x0f host address, reversed
-  DSUINT32 crc;          // 0x10..0x13 CRC-32 seed 0xA3 on BT, zero on USB
+  internal::ReportId reportIdValue; // 0x00       internal::ReportId::FeaturePairing
+  DSUINT8 mac[6];                   // 0x01..0x06 controller address, reversed
+  DSUINT8 unknown07[3];             // 0x07..0x09
+  DSUINT8 hostMac[6];               // 0x0a..0x0f host address, reversed
+  DSUINT32 crc;                     // 0x10..0x13 CRC-32 seed 0xA3 on BT, zero on USB
 
 public:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeaturePairing);
+  static constexpr internal::ReportId reportId = internal::ReportId::FeaturePairing;
 };
 static_assert(sizeof(Pairing) == 20, "0x09 must stay 20 bytes");
 
@@ -1790,21 +1794,21 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 reportIdValue;    // 0x00  internal::Packet::FeatureFirmware
-  DSUINT8 buildDate[11];    // 0x01..0x0b
-  DSUINT8 buildTime[8];     // 0x0c..0x13
-  DSUINT16 fwType;          // 0x14..0x15
-  DSUINT16 swSeries;        // 0x16..0x17
-  DSUINT32 hardwareInfo;    // 0x18..0x1b  variation/generation
-  DSUINT32 firmwareVersion; // 0x1c..0x1f
-  DSUINT8 deviceInfo[12];   // 0x20..0x2b
-  DSUINT16 updateVersion;   // 0x2c..0x2d
-  DSUINT8 updateImageInfo;  // 0x2e
-  DSUINT8 updateUnk;        // 0x2f
-  DSUINT32 fwVersion1;      // 0x30..0x33  SBL
-  DSUINT32 fwVersion2;      // 0x34..0x37  Venom
-  DSUINT32 fwVersion3;      // 0x38..0x3b  Spider DSP
-  DSUINT32 crc;             // 0x3c..0x3f  CRC-32, seed 0xA3
+  internal::ReportId reportIdValue; // 0x00  internal::ReportId::FeatureFirmware
+  DSUINT8 buildDate[11];            // 0x01..0x0b
+  DSUINT8 buildTime[8];             // 0x0c..0x13
+  DSUINT16 fwType;                  // 0x14..0x15
+  DSUINT16 swSeries;                // 0x16..0x17
+  DSUINT32 hardwareInfo;            // 0x18..0x1b  variation/generation
+  DSUINT32 firmwareVersion;         // 0x1c..0x1f
+  DSUINT8 deviceInfo[12];           // 0x20..0x2b
+  DSUINT16 updateVersion;           // 0x2c..0x2d
+  DSUINT8 updateImageInfo;          // 0x2e
+  DSUINT8 updateUnk;                // 0x2f
+  DSUINT32 fwVersion1;              // 0x30..0x33  SBL
+  DSUINT32 fwVersion2;              // 0x34..0x37  Venom
+  DSUINT32 fwVersion3;              // 0x38..0x3b  Spider DSP
+  DSUINT32 crc;                     // 0x3c..0x3f  CRC-32, seed 0xA3
 
 public:
   // Non-owning byte view into one of the fixed wire fields below.
@@ -1817,8 +1821,8 @@ public:
     size_t length;
   };
 
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::FeatureFirmware);
-  static constexpr uint8_t crcSeed  = 0xA3;
+  static constexpr internal::ReportId reportId        = internal::ReportId::FeatureFirmware;
+  static constexpr uint8_t crcSeed                    = 0xA3;
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
   constexpr void init() {
@@ -1856,16 +1860,16 @@ public:
 
   constexpr const char *boardModel() const {
     switch ((this->hardwareInfoValue() >> 8) & 0xFF) {
-      case 0x03: return "BDM-010";
-      case 0x04: return "BDM-020";
-      case 0x05: return "BDM-030";
-      case 0x06: return "BDM-040";
-      case 0x07:
-      case 0x08: return "BDM-050";
-      case 0x09: return "BDM-060R";
-      case 0x11: return "BDM-060M";
-      case 0x13: return "BDM-060X";
-      default: return "Unknown";
+    case 0x03: return "BDM-010";
+    case 0x04: return "BDM-020";
+    case 0x05: return "BDM-030";
+    case 0x06: return "BDM-040";
+    case 0x07:
+    case 0x08: return "BDM-050";
+    case 0x09: return "BDM-060R";
+    case 0x11: return "BDM-060M";
+    case 0x13: return "BDM-060X";
+    default: return "Unknown";
     }
   }
 
@@ -1927,19 +1931,19 @@ public:
   };
 
 protected:
-  DSUINT8 reportIdValue;     // 0x000  internal::Packet::Haptics
-  DSUINT8 tagValue;          // 0x001  low nibble tag, high nibble sequence
-  ConfigPacket configPacket; // 0x002..0x00a
-  SamplePacket samplePacket; // 0x00b..0x04c
-  DSUINT8 padding[61];       // 0x04d..0x089  container padding
-  DSUINT32 crc;              // 0x08a..0x08d  CRC-32, seed 0xA2
+  internal::ReportId reportIdValue; // 0x000  internal::ReportId::Haptics
+  DSUINT8 tagValue;                 // 0x001  low nibble tag, high nibble sequence
+  ConfigPacket configPacket;        // 0x002..0x00a
+  SamplePacket samplePacket;        // 0x00b..0x04c
+  DSUINT8 padding[61];              // 0x04d..0x089  container padding
+  DSUINT32 crc;                     // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr uint8_t reportId       = static_cast<uint8_t>(internal::Packet::Haptics);
-  static constexpr uint8_t crcSeed        = 0xA2;
-  static constexpr uint8_t configPacketId = 0x11;
-  static constexpr uint8_t samplePacketId = 0x12;
-  static constexpr uint8_t sizedBit       = 0x80;
+  static constexpr internal::ReportId reportId = internal::ReportId::Haptics;
+  static constexpr uint8_t crcSeed             = 0xA2;
+  static constexpr uint8_t configReportId      = 0x11;
+  static constexpr uint8_t sampleReportId      = 0x12;
+  static constexpr uint8_t sizedBit            = 0x80;
 
 public:
   static constexpr uint32_t sampleRate = 3000;
@@ -1952,11 +1956,11 @@ public:
   constexpr void init() {
     *this                        = HapticsReport{};
     reportIdValue                = reportId;
-    configPacket.header.pid      = static_cast<uint8_t>(configPacketId | sizedBit);
+    configPacket.header.pid      = static_cast<uint8_t>(configReportId | sizedBit);
     configPacket.header.length   = sizeof(Config);
     configPacket.config.mask     = Config::Mask::SpeakerOnly;
     configPacket.config.unknown5 = 0xFF;
-    samplePacket.header.pid      = static_cast<uint8_t>(samplePacketId | sizedBit);
+    samplePacket.header.pid      = static_cast<uint8_t>(sampleReportId | sizedBit);
     samplePacket.header.length   = sampleBytes;
   }
 
@@ -2038,9 +2042,9 @@ struct MicFrame {
 #endif
 
 private:
-  static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
-  static constexpr uint8_t toc      = 0xD4;
-  static constexpr size_t crcBytes  = 4;
+  static constexpr internal::ReportId reportId = internal::ReportId::StateBluetooth;
+  static constexpr uint8_t toc                 = 0xD4;
+  static constexpr size_t crcBytes             = 4;
 
 public:
   static constexpr uint32_t sampleRate = 48000;
@@ -2050,13 +2054,14 @@ public:
   static void init(uint8_t *buf, size_t len) {
     if (!buf || len < 3 + crcBytes) return;
     memset(buf, 0, len);
-    buf[0] = reportId;
+    buf[0] = static_cast<uint8_t>(reportId);
     buf[3] = toc;
   }
 #endif
 
   static const MicFrame *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len <= 3 + crcBytes || buf[0] != reportId || buf[3] != toc) return nullptr;
+    if (!buf || len <= 3 + crcBytes || buf[0] != static_cast<uint8_t>(reportId) || buf[3] != toc)
+      return nullptr;
     return reinterpret_cast<const MicFrame *>(buf);
   }
 
@@ -2136,7 +2141,7 @@ static_assert(sizeof(AudioReport) == 398);
 static_assert(internal::AudioReportProbe::stateSize() == 63);
 static_assert(sizeof(OutputBody) == 47);
 
-static_assert(internal::AudioReportProbe::reportIdValue(kReport) == 0x36);
+static_assert(internal::AudioReportProbe::reportIdValue(kReport) == internal::ReportId::Audio);
 static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
 static_assert(internal::AudioReportProbe::configTag(kReport) == 0x91);
 static_assert(internal::AudioReportProbe::configLength(kReport) == 7);
