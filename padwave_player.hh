@@ -687,7 +687,7 @@ public:
     dualsense::Firmware info{};
     info.init();
     int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
-    if (got < 0 || !info.valid())
+    if (got < 0 || !info.valid(!usb))
       return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
 
     size_t o = 0;

@@ -25,6 +25,7 @@
 
 #include "padwave_player.hh"
 #include "padwave_input.hh"
+#include "dualsense-extra.hh"
 
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
 // the kernel both spell it lower-case with colons.
