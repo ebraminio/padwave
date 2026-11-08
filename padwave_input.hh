@@ -277,7 +277,7 @@ private:
     if (auto *audioFrame = dualsense::MicFrame::asFrame(buf, len)) {
       size_t payload_len = 0;
       const uint8_t *payload = audioFrame->payload(buf, len, &payload_len);
-      if (!mic_decoder.valid() && !mic_decoder.open(dualsense::MicFrame::sampleRate, 1)) return;
+      if (!mic_decoder.isValid() && !mic_decoder.open(dualsense::MicFrame::sampleRate, 1)) return;
       int16_t pcm[dualsense::MicFrame::samples];
       int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::samples);
       if (n > 0) emitMic(pcm, static_cast<size_t>(n));
@@ -327,7 +327,7 @@ public:
 
   bool micReady() const {
 #ifdef DS_HAVE_OPUS
-    return mic_decoder.valid();
+    return mic_decoder.isValid();
 #else
     return false;
 #endif

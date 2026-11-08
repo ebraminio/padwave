@@ -308,7 +308,7 @@ private:
     c->in[c->in_len] = 0;
 
     HttpRequest req(c->in, c->in_len);
-    if (!req.valid()) {
+    if (!req.isValid()) {
       closeConn(c);
       return;
     }

@@ -221,7 +221,7 @@ private:
   int hidraw_retry = 0;
   char node_name[64] = "";
   char controller_mac[32] = "";
-  bool usb = false;
+  bool is_usb = false;
   bool speaker = false;
   FILE *usb_audio = nullptr;
   App *app = nullptr;
@@ -509,7 +509,7 @@ private:
     int fd = device.open();
     if (fd < 0) return false;
     hidraw = fd;
-    usb = device.isUsb();
+    is_usb = device.isUsb();
     snprintf(node_name, sizeof(node_name), "%s", device.node);
     snprintf(controller_mac, sizeof(controller_mac), "%s", device.mac);
     return true;
@@ -518,7 +518,7 @@ private:
   void sendAudioRoute() {
     auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
                          : dualsense::OutputBody::AudioControl::Headphones;
-    if (usb) {
+    if (is_usb) {
       dualsense::UsbOutputReport report{};
       report.init();
       // USB audio routing needs the full audio block, not just AudioRouting.
@@ -662,7 +662,7 @@ public:
 
     // One-sided update: the untouched block stays all zero, matching the
     // reference one-sided writers. Only the selected valid bit is claimed.
-    if (usb) {
+    if (is_usb) {
       dualsense::UsbOutputReport report{};
       report.init();
       if (left)
@@ -687,7 +687,7 @@ public:
     dualsense::Firmware info{};
     info.init();
     int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
-    if (got < 0 || !info.valid(!usb))
+    if (got < 0 || !info.isValid(is_usb))
       return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
 
     size_t o = 0;
@@ -763,7 +763,7 @@ private:
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
 
-    if (usb) {
+    if (is_usb) {
       dualsense::UsbOutputReport report{};
       report.init();
       if (!padwave_fields::apply_fields(&report.body(), fields)) return;
@@ -831,7 +831,7 @@ private:
   }
 
   void sendReport(const float *pcm, int frames) {
-    if (usb) return; // USB audio uses the ALSA endpoint, not 0x36.
+    if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     dualsense::AudioReport report;
 
     report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
@@ -954,7 +954,7 @@ private:
     }
 
     if (strncmp(line, "fields ", 7) == 0) {
-      if (usb) {
+      if (is_usb) {
         dualsense::UsbOutputReport report{};
         report.init();
         if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
@@ -1114,7 +1114,7 @@ private:
       }
     }
 
-    if (haptics_only && !usb) {
+    if (haptics_only && !is_usb) {
       sendHapticsOnly(block);
       return;
     }
@@ -1122,7 +1122,7 @@ private:
     float gain = static_cast<float>((volume / 100.0));
     gain = gain * gain * gain;
 
-    if (usb) {
+    if (is_usb) {
       // USB speaker path: 512 frames at 48 kHz every 10.667 ms, no 512→480
       // conversion. That conversion remains Bluetooth-only.
       writeUsbPcm(block, gain);
@@ -1152,9 +1152,9 @@ public:
 
   ~Player() { destroy(); }
 
-  bool valid() const { return enc.valid(); }
+  bool isValid() const { return enc.isValid(); }
 
-  explicit operator bool() const { return valid(); }
+  explicit operator bool() const { return isValid(); }
 
   int timerFd() const { return tfd; }
 
@@ -1184,7 +1184,7 @@ public:
 
   const char *mac() const { return controller_mac; }
 
-  bool isUsb() const { return usb; }
+  bool isUsb() const { return is_usb; }
 
   bool audioActive() const { return usb_audio != nullptr; }
 
@@ -1197,12 +1197,12 @@ public:
     hidraw_retry = 0;
     node_name[0] = 0;
     controller_mac[0] = 0;
-    usb = false;
+    is_usb = false;
   }
 
   bool create(const char *node = nullptr) {
     destroy();
-    usb = false;
+    is_usb = false;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
@@ -1219,7 +1219,7 @@ public:
       return false;
     }
 
-    if (usb && !startUsbAudio()) fprintf(stderr, "padwave player: USB audio unavailable\n");
+    if (is_usb && !startUsbAudio()) fprintf(stderr, "padwave player: USB audio unavailable\n");
     sendMuteLed(false);
     sendAudioRoute();
 

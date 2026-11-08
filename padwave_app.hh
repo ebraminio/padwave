@@ -551,11 +551,11 @@ public:
       poweroff_in = (this->poweroff_at - now + 999) / 1000;
     kvAdd(buf, cap, &o, "session.poweroff_in", "%ld", poweroff_in);
 
-    kvAdd(buf, cap, &o, "audio.present", "%s", this->player.valid() ? "true" : "false");
+    kvAdd(buf, cap, &o, "audio.present", "%s", this->player.isValid() ? "true" : "false");
     kvText(buf, cap, &o, "audio.sink", this->player.audioSink());
     kvText(buf, cap, &o, "audio.route", this->player.speakerOutput() ? "speaker" : "headphones");
     kvText(buf, cap, &o, "audio.state",
-           this->player.audioActive() ? "running" : (this->player.valid() ? "ready" : "null"));
+           this->player.audioActive() ? "running" : (this->player.isValid() ? "ready" : "null"));
 
     kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
     kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");

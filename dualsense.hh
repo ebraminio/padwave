@@ -1333,7 +1333,7 @@ protected:
 private:
   static constexpr uint8_t reportId = static_cast<uint8_t>(internal::Packet::StateBluetooth);
   static constexpr uint8_t crcSeed  = 0xA1;
-  constexpr bool valid() const { return crc == internal::crc_of(*this, crcSeed); }
+  constexpr bool isValid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
 #ifdef DS_FUZZER_BUILD
@@ -1350,7 +1350,7 @@ public:
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len < sizeof(InputReport) || buf[0] != reportId) return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
-    return r->valid() ? r : nullptr;
+    return r->isValid() ? r : nullptr;
   }
 };
 static_assert(sizeof(InputReport) == 78, "input 0x31 must stay 78 bytes");
@@ -1482,7 +1482,7 @@ public:
     Encoder(const Encoder &)            = delete;
     Encoder &operator=(const Encoder &) = delete;
 
-    bool valid() const { return encoder != nullptr; }
+    bool isValid() const { return encoder != nullptr; }
 
     bool open(int rate, int channels) {
       close();
@@ -1540,7 +1540,7 @@ private:
     return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
   }
 
-  constexpr bool valid() const {
+  constexpr bool isValid() const {
     return reportIdValue == reportId && crc == internal::crc_of(*this, crcSeed);
   }
 
@@ -1573,7 +1573,7 @@ public:
 public:
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
-  constexpr void init(SpeakerTag tagValue, EnableMask mask = EnableMask::SpeakerOnly) {
+  constexpr void init(SpeakerTag tagValue, EnableMask mask) {
     *this           = AudioReport{};
     reportIdValue   = reportId;
     configTag       = 0x11 | 0x80;
@@ -1642,7 +1642,7 @@ struct AudioReportProbe {
     return r.speakerTag();
   }
 
-  static constexpr bool valid(const AudioReport &r) { return r.valid(); }
+  static constexpr bool isValid(const AudioReport &r) { return r.isValid(); }
   static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
   static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
 };
@@ -1828,8 +1828,8 @@ public:
   constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
 
   // Bluetooth feature reports carry the CRC; the USB feature transfer does not.
-  constexpr bool valid(bool requireCrc = true) const {
-    return reportIdValue == reportId && (!requireCrc || crc == internal::crc_of(*this, crcSeed));
+  constexpr bool isValid(bool isUsb) const {
+    return reportIdValue == reportId && (isUsb || crc == internal::crc_of(*this, crcSeed));
   }
 };
 static_assert(sizeof(Firmware) == 64, "0x20 must stay 64 bytes");
@@ -1932,7 +1932,7 @@ struct MicFrame {
     Decoder(const Decoder &)            = delete;
     Decoder &operator=(const Decoder &) = delete;
 
-    bool valid() const { return decoder != nullptr; }
+    bool isValid() const { return decoder != nullptr; }
 
     bool open(int rate, int channels) {
       close();
@@ -2082,11 +2082,11 @@ constexpr AudioReport kSigned = [] {
   r.sign();
   return r;
 }();
-static_assert(internal::AudioReportProbe::valid(kSigned));
+static_assert(internal::AudioReportProbe::isValid(kSigned));
 
 constexpr auto kRaw         = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
 constexpr AudioReport kCopy = __builtin_bit_cast(AudioReport, kRaw);
-static_assert(internal::AudioReportProbe::valid(kCopy));
+static_assert(internal::AudioReportProbe::isValid(kCopy));
 
 } // namespace wire_test
 } // namespace internal

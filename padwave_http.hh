@@ -34,7 +34,7 @@ struct HttpRequest {
 
   explicit HttpRequest(const char *buf, size_t len) { parse(buf, len); }
 
-  bool valid() const { return status != Status::Malformed; }
+  bool isValid() const { return status != Status::Malformed; }
 
   bool headReady() const { return status == Status::Parsed; }
 
