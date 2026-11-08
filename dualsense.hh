@@ -1903,11 +1903,6 @@ private:
   static constexpr uint8_t sizedBit       = 0x80;
 
 public:
-  enum class SampleFormat : uint8_t {
-    Signed8,
-    Unsigned8,
-  };
-
   static constexpr uint32_t sampleRate = 3000;
   static constexpr size_t sampleBytes  = 64;
   static constexpr size_t sampleFrames = sampleBytes / 2;
@@ -1926,14 +1921,10 @@ public:
     samplePacket.header.length   = sampleBytes;
   }
 
-  // The wire format is signed 8-bit PCM; unsigned input is converted here.
-  constexpr void setSamples(const uint8_t *pcm, size_t len, SampleFormat format) {
+  // The 0x32 wire format is signed 8-bit PCM.
+  constexpr void setSamples(const int8_t *pcm, size_t len) {
     size_t n = len < sampleBytes ? len : sampleBytes;
-    for (size_t i = 0; i < n; ++i) {
-      int sample = static_cast<int>(pcm[i]);
-      if (format == SampleFormat::Unsigned8) sample -= 128;
-      samplePacket.samples[i] = static_cast<int8_t>(sample);
-    }
+    for (size_t i = 0; i < n; ++i) samplePacket.samples[i] = pcm[i];
     for (size_t i = n; i < sampleBytes; ++i) samplePacket.samples[i] = 0;
   }
 

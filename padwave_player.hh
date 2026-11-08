@@ -271,7 +271,7 @@ private:
   float haptic_lp = 0;
   uint8_t haptics_sequence = 0;
   SwrContext *haptic_swr = nullptr;
-  uint8_t haptic_pending[256] = {};
+  int16_t haptic_pending[256] = {};
   size_t haptic_pending_len = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
@@ -782,7 +782,7 @@ private:
     if (haptic_swr) swr_free(&haptic_swr);
     AVChannelLayout layout;
     av_channel_layout_default(&layout, CHANNELS);
-    int r = swr_alloc_set_opts2(&haptic_swr, &layout, AV_SAMPLE_FMT_U8,
+    int r = swr_alloc_set_opts2(&haptic_swr, &layout, AV_SAMPLE_FMT_S16,
                                 dualsense::HapticsReport::sampleRate, &layout,
                                 AV_SAMPLE_FMT_FLT, RATE, 0, nullptr);
     av_channel_layout_uninit(&layout);
@@ -796,35 +796,34 @@ private:
 
   void sendHapticsOnly(const float block[IN_FRAMES][CHANNELS]) {
     if (!haptic_swr) return;
-    uint8_t converted[256];
-    uint8_t *outbuf[1] = {converted};
+    int16_t converted[256];
+    uint8_t *outbuf[1] = {reinterpret_cast<uint8_t *>(converted)};
     const uint8_t *in[1] = {reinterpret_cast<const uint8_t *>(block)};
     int got = swr_convert(haptic_swr, outbuf, 128, in, IN_FRAMES);
     if (got <= 0) return;
-    size_t bytes = static_cast<size_t>(got) * CHANNELS;
+    size_t bytes = static_cast<size_t>(got) * CHANNELS * sizeof(int16_t);
     if (haptic_pending_len + bytes > sizeof(haptic_pending)) return;
-    memcpy(haptic_pending + haptic_pending_len, converted, bytes);
+    memcpy(reinterpret_cast<uint8_t *>(haptic_pending) + haptic_pending_len, converted, bytes);
     haptic_pending_len += bytes;
 
     const float vgain = static_cast<float>(volume) / 100.0f;
     const float hgain = vgain * static_cast<float>(haptic_gain) / 100.0f;
-    while (haptic_pending_len >= dualsense::HapticsReport::sampleBytes) {
-      uint8_t samples[dualsense::HapticsReport::sampleBytes];
+    const size_t bytesPerReport = dualsense::HapticsReport::sampleBytes * sizeof(int16_t);
+    while (haptic_pending_len >= bytesPerReport) {
+      int8_t samples[dualsense::HapticsReport::sampleBytes];
       for (size_t i = 0; i < sizeof(samples); i++) {
-        int sample = static_cast<int>(
-            static_cast<float>(static_cast<int>(haptic_pending[i]) - 128) * hgain);
+        int sample = static_cast<int>(static_cast<float>(haptic_pending[i] >> 8) * hgain);
         if (sample < -128) sample = -128;
         if (sample > 127) sample = 127;
-        samples[i] = static_cast<uint8_t>(static_cast<int8_t>(sample));
+        samples[i] = static_cast<int8_t>(sample);
       }
-      memmove(haptic_pending, haptic_pending + sizeof(samples),
-              haptic_pending_len - sizeof(samples));
-      haptic_pending_len -= sizeof(samples);
+      memmove(haptic_pending, reinterpret_cast<uint8_t *>(haptic_pending) + bytesPerReport,
+              haptic_pending_len - bytesPerReport);
+      haptic_pending_len -= bytesPerReport;
 
       dualsense::HapticsReport report;
       report.init();
-      report.setSamples(samples, sizeof(samples),
-                        dualsense::HapticsReport::SampleFormat::Signed8);
+      report.setSamples(samples, sizeof(samples));
       report.setSequence(haptics_sequence++);
       report.sign();
       if (writeDevice(&report, sizeof(report))) sent++;
