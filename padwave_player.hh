@@ -57,6 +57,7 @@ extern "C" {
 #include "padwave_fields.hh"
 #include "padwave_hid.hh"
 #include "dualsense.hh"
+#include "dualsense-extra.hh"
 
 struct player_status {
   long pos_ms;
@@ -534,6 +535,21 @@ private:
     writeDevice(&report, sizeof(report));
   }
 
+  bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
+                        dualsense::internal::CommandResponse &response) {
+    using namespace dualsense::internal;
+    if (hidraw < 0) return false;
+    CommandRequest request(device, action);
+    if (ioctl(hidraw, HIDIOCSFEATURE(sizeof(request)), &request) < 0) return false;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+      if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(response)), &response) < 0) return false;
+      if (response.matches(device, action) && (response.complete() || response.completeMore()))
+        return true;
+      usleep(1000);
+    }
+    return false;
+  }
+
   bool writeDevice(const void *data, size_t len) {
     if (hidraw < 0) {
       if (hidraw_retry > 0)
@@ -755,6 +771,113 @@ public:
     }
     snprintf(line, sizeof(line), "firmware.raw=%s\n", hex);
     append(line);
+    return static_cast<int>(o);
+  }
+
+  int extraInfo(char *dest, size_t cap) {
+    using namespace dualsense::internal;
+    if (!is_usb) return snprintf(dest, cap, "ok=false\nerror=USB required\n");
+    if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
+
+    size_t o = 0;
+    auto append = [&](const char *text) {
+      int n = snprintf(dest + o, cap > o ? cap - o : 0, "%s", text);
+      if (n > 0) o += static_cast<size_t>(n);
+    };
+    auto appendU = [&](const char *name, unsigned value) {
+      char line[64];
+      snprintf(line, sizeof(line), "%s=%u\n", name, value);
+      append(line);
+    };
+    auto appendHex = [&](const char *name, uint32_t value) {
+      char line[64];
+      snprintf(line, sizeof(line), "%s=0x%08X\n", name, value);
+      append(line);
+    };
+    char line[192];
+    append("ok=true\nextras.usb=true\n");
+
+    CommandResponse response;
+    if (readExtraCommand(CommandDevice::MainMcu, 9, response)) {
+      auto id = parseMcuUniqueId(response);
+      if (id.valid) {
+        snprintf(line, sizeof(line), "extras.mcu_uid=0x%016llX\n",
+                 static_cast<unsigned long long>(id.value));
+        append(line);
+      } else {
+        append("extras.mcu_uid=invalid\n");
+      }
+    } else {
+      append("extras.mcu_uid=unavailable\n");
+    }
+
+    if (readExtraCommand(CommandDevice::DeviceInfo, 2, response)) {
+      auto mac = parseBluetoothAddress(response);
+      if (mac.valid) {
+        snprintf(line, sizeof(line), "extras.bt_address=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                 mac.bytes[5], mac.bytes[4], mac.bytes[3], mac.bytes[2], mac.bytes[1],
+                 mac.bytes[0]);
+        append(line);
+      } else {
+        append("extras.bt_address=invalid\n");
+      }
+    } else {
+      append("extras.bt_address=unavailable\n");
+    }
+
+    if (readExtraCommand(CommandDevice::DeviceInfo, 13, response)) {
+      auto patch = parsePatchInfo(response);
+      if (patch.valid) {
+        appendHex("extras.patch_id", patch.id);
+        appendU("extras.patch_count", patch.count);
+        appendU("extras.patch_size", patch.size);
+      } else {
+        append("extras.patch=invalid\n");
+      }
+    } else {
+      append("extras.patch=unavailable\n");
+    }
+
+    if (readExtraCommand(CommandDevice::MainMcu, 12, response)) {
+      auto info = parseDeviceInfo(response);
+      if (info.valid) {
+        append("extras.device_info=");
+        for (unsigned i = 0; i < sizeof(info.bytes); ++i) {
+          snprintf(line, sizeof(line), "%02X", info.bytes[i]);
+          append(line);
+        }
+        append("\n");
+      } else {
+        append("extras.device_info=invalid\n");
+      }
+    } else {
+      append("extras.device_info=unavailable\n");
+    }
+
+    if (readExtraCommand(CommandDevice::Codec, 1, response)) {
+      auto status = parseSpiderStatus(response);
+      if (status.valid) {
+        snprintf(line, sizeof(line), "extras.spider_init=0x%02X\n", status.value);
+        append(line);
+      } else {
+        append("extras.spider_init=invalid\n");
+      }
+    } else {
+      append("extras.spider_init=unavailable\n");
+    }
+
+    if (readExtraCommand(CommandDevice::Codec, 2, response)) {
+      auto status = parseSpiderStatus(response);
+      if (status.valid) {
+        snprintf(line, sizeof(line), "extras.spider_state=0x%02X\n", status.value);
+        append(line);
+      } else {
+        append("extras.spider_state=invalid\n");
+      }
+    } else {
+      append("extras.spider_state=unavailable\n");
+    }
+
     return static_cast<int>(o);
   }
 

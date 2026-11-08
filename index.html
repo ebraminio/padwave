@@ -333,6 +333,8 @@
       </details>
       <div class="lab-row"><button id="labFirmware">get firmware info</button><span id="labFirmwareMsg"></span></div>
       <pre id="labFirmwareOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
+      <div class="lab-row" id="usbExtrasRow" style="display:none"><button id="labExtras">get USB extras</button><span id="labExtrasMsg"></span></div>
+      <pre id="labExtrasOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
     </section>
 
     <section class="card">
@@ -683,6 +685,9 @@ function render(s) {
 
   const controllerToggle = $("#controllerToggle");
   const canToggle = c.connected === true && c.plugged_usb_data === true;
+  const usbExtras = c.connected === true && c.bus === "usb";
+  $("#usbExtrasRow").style.display = usbExtras ? "flex" : "none";
+  if (!usbExtras) $("#labExtrasOut").style.display = "none";
   const ignored = c.padwave_disabled === true;
   controllerToggle.disabled = !canToggle;
   controllerToggle.textContent = ignored ? "controller: ignored" : "controller: active";
@@ -1407,6 +1412,21 @@ $("#labFirmware").onclick = async () => {
   } else {
     out.style.display = "none";
     $("#labFirmwareMsg").textContent = "failed: " + (data.error || "unknown");
+  }
+};
+
+$("#labExtras").onclick = async () => {
+  const data = await labSend({ kind: "extra_info" });
+  const out = $("#labExtrasOut");
+  if (data.ok === true && data.extras) {
+    out.textContent = Object.entries(data.extras)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n");
+    out.style.display = "block";
+    $("#labExtrasMsg").textContent = "read";
+  } else {
+    out.style.display = "none";
+    $("#labExtrasMsg").textContent = "failed: " + (data.error || "unknown");
   }
 };
 
