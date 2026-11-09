@@ -20,7 +20,6 @@ static bool write_file(const char *dir, const char *name, const void *data, size
 
 static dualsense::InputReport report(uint32_t buttons) {
   dualsense::InputReport r{};
-  r.init();
   auto *raw = reinterpret_cast<uint8_t *>(&r);
   raw[1] = 0x10;
   raw[2 + 0x00] = 128;
@@ -45,7 +44,6 @@ int main(int argc, char **argv) {
   dualsense::InputReport released = report(0);
 
   dualsense::UsbInputReport usbReport{};
-  usbReport.init();
   uint8_t usb[sizeof(usbReport)] = {};
   memcpy(usb, &usbReport, sizeof(usb));
   usb[1 + 0] = 0x80;

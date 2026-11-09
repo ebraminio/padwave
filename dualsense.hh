@@ -20,7 +20,7 @@ namespace internal {
 
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
-  constexpr NumType() = default;
+  constexpr NumType() { *this = Type{}; }
 
   constexpr explicit NumType(Type value) { *this = value; }
 
@@ -812,11 +812,9 @@ public:
     lightbarBlue  = 0;
   }
 
+  constexpr OutputBody() {}
   // Claims only what the audio path writes: the volumes and the routing.
-  // Claiming anything else here is how one writer silently owns a feature
-  // another writer is using.
-  constexpr void init(AudioControl routing) {
-    *this      = OutputBody{};
+  constexpr explicit OutputBody(AudioControl routing) : OutputBody() {
     validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
@@ -890,6 +888,7 @@ public:
   // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
   // The class owns the shift and wrap; callers just hold a Sequence.
   struct Sequence {
+    constexpr Sequence() : value(0) {}
     constexpr uint8_t next() {
       uint8_t next_tag = static_cast<uint8_t>((value & mask) << shift);
       value            = static_cast<uint8_t>((value + 1) & mask);
@@ -897,23 +896,13 @@ public:
     }
 
   private:
-    uint8_t value                  = 0;
+    uint8_t value;
     static constexpr uint8_t mask  = 0x0F;
     static constexpr uint8_t shift = 4;
   };
 
-  constexpr void init() {
-    *this         = OutputReport{};
-    reportIdValue = reportId;
-    tagValue      = tag;
-    seqTag        = 0;
-    // The body stays neutral; callers claim only the fields they write.
-  }
-
-  constexpr void init(Sequence &sequence) {
-    init();
-    seqTag = sequence.next();
-  }
+  constexpr OutputReport() : reportIdValue(reportId), tagValue(tag) {}
+  constexpr explicit OutputReport(Sequence &sequence) : OutputReport() { seqTag = sequence.next(); }
 
   constexpr const OutputBody &body() const { return bodyData; }
   constexpr OutputBody &body() { return bodyData; }
@@ -941,12 +930,7 @@ private:
   static constexpr ReportId reportId = ReportId::OutputUsb;
 
 public:
-  constexpr void init() {
-    *this         = UsbOutputReport{};
-    reportIdValue = reportId;
-    // USB field reports must not claim the audio defaults.
-    bodyData      = OutputBody{};
-  }
+  constexpr UsbOutputReport() : reportIdValue(reportId) {}
 
   constexpr const OutputBody &body() const { return bodyData; }
   constexpr OutputBody &body() { return bodyData; }
@@ -1278,12 +1262,7 @@ private:
   constexpr bool isValid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
-#ifdef DS_FUZZER_BUILD
-  constexpr void init() {
-    *this         = InputReport{};
-    reportIdValue = reportId;
-  }
-#endif
+  constexpr InputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
 
   constexpr const InputBody &body() const { return bodyData; }
   constexpr InputBody &body() { return bodyData; }
@@ -1310,10 +1289,7 @@ protected:
   InputBody bodyData;     // 0x01..0x3f
 
 public:
-  constexpr void init() {
-    *this         = UsbInputReport{};
-    reportIdValue = reportId;
-  }
+  constexpr UsbInputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
 
   constexpr const InputBody &body() const { return bodyData; }
 
@@ -1392,8 +1368,6 @@ private:
   using DSINT16  = internal::DSINT16;
   using ReportId = internal::ReportId;
 
-  constexpr AudioReport() = default;
-
 public:
   enum class SubPacketId : uint8_t {
     State   = 0x10,
@@ -1427,10 +1401,12 @@ public:
   struct PcmPacket {
   private:
     PacketHeader headerValue;
-    DSINT8 samplesValue[64] = {};
+    DSINT8 samplesValue[64];
 
   public:
-    constexpr PcmPacket()                   = default;
+    constexpr PcmPacket() : samplesValue() {
+      for (auto &sample : samplesValue) sample = 0;
+    }
     PcmPacket(const PcmPacket &)            = delete;
     PcmPacket &operator=(const PcmPacket &) = delete;
 
@@ -1465,7 +1441,7 @@ public:
     DSUINT8 hapticLengths[5];
     DSUINT8 counter;
 
-    constexpr AudioConfig()                     = default;
+    constexpr AudioConfig() : mask(), hapticLengths(), counter() {}
     AudioConfig(const AudioConfig &)            = delete;
     AudioConfig &operator=(const AudioConfig &) = delete;
   };
@@ -1508,9 +1484,9 @@ public:
 #ifdef DS_HAVE_OPUS
   // PCM-facing encoder; libopus types stay contained in this block.
   struct Encoder {
-    ::OpusEncoder *encoder = nullptr;
+    ::OpusEncoder *encoder;
 
-    Encoder() = default;
+    constexpr Encoder() : encoder(nullptr) {}
 
     ~Encoder() { close(); }
 
@@ -1585,6 +1561,7 @@ public:
   // 0x36 sequence tagValue: high nibble counts 0..15, low nibble stays zero;
   // the counter is a separate free-running byte.
   struct Sequence {
+    constexpr Sequence() : seq(0), counter(0) {}
     constexpr void apply(AudioReport &report) {
       report.setSeqTag(static_cast<uint8_t>((seq & mask) << shift));
       report.setCounter(nextCounter());
@@ -1594,8 +1571,8 @@ public:
     constexpr uint8_t nextCounter() { return counter++; }
 
   private:
-    uint8_t seq                    = 0;
-    uint8_t counter                = 0;
+    uint8_t seq;
+    uint8_t counter;
     static constexpr uint8_t mask  = 0x0F;
     static constexpr uint8_t shift = 4;
   };
@@ -1603,8 +1580,7 @@ public:
 public:
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask, Sequence &sequence,
                                  const OutputBody &body, OutputBody::AudioControl audio,
-                                 bool lowPass)
-      : AudioReport() {
+                                 bool lowPass) {
     reportIdValue = reportId;
     configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
     config.mask = mask;
@@ -1695,8 +1671,7 @@ public:
     static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
 
     constexpr AudioReport report = [] {
-      OutputBody body{};
-      body.init(OutputBody::AudioControl::Headphones);
+      OutputBody body(OutputBody::AudioControl::Headphones);
       AudioReport::Sequence sequence;
       return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
                          sequence, body, OutputBody::AudioControl::Headphones, false);
@@ -1752,9 +1727,13 @@ namespace internal {
 // per-axis bias and plus/minus endpoints; converting them to the coefficients
 // below is what turns raw IMU counts into usable units.
 struct AxisCalibration {
-  int bias        = 0;
-  int numerator   = 0;
-  int denominator = 1;
+  int bias;
+  int numerator;
+  int denominator;
+
+  constexpr AxisCalibration() : bias(0), numerator(0), denominator(1) {}
+  constexpr AxisCalibration(int biasValue, int numeratorValue, int denominatorValue)
+      : bias(biasValue), numerator(numeratorValue), denominator(denominatorValue) {}
 
   constexpr int apply(int raw) const {
     if (denominator == 0) return 0;
@@ -1881,7 +1860,7 @@ public:
   // Non-owning byte view into one of the fixed wire fields below.
   struct String {
     template <typename Type, size_t n>
-    constexpr String(Type (&value_)[n])
+    constexpr explicit String(Type (&value_)[n])
         : value(reinterpret_cast<const uint8_t *>(value_)), length(n) {}
 
     const uint8_t *value;
@@ -1892,14 +1871,11 @@ public:
   static constexpr uint8_t crcSeed                    = 0xA3;
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
-  constexpr void init() {
-    *this         = Firmware{};
-    reportIdValue = reportId;
-  }
+  constexpr Firmware() : reportIdValue(reportId) {}
 
-  constexpr const String buildDateText() const { return {buildDate}; }
-  constexpr const String buildTimeText() const { return {buildTime}; }
-  constexpr const String deviceInfoText() const { return {deviceInfo}; }
+  constexpr const String buildDateText() const { return String(buildDate); }
+  constexpr const String buildTimeText() const { return String(buildTime); }
+  constexpr const String deviceInfoText() const { return String(deviceInfo); }
   constexpr uint16_t typeValue() const { return fwType; }
   constexpr uint16_t seriesValue() const { return swSeries; }
   constexpr uint32_t hardwareInfoValue() const { return hardwareInfo; }
@@ -2066,9 +2042,9 @@ struct MicFrame {
 #ifdef DS_HAVE_OPUS
   // PCM-facing decoder for the Opus mic packet.
   struct Decoder {
-    ::OpusDecoder *decoder = nullptr;
+    ::OpusDecoder *decoder;
 
-    Decoder() = default;
+    constexpr Decoder() : decoder(nullptr) {}
 
     ~Decoder() { close(); }
 

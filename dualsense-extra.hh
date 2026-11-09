@@ -262,12 +262,12 @@ static_assert(sizeof(AuthenticationStatus) == 16, "0xF2 must stay 16 bytes");
 // for the capture, while FunctionFS/usb_f_fs was.
 
 struct SerialNumber {
-  char value[18] = {};
-  uint8_t length = 0;
+  char value[18];
+  uint8_t length;
 
-  constexpr SerialNumber() = default;
+  constexpr SerialNumber() : value(), length(0) {}
 
-  constexpr explicit SerialNumber(const char *text) {
+  constexpr explicit SerialNumber(const char *text) : SerialNumber() {
     while (length < 17 && text[length]) {
       value[length] = text[length];
       ++length;

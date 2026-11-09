@@ -520,15 +520,13 @@ private:
                          : dualsense::OutputBody::AudioControl::Headphones;
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      report.init();
       // USB audio routing needs the full audio block, not just AudioRouting.
       report.body().setAudio(route);
       writeDevice(&report, sizeof(report));
       return;
     }
 
-    dualsense::OutputReport report{};
-    report.init(output_sequence);
+    dualsense::OutputReport report(output_sequence);
     report.body().setAudioRoute(route);
     report.sign();
     writeDevice(&report, sizeof(report));
@@ -671,7 +669,6 @@ public:
     // reference one-sided writers. Only the selected valid bit is claimed.
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      report.init();
       if (left)
         report.body().setLeftTriggerEffect(effect);
       else
@@ -679,8 +676,7 @@ public:
       writeDevice(&report, sizeof(report));
       return;
     }
-    dualsense::OutputReport report{};
-    report.init(output_sequence);
+    dualsense::OutputReport report(output_sequence);
     if (left)
       report.body().setLeftTriggerEffect(effect);
     else
@@ -692,7 +688,6 @@ public:
   int firmwareInfo(char *dest, size_t cap) {
     if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
     dualsense::Firmware info{};
-    info.init();
     int got = ioctl(hidraw, HIDIOCGFEATURE(sizeof(info)), &info);
     if (got < 0 || !info.isValid(is_usb))
       return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
@@ -939,7 +934,6 @@ public:
     }
 
     dualsense::Firmware firmware{};
-    firmware.init();
     if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(firmware)), &firmware) >= 0 && firmware.isValid(true)) {
       appendHex("extras.hw_model", firmware.hardwareInfoValue());
       snprintf(line, sizeof(line), "extras.board_model=%s\n", firmware.boardModel());
@@ -987,14 +981,12 @@ private:
 
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      report.init();
       if (!padwave_fields::apply_fields(&report.body(), fields)) return;
       writeDevice(&report, sizeof(report));
       return;
     }
 
-    dualsense::OutputReport report{};
-    report.init(output_sequence);
+    dualsense::OutputReport report(output_sequence);
     if (!padwave_fields::apply_fields(&report.body(), fields)) return;
     report.sign();
     if (!writeDevice(&report, sizeof(report))) return;
@@ -1181,11 +1173,10 @@ private:
     if (strncmp(line, "fields ", 7) == 0) {
       if (is_usb) {
         dualsense::UsbOutputReport report{};
-        report.init();
         if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
         if (!writeDevice(&report, sizeof(report))) return;
       } else {
-        out.init(output_sequence);
+        out = dualsense::OutputReport(output_sequence);
         if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
         out.sign();
         if (!writeDevice(&out, sizeof(out))) return;
@@ -1373,7 +1364,7 @@ private:
   }
 
 public:
-  Player() = default;
+  Player() {}
 
   ~Player() { destroy(); }
 
@@ -1435,7 +1426,7 @@ public:
       openDevice();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
-    state.init(dualsense::OutputBody::AudioControl::Headphones);
+    state = dualsense::OutputBody(dualsense::OutputBody::AudioControl::Headphones);
 
     if (!openHapticResampler()) fprintf(stderr, "padwave player: haptic resampler init failed\n");
     if (!enc.open(RATE, CHANNELS)) {
