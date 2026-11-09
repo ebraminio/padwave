@@ -1388,6 +1388,8 @@ private:
   using DSINT16  = internal::DSINT16;
   using ReportId = internal::ReportId;
 
+  constexpr AudioReport() = default;
+
 public:
   enum class SubPacketId : uint8_t {
     State   = 0x10,
@@ -1586,9 +1588,8 @@ public:
     static constexpr uint8_t shift = 4;
   };
 
-public:
-  // Fill the constant parts, then set seq, counter and whatever state fields
-  // this writer owns.
+private:
+  // Fill the constant parts; the public constructor then applies the state.
   constexpr void init(SpeakerTag tagValue, ConfigMask mask) {
     *this         = AudioReport{};
     reportIdValue = reportId;
@@ -1601,6 +1602,20 @@ public:
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
     speakerLength = opusSize;
+  }
+
+public:
+  template <typename HapticFill>
+  constexpr AudioReport(SpeakerTag tagValue, ConfigMask mask, Sequence &sequence,
+                        const OutputBody &body, OutputBody::AudioControl audio, bool lowPass,
+                        HapticFill fill)
+      : AudioReport() {
+    init(tagValue, mask);
+    state.body = body;
+    state.body.setAudio(audio);
+    if (lowPass) state.body.setHapticLowPassFilter(true);
+    hapticsPacket = PcmPacket(SubPacketId::Data, hapticSize, fill);
+    sequence.apply(*this);
   }
 
 #ifdef DS_HAVE_OPUS
@@ -1618,10 +1633,6 @@ public:
     for (size_t i = 0; i < n; ++i) opus[i] = data[i];
     for (size_t i = n; i < opusSize; ++i) opus[i] = 0;
   }
-
-  // 64 signed 8-bit samples at 6 kHz. Zero-fill any unused tail so a short
-  // haptic frame cannot leak the previous report's samples.
-  constexpr void setHaptics(const int8_t *data, size_t len) { hapticsPacket.setSamples(data, len); }
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
@@ -1671,10 +1682,12 @@ public:
     static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
 
     constexpr AudioReport report = [] {
-      AudioReport r{};
-      r.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly);
-      r.stateBody().init(OutputBody::AudioControl::Headphones);
-      return r;
+      OutputBody body{};
+      body.init(OutputBody::AudioControl::Headphones);
+      AudioReport::Sequence sequence;
+      return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
+                         sequence, body, OutputBody::AudioControl::Headphones, false,
+                         [](size_t) { return int8_t{0}; });
     }();
     static_assert(report.reportIdValue == ReportId::Audio);
     static_assert(report.seqTag == 0x00);

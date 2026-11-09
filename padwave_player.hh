@@ -659,21 +659,6 @@ private:
     sent++;
   }
 
-  void buildHaptics(const float *pcm, int frames, int8_t *haptic_out) {
-    memset(haptic_out, 0, dualsense::AudioReport::hapticSize);
-    if (!haptic_subwoofer) return;
-    float hgain = static_cast<float>(haptic_gain) / 100.0f;
-    int written = 0;
-    for (int i = 0; i < frames && written < dualsense::AudioReport::hapticSize; i++) {
-      float mono = (pcm[i * CHANNELS] + pcm[i * CHANNELS + 1]) * 0.5f;
-      float bass = lowPass(mono) * hgain;
-      if (i % 8 != 0) continue;
-      if (bass > 1.0f) bass = 1.0f;
-      if (bass < -1.0f) bass = -1.0f;
-      haptic_out[written++] = static_cast<int8_t>(bass * 127.0f);
-    }
-  }
-
 public:
   void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
     if (left)
@@ -1063,23 +1048,29 @@ private:
 
   void sendReport(const float *pcm, int frames) {
     if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
-    dualsense::AudioReport report;
-
-    report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
-                        : dualsense::AudioReport::SpeakerTag::Jack,
-                mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
-                    : dualsense::AudioReport::ConfigMask::SpeakerOnly);
-
-    report.stateBody() = state;
-    report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
-                                        : dualsense::OutputBody::AudioControl::Headphones);
-
-    int8_t haptics[dualsense::AudioReport::hapticSize];
-    buildHaptics(pcm, frames, haptics);
-    report.setHaptics(haptics, dualsense::AudioReport::hapticSize);
-    if (haptic_subwoofer) report.stateBody().setHapticLowPassFilter(true);
-
-    audio_sequence.apply(report);
+    const float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    dualsense::AudioReport report(
+        speaker ? dualsense::AudioReport::SpeakerTag::Speaker
+                : dualsense::AudioReport::SpeakerTag::Jack,
+        mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
+            : dualsense::AudioReport::ConfigMask::SpeakerOnly,
+        audio_sequence, state,
+        speaker ? dualsense::OutputBody::AudioControl::Speaker
+                : dualsense::OutputBody::AudioControl::Headphones,
+        haptic_subwoofer, [&](size_t i) {
+          if (!haptic_subwoofer) return int8_t{0};
+          const size_t first = i * 8;
+          if (first >= static_cast<size_t>(frames)) return int8_t{0};
+          float output = 0;
+          for (size_t src = first; src < first + 8 && src < static_cast<size_t>(frames); ++src) {
+            float mono = (pcm[src * CHANNELS] + pcm[src * CHANNELS + 1]) * 0.5f;
+            float bass = lowPass(mono) * hgain;
+            if (src == first) output = bass;
+          }
+          if (output > 1.0f) output = 1.0f;
+          if (output < -1.0f) output = -1.0f;
+          return static_cast<int8_t>(output * 127.0f);
+        });
 
     report.setPcm(pcm, frames, enc);
 
