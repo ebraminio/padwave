@@ -1970,26 +1970,27 @@ public:
   using ConfigMask   = AudioReport::ConfigMask;
   using PcmPacket    = AudioReport::PcmPacket;
 
-  struct Config {
+  struct HapticsConfig {
     ConfigMask mask;
     DSUINT8 route; // unconfirmed; suspected haptics/speaker selector
     DSUINT8 reserved[3];
     DSUINT8 unknown5; // 0xFF; meaning unconfirmed
     DSUINT8 counter;  // increments once per 10.667 ms frame
+
+    constexpr explicit HapticsConfig(uint8_t sequence)
+        : mask(ConfigMask::SpeakerOnly), route{}, reserved{}, unknown5(0xFF), counter(sequence) {}
   };
+  static_assert(sizeof(HapticsConfig) == 7, "0x32 config must stay 7 bytes");
 
   struct ConfigPacket {
   private:
     PacketHeader headerValue;
-    Config configValue;
+    HapticsConfig configValue;
 
   public:
     constexpr explicit ConfigPacket(uint8_t sequence)
-        : headerValue(AudioReport::SubPacketId::Config, sizeof(Config)), configValue{} {
-      configValue.mask     = ConfigMask::SpeakerOnly;
-      configValue.unknown5 = 0xFF;
-      configValue.counter  = sequence;
-    }
+        : headerValue(AudioReport::SubPacketId::Config, sizeof(HapticsConfig)),
+          configValue(sequence) {}
   };
 
 protected:
