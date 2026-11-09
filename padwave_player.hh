@@ -269,6 +269,16 @@ private:
   int haptic_cutoff           = 150;
   int haptic_gain             = 100;
   float haptic_lp             = 0;
+  uint8_t motor_left          = 0;
+  uint8_t motor_right         = 0;
+  uint8_t motor_power_level   = 0;
+  uint8_t headphone_volume    = 0x7F;
+  uint8_t speaker_volume      = 0x64;
+  uint8_t mic_volume          = 0;
+  uint8_t power_save_control  = 0;
+  uint8_t audio_routing       = 0;
+  uint8_t audio_control2      = 0x0A;
+  bool haptic_lowpass         = false;
   SwrContext *haptic_swr      = nullptr;
   int16_t haptic_pending[256] = {};
   size_t haptic_pending_len   = 0;
@@ -514,6 +524,33 @@ private:
     return true;
   }
 
+  static bool fieldNumber(const char *text, const char *name, unsigned long &value) {
+    const size_t name_len = strlen(name);
+    for (const char *p = text; (p = strstr(p, name)); p += name_len) {
+      if (p != text && p[-1] != ';') continue;
+      if (p[name_len] != '=') continue;
+      value = strtoul(p + name_len + 1, nullptr, 0);
+      return true;
+    }
+    return false;
+  }
+
+  void cacheFields(const char *text) {
+    unsigned long value = 0;
+    if (fieldNumber(text, "motor_left", value)) motor_left = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "motor_right", value)) motor_right = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "motor_power_level", value))
+      motor_power_level = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "headphone_volume", value))
+      headphone_volume = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "speaker_volume", value)) speaker_volume = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "mic_volume", value)) mic_volume = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "power_save_control", value))
+      power_save_control = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "audio_control", value)) audio_routing = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "haptic_low_pass_filter", value)) haptic_lowpass = value != 0;
+  }
+
   template <typename Fill>
   bool sendOutput(Fill fill) {
     if (is_usb) {
@@ -529,14 +566,14 @@ private:
 
   void sendAudioState() {
     dualsense::OutputBody body;
-    body.setHeadphoneVolume(state.headphoneVolume());
-    body.setSpeakerVolume(state.speakerVolume());
-    body.setMicVolume(state.micVolumeValue());
-    body.setAudioRouting(state.audioRoutingValue());
-    body.setPowerSaveControl(state.powerSaveValue());
-    body.setHapticLowPassFilter(state.hapticLowPassValue());
-    body.setMotorPowerLevel(state.motorPowerLevelValue());
-    body.setAudioControl2(state.audioControl2Value());
+    body.setHeadphoneVolume(headphone_volume);
+    body.setSpeakerVolume(speaker_volume);
+    body.setMicVolume(mic_volume);
+    body.setAudioRouting(audio_routing);
+    body.setPowerSaveControl(power_save_control);
+    body.setHapticLowPassFilter(haptic_lowpass);
+    body.setMotorPowerLevel(motor_power_level);
+    body.setAudioControl2(audio_control2);
     sendOutput([&](dualsense::OutputBody &target) {
       target = body;
       return true;
@@ -544,8 +581,10 @@ private:
   }
 
   void sendAudioRoute() {
-    state.setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
-                           : dualsense::OutputBody::AudioControl::Headphones);
+    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
+                         : dualsense::OutputBody::AudioControl::Headphones;
+    state.setAudio(route);
+    audio_routing = static_cast<uint8_t>(route);
     sendAudioState();
   }
 
@@ -1054,8 +1093,8 @@ private:
         audio_sequence);
 
     dualsense::OutputBody motors;
-    motors.setMotorRight(state.rightMotor());
-    motors.setMotorLeft(state.leftMotor());
+    motors.setMotorRight(motor_right);
+    motors.setMotorLeft(motor_left);
     report.stateBody() = motors;
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
@@ -1185,6 +1224,7 @@ private:
           }))
         return;
       padwave_fields::apply_fields(&state, line + 7);
+      cacheFields(line + 7);
       return;
     }
 
@@ -1204,6 +1244,11 @@ private:
 
     if (sscanf(line, "mic %ld", &value) == 1) {
       mic = value != 0;
+      mic_volume = mic ? dualsense::OutputBody::micMaxVolume : 0;
+      if (mic)
+        power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
+      else
+        power_save_control = static_cast<uint8_t>(power_save_control | 0x10);
       state.setMic(mic ? dualsense::OutputBody::micMaxVolume : 0);
       sendAudioState();
       // The controller only starts/stops microphone capture when it sees a
@@ -1226,6 +1271,7 @@ private:
       haptic_lp        = 0;
       if (was != haptic_subwoofer) {
         stopUsbAudio();
+        haptic_lowpass = haptic_subwoofer;
         state.setHapticLowPassFilter(haptic_subwoofer);
         sendAudioState();
       }

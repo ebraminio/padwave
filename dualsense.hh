@@ -547,17 +547,6 @@ protected:
 public:
   static constexpr uint8_t micMaxVolume = 0x40;
 
-  constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
-  constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
-  constexpr uint8_t leftMotor() const { return motorLeft; }
-  constexpr uint8_t rightMotor() const { return motorRight; }
-  constexpr uint8_t micVolumeValue() const { return micVolume; }
-  constexpr uint8_t powerSaveValue() const { return powerSaveControl; }
-  constexpr uint8_t audioRoutingValue() const { return audioControl; }
-  constexpr uint8_t audioControl2Value() const { return audioControl2; }
-  constexpr bool hapticLowPassValue() const { return hapticLowPassFilter != 0; }
-  constexpr uint8_t motorPowerLevelValue() const { return motorPowerLevel; }
-
 private:
   // Which fields this report owns: the kernel's (and DS4Windows', and
   // dualsense-tester's) validFlag0 / validFlag1 / validFlag2. A set bit
