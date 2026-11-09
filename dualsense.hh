@@ -800,39 +800,38 @@ public:
     lightbarBlue  = 0;
   }
 
-  constexpr void clearClaims() {
-    validFlag0 = 0;
-    validFlag1 = 0;
-    validFlag2 = 0;
-  }
-
-  constexpr void clearOneShotClaims() {
-    validFlag0 = static_cast<uint8_t>(validFlag0 & ~(bit(ValidFlag0::RightTriggerMotorEnable) |
-                                                     bit(ValidFlag0::LeftTriggerMotorEnable)));
-    validFlag1 = static_cast<uint8_t>(
-        validFlag1 &
-        ~(bit(ValidFlag1::MicMuteLedControlEnable) | bit(ValidFlag1::LightbarControlEnable) |
-          bit(ValidFlag1::ReleaseLEDs) | bit(ValidFlag1::PlayerIndicatorControlEnable)));
-    validFlag2 = 0;
-  }
-
-  constexpr void claimMotors() {
-    claim(ValidFlag0::CompatibleVibration);
-    claim(ValidFlag0::HapticsSelect);
-  }
-
   // Only the motors are refreshed by 0x36; the controller stops rumble if
   // their claim disappears from the audio stream.
   constexpr OutputBody motorSnapshot() const {
-    OutputBody out = *this;
-    out.clearClaims();
-    out.claimMotors();
+    OutputBody out{};
+    out.validFlag0 =
+        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
+    out.motorRight = this->motorRight;
+    out.motorLeft  = this->motorLeft;
     return out;
   }
 
+  // Continuous audio/power state for the separate 0x31 report.
   constexpr OutputBody audioSnapshot() const {
-    OutputBody out = *this;
-    out.clearOneShotClaims();
+    OutputBody out{};
+    out.validFlag0 = static_cast<uint8_t>(
+        bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect) |
+        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
+        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
+    out.motorRight       = this->motorRight;
+    out.motorLeft        = this->motorLeft;
+    out.volumeHeadphones = this->volumeHeadphones;
+    out.volumeSpeaker    = this->volumeSpeaker;
+    out.micVolume        = this->micVolume;
+    out.audioControl     = this->audioControl;
+
+    out.validFlag1 = static_cast<uint8_t>(
+        bit(ValidFlag1::PowerSaveControlEnable) | bit(ValidFlag1::HapticLowPassFilterEnable) |
+        bit(ValidFlag1::VibrationAttenuationEnable) | bit(ValidFlag1::AudioControl2Enable));
+    out.powerSaveControl    = this->powerSaveControl;
+    out.hapticLowPassFilter = this->hapticLowPassFilter;
+    out.motorPowerLevel     = this->motorPowerLevel;
+    out.audioControl2       = this->audioControl2;
     return out;
   }
 
