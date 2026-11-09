@@ -17,9 +17,11 @@
 
 namespace dualsense {
 namespace internal {
+struct WireProbe;
 
 template <typename Type, typename UnsignedType = Type>
 struct NumType {
+  friend struct WireProbe;
   constexpr NumType() { *this = Type{}; }
 
   constexpr explicit NumType(Type value) { *this = value; }
@@ -53,6 +55,7 @@ struct NumType {
   constexpr NumType &operator++() { return *this = static_cast<Type>(*this) + 1; }
   constexpr NumType &operator--() { return *this = static_cast<Type>(*this) - 1; }
 
+private:
   uint8_t bytes[sizeof(Type)];
 };
 
@@ -147,7 +150,6 @@ enum class ReportId : uint8_t {
   AuthStatus         = 0xF2,
 };
 
-struct WireProbe;
 } // namespace internal
 
 struct OutputBody {
@@ -758,32 +760,6 @@ public:
     audioControl = static_cast<uint8_t>(routing);
   }
 
-private:
-  // Preserve motor claims; trigger claims stay cleared because this stream
-  // writes zeros into those blocks.
-  constexpr void claimAudioFields() {
-    constexpr uint8_t motorMask =
-        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
-    validFlag0 = static_cast<uint8_t>(
-        (validFlag0 & motorMask) | bit(ValidFlag0::HeadphoneVolumeEnable) |
-        bit(ValidFlag0::SpeakerVolumeEnable) | bit(ValidFlag0::MicVolumeEnable) |
-        bit(ValidFlag0::AudioControlEnable));
-    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
-  }
-
-  constexpr void resetAudioDefaults(AudioControl routing) {
-    volumeHeadphones     = 0x7F;
-    volumeSpeaker        = 0x64;
-    audioControl         = static_cast<uint8_t>(routing);
-    speakerPreampControl = 0x0A;
-  }
-
-public:
-  constexpr void setAudio(AudioControl routing) {
-    claimAudioFields();
-    resetAudioDefaults(routing);
-  }
-
   constexpr void setMicMuted(bool muted) {
     claim(ValidFlag1::PowerSaveControlEnable);
     constexpr uint8_t mask = static_cast<uint8_t>(PowerSave::MicMute);
@@ -798,11 +774,6 @@ public:
   }
 
   constexpr OutputBody() {}
-  // Claims only what the audio path writes: the volumes and the routing.
-  constexpr explicit OutputBody(AudioControl routing) : OutputBody() {
-    claimAudioFields();
-    resetAudioDefaults(routing);
-  }
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
@@ -1523,72 +1494,6 @@ public:
 static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
 
 namespace internal {
-struct WireProbe {
-private:
-  static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &effect, size_t i) {
-    return i == 0 ? static_cast<uint8_t>(effect.mode) : effect.parameters[i - 1];
-  }
-
-public:
-  static constexpr bool all() {
-    static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
-    static_assert(sizeof(AudioReport::State) == 63, "state must stay 63 bytes");
-    static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
-
-    constexpr uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-    constexpr auto feedback      = OutputBody::TriggerEffect::multiplePositionFeedback(levels);
-    static_assert(OutputBody::TriggerEffect::off().isValid());
-    static_assert(triggerByte(feedback, 0) == 0x21);
-    static_assert(triggerByte(feedback, 1) == 0xFF && triggerByte(feedback, 2) == 0x03);
-    static_assert(triggerByte(feedback, 3) == 0 && triggerByte(feedback, 6) == 0);
-
-    constexpr auto weapon = OutputBody::TriggerEffect::weapon(2, 8, 8);
-    static_assert(triggerByte(weapon, 0) == 0x25);
-    static_assert(triggerByte(weapon, 1) == 0x04 && triggerByte(weapon, 2) == 0x01);
-    static_assert(triggerByte(weapon, 3) == 7);
-
-    constexpr uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    constexpr auto vibration = OutputBody::TriggerEffect::multiplePositionVibration(25, amplitudes);
-    static_assert(triggerByte(vibration, 0) == 0x26);
-    static_assert(triggerByte(vibration, 1) == 0x01 && triggerByte(vibration, 9) == 25);
-
-    constexpr auto bow = OutputBody::TriggerEffect::bow(2, 8, 6, 4);
-    static_assert(triggerByte(bow, 0) == 0x22);
-    static_assert(triggerByte(bow, 1) == 0x04 && triggerByte(bow, 2) == 0x01);
-    static_assert(triggerByte(bow, 3) == 0x1D);
-
-    constexpr auto galloping = OutputBody::TriggerEffect::galloping(2, 8, 2, 4, 25);
-    static_assert(triggerByte(galloping, 0) == 0x23);
-    static_assert(triggerByte(galloping, 4) == 25);
-
-    constexpr auto machine = OutputBody::TriggerEffect::machine(2, 8, 6, 4, 25, 10);
-    static_assert(triggerByte(machine, 0) == 0x27);
-    static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
-
-    constexpr AudioReport report = [] {
-      OutputReport::Sequence sequence;
-      return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
-                         sequence);
-    }();
-    static_assert(report.reportIdValue == ReportId::Audio);
-    static_assert(report.seqTag == 0x00);
-    static_assert(report.configHeader.pid() == 0x91);
-    static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
-    static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
-    static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
-    static_assert(report.config.counter == 0);
-    static_assert(report.stateTag == 0x90);
-    static_assert(report.stateLength == 63);
-    static_assert(report.stateBody().validFlag0 == 0);
-    static_assert(report.stateBody().validFlag1 == 0);
-    static_assert(report.speakerTag() == AudioReport::SpeakerTag::Jack);
-    static_assert(report.speakerLength == 200);
-    static_assert(report.opus[0] == 0);
-
-    return true;
-  }
-};
-
 // ===========================================================================
 // Feature reports — the configuration channel
 // ===========================================================================
@@ -1986,63 +1891,115 @@ public:
   }
 };
 
-// ===========================================================================
-// Compile-time wire checks
-// ===========================================================================
-//
-// These static_asserts are part of the header, so every translation unit that
-// uses the schema validates endianness, offsets, initialized fields and CRC.
 namespace internal {
-namespace wire_test {
+struct WireProbe {
+private:
+  static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &effect, size_t i) {
+    return i == 0 ? static_cast<uint8_t>(effect.mode) : effect.parameters[i - 1];
+  }
 
-// --- byte order ------------------------------------------------------------
+public:
+  static constexpr bool all() {
+    static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
+    static_assert(sizeof(AudioReport::State) == 63, "state must stay 63 bytes");
+    static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
-constexpr DSUINT16 kU16 = [] {
-  DSUINT16 v;
-  v = 0x1234;
-  return v;
-}();
-static_assert(kU16.bytes[0] == 0x34 && kU16.bytes[1] == 0x12);
-static_assert(kU16 == 0x1234);
+    constexpr uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    constexpr auto feedback      = OutputBody::TriggerEffect::multiplePositionFeedback(levels);
+    static_assert(OutputBody::TriggerEffect::off().isValid());
+    static_assert(triggerByte(feedback, 0) == 0x21);
+    static_assert(triggerByte(feedback, 1) == 0xFF && triggerByte(feedback, 2) == 0x03);
+    static_assert(triggerByte(feedback, 3) == 0 && triggerByte(feedback, 6) == 0);
 
-constexpr DSUINT32 kU32 = [] {
-  DSUINT32 v;
-  v = 0x01020304;
-  return v;
-}();
-static_assert(kU32.bytes[0] == 0x04 && kU32.bytes[1] == 0x03 && kU32.bytes[2] == 0x02 &&
-              kU32.bytes[3] == 0x01);
-static_assert(kU32 == 0x01020304);
+    constexpr auto weapon = OutputBody::TriggerEffect::weapon(2, 8, 8);
+    static_assert(triggerByte(weapon, 0) == 0x25);
+    static_assert(triggerByte(weapon, 1) == 0x04 && triggerByte(weapon, 2) == 0x01);
+    static_assert(triggerByte(weapon, 3) == 7);
 
-constexpr DSINT16 kS16 = [] {
-  DSINT16 v;
-  v = -2;
-  return v;
-}();
-static_assert(kS16.bytes[0] == 0xFE && kS16.bytes[1] == 0xFF);
-static_assert(kS16 == -2);
+    constexpr uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    constexpr auto vibration = OutputBody::TriggerEffect::multiplePositionVibration(25, amplitudes);
+    static_assert(triggerByte(vibration, 0) == 0x26);
+    static_assert(triggerByte(vibration, 1) == 0x01 && triggerByte(vibration, 9) == 25);
 
-constexpr DSINT32 kS32 = [] {
-  DSINT32 v;
-  v = -1;
-  return v;
-}();
-static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
+    constexpr auto bow = OutputBody::TriggerEffect::bow(2, 8, 6, 4);
+    static_assert(triggerByte(bow, 0) == 0x22);
+    static_assert(triggerByte(bow, 1) == 0x04 && triggerByte(bow, 2) == 0x01);
+    static_assert(triggerByte(bow, 3) == 0x1D);
 
-// --- CRC-32 ----------------------------------------------------------------
+    constexpr auto galloping = OutputBody::TriggerEffect::galloping(2, 8, 2, 4, 25);
+    static_assert(triggerByte(galloping, 0) == 0x23);
+    static_assert(triggerByte(galloping, 4) == 25);
 
-constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-static_assert(internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
-constexpr uint32_t kChained = [] {
-  uint32_t c = internal::crc32(0, kCheck, 4);
-  return internal::crc32(c, kCheck + 4, 5);
-}();
-static_assert(kChained == 0xCBF43926u);
+    constexpr auto machine = OutputBody::TriggerEffect::machine(2, 8, 6, 4, 25, 10);
+    static_assert(triggerByte(machine, 0) == 0x27);
+    static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
 
-// --- initialized reports, triggers and byte copy ---------------------------
+    constexpr AudioReport report = [] {
+      OutputReport::Sequence sequence;
+      return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
+                         sequence);
+    }();
+    static_assert(report.reportIdValue == ReportId::Audio);
+    static_assert(report.seqTag == 0x00);
+    static_assert(report.configHeader.pid() == 0x91);
+    static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
+    static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
+    static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
+    static_assert(report.config.counter == 0);
+    static_assert(report.stateTag == 0x90);
+    static_assert(report.stateLength == 63);
+    static_assert(report.stateBody().validFlag0 == 0);
+    static_assert(report.stateBody().validFlag1 == 0);
+    static_assert(report.speakerTag() == AudioReport::SpeakerTag::Jack);
+    static_assert(report.speakerLength == 200);
+    static_assert(report.opus[0] == 0);
 
+    // --- byte order ------------------------------------------------------------
+    constexpr DSUINT16 kU16 = [] {
+      DSUINT16 v;
+      v = 0x1234;
+      return v;
+    }();
+    static_assert(kU16.bytes[0] == 0x34 && kU16.bytes[1] == 0x12);
+    static_assert(kU16 == 0x1234);
+
+    constexpr DSUINT32 kU32 = [] {
+      DSUINT32 v;
+      v = 0x01020304;
+      return v;
+    }();
+    static_assert(kU32.bytes[0] == 0x04 && kU32.bytes[1] == 0x03 && kU32.bytes[2] == 0x02 &&
+                  kU32.bytes[3] == 0x01);
+    static_assert(kU32 == 0x01020304);
+
+    constexpr DSINT16 kS16 = [] {
+      DSINT16 v;
+      v = -2;
+      return v;
+    }();
+    static_assert(kS16.bytes[0] == 0xFE && kS16.bytes[1] == 0xFF);
+    static_assert(kS16 == -2);
+
+    constexpr DSINT32 kS32 = [] {
+      DSINT32 v;
+      v = -1;
+      return v;
+    }();
+    static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
+
+    // --- CRC-32 ----------------------------------------------------------------
+
+    constexpr uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+    static_assert(internal::crc32(0, kCheck, sizeof(kCheck)) == 0xCBF43926u);
+    constexpr uint32_t kChained = [&] {
+      uint32_t c = internal::crc32(0, kCheck, 4);
+      return internal::crc32(c, kCheck + 4, 5);
+    }();
+    static_assert(kChained == 0xCBF43926u);
+
+    return true;
+  }
+};
 static_assert(internal::WireProbe::all());
-
-} // namespace wire_test
 } // namespace internal
 } // namespace dualsense

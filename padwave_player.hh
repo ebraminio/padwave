@@ -583,7 +583,6 @@ private:
   void sendAudioRoute() {
     auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
                          : dualsense::OutputBody::AudioControl::Headphones;
-    state.setAudio(route);
     audio_routing = static_cast<uint8_t>(route);
     sendAudioState();
   }
@@ -1473,7 +1472,6 @@ public:
       openDevice();
     }
     if (hidraw < 0) fprintf(stderr, "padwave player: no DualSense hidraw node\n");
-    state = dualsense::OutputBody(dualsense::OutputBody::AudioControl::Headphones);
 
     if (!openHapticResampler()) fprintf(stderr, "padwave player: haptic resampler init failed\n");
     if (!enc.open(RATE, CHANNELS)) {
