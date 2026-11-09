@@ -519,30 +519,30 @@ private:
   using DSUINT32 = internal::DSUINT32;
 
 protected:
-  DSUINT8 validFlag0;          // +0x00  ValidFlag0 bits
-  DSUINT8 validFlag1;          // +0x01  ValidFlag1 bits
-  DSUINT8 motorRight;          // +0x02  DS4-compatible rumble
-  DSUINT8 motorLeft;           // +0x03
-  DSUINT8 volumeHeadphones;    // +0x04  0x00..0x7f
-  DSUINT8 volumeSpeaker;       // +0x05  0x00..0xff
-  DSUINT8 micVolume;           // +0x06  0x00..0x40 (claimed by MicVolume)
-  DSUINT8 audioControl;        // +0x07  AudioControl; claimed by AudioRouting
-  DSUINT8 muteButtonLed;       // +0x08
-  DSUINT8 powerSaveControl;    // +0x09  PowerSave bits
-  TriggerEffect rightTrigger;  // +0x0a  11-byte effect block
-  TriggerEffect leftTrigger;   // +0x15  11-byte effect block
-  DSUINT32 hostTimestamp;      // +0x20  mirrored input sensor timestamp
-  DSUINT8 motorPowerLevel;     // +0x24  trigger:rumble reduction nibbles
-  DSUINT8 audioControl2;       // +0x25  bits 0..2: SP preamp gain; other bits unknown
-  DSUINT8 validFlag2;          // +0x26  ValidFlag2 bits
-  DSUINT8 hapticLowPassFilter; // +0x27  hardware haptic LPF enable
-  DSUINT8 reserved40;          // +0x28
-  DSUINT8 lightbarSetup;       // +0x29  validFlag2 bit 1; 0x02 fades out
-  DSUINT8 playerLedBrightness; // +0x2a  0=high, 1=medium, 2=low
-  DSUINT8 playerLeds;          // +0x2b  PlayerLeds bits
-  DSUINT8 lightbarRed;         // +0x2c
-  DSUINT8 lightbarGreen;       // +0x2d
-  DSUINT8 lightbarBlue;        // +0x2e
+  DSUINT8 validFlag0;           // +0x00  ValidFlag0 bits
+  DSUINT8 validFlag1;           // +0x01  ValidFlag1 bits
+  DSUINT8 motorRight;           // +0x02  DS4-compatible rumble
+  DSUINT8 motorLeft;            // +0x03
+  DSUINT8 volumeHeadphones;     // +0x04  0x00..0x7f
+  DSUINT8 volumeSpeaker;        // +0x05  0x00..0xff
+  DSUINT8 micVolume;            // +0x06  0x00..0x40 (claimed by MicVolume)
+  DSUINT8 audioControl;         // +0x07  AudioControl; claimed by AudioRouting
+  DSUINT8 muteButtonLed;        // +0x08
+  DSUINT8 powerSaveControl;     // +0x09  PowerSave bits
+  TriggerEffect rightTrigger;   // +0x0a  11-byte effect block
+  TriggerEffect leftTrigger;    // +0x15  11-byte effect block
+  DSUINT32 hostTimestamp;       // +0x20  mirrored input sensor timestamp
+  DSUINT8 motorPowerLevel;      // +0x24  trigger:rumble reduction nibbles
+  DSUINT8 speakerPreampControl; // +0x25  bits 0..2: SP preamp gain; other bits unknown
+  DSUINT8 validFlag2;           // +0x26  ValidFlag2 bits
+  DSUINT8 hapticLowPassFilter;  // +0x27  hardware haptic LPF enable
+  DSUINT8 reserved40;           // +0x28
+  DSUINT8 lightbarSetup;        // +0x29  validFlag2 bit 1; 0x02 fades out
+  DSUINT8 playerLedBrightness;  // +0x2a  0=high, 1=medium, 2=low
+  DSUINT8 playerLeds;           // +0x2b  PlayerLeds bits
+  DSUINT8 lightbarRed;          // +0x2c
+  DSUINT8 lightbarGreen;        // +0x2d
+  DSUINT8 lightbarBlue;         // +0x2e
 
 public:
   static constexpr uint8_t micMaxVolume = 0x40;
@@ -704,16 +704,16 @@ public:
 
   constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
 
-  // Sets the low three bits of audioControl2. 0x2 is +6 dB; the other gain
-  // codes are not documented. Upper bits of the byte are preserved.
+  // Sets the low three bits of speakerPreampControl. 0x2 is +6 dB; the other
+  // gain codes are not documented. Upper bits of the byte are preserved.
   constexpr void setSpeakerPreampGain(uint8_t gainCode) {
     claim(ValidFlag1::AudioControl2Enable);
-    audioControl2 = static_cast<uint8_t>((audioControl2 & 0xF8) | (gainCode & 0x07));
+    speakerPreampControl = static_cast<uint8_t>((speakerPreampControl & 0xF8) | (gainCode & 0x07));
   }
 
-  constexpr void setAudioControl2(uint8_t value) {
+  constexpr void setSpeakerPreampControl(uint8_t value) {
     claim(ValidFlag1::AudioControl2Enable);
-    audioControl2 = value;
+    speakerPreampControl = value;
   }
 
   constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
@@ -773,11 +773,11 @@ public:
         (validFlag0 & motorMask) | bit(ValidFlag0::HeadphoneVolumeEnable) |
         bit(ValidFlag0::SpeakerVolumeEnable) | bit(ValidFlag0::MicVolumeEnable) |
         bit(ValidFlag0::AudioControlEnable));
-    validFlag1       = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
-    volumeHeadphones = 0x7F;
-    volumeSpeaker    = 0x64;
-    audioControl     = static_cast<uint8_t>(routing);
-    audioControl2    = 0x0A;
+    validFlag1           = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
+    volumeHeadphones     = 0x7F;
+    volumeSpeaker        = 0x64;
+    audioControl         = static_cast<uint8_t>(routing);
+    speakerPreampControl = 0x0A;
   }
 
   constexpr void setMicMuted(bool muted) {
@@ -799,11 +799,11 @@ public:
     validFlag0 = static_cast<uint8_t>(
         bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
         bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    validFlag1       = bit(ValidFlag1::AudioControl2Enable);
-    volumeHeadphones = 0x7F;
-    volumeSpeaker    = 0x64;
-    audioControl     = static_cast<uint8_t>(routing);
-    audioControl2    = 0x0A;
+    validFlag1           = bit(ValidFlag1::AudioControl2Enable);
+    volumeHeadphones     = 0x7F;
+    volumeSpeaker        = 0x64;
+    audioControl         = static_cast<uint8_t>(routing);
+    speakerPreampControl = 0x0A;
   }
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");

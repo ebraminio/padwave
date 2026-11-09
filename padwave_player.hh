@@ -262,26 +262,26 @@ private:
   int64_t npushed                 = 0;
 
   bool playing = false, paused = false, eof = false, primed = false;
-  int volume                  = 80;
-  int speed_percent           = 100;
-  bool haptic_subwoofer       = false;
-  bool haptics_only           = false;
-  int haptic_cutoff           = 150;
-  int haptic_gain             = 100;
-  float haptic_lp             = 0;
-  uint8_t motor_left          = 0;
-  uint8_t motor_right         = 0;
-  uint8_t motor_power_level   = 0;
-  uint8_t headphone_volume    = 0x7F;
-  uint8_t speaker_volume      = 0x64;
-  uint8_t mic_volume          = 0;
-  uint8_t power_save_control  = 0;
-  uint8_t audio_routing       = 0;
-  uint8_t audio_control2      = 0x0A;
-  bool haptic_lowpass         = false;
-  SwrContext *haptic_swr      = nullptr;
-  int16_t haptic_pending[256] = {};
-  size_t haptic_pending_len   = 0;
+  int volume                     = 80;
+  int speed_percent              = 100;
+  bool haptic_subwoofer          = false;
+  bool haptics_only              = false;
+  int haptic_cutoff              = 150;
+  int haptic_gain                = 100;
+  float haptic_lp                = 0;
+  uint8_t motor_left             = 0;
+  uint8_t motor_right            = 0;
+  uint8_t motor_power_level      = 0;
+  uint8_t headphone_volume       = 0x7F;
+  uint8_t speaker_volume         = 0x64;
+  uint8_t mic_volume             = 0;
+  uint8_t power_save_control     = 0;
+  uint8_t audio_routing          = 0;
+  uint8_t speaker_preamp_control = 0x0A;
+  bool haptic_lowpass            = false;
+  SwrContext *haptic_swr         = nullptr;
+  int16_t haptic_pending[256]    = {};
+  size_t haptic_pending_len      = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -573,7 +573,7 @@ private:
     body.setPowerSaveControl(power_save_control);
     body.setHapticLowPassFilter(haptic_lowpass);
     body.setMotorPowerLevel(motor_power_level);
-    body.setAudioControl2(audio_control2);
+    body.setSpeakerPreampControl(speaker_preamp_control);
     sendOutput([&](dualsense::OutputBody &target) {
       target = body;
       return true;
@@ -1030,9 +1030,8 @@ private:
   void sendMuteLed(bool on) {
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
-    sendOutput([&](dualsense::OutputBody &body) {
-      return padwave_fields::apply_fields(&body, fields);
-    });
+    sendOutput(
+        [&](dualsense::OutputBody &body) { return padwave_fields::apply_fields(&body, fields); });
   }
 
   bool openHapticResampler() {
@@ -1085,12 +1084,11 @@ private:
   void sendReport(const float *pcm, int frames) {
     if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     const float hgain = static_cast<float>(haptic_gain) / 100.0f;
-    dualsense::AudioReport report(
-        speaker ? dualsense::AudioReport::SpeakerTag::Speaker
-                : dualsense::AudioReport::SpeakerTag::Jack,
-        mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
-            : dualsense::AudioReport::ConfigMask::SpeakerOnly,
-        audio_sequence);
+    dualsense::AudioReport report(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
+                                          : dualsense::AudioReport::SpeakerTag::Jack,
+                                  mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
+                                      : dualsense::AudioReport::ConfigMask::SpeakerOnly,
+                                  audio_sequence);
 
     dualsense::OutputBody motors;
     motors.setMotorRight(motor_right);
@@ -1243,7 +1241,7 @@ private:
     }
 
     if (sscanf(line, "mic %ld", &value) == 1) {
-      mic = value != 0;
+      mic        = value != 0;
       mic_volume = mic ? dualsense::OutputBody::micMaxVolume : 0;
       if (mic)
         power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
