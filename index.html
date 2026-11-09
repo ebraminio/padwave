@@ -404,6 +404,7 @@
         <input type="color" id="labColor" value="#00a0ff" title="override the lightbar colour">
         <button id="labBarApply">apply</button>
         <button id="labBarReset">reset</button>
+        <button id="labRelease" title="hand LED control back to the firmware">release</button>
         <button id="labBarOn" title="lightbar_setup 1: lightbar on">on</button>
         <button id="labBarFade" title="lightbar_setup 2: lightbar off">off</button>
         <label>setup <input type="number" id="labSetup" min="1" max="2" value="1" style="width:58px" title="lightbar_setup (1 = on, 2 = off)"></label>
@@ -1166,6 +1167,7 @@ $("#labBarApply").onclick = () => {
 };
 
 $("#labBarReset").onclick = () => labSend({ kind: "lightbar_reset" });
+$("#labRelease").onclick = () => labSend({ kind: "release" });
 $("#labBarOn").onclick = () => labSend({ kind: "lightbar_setup", value: 1 });
 $("#labBarFade").onclick = () => labSend({ kind: "lightbar_setup", value: 2 });
 $("#labBarSetup").onclick = () => labSend({ kind: "lightbar_setup", value: Number($("#labSetup").value) });

@@ -247,7 +247,6 @@ private:
   char manual_path[1024] = "";
   bool seek_fade         = false;
 
-  dualsense::OutputReport out{};
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
   bool mic = false;
@@ -515,18 +514,25 @@ private:
     return true;
   }
 
-  void sendAudioState() {
-    dualsense::OutputBody body = state.audioSnapshot();
+  template <typename Fill>
+  bool sendOutput(Fill fill) {
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      report.body() = body;
-      writeDevice(&report, sizeof(report));
-      return;
+      if (!fill(report.body())) return false;
+      return writeDevice(&report, sizeof(report));
     }
     dualsense::OutputReport report(output_sequence);
-    report.body() = body;
+    if (!fill(report.body())) return false;
     report.sign();
-    writeDevice(&report, sizeof(report));
+    return writeDevice(&report, sizeof(report));
+  }
+
+  void sendAudioState() {
+    dualsense::OutputBody body = state.audioSnapshot();
+    sendOutput([&](dualsense::OutputBody &target) {
+      target = body;
+      return true;
+    });
   }
 
   void sendAudioRoute() {
@@ -660,6 +666,13 @@ private:
   }
 
 public:
+  bool releaseLEDs() {
+    return sendOutput([](dualsense::OutputBody &body) {
+      body.releaseLEDs();
+      return true;
+    });
+  }
+
   void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
     if (left)
       state.setLeftTriggerEffect(effect);
@@ -668,22 +681,13 @@ public:
 
     // One-sided update: the untouched block stays all zero, matching the
     // reference one-sided writers. Only the selected valid bit is claimed.
-    if (is_usb) {
-      dualsense::UsbOutputReport report{};
+    sendOutput([&](dualsense::OutputBody &body) {
       if (left)
-        report.body().setLeftTriggerEffect(effect);
+        body.setLeftTriggerEffect(effect);
       else
-        report.body().setRightTriggerEffect(effect);
-      writeDevice(&report, sizeof(report));
-      return;
-    }
-    dualsense::OutputReport report(output_sequence);
-    if (left)
-      report.body().setLeftTriggerEffect(effect);
-    else
-      report.body().setRightTriggerEffect(effect);
-    report.sign();
-    writeDevice(&report, sizeof(report));
+        body.setRightTriggerEffect(effect);
+      return true;
+    });
   }
 
   int firmwareInfo(char *dest, size_t cap) {
@@ -979,18 +983,9 @@ private:
   void sendMuteLed(bool on) {
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
-
-    if (is_usb) {
-      dualsense::UsbOutputReport report{};
-      if (!padwave_fields::apply_fields(&report.body(), fields)) return;
-      writeDevice(&report, sizeof(report));
-      return;
-    }
-
-    dualsense::OutputReport report(output_sequence);
-    if (!padwave_fields::apply_fields(&report.body(), fields)) return;
-    report.sign();
-    if (!writeDevice(&report, sizeof(report))) return;
+    sendOutput([&](dualsense::OutputBody &body) {
+      return padwave_fields::apply_fields(&body, fields);
+    });
   }
 
   bool openHapticResampler() {
@@ -1164,30 +1159,19 @@ private:
     }
 
     if (strcmp(line, "state_clear_lightbar") == 0) {
-      if (is_usb) {
-        dualsense::UsbOutputReport report{};
-        report.body().releaseLEDs();
-        writeDevice(&report, sizeof(report));
-      } else {
-        dualsense::OutputReport report(output_sequence);
-        report.body().releaseLEDs();
-        report.sign();
-        writeDevice(&report, sizeof(report));
-      }
+      sendOutput([](dualsense::OutputBody &body) {
+        body.setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
+        body.setLightbar(0, 0, 0);
+        return true;
+      });
       return;
     }
 
     if (strncmp(line, "fields ", 7) == 0) {
-      if (is_usb) {
-        dualsense::UsbOutputReport report{};
-        if (!padwave_fields::apply_fields(&report.body(), line + 7)) return;
-        if (!writeDevice(&report, sizeof(report))) return;
-      } else {
-        out = dualsense::OutputReport(output_sequence);
-        if (!padwave_fields::apply_fields(&out.body(), line + 7)) return;
-        out.sign();
-        if (!writeDevice(&out, sizeof(out))) return;
-      }
+      if (!sendOutput([&](dualsense::OutputBody &body) {
+            return padwave_fields::apply_fields(&body, line + 7);
+          }))
+        return;
       padwave_fields::apply_fields(&state, line + 7);
       return;
     }

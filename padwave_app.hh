@@ -308,6 +308,7 @@ private:
   int led_custom[3]                 = {0, 0, 0};
   bool led_custom_set               = false;
   bool led_force                    = true;
+  bool led_released                 = false;
   int led_last_rgb[3]               = {-1, -1, -1};
   int led_last_player               = -2;
   int led_last_state                = -1;
@@ -791,6 +792,7 @@ public:
     char fields[1024];
 
     if (strcmp(kind, "lightbar") == 0) {
+      reclaimLeds();
       char rgb[64] = "0,0,0";
       int r = 0, g = 0, b = 0;
       kvGet(body, "rgb", rgb, sizeof(rgb));
@@ -809,6 +811,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_reset") == 0) {
+      reclaimLeds();
       this->led_custom_set = false;
       this->lightbar_on    = true;
       this->led_force      = true;
@@ -817,6 +820,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_fade") == 0) {
+      reclaimLeds();
       this->lightbar_on = false;
       this->led_force   = true;
       setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
@@ -825,6 +829,7 @@ public:
     }
 
     if (strcmp(kind, "lightbar_setup") == 0) {
+      reclaimLeds();
       int v = static_cast<int>(kvNumber(body, "value", 0));
       if (v != 1 && v != 2) return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
       auto setup        = static_cast<dualsense::OutputBody::LightbarSetup>(v);
@@ -836,6 +841,7 @@ public:
     }
 
     if (strcmp(kind, "player_led_brightness") == 0) {
+      reclaimLeds();
       if (this->padwaveDisabled())
         return snprintf(out, out_cap, "ok=true\nnote=controller disabled\n");
       int value = static_cast<int>(kvNumber(body, "value", 0));
@@ -858,7 +864,15 @@ public:
                       this->controller_disabled ? "ignored" : "active");
     }
 
+    if (strcmp(kind, "release") == 0) {
+      if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
+      bool ok        = this->player.releaseLEDs();
+      this->led_released = ok;
+      return snprintf(out, out_cap, "ok=%s\nnote=LED control released\n", ok ? "true" : "false");
+    }
+
     if (strcmp(kind, "player_leds") == 0) {
+      reclaimLeds();
       int mask                = static_cast<int>(kvNumber(body, "mask", 0)) & 0x3F;
       this->led_manual_player = true;
       this->led_manual_mask   = mask;
@@ -1861,6 +1875,7 @@ private:
 
   void setLightbarSetup(dualsense::OutputBody::LightbarSetup setup) {
     if (this->padwaveDisabled()) return;
+    reclaimLeds();
     if (setup == dualsense::OutputBody::LightbarSetup::LightOn) this->led_force = true;
     char fields[32];
     snprintf(fields, sizeof(fields), "lightbar_setup=%d", static_cast<int>(setup));
@@ -1894,6 +1909,11 @@ private:
     }
   }
 
+  void reclaimLeds() {
+    this->led_released = false;
+    this->led_force    = true;
+  }
+
   bool applyLightbar(int r, int g, int b, bool force) {
     if (!this->player || this->padwaveDisabled()) return false;
     if (!force && this->led_last_rgb[0] == r && this->led_last_rgb[1] == g &&
@@ -1919,6 +1939,7 @@ private:
   }
 
   void serviceLeds() {
+    if (this->led_released) return;
     if (this->power_save_mode) {
       if (!this->controller || !this->player) {
         this->power_save_leds_applied = false;
