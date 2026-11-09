@@ -198,30 +198,34 @@ inline constexpr FeatureReportInfo kFeatureReports[] = {
 // to be a checksum over the 256-byte challenge; the algorithm is unknown, and
 // the final chunk is zero-padded.
 struct AuthenticationChallenge {
-  using DSUINT8 = internal::DSUINT8;
+private:
+  using DSUINT8  = internal::DSUINT8;
+  using ReportId = internal::ReportId;
 
-  internal::ReportId reportIdValue; // 0x00  0xF0
-  DSUINT8 type;                     // 0x01  observed 0x01
-  DSUINT8 subtype;                  // 0x02  observed 0x01
-  DSUINT8 chunk;                    // 0x03  0..3
-  DSUINT8 payload[56];              // 0x04..0x3b
-  DSUINT8 checksum[4];              // 0x3c..0x3f  final chunk only; algorithm unknown
+protected:
+  ReportId reportIdValue; // 0x00  0xF0
+  DSUINT8 type;           // 0x01  observed 0x01
+  DSUINT8 subtype;        // 0x02  observed 0x01
+  DSUINT8 chunk;          // 0x03  0..3
+  DSUINT8 payload[56];    // 0x04..0x3b
+  DSUINT8 checksum[4];    // 0x3c..0x3f  final chunk only; algorithm unknown
 
-  static constexpr internal::ReportId reportId = internal::ReportId::AuthChallenge;
-  static constexpr size_t size                 = 64;
+  static constexpr ReportId reportId = ReportId::AuthChallenge;
+  static constexpr size_t size       = 64;
 };
 static_assert(sizeof(AuthenticationChallenge) == 64, "0xF0 must stay 64 bytes");
 
 // 16-byte authentication status poll. Every observed response was identical:
 // f2 00 01 11 followed by twelve zero bytes.
 struct AuthenticationStatus {
-  using DSUINT8 = internal::DSUINT8;
+  using DSUINT8  = internal::DSUINT8;
+  using ReportId = internal::ReportId;
 
-  internal::ReportId reportIdValue; // 0x00  0xF2
-  DSUINT8 payload[15];              // 0x01..0x0f
+  ReportId reportIdValue; // 0x00  0xF2
+  DSUINT8 payload[15];    // 0x01..0x0f
 
-  static constexpr internal::ReportId reportId = internal::ReportId::AuthStatus;
-  static constexpr size_t size                 = 16;
+  static constexpr ReportId reportId = ReportId::AuthStatus;
+  static constexpr size_t size       = 16;
 };
 static_assert(sizeof(AuthenticationStatus) == 16, "0xF2 must stay 16 bytes");
 
@@ -273,12 +277,11 @@ struct SerialNumber {
 
   constexpr const char *colorName() const {
     if (length < 6) return "Unknown";
-    struct Color {
+    static constexpr struct {
       char first;
       char second;
       const char *name;
-    };
-    static constexpr Color kColors[] = {
+    } kColors[] = {
         {'0', '0', "White"},
         {'0', '1', "Midnight Black"},
         {'0', '2', "Cosmic Red"},
@@ -308,7 +311,7 @@ struct SerialNumber {
         {'Z', 'E', "Genshin Impact Limited Edition"},
         {'Z', 'F', "007 First Light Limited Edition"},
     };
-    for (const Color &color : kColors)
+    for (auto &color : kColors)
       if (value[4] == color.first && value[5] == color.second) return color.name;
     return "Unknown";
   }
@@ -326,14 +329,19 @@ enum class CommandStatus : uint8_t {
 };
 
 struct CommandRequest {
-  internal::ReportId reportIdValue; // 0x80
+private:
+  using ReportId = internal::ReportId;
+
+protected:
+  ReportId reportIdValue; // 0x80
   DSUINT8 device;
   DSUINT8 action;
   DSUINT8 reserved[61];
 
-  static constexpr internal::ReportId reportId = internal::ReportId::CommandHost;
-  static constexpr size_t size                 = 64;
+  static constexpr ReportId reportId = ReportId::CommandHost;
+  static constexpr size_t size       = 64;
 
+public:
   constexpr CommandRequest() : reportIdValue(reportId), device(0), action(0), reserved() {}
 
   constexpr CommandRequest(CommandDevice deviceValue, uint8_t actionValue)
@@ -343,15 +351,19 @@ struct CommandRequest {
 static_assert(sizeof(CommandRequest) == 64, "0x80 command must stay 64 bytes");
 
 struct CommandResponse {
-  internal::ReportId reportIdValue; // 0x81
+private:
+  using ReportId = internal::ReportId;
+
+public:
+  ReportId reportIdValue; // 0x81
   DSUINT8 device;
   DSUINT8 action;
   DSUINT8 status;
   DSUINT8 payload[56];
   DSUINT8 reserved[4];
 
-  static constexpr internal::ReportId reportId = internal::ReportId::CommandStatus;
-  static constexpr size_t size                 = 64;
+  static constexpr ReportId reportId = ReportId::CommandStatus;
+  static constexpr size_t size       = 64;
 
   constexpr CommandResponse()
       : reportIdValue(reportId), device(0), action(0), status(0), payload(), reserved() {}
