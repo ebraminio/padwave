@@ -956,7 +956,7 @@ function buildBindings(bindings, holdMs) {
   const labels = {
     triangle: "△ pause", circle: "○ play", square: "□ other folder",
     l1: "L1 previous", r1: "R1 next", create: "create previous", options: "options next",
-    touchpad: "touchpad mute", mute: "mute mute", l3: "L3 next", r3: "R3 previous"
+    touchpad: "touchpad power save", mute: "mute mute", l3: "L3 next", r3: "R3 previous"
   };
   $("#bindings").innerHTML = Object.entries(bindings || {}).map(([k, v]) =>
     `<div class="pad-key" style="cursor:default">${escapeHtml(labels[k] || k)}<small>${escapeHtml(String(v))}</small></div>`

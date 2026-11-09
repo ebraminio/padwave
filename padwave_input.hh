@@ -86,7 +86,7 @@ private:
       {dualsense::InputBody::Button::R1, "next"},
       {dualsense::InputBody::Button::Create, "previous"},
       {dualsense::InputBody::Button::Options, "next"},
-      {dualsense::InputBody::Button::Touchpad, "toggle_mute"},
+      {dualsense::InputBody::Button::Touchpad, "toggle_power_save"},
       {dualsense::InputBody::Button::MicMute, "toggle_mute"},
       {dualsense::InputBody::Button::L3, "next"},
       {dualsense::InputBody::Button::R3, "previous"},

@@ -1582,6 +1582,8 @@ private:
       if (!this->playing || this->paused) togglePause();
     } else if (strcmp(name, "mute") == 0 || strcmp(name, "toggle_mute") == 0) {
       toggleMute();
+    } else if (strcmp(name, "toggle_power_save") == 0) {
+      setPowerSaveMode(!this->power_save_mode);
     } else if (strcmp(name, "volume") == 0) {
       setVolume(this->volume + value);
     } else if (strcmp(name, "seek") == 0) {

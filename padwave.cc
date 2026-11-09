@@ -239,7 +239,7 @@ private:
                                "bindings.r3=previous\n"
                                "bindings.right_paddle=next\n"
                                "bindings.square=shuffle_folder\n"
-                               "bindings.touchpad=toggle_mute\n"
+                               "bindings.touchpad=toggle_power_save\n"
                                "bindings.triangle=toggle_pause\n";
     return snprintf(buf, cap, "%scontroller.ps_hold_ms=%d\n", text, ::Input::PsHoldMs);
   }

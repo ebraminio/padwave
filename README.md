@@ -27,7 +27,8 @@ decoder, panel and HTTP API from the same epoll loop.
 | ○ | play (stands in for this controller's dead ✕) |
 | □ | shuffle another folder |
 | L1 / R1, Create / Options, L3 / R3 | previous / next track |
-| touchpad, mute | mute / unmute |
+| touchpad | toggle power-save mode |
+| mute | mute / unmute |
 | PS held ~2 s | save the playhead and power the controller off |
 | Edge paddles, Fn buttons | previous / next, pause, mute |
 
