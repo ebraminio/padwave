@@ -1453,8 +1453,16 @@ private:
   using ReportId = internal::ReportId;
 
 public:
+  enum class SubPacketId : uint8_t {
+    State   = 0x10,
+    Config  = 0x11,
+    Data    = 0x12,
+    Speaker = 0x13,
+    Jack    = 0x16,
+  };
+
   struct PacketHeader {
-    DSUINT8 pid;
+    DSUINT8 pid; // SubPacketId | sized bit
     DSUINT8 length;
   };
 
@@ -1546,8 +1554,8 @@ public:
 
   // +0x08e: 0x13 for the membrane speaker, 0x16 for the headphone jack.
   enum class SpeakerTag : uint8_t {
-    Speaker = 0x13,
-    Jack    = 0x16,
+    Speaker = static_cast<uint8_t>(SubPacketId::Speaker),
+    Jack    = static_cast<uint8_t>(SubPacketId::Jack),
   };
 
 private:
@@ -1556,8 +1564,9 @@ private:
   static constexpr uint8_t stateSize      = 63;
   static constexpr uint8_t opusSize       = 200;
   static constexpr uint8_t packetSizedBit = 0x80;
-  static constexpr uint8_t configPacketId = 0x11;
-  static constexpr uint8_t samplePacketId = 0x12;
+  static constexpr uint8_t packetPid(SubPacketId id) {
+    return static_cast<uint8_t>(id) | packetSizedBit;
+  }
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { counter = value; }
 
@@ -1605,16 +1614,17 @@ public:
   constexpr void init(SpeakerTag tagValue, ConfigMask mask) {
     *this               = AudioReport{};
     reportIdValue       = reportId;
-    configHeader.pid    = static_cast<uint8_t>(configPacketId | packetSizedBit);
+    configHeader.pid    = packetPid(SubPacketId::Config);
     configHeader.length = 7;
     enableMaskValue     = static_cast<uint8_t>(mask);
     for (unsigned i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
-    stateTag        = 0x10 | 0x80;
-    stateLength     = stateSize;
-    hapticsTag      = 0x12 | 0x80;
-    hapticsLength   = hapticSize;
-    speakerTagValue = static_cast<uint8_t>(static_cast<uint8_t>(tagValue) | 0x80);
-    speakerLength   = opusSize;
+    stateTag      = packetPid(SubPacketId::State);
+    stateLength   = stateSize;
+    hapticsTag    = packetPid(SubPacketId::Data);
+    hapticsLength = hapticSize;
+    speakerTagValue =
+        packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
+    speakerLength = opusSize;
   }
 
 #ifdef DS_HAVE_OPUS
@@ -1964,16 +1974,14 @@ public:
   static_assert(sizeof(SamplePacket) == 66, "0x32 sample packet must stay 66 bytes");
 
   constexpr void init() {
-    *this         = HapticsReport{};
-    reportIdValue = reportId;
-    configPacket.header.pid =
-        static_cast<uint8_t>(AudioReport::configPacketId | AudioReport::packetSizedBit);
+    *this                        = HapticsReport{};
+    reportIdValue                = reportId;
+    configPacket.header.pid      = AudioReport::packetPid(AudioReport::SubPacketId::Config);
     configPacket.header.length   = sizeof(Config);
     configPacket.config.mask     = Config::Mask::SpeakerOnly;
     configPacket.config.unknown5 = 0xFF;
-    samplePacket.header.pid =
-        static_cast<uint8_t>(AudioReport::samplePacketId | AudioReport::packetSizedBit);
-    samplePacket.header.length = sampleBytes;
+    samplePacket.header.pid      = AudioReport::packetPid(AudioReport::SubPacketId::Data);
+    samplePacket.header.length   = sampleBytes;
   }
 
   // The 0x32 wire format is signed 8-bit PCM.
