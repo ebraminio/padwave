@@ -549,6 +549,14 @@ public:
 
   constexpr uint8_t headphoneVolume() const { return volumeHeadphones; }
   constexpr uint8_t speakerVolume() const { return volumeSpeaker; }
+  constexpr uint8_t leftMotor() const { return motorLeft; }
+  constexpr uint8_t rightMotor() const { return motorRight; }
+  constexpr uint8_t micVolumeValue() const { return micVolume; }
+  constexpr uint8_t powerSaveValue() const { return powerSaveControl; }
+  constexpr uint8_t audioRoutingValue() const { return audioControl; }
+  constexpr uint8_t audioControl2Value() const { return audioControl2; }
+  constexpr bool hapticLowPassValue() const { return hapticLowPassFilter != 0; }
+  constexpr uint8_t motorPowerLevelValue() const { return motorPowerLevel; }
 
 private:
   // Which fields this report owns: the kernel's (and DS4Windows', and
@@ -714,6 +722,11 @@ public:
     audioControl2 = static_cast<uint8_t>((audioControl2 & 0xF8) | (gainCode & 0x07));
   }
 
+  constexpr void setAudioControl2(uint8_t value) {
+    claim(ValidFlag1::AudioControl2Enable);
+    audioControl2 = value;
+  }
+
   constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
@@ -789,50 +802,6 @@ public:
   constexpr void setMic(uint8_t volume) {
     setMicVolume(volume > micMaxVolume ? micMaxVolume : volume);
     setMicMuted(volume == 0);
-  }
-
-  constexpr void clearLightbar() {
-    validFlag1    = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::LightbarControlEnable));
-    validFlag2    = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
-    lightbarSetup = 0;
-    lightbarRed   = 0;
-    lightbarGreen = 0;
-    lightbarBlue  = 0;
-  }
-
-  // Only the motors are refreshed by 0x36; the controller stops rumble if
-  // their claim disappears from the audio stream.
-  constexpr OutputBody motorSnapshot() const {
-    OutputBody out{};
-    out.validFlag0 =
-        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
-    out.motorRight = this->motorRight;
-    out.motorLeft  = this->motorLeft;
-    return out;
-  }
-
-  // Continuous audio/power state for the separate 0x31 report.
-  constexpr OutputBody audioSnapshot() const {
-    OutputBody out{};
-    out.validFlag0 = static_cast<uint8_t>(
-        bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect) |
-        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
-        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    out.motorRight       = this->motorRight;
-    out.motorLeft        = this->motorLeft;
-    out.volumeHeadphones = this->volumeHeadphones;
-    out.volumeSpeaker    = this->volumeSpeaker;
-    out.micVolume        = this->micVolume;
-    out.audioControl     = this->audioControl;
-
-    out.validFlag1 = static_cast<uint8_t>(
-        bit(ValidFlag1::PowerSaveControlEnable) | bit(ValidFlag1::HapticLowPassFilterEnable) |
-        bit(ValidFlag1::VibrationAttenuationEnable) | bit(ValidFlag1::AudioControl2Enable));
-    out.powerSaveControl    = this->powerSaveControl;
-    out.hapticLowPassFilter = this->hapticLowPassFilter;
-    out.motorPowerLevel     = this->motorPowerLevel;
-    out.audioControl2       = this->audioControl2;
-    return out;
   }
 
   constexpr OutputBody() {}

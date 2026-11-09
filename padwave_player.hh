@@ -528,7 +528,15 @@ private:
   }
 
   void sendAudioState() {
-    dualsense::OutputBody body = state.audioSnapshot();
+    dualsense::OutputBody body;
+    body.setHeadphoneVolume(state.headphoneVolume());
+    body.setSpeakerVolume(state.speakerVolume());
+    body.setMicVolume(state.micVolumeValue());
+    body.setAudioRouting(state.audioRoutingValue());
+    body.setPowerSaveControl(state.powerSaveValue());
+    body.setHapticLowPassFilter(state.hapticLowPassValue());
+    body.setMotorPowerLevel(state.motorPowerLevelValue());
+    body.setAudioControl2(state.audioControl2Value());
     sendOutput([&](dualsense::OutputBody &target) {
       target = body;
       return true;
@@ -1045,7 +1053,10 @@ private:
             : dualsense::AudioReport::ConfigMask::SpeakerOnly,
         audio_sequence);
 
-    report.stateBody() = state.motorSnapshot();
+    dualsense::OutputBody motors;
+    motors.setMotorRight(state.rightMotor());
+    motors.setMotorLeft(state.leftMotor());
+    report.stateBody() = motors;
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
       const size_t first = i * 8;
