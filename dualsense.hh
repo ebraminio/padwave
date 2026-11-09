@@ -704,13 +704,8 @@ public:
 
   constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
 
-  // Sets the low three bits of speakerPreampControl. 0x2 is +6 dB; the other
-  // gain codes are not documented. Upper bits of the byte are preserved.
-  constexpr void setSpeakerPreampGain(uint8_t gainCode) {
-    claim(ValidFlag1::AudioControl2Enable);
-    speakerPreampControl = static_cast<uint8_t>((speakerPreampControl & 0xF8) | (gainCode & 0x07));
-  }
-
+  // Low three bits are the speaker preamp gain (0x2 is +6 dB); the upper
+  // bits are undocumented.
   constexpr void setSpeakerPreampControl(uint8_t value) {
     claim(ValidFlag1::AudioControl2Enable);
     speakerPreampControl = value;
