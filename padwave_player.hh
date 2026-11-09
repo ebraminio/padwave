@@ -1045,6 +1045,7 @@ private:
             : dualsense::AudioReport::ConfigMask::SpeakerOnly,
         audio_sequence);
 
+    report.stateBody() = state.motorSnapshot();
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
       const size_t first = i * 8;

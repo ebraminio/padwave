@@ -802,6 +802,18 @@ public:
 
   // Claims only the continuous audio/power fields, which are sent separately
   // in 0x31. One-shot LED/trigger claims stay on the normal 0x31 path.
+  // The main motors are the one thing 0x36 still refreshes: the controller
+  // stops rumble if the claim disappears from the audio stream.
+  constexpr OutputBody motorSnapshot() const {
+    OutputBody out = *this;
+    constexpr uint8_t motor =
+        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
+    out.validFlag0 = static_cast<uint8_t>(out.validFlag0 & motor);
+    out.validFlag1 = 0;
+    out.validFlag2 = 0;
+    return out;
+  }
+
   constexpr OutputBody audioSnapshot() const {
     OutputBody out = *this;
     constexpr uint8_t motor =
