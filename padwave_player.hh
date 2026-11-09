@@ -270,7 +270,6 @@ private:
   int haptic_cutoff           = 150;
   int haptic_gain             = 100;
   float haptic_lp             = 0;
-  uint8_t haptics_sequence    = 0;
   SwrContext *haptic_swr      = nullptr;
   int16_t haptic_pending[256] = {};
   size_t haptic_pending_len   = 0;
@@ -1033,7 +1032,7 @@ private:
     const float hgain           = vgain * static_cast<float>(haptic_gain) / 100.0f;
     const size_t bytesPerReport = dualsense::HapticsReport::sampleBytes * sizeof(int16_t);
     while (haptic_pending_len >= bytesPerReport) {
-      dualsense::HapticsReport report(haptics_sequence++);
+      dualsense::HapticsReport report(audio_sequence);
       report.setHaptics([&](size_t i) {
         int sample = static_cast<int>(static_cast<float>(haptic_pending[i] >> 8) * hgain);
         if (sample < -128) sample = -128;

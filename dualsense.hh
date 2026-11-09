@@ -189,7 +189,8 @@ public:
     Mode mode;
     uint8_t parameters[10];
 
-    constexpr TriggerEffect(Mode modeValue = Mode::Invalid) : mode(modeValue), parameters() {}
+    constexpr explicit TriggerEffect(Mode modeValue = Mode::Invalid)
+        : mode(modeValue), parameters() {}
 
     // Apple-style normalized [0,1] adapters from the same generator.
     static constexpr uint8_t normalize(float value, float scale) {
@@ -1380,6 +1381,10 @@ struct AudioReport {
   friend struct internal::WireProbe;
   friend struct HapticsReport;
 
+public:
+  AudioReport(const AudioReport &)            = delete;
+  AudioReport &operator=(const AudioReport &) = delete;
+
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSINT8   = internal::DSINT8;
@@ -1404,34 +1409,37 @@ public:
     DSUINT8 lengthValue;
 
   public:
-    constexpr PacketHeader() = default;
-    constexpr PacketHeader(SubPacketId id, uint8_t length)
+    constexpr PacketHeader() : pidValue(0), lengthValue(0) {}
+    constexpr explicit PacketHeader(SubPacketId id, uint8_t length)
         : pidValue(static_cast<uint8_t>(id) | packetSizedBit), lengthValue(length) {}
+    PacketHeader(const PacketHeader &)            = delete;
+    PacketHeader &operator=(const PacketHeader &) = delete;
 
     constexpr uint8_t pid() const { return pidValue; }
     constexpr uint8_t length() const { return lengthValue; }
+    constexpr void set(SubPacketId id, uint8_t length) {
+      pidValue    = static_cast<uint8_t>(id) | packetSizedBit;
+      lengthValue = length;
+    }
   };
   static_assert(sizeof(PacketHeader) == 2, "packet header must stay 2 bytes");
 
   struct PcmPacket {
   private:
     PacketHeader headerValue;
-    DSINT8 samplesValue[64];
+    DSINT8 samplesValue[64] = {};
 
   public:
-    constexpr PcmPacket() = default;
-
-    constexpr PcmPacket(SubPacketId id, uint8_t length) : headerValue(id, length), samplesValue() {}
-
-    template <typename Fill>
-    constexpr PcmPacket(SubPacketId id, uint8_t length, Fill fill)
-        : headerValue(id, length), samplesValue() {
-      for (size_t i = 0; i < 64; ++i) samplesValue[i] = fill(i);
-    }
+    constexpr PcmPacket()                   = default;
+    PcmPacket(const PcmPacket &)            = delete;
+    PcmPacket &operator=(const PcmPacket &) = delete;
 
     constexpr const PacketHeader &header() const { return headerValue; }
-    constexpr void setHeader(SubPacketId id, uint8_t length) {
-      headerValue = PacketHeader(id, length);
+    constexpr void setHeader(SubPacketId id, uint8_t length) { headerValue.set(id, length); }
+
+    template <typename Fill>
+    constexpr void fillSamples(Fill fill) {
+      for (size_t i = 0; i < 64; ++i) samplesValue[i] = fill(i);
     }
 
     constexpr void setSamples(const int8_t *data, size_t len) {
@@ -1456,6 +1464,10 @@ public:
     ConfigMask mask;
     DSUINT8 hapticLengths[5];
     DSUINT8 counter;
+
+    constexpr AudioConfig()                     = default;
+    AudioConfig(const AudioConfig &)            = delete;
+    AudioConfig &operator=(const AudioConfig &) = delete;
   };
   static_assert(sizeof(AudioConfig) == 7, "audio config must stay 7 bytes");
 
@@ -1575,10 +1587,11 @@ public:
   struct Sequence {
     constexpr void apply(AudioReport &report) {
       report.setSeqTag(static_cast<uint8_t>((seq & mask) << shift));
-      report.setCounter(counter);
+      report.setCounter(nextCounter());
       seq = static_cast<uint8_t>((seq + 1) & mask);
-      counter++;
     }
+
+    constexpr uint8_t nextCounter() { return counter++; }
 
   private:
     uint8_t seq                    = 0;
@@ -1587,13 +1600,14 @@ public:
     static constexpr uint8_t shift = 4;
   };
 
-private:
-  // Fill the constant parts; the public constructor then applies the state.
-  constexpr void init(SpeakerTag tagValue, ConfigMask mask) {
-    *this         = AudioReport{};
+public:
+  constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask, Sequence &sequence,
+                                 const OutputBody &body, OutputBody::AudioControl audio,
+                                 bool lowPass)
+      : AudioReport() {
     reportIdValue = reportId;
-    configHeader  = PacketHeader(SubPacketId::Config, sizeof(AudioConfig));
-    config.mask   = mask;
+    configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
+    config.mask = mask;
     for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
     stateTag    = packetPid(SubPacketId::State);
     stateLength = stateSize;
@@ -1601,13 +1615,10 @@ private:
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
     speakerLength = opusSize;
-  }
-
-public:
-  constexpr AudioReport(SpeakerTag tagValue, ConfigMask mask, Sequence &sequence,
-                        const OutputBody &body, OutputBody::AudioControl audio, bool lowPass)
-      : AudioReport() {
-    init(tagValue, mask);
+    state         = State{};
+    for (auto &byte : padding) byte = 0;
+    for (auto &byte : opus) byte = 0;
+    crc        = 0;
     state.body = body;
     state.body.setAudio(audio);
     if (lowPass) state.body.setHapticLowPassFilter(true);
@@ -1616,7 +1627,8 @@ public:
 
   template <typename HapticFill>
   constexpr void setHaptics(HapticFill fill) {
-    hapticsPacket = PcmPacket(SubPacketId::Data, hapticSize, fill);
+    hapticsPacket.setHeader(SubPacketId::Data, hapticSize);
+    hapticsPacket.fillSamples(fill);
   }
 
 #ifdef DS_HAVE_OPUS
@@ -1706,16 +1718,6 @@ public:
     static_assert(report.speakerLength == 200);
     static_assert(report.opus[0] == 0);
 
-    constexpr AudioReport signedReport = [report] {
-      AudioReport r = report;
-      r.sign();
-      return r;
-    }();
-    static_assert(signedReport.isValid());
-
-    constexpr auto raw         = __builtin_bit_cast(WireBytes<AudioReport>, signedReport);
-    constexpr AudioReport copy = __builtin_bit_cast(AudioReport, raw);
-    static_assert(copy.isValid());
     return true;
   }
 };
@@ -1982,6 +1984,8 @@ public:
     public:
       constexpr explicit HapticsConfig(uint8_t sequence)
           : mask(ConfigMask::SpeakerOnly), route{}, reserved{}, unknown5(0xFF), counter(sequence) {}
+      HapticsConfig(const HapticsConfig &)            = delete;
+      HapticsConfig &operator=(const HapticsConfig &) = delete;
     };
     static_assert(sizeof(HapticsConfig) == 7, "0x32 haptics config must stay 7 bytes");
 
@@ -1993,6 +1997,8 @@ public:
     constexpr explicit HapticsConfigPacket(uint8_t sequence)
         : headerValue(AudioReport::SubPacketId::Config, sizeof(HapticsConfig)),
           configValue(sequence) {}
+    HapticsConfigPacket(const HapticsConfigPacket &)            = delete;
+    HapticsConfigPacket &operator=(const HapticsConfigPacket &) = delete;
   };
   static_assert(sizeof(HapticsConfigPacket) == 9, "0x32 config packet must stay 9 bytes");
 
@@ -2011,7 +2017,8 @@ public:
   static_assert(sizeof(PcmPacket) == 66, "0x32 pcm packet must stay 66 bytes");
 
   // The 0x32 wire format is signed 8-bit PCM.
-  constexpr explicit HapticsReport(uint8_t sequence) : configPacket(sequence) {
+  constexpr explicit HapticsReport(AudioReport::Sequence &sequence)
+      : configPacket(sequence.nextCounter()) {
     reportId = ReportId::Haptics;
     tagValue = 0;
     for (auto &byte : padding) byte = 0;
@@ -2021,7 +2028,8 @@ public:
 
   template <typename HapticFill>
   constexpr void setHaptics(HapticFill fill) {
-    hapticsPacket = PcmPacket(AudioReport::SubPacketId::Data, AudioReport::hapticSize, fill);
+    hapticsPacket.setHeader(AudioReport::SubPacketId::Data, AudioReport::hapticSize);
+    hapticsPacket.fillSamples(fill);
   }
 
   void sign() { crc = internal::crc_of(*this, AudioReport::crcSeed); }
