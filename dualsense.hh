@@ -888,21 +888,26 @@ public:
   // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
   // The class owns the shift and wrap; callers just hold a Sequence.
   struct Sequence {
-    constexpr Sequence() : value(0) {}
+    constexpr Sequence() : value(0), counter(0) {}
     constexpr uint8_t next() {
       uint8_t next_tag = static_cast<uint8_t>((value & mask) << shift);
       value            = static_cast<uint8_t>((value + 1) & mask);
       return next_tag;
     }
 
+    constexpr uint8_t nextCounter() { return counter++; }
+
   private:
     uint8_t value;
+    uint8_t counter;
     static constexpr uint8_t mask  = 0x0F;
     static constexpr uint8_t shift = 4;
   };
 
   constexpr OutputReport() : reportIdValue(reportId), tagValue(tag) {}
-  constexpr explicit OutputReport(Sequence &sequence) : OutputReport() { seqTag = sequence.next(); }
+  constexpr explicit OutputReport(OutputReport::Sequence &sequence) : OutputReport() {
+    seqTag = sequence.next();
+  }
 
   constexpr const OutputBody &body() const { return bodyData; }
   constexpr OutputBody &body() { return bodyData; }
@@ -1558,29 +1563,10 @@ public:
   constexpr OutputBody &stateBody() { return state.body; }
   constexpr const OutputBody &stateBody() const { return state.body; }
 
-  // 0x36 sequence tagValue: high nibble counts 0..15, low nibble stays zero;
-  // the counter is a separate free-running byte.
-  struct Sequence {
-    constexpr Sequence() : seq(0), counter(0) {}
-    constexpr void apply(AudioReport &report) {
-      report.setSeqTag(static_cast<uint8_t>((seq & mask) << shift));
-      report.setCounter(nextCounter());
-      seq = static_cast<uint8_t>((seq + 1) & mask);
-    }
-
-    constexpr uint8_t nextCounter() { return counter++; }
-
-  private:
-    uint8_t seq;
-    uint8_t counter;
-    static constexpr uint8_t mask  = 0x0F;
-    static constexpr uint8_t shift = 4;
-  };
-
 public:
-  constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask, Sequence &sequence,
-                                 const OutputBody &body, OutputBody::AudioControl audio,
-                                 bool lowPass) {
+  constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
+                                 OutputReport::Sequence &sequence, const OutputBody &body,
+                                 OutputBody::AudioControl audio, bool lowPass) {
     reportIdValue = reportId;
     configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
     config.mask = mask;
@@ -1598,7 +1584,8 @@ public:
     state.body = body;
     state.body.setAudio(audio);
     if (lowPass) state.body.setHapticLowPassFilter(true);
-    sequence.apply(*this);
+    seqTag         = sequence.next();
+    config.counter = sequence.nextCounter();
   }
 
   template <typename HapticFill>
@@ -1672,7 +1659,7 @@ public:
 
     constexpr AudioReport report = [] {
       OutputBody body(OutputBody::AudioControl::Headphones);
-      AudioReport::Sequence sequence;
+      OutputReport::Sequence sequence;
       return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
                          sequence, body, OutputBody::AudioControl::Headphones, false);
     }();
@@ -1993,7 +1980,7 @@ public:
   static_assert(sizeof(PcmPacket) == 66, "0x32 pcm packet must stay 66 bytes");
 
   // The 0x32 wire format is signed 8-bit PCM.
-  constexpr explicit HapticsReport(AudioReport::Sequence &sequence)
+  constexpr explicit HapticsReport(OutputReport::Sequence &sequence)
       : configPacket(sequence.nextCounter()) {
     reportId = ReportId::Haptics;
     tagValue = 0;

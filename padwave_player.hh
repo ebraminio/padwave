@@ -228,7 +228,7 @@ private:
   App *app                = nullptr;
 
   dualsense::AudioReport::Encoder enc;
-  dualsense::AudioReport::Sequence audio_sequence;
+  dualsense::OutputReport::Sequence audio_sequence;
 
   File cur;
   File nxt;
