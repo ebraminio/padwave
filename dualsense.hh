@@ -1416,6 +1416,13 @@ public:
     SpeakerAndMic     = 0xFF,
   };
 
+  struct Config {
+    ConfigMask mask;
+    DSUINT8 hapticLengths[5];
+    DSUINT8 counter;
+  };
+  static_assert(sizeof(Config) == 7, "audio config must stay 7 bytes");
+
 private:
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note validFlag0: claiming RightTrigger or LeftTrigger here hands
@@ -1435,21 +1442,19 @@ private:
   static_assert(sizeof(State) == 63, "State must stay 63 bytes");
 
 protected:
-  ReportId reportIdValue;     // 0x000  ReportId::Audio
-  DSUINT8 seqTag;             // 0x001  high nibble = counter, low nibble = 0
-  PacketHeader configHeader;  // 0x002  0x11 | 0x80, configSize bytes
-  ConfigMask enableMaskValue; // 0x004  mask bits
-  DSUINT8 hapticLengths[5];   // 0x005..0x009  64 each
-  DSUINT8 counter;            // 0x00a  free-running 8-bit counter
-  DSUINT8 stateTag;           // 0x00b  0x10 | 0x80
-  DSUINT8 stateLength;        // 0x00c  63
-  State state;                // 0x00d..0x04b
-  PcmPacket hapticsPacket;    // 0x04c..0x08d  0x12, length 64, 6 kHz PCM
-  DSUINT8 speakerTagValue;    // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  DSUINT8 speakerLength;      // 0x08f  200
-  DSUINT8 opus[200];          // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  DSUINT8 padding[50];        // 0x158..0x189
-  DSUINT32 crc;               // 0x18a..0x18d  seed 0xA2
+  ReportId reportIdValue;    // 0x000  ReportId::Audio
+  DSUINT8 seqTag;            // 0x001  high nibble = counter, low nibble = 0
+  PacketHeader configHeader; // 0x002  0x11 | 0x80, sizeof(Config)
+  Config config;             // 0x004..0x00a  mask, lengths, counter
+  DSUINT8 stateTag;          // 0x00b  0x10 | 0x80
+  DSUINT8 stateLength;       // 0x00c  63
+  State state;               // 0x00d..0x04b
+  PcmPacket hapticsPacket;   // 0x04c..0x08d  0x12, length 64, 6 kHz PCM
+  DSUINT8 speakerTagValue;   // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerLength;     // 0x08f  200
+  DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  DSUINT8 padding[50];       // 0x158..0x189
+  DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
 public:
 #ifdef DS_HAVE_OPUS
@@ -1499,20 +1504,18 @@ public:
   };
 
 private:
-  static constexpr ReportId reportId = ReportId::Audio;
-  static constexpr uint8_t crcSeed   = 0xA2;
-  static constexpr uint8_t stateSize = 63;
-  static constexpr uint8_t opusSize  = 200;
-  static constexpr uint8_t configSize =
-      sizeof(ConfigMask) + sizeof(hapticLengths) + sizeof(counter);
+  static constexpr ReportId reportId      = ReportId::Audio;
+  static constexpr uint8_t crcSeed        = 0xA2;
+  static constexpr uint8_t stateSize      = 63;
+  static constexpr uint8_t opusSize       = 200;
   static constexpr uint8_t packetSizedBit = 0x80;
   static constexpr uint8_t packetPid(SubPacketId id) {
     return static_cast<uint8_t>(id) | packetSizedBit;
   }
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
-  constexpr void setCounter(uint8_t value) { counter = value; }
+  constexpr void setCounter(uint8_t value) { config.counter = value; }
 
-  constexpr ConfigMask enableMask() const { return enableMaskValue; }
+  constexpr ConfigMask enableMask() const { return config.mask; }
 
   constexpr SpeakerTag speakerTag() const {
     return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
@@ -1555,9 +1558,9 @@ public:
     *this               = AudioReport{};
     reportIdValue       = reportId;
     configHeader.pid    = packetPid(SubPacketId::Config);
-    configHeader.length = configSize;
-    enableMaskValue     = mask;
-    for (unsigned i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
+    configHeader.length = sizeof(Config);
+    config.mask         = mask;
+    for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
     stateTag                    = packetPid(SubPacketId::State);
     stateLength                 = stateSize;
     hapticsPacket.header.pid    = packetPid(SubPacketId::Data);
@@ -1647,10 +1650,10 @@ public:
     static_assert(report.reportIdValue == ReportId::Audio);
     static_assert(report.seqTag == 0x00);
     static_assert(report.configHeader.pid == 0x91);
-    static_assert(report.configHeader.length == AudioReport::configSize);
+    static_assert(report.configHeader.length == sizeof(AudioReport::Config));
     static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
-    static_assert(report.hapticLengths[0] == 64 && report.hapticLengths[4] == 64);
-    static_assert(report.counter == 0);
+    static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
+    static_assert(report.config.counter == 0);
     static_assert(report.stateTag == 0x90);
     static_assert(report.stateLength == 63);
     static_assert(report.stateBody().validFlag0 == 0xF0);
