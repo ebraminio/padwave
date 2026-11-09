@@ -886,7 +886,6 @@ private:
 
 public:
   // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
-  // The class owns the shift and wrap; callers just hold a Sequence.
   struct Sequence {
     constexpr Sequence() : value(0), counter(0) {}
     constexpr uint8_t next() {
@@ -1453,14 +1452,6 @@ public:
   static_assert(sizeof(AudioConfig) == 7, "audio config must stay 7 bytes");
 
 private:
-  // The state snapshot is the 0x31 output payload plus sixteen bytes of
-  // padding. Note validFlag0: claiming RightTrigger or LeftTrigger here hands
-  // the trigger effect to this stream, which writes zeros to it 93 times a
-  // second. The fix for the cancelled trigger effects was clearing exactly
-  // those two bits (0xFD -> 0xF1).
-  //
-  // This nested type has to precede the field that uses it; everything else in
-  // the class can follow its fields.
   struct State {
     friend struct AudioReport;
 
