@@ -1033,12 +1033,14 @@ private:
     const float hgain           = vgain * static_cast<float>(haptic_gain) / 100.0f;
     const size_t bytesPerReport = dualsense::HapticsReport::sampleBytes * sizeof(int16_t);
     while (haptic_pending_len >= bytesPerReport) {
-      dualsense::HapticsReport report(haptics_sequence++, [&](size_t i) {
+      dualsense::HapticsReport report(haptics_sequence++);
+      report.setHaptics([&](size_t i) {
         int sample = static_cast<int>(static_cast<float>(haptic_pending[i] >> 8) * hgain);
         if (sample < -128) sample = -128;
         if (sample > 127) sample = 127;
         return static_cast<int8_t>(sample);
       });
+      report.sign();
       memmove(haptic_pending, reinterpret_cast<uint8_t *>(haptic_pending) + bytesPerReport,
               haptic_pending_len - bytesPerReport);
       haptic_pending_len -= bytesPerReport;
@@ -1057,20 +1059,22 @@ private:
         audio_sequence, state,
         speaker ? dualsense::OutputBody::AudioControl::Speaker
                 : dualsense::OutputBody::AudioControl::Headphones,
-        haptic_subwoofer, [&](size_t i) {
-          if (!haptic_subwoofer) return int8_t{0};
-          const size_t first = i * 8;
-          if (first >= static_cast<size_t>(frames)) return int8_t{0};
-          float output = 0;
-          for (size_t src = first; src < first + 8 && src < static_cast<size_t>(frames); ++src) {
-            float mono = (pcm[src * CHANNELS] + pcm[src * CHANNELS + 1]) * 0.5f;
-            float bass = lowPass(mono) * hgain;
-            if (src == first) output = bass;
-          }
-          if (output > 1.0f) output = 1.0f;
-          if (output < -1.0f) output = -1.0f;
-          return static_cast<int8_t>(output * 127.0f);
-        });
+        haptic_subwoofer);
+
+    report.setHaptics([&](size_t i) {
+      if (!haptic_subwoofer) return int8_t{0};
+      const size_t first = i * 8;
+      if (first >= static_cast<size_t>(frames)) return int8_t{0};
+      float output = 0;
+      for (size_t src = first; src < first + 8 && src < static_cast<size_t>(frames); ++src) {
+        float mono = (pcm[src * CHANNELS] + pcm[src * CHANNELS + 1]) * 0.5f;
+        float bass = lowPass(mono) * hgain;
+        if (src == first) output = bass;
+      }
+      if (output > 1.0f) output = 1.0f;
+      if (output < -1.0f) output = -1.0f;
+      return static_cast<int8_t>(output * 127.0f);
+    });
 
     report.setPcm(pcm, frames, enc);
 
