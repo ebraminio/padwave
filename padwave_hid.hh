@@ -25,10 +25,10 @@ struct DualSenseDevice {
   // contiguous. Match only by HID_ID's vendor/product, as hidapi does; this
   // avoids HID_NAME or sysfs ordering deciding which device is the pad.
   bool find() {
-    index = -1;
-    bus = 0;
+    index   = -1;
+    bus     = 0;
     node[0] = 0;
-    mac[0] = 0;
+    mac[0]  = 0;
 
     DIR *dir = opendir("/sys/class/hidraw");
     if (!dir) return false;
@@ -43,7 +43,7 @@ struct DualSenseDevice {
       FILE *f = fopen(uevent, "r");
       if (!f) continue;
 
-      bool id_seen = false;
+      bool id_seen  = false;
       bool id_match = false;
       char uniq[64] = "";
       char line[256];
@@ -55,7 +55,7 @@ struct DualSenseDevice {
               (vendor & 0xFFFF) == SONY_VID &&
               ((product & 0xFFFF) == DS_PID || (product & 0xFFFF) == DS_EDGE_PID)) {
             id_match = true;
-            bus = static_cast<int>(bus_value);
+            bus      = static_cast<int>(bus_value);
           }
         } else if (strncmp(line, "HID_UNIQ=", 9) == 0) {
           snprintf(uniq, sizeof(uniq), "%.*s", static_cast<int>(sizeof(uniq)) - 1, line + 9);
@@ -88,14 +88,14 @@ struct DualSenseDevice {
   int open() const { return node[0] ? ::open(node, O_RDWR | O_CLOEXEC) : -1; }
 
   char node[64] = "";
-  char mac[32] = "";
+  char mac[32]  = "";
 
   bool isUsb() const { return bus == 0x03; }
 
 private:
-  int bus = 0;
-  int index = -1;
-  static constexpr int SONY_VID = 0x054C;
-  static constexpr int DS_PID = 0x0CE6;
+  int bus                          = 0;
+  int index                        = -1;
+  static constexpr int SONY_VID    = 0x054C;
+  static constexpr int DS_PID      = 0x0CE6;
   static constexpr int DS_EDGE_PID = 0x0DF2;
 };

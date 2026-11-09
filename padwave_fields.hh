@@ -22,7 +22,7 @@
 
 namespace padwave_fields {
 
-using Body = dualsense::OutputBody;
+using Body   = dualsense::OutputBody;
 using Setter = void (Body::*)(uint8_t);
 
 struct u8_field {
@@ -51,11 +51,11 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
   snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;
   for (char *pair = strtok_r(copy, ";", &save_pairs); pair;
-       pair = strtok_r(nullptr, ";", &save_pairs)) {
+       pair       = strtok_r(nullptr, ";", &save_pairs)) {
     char *eq = strchr(pair, '=');
     if (!eq) return false;
-    *eq = 0;
-    const char *name = pair;
+    *eq               = 0;
+    const char *name  = pair;
     const char *value = eq + 1;
 
     if (strcmp(name, "player_led_brightness") == 0) {

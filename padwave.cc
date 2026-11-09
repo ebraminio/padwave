@@ -33,37 +33,37 @@ static const size_t kIndexHtmlSize = sizeof(kIndexHtml);
 
 struct Server {
 private:
-  static constexpr int kMaxConns = 64;
+  static constexpr int kMaxConns      = 64;
   static constexpr size_t kRequestMax = 8192;
-  static constexpr size_t kBufferMax = 131072;
-  static constexpr int kMaxFds = 1024;
+  static constexpr size_t kBufferMax  = 131072;
+  static constexpr int kMaxFds        = 1024;
 
   struct Conn {
     int fd = -1; // client
     char in[kRequestMax];
     size_t in_len = 0;
     char out[kBufferMax];
-    size_t out_len = 0;
-    size_t out_off = 0;
-    bool static_reply = false;
-    bool front_sse = false;
-    bool status_sse = false;
+    size_t out_len      = 0;
+    size_t out_off      = 0;
+    bool static_reply   = false;
+    bool front_sse      = false;
+    bool status_sse     = false;
     bool client_blocked = false;
-    bool file_reply = false;
-    int file_fd = -1;
-    off_t file_off = 0;
-    off_t file_end = 0;
+    bool file_reply     = false;
+    int file_fd         = -1;
+    off_t file_off      = 0;
+    off_t file_end      = 0;
   };
 
   Conn conns[kMaxConns];
   Conn *owners[kMaxFds];
-  int epoll_fd = -1;
-  int timer_fd = -1;
-  int64_t start_ms = 0;
+  int epoll_fd           = -1;
+  int timer_fd           = -1;
+  int64_t start_ms       = 0;
   unsigned long requests = 0;
   char index_response[70000];
   size_t index_len = 0;
-  App *app = nullptr;
+  App *app         = nullptr;
 
 public:
   int run(int port) {
@@ -96,9 +96,9 @@ public:
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
+    addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(static_cast<uint16_t>(port));
+    addr.sin_port        = htons(static_cast<uint16_t>(port));
     if (bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {
       perror("bind");
       close(listen_fd);
@@ -118,7 +118,7 @@ public:
     int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
     if (!a.init()) return 1;
-    app = &a;
+    app      = &a;
     start_ms = monotonicMs();
 
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -126,7 +126,7 @@ public:
       struct itimerspec its;
       memset(&its, 0, sizeof(its));
       its.it_interval.tv_nsec = 500000000;
-      its.it_value = its.it_interval;
+      its.it_value            = its.it_interval;
       timerfd_settime(timer_fd, 0, &its, nullptr);
     }
 
@@ -171,7 +171,7 @@ public:
               close(client);
               continue;
             }
-            *slot = Conn{};
+            *slot    = Conn{};
             slot->fd = client;
             addFd(client, EPOLLIN, slot);
           }
@@ -274,7 +274,7 @@ private:
   bool addFd(int fd, uint32_t events, Conn *owner) {
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
-    ev.events = events;
+    ev.events  = events;
     ev.data.fd = fd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) != 0) return false;
     if (fd < kMaxFds) owners[fd] = owner;
@@ -284,7 +284,7 @@ private:
   bool modFd(int fd, uint32_t events) {
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
-    ev.events = events;
+    ev.events  = events;
     ev.data.fd = fd;
     return epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev) == 0;
   }
@@ -319,21 +319,21 @@ private:
     if (!req.complete) return; // body still arriving
 
     const char *method = req.method;
-    const char *path = req.path;
-    size_t head_len = req.head_len;
-    size_t body_len = req.body_len;
+    const char *path   = req.path;
+    size_t head_len    = req.head_len;
+    size_t body_len    = req.body_len;
 
     requests++;
 
     if (strncmp(path, "/stream", 7) == 0 && (path[7] == 0 || path[7] == '/')) {
-      const char *id = path[7] == '/' ? path + 8 : "";
+      const char *id        = path[7] == '/' ? path + 8 : "";
       const char *file_path = nullptr;
-      const char *mime = "application/octet-stream";
+      const char *mime      = "application/octet-stream";
       if (!app->streamTrack(id, &file_path, &mime)) {
         static const char body[] = "track not found\n";
-        c->static_reply = true;
-        c->out_len = static_cast<size_t>(
-            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+        c->static_reply          = true;
+        c->out_len               = static_cast<size_t>(makeStatic(
+            c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
@@ -342,34 +342,34 @@ private:
       if (fd < 0 || fstat(fd, &stbuf) != 0 || !S_ISREG(stbuf.st_mode) || stbuf.st_size <= 0) {
         if (fd >= 0) close(fd);
         static const char body[] = "cannot open track\n";
-        c->static_reply = true;
-        c->out_len = static_cast<size_t>(
-            makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+        c->static_reply          = true;
+        c->out_len               = static_cast<size_t>(makeStatic(
+            c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
-      off_t size = stbuf.st_size;
-      off_t start = 0;
-      off_t end = size - 1;
-      bool partial = false;
+      off_t size        = stbuf.st_size;
+      off_t start       = 0;
+      off_t end         = size - 1;
+      bool partial      = false;
       const char *range = strcasestr(c->in, "Range:");
       if (range) {
-        const char *eq = strchr(range, '=');
+        const char *eq  = strchr(range, '=');
         long long first = -1;
-        long long last = -1;
-        int parsed = eq ? sscanf(eq + 1, "%lld-%lld", &first, &last) : 0;
+        long long last  = -1;
+        int parsed      = eq ? sscanf(eq + 1, "%lld-%lld", &first, &last) : 0;
         if (eq && eq[1] == '-') {
           long long suffix = 0;
           if (sscanf(eq + 2, "%lld", &suffix) == 1 && suffix > 0) {
-            first = suffix >= size ? 0 : size - suffix;
+            first  = suffix >= size ? 0 : size - suffix;
             parsed = 1;
           }
         }
         if (parsed < 1 || first < 0 || first >= size || (parsed >= 2 && last < first)) {
           close(fd);
           static const char body[] = "range not satisfiable\n";
-          c->static_reply = true;
-          c->out_len = static_cast<size_t>(snprintf(
+          c->static_reply          = true;
+          c->out_len               = static_cast<size_t>(snprintf(
               c->out, sizeof(c->out),
               "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: text/plain\r\n"
               "Content-Range: bytes */%lld\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
@@ -377,8 +377,8 @@ private:
           modFd(c->fd, EPOLLOUT);
           return;
         }
-        start = first;
-        end = parsed >= 2 && last >= first && last < size ? last : size - 1;
+        start   = first;
+        end     = parsed >= 2 && last >= first && last < size ? last : size - 1;
         partial = true;
       }
       if (lseek(fd, start, SEEK_SET) < 0) {
@@ -388,27 +388,30 @@ private:
       }
       long long length = static_cast<long long>(end - start + 1);
       char header[512];
-      int hn = partial
-                   ? snprintf(header, sizeof(header),
-                              "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
-                              "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
-                              "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-                              mime, static_cast<long long>(start), static_cast<long long>(end),
-                              static_cast<long long>(size), length)
-                   : snprintf(header, sizeof(header),
-                              "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
-                              "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-                              mime, length);
+      int hn =
+          partial
+              ? snprintf(
+                    header, sizeof(header),
+                    "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
+                    "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
+                    "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
+                    mime, static_cast<long long>(start), static_cast<long long>(end),
+                    static_cast<long long>(size), length)
+              : snprintf(
+                    header, sizeof(header),
+                    "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
+                    "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
+                    mime, length);
       if (hn <= 0 || static_cast<size_t>(hn) >= sizeof(c->out)) {
         close(fd);
         closeConn(c);
         return;
       }
       memcpy(c->out, header, static_cast<size_t>(hn));
-      c->out_len = static_cast<size_t>(hn);
-      c->file_fd = fd;
-      c->file_off = start;
-      c->file_end = end;
+      c->out_len    = static_cast<size_t>(hn);
+      c->file_fd    = fd;
+      c->file_off   = start;
+      c->file_end   = end;
       c->file_reply = true;
       modFd(c->fd, EPOLLOUT);
       return;
@@ -416,9 +419,9 @@ private:
 
     if (strcmp(path, "/api/status") == 0) {
       static char body[8192];
-      int len = app->statusText(body, sizeof(body));
+      int len         = app->statusText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -436,8 +439,8 @@ private:
     }
 
     if (strcmp(path, "/api/library") == 0) {
-      char *body = reinterpret_cast<char *>(malloc(65536));
-      int len = body ? app->libraryText(body, 65536) : 0;
+      char *body      = reinterpret_cast<char *>(malloc(65536));
+      int len         = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
       c->out_len =
           static_cast<size_t>(makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
@@ -451,16 +454,16 @@ private:
       if (strcmp(method, "POST") == 0) {
         app->configSet(c->in + head_len);
         static const char ok[] = "ok=true\n";
-        c->static_reply = true;
-        c->out_len = static_cast<size_t>(
+        c->static_reply        = true;
+        c->out_len             = static_cast<size_t>(
             makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", ok, sizeof(ok) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
       char body[1024];
-      int len = app->configText(body, sizeof(body));
+      int len         = app->configText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -468,9 +471,9 @@ private:
 
     if (strcmp(path, "/api/schema") == 0) {
       char body[1024];
-      int len = bindingsText(body, sizeof(body));
+      int len         = bindingsText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -487,9 +490,9 @@ private:
         return;
       }
       char result[512];
-      int len = app->handleCommand(c->in + head_len, body_len, result, sizeof(result));
+      int len         = app->handleCommand(c->in + head_len, body_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -506,21 +509,19 @@ private:
         return;
       }
       char result[2048];
-      int len = app->output(c->in + head_len, result, sizeof(result));
+      int len         = app->output(c->in + head_len, result, sizeof(result));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", result, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
     }
 
-
-
     if (strcmp(path, "/api/mic/reset") == 0) {
       app->micReset();
       static const char body[] = "ok=true\n";
-      c->static_reply = true;
-      c->out_len = static_cast<size_t>(
+      c->static_reply          = true;
+      c->out_len               = static_cast<size_t>(
           makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -528,8 +529,8 @@ private:
 
     if (strcmp(path, "/api/reload") == 0) {
       static const char body[] = "ok=true\nreloaded=0\n";
-      c->static_reply = true;
-      c->out_len = static_cast<size_t>(
+      c->static_reply          = true;
+      c->out_len               = static_cast<size_t>(
           makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -538,8 +539,8 @@ private:
     if (strncmp(path, "/api/", 5) == 0 && strcmp(path, "/api/front") != 0 &&
         strcmp(path, "/api/front/events") != 0) {
       static const char body[] = "ok=false\nerror=not implemented\n";
-      c->static_reply = true;
-      c->out_len = static_cast<size_t>(
+      c->static_reply          = true;
+      c->out_len               = static_cast<size_t>(
           makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -558,9 +559,9 @@ private:
 
     if (strcmp(path, "/api/front") == 0) {
       char body[1024];
-      int len = frontText(body, sizeof(body));
+      int len         = frontText(body, sizeof(body));
       c->static_reply = true;
-      c->out_len = static_cast<size_t>(makeStatic(
+      c->out_len      = static_cast<size_t>(makeStatic(
           c->out, sizeof(c->out), "text/plain; charset=utf-8", body, static_cast<size_t>(len)));
       modFd(c->fd, EPOLLOUT);
       return;
@@ -569,7 +570,7 @@ private:
     c->static_reply = true;
     if (strcmp(path, "/health") == 0) {
       static const char body[] = "ok=true\n";
-      c->out_len = static_cast<size_t>(
+      c->out_len               = static_cast<size_t>(
           makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
     } else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
       if (index_len <= sizeof(c->out)) {
@@ -580,11 +581,11 @@ private:
       }
     } else {
       static const char body[] = "not found\n";
-      int written = snprintf(c->out, sizeof(c->out),
-                             "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
-                             "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
-                             sizeof(body) - 1, body);
-      c->out_len = static_cast<size_t>(written);
+      int written              = snprintf(c->out, sizeof(c->out),
+                                          "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+                                          "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+                                          sizeof(body) - 1, body);
+      c->out_len               = static_cast<size_t>(written);
     }
     modFd(c->fd, EPOLLOUT);
   }
@@ -604,7 +605,7 @@ private:
       c->out_off += static_cast<size_t>(n);
     }
     c->out_off = c->out_len = 0;
-    c->client_blocked = false;
+    c->client_blocked       = false;
 
     if (c->file_reply) {
       if (c->file_off > c->file_end) {
@@ -660,8 +661,8 @@ private:
     if (!chunk) return;
 
     size_t pos = 0;
-    int m = snprintf(chunk, 48, "%zx\r\n", payload);
-    size_t o = (m > 0) ? static_cast<size_t>(m) : 0;
+    int m      = snprintf(chunk, 48, "%zx\r\n", payload);
+    size_t o   = (m > 0) ? static_cast<size_t>(m) : 0;
 
     while (pos < n) {
       size_t end = pos;
@@ -671,7 +672,7 @@ private:
       memcpy(chunk + o, body + pos, end - pos);
       o += end - pos;
       chunk[o++] = '\n';
-      pos = end < n ? end + 1 : end;
+      pos        = end < n ? end + 1 : end;
     }
     chunk[o++] = '\n';
     memcpy(chunk + o, "\r\n", 2);

@@ -85,37 +85,37 @@ typedef float block_t[IN_FRAMES][CHANNELS];
 struct Player {
 private:
   struct File {
-    AVFormatContext *fmt = nullptr;
-    AVCodecContext *dec = nullptr;
-    SwrContext *swr = nullptr;
-    AVFilterGraph *graph = nullptr;
-    AVFilterContext *fsrc = nullptr;
-    AVFilterContext *fsink = nullptr;
+    AVFormatContext *fmt    = nullptr;
+    AVCodecContext *dec     = nullptr;
+    SwrContext *swr         = nullptr;
+    AVFilterGraph *graph    = nullptr;
+    AVFilterContext *fsrc   = nullptr;
+    AVFilterContext *fsink  = nullptr;
     AVFilterContext *ftempo = nullptr;
-    int audio_index = -1;
-    int speed_percent = 100;
-    int64_t duration_ms = 0;
-    bool eof = false;
-    bool filter_flushed = false;
+    int audio_index         = -1;
+    int speed_percent       = 100;
+    int64_t duration_ms     = 0;
+    bool eof                = false;
+    bool filter_flushed     = false;
 
     void close() {
       closeFilter();
       if (swr) swr_free(&swr);
       if (dec) avcodec_free_context(&dec);
       if (fmt) avformat_close_input(&fmt);
-      fmt = NULL;
-      dec = NULL;
-      swr = NULL;
+      fmt         = NULL;
+      dec         = NULL;
+      swr         = NULL;
       audio_index = -1;
       duration_ms = 0;
-      eof = false;
+      eof         = false;
     }
 
     void closeFilter() {
       if (graph) avfilter_graph_free(&graph);
-      fsrc = nullptr;
-      fsink = nullptr;
-      ftempo = nullptr;
+      fsrc           = nullptr;
+      fsink          = nullptr;
+      ftempo         = nullptr;
       filter_flushed = false;
     }
 
@@ -127,8 +127,8 @@ private:
       char args[192];
       snprintf(args, sizeof(args),
                "sample_fmt=flt:sample_rate=%d:channel_layout=stereo:time_base=1/%d", RATE, RATE);
-      const AVFilter *src = avfilter_get_by_name("abuffer");
-      const AVFilter *sink = avfilter_get_by_name("abuffersink");
+      const AVFilter *src   = avfilter_get_by_name("abuffer");
+      const AVFilter *sink  = avfilter_get_by_name("abuffersink");
       const AVFilter *tempo = avfilter_get_by_name("atempo");
       if (!src || !sink || !tempo ||
           avfilter_graph_create_filter(&fsrc, src, "in", args, nullptr, graph) < 0 ||
@@ -167,9 +167,9 @@ private:
       if (!fsrc || n <= 0) return false;
       AVFrame *in = av_frame_alloc();
       if (!in) return false;
-      in->format = AV_SAMPLE_FMT_FLT;
+      in->format      = AV_SAMPLE_FMT_FLT;
       in->sample_rate = RATE;
-      in->nb_samples = n;
+      in->nb_samples  = n;
       av_channel_layout_default(&in->ch_layout, CHANNELS);
       if (av_frame_get_buffer(in, 0) < 0) {
         av_frame_free(&in);
@@ -189,11 +189,11 @@ private:
       if (avformat_find_stream_info(fmt, NULL) < 0) return false;
 
       const AVCodec *codec = NULL;
-      audio_index = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+      audio_index          = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
       if (audio_index < 0 || !codec) return false;
 
       AVStream *st = fmt->streams[audio_index];
-      dec = avcodec_alloc_context3(codec);
+      dec          = avcodec_alloc_context3(codec);
       if (!dec) return false;
       if (avcodec_parameters_to_context(dec, st->codecpar) < 0) return false;
       if (avcodec_open2(dec, codec, NULL) < 0) return false;
@@ -213,39 +213,39 @@ private:
       if (!openFilter()) return false;
 
       duration_ms = fmt->duration > 0 ? fmt->duration / (AV_TIME_BASE / 1000) : 0;
-      eof = false;
+      eof         = false;
       return true;
     }
   };
 
-  int hidraw = -1;
-  int hidraw_retry = 0;
-  char node_name[64] = "";
+  int hidraw              = -1;
+  int hidraw_retry        = 0;
+  char node_name[64]      = "";
   char controller_mac[32] = "";
-  bool is_usb = false;
-  bool speaker = false;
-  FILE *usb_audio = nullptr;
-  App *app = nullptr;
+  bool is_usb             = false;
+  bool speaker            = false;
+  FILE *usb_audio         = nullptr;
+  App *app                = nullptr;
 
   dualsense::AudioReport::Encoder enc;
   dualsense::AudioReport::Sequence audio_sequence;
 
   File cur;
   File nxt;
-  AVPacket *pkt = nullptr;
-  AVFrame *frame = nullptr;
-  char path[1024] = "";
+  AVPacket *pkt        = nullptr;
+  AVFrame *frame       = nullptr;
+  char path[1024]      = "";
   char next_path[1024] = "";
-  bool has_next = false;
-  bool next_warmed = false;
+  bool has_next        = false;
+  bool next_warmed     = false;
 
-  int fade_ms = 0;
-  bool fading = false;
+  int fade_ms  = 0;
+  bool fading  = false;
   int fade_pos = 0, fade_total = 0;
-  bool manual_fade = false;
-  bool manual_pending = false;
+  bool manual_fade       = false;
+  bool manual_pending    = false;
   char manual_path[1024] = "";
-  bool seek_fade = false;
+  bool seek_fade         = false;
 
   dualsense::OutputReport out{};
   dualsense::OutputReport::Sequence output_sequence;
@@ -255,34 +255,34 @@ private:
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
   int head = 0, tail = 0;
   float acc[IN_FRAMES][CHANNELS] = {};
-  int acc_frames = 0;
-  block_t nring[RING_BLOCKS] = {};
+  int acc_frames                 = 0;
+  block_t nring[RING_BLOCKS]     = {};
   int nhead = 0, ntail = 0;
   float nacc[IN_FRAMES][CHANNELS] = {};
-  int nacc_frames = 0;
-  int64_t npushed = 0;
+  int nacc_frames                 = 0;
+  int64_t npushed                 = 0;
 
   bool playing = false, paused = false, eof = false, primed = false;
-  int volume = 80;
-  int speed_percent = 100;
-  bool haptic_subwoofer = false;
-  bool haptics_only = false;
-  int haptic_cutoff = 150;
-  int haptic_gain = 100;
-  float haptic_lp = 0;
-  uint8_t haptics_sequence = 0;
-  SwrContext *haptic_swr = nullptr;
+  int volume                  = 80;
+  int speed_percent           = 100;
+  bool haptic_subwoofer       = false;
+  bool haptics_only           = false;
+  int haptic_cutoff           = 150;
+  int haptic_gain             = 100;
+  float haptic_lp             = 0;
+  uint8_t haptics_sequence    = 0;
+  SwrContext *haptic_swr      = nullptr;
   int16_t haptic_pending[256] = {};
-  size_t haptic_pending_len = 0;
+  size_t haptic_pending_len   = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
 
-  int tfd = -1;
+  int tfd             = -1;
   int64_t last_status = 0;
-  long tick_ns = 0;
+  long tick_ns        = 0;
 
-  static constexpr long kPlayTickNs = 10667000;
+  static constexpr long kPlayTickNs  = 10667000;
   static constexpr long kPauseTickNs = 500000000;
 
   static int countOf(int head, int tail, int size) { return (head - tail + size) % size; }
@@ -303,25 +303,25 @@ private:
   void closeFile() {
     cur.close();
     head = tail = 0;
-    acc_frames = 0;
+    acc_frames  = 0;
   }
 
   void closeNext() {
     nxt.close();
     nhead = ntail = 0;
-    nacc_frames = 0;
-    has_next = false;
+    nacc_frames   = 0;
+    has_next      = false;
   }
 
   bool openFile(const char *file_path) {
     closeFile();
     if (!cur.open(file_path, speed_percent)) return false;
     snprintf(this->path, sizeof(this->path), "%s", file_path);
-    eof = false;
-    consumed = 0;
-    sent = 0;
+    eof       = false;
+    consumed  = 0;
+    sent      = 0;
     underruns = 0;
-    base_ms = 0;
+    base_ms   = 0;
     return true;
   }
 
@@ -387,10 +387,10 @@ private:
         uint8_t *encoded[1];
         float tmp[8192 * CHANNELS];
         encoded[0] = reinterpret_cast<uint8_t *>(tmp);
-        int cap = swr_get_out_samples(f->swr, frame->nb_samples);
+        int cap    = swr_get_out_samples(f->swr, frame->nb_samples);
         if (cap > 8192) cap = 8192;
         const uint8_t *in[AV_NUM_DATA_POINTERS] = {};
-        int channels = f->dec->ch_layout.nb_channels;
+        int channels                            = f->dec->ch_layout.nb_channels;
         if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
         for (int i = 0; i < channels; i++) in[i] = frame->extended_data[i];
         int got = swr_convert(f->swr, encoded, cap, in, frame->nb_samples);
@@ -432,16 +432,16 @@ private:
     acc_frames = nacc_frames;
 
     nhead = ntail = 0;
-    nacc_frames = 0;
-    npushed = 0;
+    nacc_frames   = 0;
+    npushed       = 0;
 
     snprintf(path, sizeof(path), "%s", next_path);
-    base_ms = 0;
-    consumed = 0;
-    sent = 0;
+    base_ms   = 0;
+    consumed  = 0;
+    sent      = 0;
     underruns = 0;
-    eof = cur.eof;
-    has_next = false;
+    eof       = cur.eof;
+    has_next  = false;
 
     emitTrack(path);
   }
@@ -472,29 +472,29 @@ private:
     acc_frames = nacc_frames;
 
     nhead = ntail = 0;
-    nacc_frames = 0;
-    npushed = 0;
+    nacc_frames   = 0;
+    npushed       = 0;
 
     bool manual = manual_fade;
-    bool seek = seek_fade;
+    bool seek   = seek_fade;
     if (manual)
       snprintf(path, sizeof(path), "%s", manual_path);
     else if (!seek)
       snprintf(path, sizeof(path), "%s", next_path);
 
     if (!seek) {
-      base_ms = 0;
+      base_ms  = 0;
       consumed = 0;
     }
-    sent = 0;
-    underruns = 0;
-    eof = cur.eof;
-    fading = false;
-    fade_pos = 0;
-    fade_total = 0;
-    manual_fade = false;
+    sent           = 0;
+    underruns      = 0;
+    eof            = cur.eof;
+    fading         = false;
+    fade_pos       = 0;
+    fade_total     = 0;
+    manual_fade    = false;
     manual_pending = false;
-    seek_fade = false;
+    seek_fade      = false;
 
     if (!manual && !seek) {
       has_next = false;
@@ -617,8 +617,8 @@ private:
       int16_t samples[IN_FRAMES * 4];
       float hgain = static_cast<float>(haptic_gain) / 100.0f;
       for (int i = 0; i < IN_FRAMES; i++) {
-        float l = block[i][0] * gain;
-        float r = block[i][1] * gain;
+        float l    = block[i][0] * gain;
+        float r    = block[i][1] * gain;
         float bass = lowPass((l + r) * 0.5f) * hgain;
         if (l > 1.0f) l = 1.0f;
         if (l < -1.0f) l = -1.0f;
@@ -713,7 +713,7 @@ public:
     if (got < 0 || !info.isValid(is_usb))
       return snprintf(dest, cap, "ok=false\nerror=firmware get failed\n");
 
-    size_t o = 0;
+    size_t o    = 0;
     auto append = [&](const char *text) {
       int n = snprintf(dest + o, cap > o ? cap - o : 0, "%s", text);
       if (n > 0) o += static_cast<size_t>(n);
@@ -743,8 +743,7 @@ public:
     {
       auto [value, length] = info.deviceInfoText();
       for (unsigned i = 0; i < length; ++i) {
-        int n = snprintf(hex + h, sizeof(hex) - h, "%02x",
-                        static_cast<unsigned>(value[i]));
+        int n = snprintf(hex + h, sizeof(hex) - h, "%02x", static_cast<unsigned>(value[i]));
         if (n > 0) h += static_cast<size_t>(n);
       }
     }
@@ -771,7 +770,7 @@ public:
              info.usesVibrationV2() ? "true" : "false");
     append(line);
     const auto *raw = reinterpret_cast<const uint8_t *>(&info);
-    h = 0;
+    h               = 0;
     for (size_t i = 0; i < sizeof(info); i++) {
       int n = snprintf(hex + h, sizeof(hex) - h, "%02x", static_cast<unsigned>(raw[i]));
       if (n > 0) h += static_cast<size_t>(n);
@@ -786,7 +785,7 @@ public:
     if (!is_usb) return snprintf(dest, cap, "ok=false\nerror=USB required\n");
     if (hidraw < 0) return snprintf(dest, cap, "ok=false\nerror=no controller\n");
 
-    size_t o = 0;
+    size_t o    = 0;
     auto append = [&](const char *text) {
       int n = snprintf(dest + o, cap > o ? cap - o : 0, "%s", text);
       if (n > 0) o += static_cast<size_t>(n);
@@ -866,7 +865,7 @@ public:
     if (readExtraCommand(CommandDevice::Audio, 3, response)) {
       appendBytes("extras.codec_fw_raw", reinterpret_cast<const uint8_t *>(response.payload), 22);
       char build[24] = {};
-      size_t n = sizeof(response.payload) - 8;
+      size_t n       = sizeof(response.payload) - 8;
       if (n >= sizeof(build)) n = sizeof(build) - 1;
       for (size_t i = 0; i < n; ++i) {
         char c = static_cast<char>(response.payload[8 + i]);
@@ -957,13 +956,12 @@ public:
 
     dualsense::Firmware firmware{};
     firmware.init();
-    if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(firmware)), &firmware) >= 0 &&
-        firmware.isValid(true)) {
+    if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(firmware)), &firmware) >= 0 && firmware.isValid(true)) {
       appendHex("extras.hw_model", firmware.hardwareInfoValue());
       snprintf(line, sizeof(line), "extras.board_model=%s\n", firmware.boardModel());
       append(line);
-      time_t now = time(nullptr);
-      struct tm *tm = localtime(&now);
+      time_t now      = time(nullptr);
+      struct tm *tm   = localtime(&now);
       int currentYear = tm ? tm->tm_year + 1900 : 0;
       snprintf(line, sizeof(line), "extras.device_type=%s\n",
                firmware.deviceType(finetuneValid, currentYear));
@@ -1023,8 +1021,8 @@ private:
     AVChannelLayout layout;
     av_channel_layout_default(&layout, CHANNELS);
     int r = swr_alloc_set_opts2(&haptic_swr, &layout, AV_SAMPLE_FMT_S16,
-                                dualsense::HapticsReport::sampleRate, &layout,
-                                AV_SAMPLE_FMT_FLT, RATE, 0, nullptr);
+                                dualsense::HapticsReport::sampleRate, &layout, AV_SAMPLE_FMT_FLT,
+                                RATE, 0, nullptr);
     av_channel_layout_uninit(&layout);
     if (r < 0 || !haptic_swr || swr_init(haptic_swr) < 0) {
       if (haptic_swr) swr_free(&haptic_swr);
@@ -1037,17 +1035,17 @@ private:
   void sendHapticsOnly(const float block[IN_FRAMES][CHANNELS]) {
     if (!haptic_swr) return;
     int16_t converted[256];
-    uint8_t *outbuf[1] = {reinterpret_cast<uint8_t *>(converted)};
+    uint8_t *outbuf[1]   = {reinterpret_cast<uint8_t *>(converted)};
     const uint8_t *in[1] = {reinterpret_cast<const uint8_t *>(block)};
-    int got = swr_convert(haptic_swr, outbuf, 128, in, IN_FRAMES);
+    int got              = swr_convert(haptic_swr, outbuf, 128, in, IN_FRAMES);
     if (got <= 0) return;
     size_t bytes = static_cast<size_t>(got) * CHANNELS * sizeof(int16_t);
     if (haptic_pending_len + bytes > sizeof(haptic_pending)) return;
     memcpy(reinterpret_cast<uint8_t *>(haptic_pending) + haptic_pending_len, converted, bytes);
     haptic_pending_len += bytes;
 
-    const float vgain = static_cast<float>(volume) / 100.0f;
-    const float hgain = vgain * static_cast<float>(haptic_gain) / 100.0f;
+    const float vgain           = static_cast<float>(volume) / 100.0f;
+    const float hgain           = vgain * static_cast<float>(haptic_gain) / 100.0f;
     const size_t bytesPerReport = dualsense::HapticsReport::sampleBytes * sizeof(int16_t);
     while (haptic_pending_len >= bytesPerReport) {
       int8_t samples[dualsense::HapticsReport::sampleBytes];
@@ -1137,12 +1135,12 @@ private:
             nxt.resetFilter();
           }
           snprintf(manual_path, sizeof(manual_path), "%s", line_path);
-          manual_fade = true;
+          manual_fade    = true;
           manual_pending = true;
-          base_ms = value;
-          consumed = 0;
-          sent = 0;
-          underruns = 0;
+          base_ms        = value;
+          consumed       = 0;
+          sent           = 0;
+          underruns      = 0;
           return;
         }
       }
@@ -1151,8 +1149,8 @@ private:
       bool was_paused = paused;
       if (openFile(line_path)) {
         playing = true;
-        paused = false;
-        primed = false;
+        paused  = false;
+        primed  = false;
         if (was_paused) sendMuteLed(false);
         if (value > 0) {
           int64_t ts = value * (AV_TIME_BASE / 1000);
@@ -1169,8 +1167,8 @@ private:
       closeNext();
       if (openFile(line_path)) {
         playing = true;
-        paused = false;
-        primed = false;
+        paused  = false;
+        primed  = false;
       }
       return;
     }
@@ -1181,7 +1179,7 @@ private:
     if (sscanf(line, "queue %1023[^\n]", line_path) == 1) {
       if (!has_next) {
         snprintf(next_path, sizeof(next_path), "%s", line_path);
-        has_next = true;
+        has_next    = true;
         next_warmed = false;
         warmFile(line_path);
       }
@@ -1243,12 +1241,12 @@ private:
 
     long enabled = 0, cutoff = 0, gain = 0, only = 0;
     if (sscanf(line, "haptic %ld %ld %ld %ld", &enabled, &cutoff, &gain, &only) >= 3) {
-      bool was = haptic_subwoofer;
+      bool was         = haptic_subwoofer;
       haptic_subwoofer = enabled != 0;
-      haptic_cutoff = cutoff < 20 ? 20 : (cutoff > 2000 ? 2000 : static_cast<int>(cutoff));
-      haptic_gain = gain < 0 ? 0 : (gain > 200 ? 200 : static_cast<int>(gain));
-      haptics_only = only != 0;
-      haptic_lp = 0;
+      haptic_cutoff    = cutoff < 20 ? 20 : (cutoff > 2000 ? 2000 : static_cast<int>(cutoff));
+      haptic_gain      = gain < 0 ? 0 : (gain > 200 ? 200 : static_cast<int>(gain));
+      haptics_only     = only != 0;
+      haptic_lp        = 0;
       if (was != haptic_subwoofer) stopUsbAudio();
       return;
     }
@@ -1267,13 +1265,13 @@ private:
           avcodec_flush_buffers(nxt.dec);
           nxt.resetFilter();
           nhead = ntail = 0;
-          nacc_frames = 0;
-          seek_fade = true;
-          fading = true;
-          fade_pos = 0;
-          fade_total = static_cast<int>(fade * 1000 / 10667);
+          nacc_frames   = 0;
+          seek_fade     = true;
+          fading        = true;
+          fade_pos      = 0;
+          fade_total    = static_cast<int>(fade * 1000 / 10667);
           if (fade_total < 1) fade_total = 1;
-          base_ms = value;
+          base_ms  = value;
           consumed = 0;
           return;
         }
@@ -1287,13 +1285,13 @@ private:
         avcodec_flush_buffers(cur.dec);
         cur.resetFilter();
         head = tail = 0;
-        acc_frames = 0;
-        cur.eof = false;
-        eof = false;
-        primed = false;
-        base_ms = value;
-        consumed = 0;
-        seek_fade = false;
+        acc_frames  = 0;
+        cur.eof     = false;
+        eof         = false;
+        primed      = false;
+        base_ms     = value;
+        consumed    = 0;
+        seek_fade   = false;
       }
       return;
     }
@@ -1310,7 +1308,7 @@ private:
     if (fading) {
       float old[IN_FRAMES][CHANNELS];
       float next[IN_FRAMES][CHANNELS];
-      bool have_old = takeBlock(old);
+      bool have_old  = takeBlock(old);
       bool have_next = takeNextBlock(next);
 
       if (!have_next) {
@@ -1330,7 +1328,7 @@ private:
          * constant through the overlap instead of dipping in the middle. */
         float phase = g * 1.5707963267948966f;
         float g_out = cosf(phase);
-        float g_in = sinf(phase);
+        float g_in  = sinf(phase);
         for (int i = 0; i < IN_FRAMES; i++)
           for (int ch = 0; ch < CHANNELS; ch++)
             block[i][ch] = (have_old ? old[i][ch] : 0.0f) * g_out + next[i][ch] * g_in;
@@ -1360,7 +1358,7 @@ private:
     }
 
     float gain = static_cast<float>((volume / 100.0));
-    gain = gain * gain * gain;
+    gain       = gain * gain * gain;
 
     if (is_usb) {
       // USB speaker path: 512 frames at 48 kHz every 10.667 ms, no 512→480
@@ -1373,13 +1371,13 @@ private:
     double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::pcmFrames - 1));
 
     for (int i = 0; i < dualsense::AudioReport::pcmFrames; i++) {
-      double src = i * step;
-      int idx = static_cast<int>(src);
+      double src      = i * step;
+      int idx         = static_cast<int>(src);
       int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
-      float frac = static_cast<float>((src - idx));
+      float frac      = static_cast<float>((src - idx));
       for (int ch = 0; ch < CHANNELS; ch++) {
-        float a = block[idx][ch];
-        float b = block[next_sample][ch];
+        float a                = block[idx][ch];
+        float b                = block[next_sample][ch];
         pcm[i * CHANNELS + ch] = (a + (b - a) * frac) * gain;
       }
     }
@@ -1433,11 +1431,11 @@ public:
   void dropDevice() {
     stopUsbAudio();
     if (hidraw >= 0) close(hidraw);
-    hidraw = -1;
-    hidraw_retry = 0;
-    node_name[0] = 0;
+    hidraw            = -1;
+    hidraw_retry      = 0;
+    node_name[0]      = 0;
     controller_mac[0] = 0;
-    is_usb = false;
+    is_usb            = false;
   }
 
   bool create(const char *node = nullptr) {
@@ -1463,9 +1461,9 @@ public:
     sendMuteLed(false);
     sendAudioRoute();
 
-    pkt = av_packet_alloc();
-    frame = av_frame_alloc();
-    tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    pkt     = av_packet_alloc();
+    frame   = av_frame_alloc();
+    tfd     = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     tick_ns = 0;
     setTick(kPlayTickNs);
     last_status = 0;
@@ -1483,16 +1481,16 @@ public:
     if (pkt) av_packet_free(&pkt);
     if (frame) av_frame_free(&frame);
     if (tfd >= 0) close(tfd);
-    hidraw = -1;
-    node_name[0] = 0;
+    hidraw            = -1;
+    node_name[0]      = 0;
     controller_mac[0] = 0;
-    pkt = nullptr;
-    frame = nullptr;
-    tfd = -1;
-    tick_ns = 0;
-    playing = false;
-    paused = false;
-    app = nullptr;
+    pkt               = nullptr;
+    frame             = nullptr;
+    tfd               = -1;
+    tick_ns           = 0;
+    playing           = false;
+    paused            = false;
+    app               = nullptr;
   }
 
   void setTick(long ns) {
@@ -1500,7 +1498,7 @@ public:
     struct itimerspec its;
     memset(&its, 0, sizeof(its));
     its.it_interval.tv_nsec = ns;
-    its.it_value = its.it_interval;
+    its.it_value            = its.it_interval;
     if (timerfd_settime(tfd, 0, &its, nullptr) == 0) tick_ns = ns;
   }
 
@@ -1549,19 +1547,19 @@ public:
 
     if (manual_pending && manual_fade && nextRingLen() >= 8) {
       int fade_blocks = static_cast<int>((static_cast<long>(fade_ms) * 1000 / 10667));
-      manual_pending = false;
-      fading = true;
-      fade_total = fade_blocks > 0 ? fade_blocks : 1;
-      fade_pos = 0;
+      manual_pending  = false;
+      fading          = true;
+      fade_total      = fade_blocks > 0 ? fade_blocks : 1;
+      fade_pos        = 0;
     }
 
     if (!fading && !manual_fade && playing && !paused && fade_ms > 0 && has_next && nxt.fmt) {
       int fade_blocks = static_cast<int>((static_cast<long>(fade_ms) * 1000 / 10667));
-      int left = ringLen();
+      int left        = ringLen();
       if (eof && left > 0 && left <= fade_blocks && nextRingLen() >= left) {
-        fading = true;
+        fading     = true;
         fade_total = left;
-        fade_pos = 0;
+        fade_pos   = 0;
       }
     }
 
@@ -1581,13 +1579,13 @@ public:
     if (ms - last_status >= 100) {
       last_status = ms;
       struct player_status st;
-      st.pos_ms = base_ms + consumed * 1000 / RATE;
-      st.dur_ms = cur.duration_ms;
-      st.sent = sent;
+      st.pos_ms    = base_ms + consumed * 1000 / RATE;
+      st.dur_ms    = cur.duration_ms;
+      st.sent      = sent;
       st.underruns = underruns;
-      st.pushed = pushed;
-      st.paused = paused ? 1 : 0;
-      st.eof = (eof && tail == head && nxt.fmt == NULL && !has_next) ? 1 : 0;
+      st.pushed    = pushed;
+      st.paused    = paused ? 1 : 0;
+      st.eof       = (eof && tail == head && nxt.fmt == NULL && !has_next) ? 1 : 0;
       emitStatus(st);
     }
   }

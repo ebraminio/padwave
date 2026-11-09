@@ -33,32 +33,32 @@ struct Input {
 private:
   struct ActionsState {
     dualsense::InputBody::Buttons prevButtons = dualsense::InputBody::Buttons();
-    int64_t last_l2 = 0;
-    int64_t last_r2 = 0;
-    int64_t ps_at = 0;
-    bool ps_armed = false;
+    int64_t last_l2                           = 0;
+    int64_t last_r2                           = 0;
+    int64_t ps_at                             = 0;
+    bool ps_armed                             = false;
   };
 
   struct SensorsState {
-    bool has_prev = false;
+    bool has_prev                             = false;
     dualsense::InputBody::Buttons prevButtons = dualsense::InputBody::Buttons();
-    dualsense::InputBody::Dpad prevDpad = dualsense::InputBody::Dpad::None;
+    dualsense::InputBody::Dpad prevDpad       = dualsense::InputBody::Dpad::None;
     int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
-    bool prev_jack = false;
+    bool prev_jack        = false;
     int64_t last_activity = 0;
-    int analog_resets = 0;
-    int64_t last_shake = 0;
-    int stable_jack = -1;
-    int pending_jack = -1;
-    int64_t jack_since = 0;
+    int analog_resets     = 0;
+    int64_t last_shake    = 0;
+    int stable_jack       = -1;
+    int pending_jack      = -1;
+    int64_t jack_since    = 0;
     bool l2_down = false, r2_down = false;
   };
 
   struct DpadState {
     dualsense::InputBody::Dpad prev = dualsense::InputBody::Dpad::None;
-    int hold_dir = 0;
-    int hold_step = 0;
-    int64_t hold_at = 0;
+    int hold_dir                    = 0;
+    int hold_step                   = 0;
+    int64_t hold_at                 = 0;
   };
 
   struct Binding {
@@ -66,10 +66,10 @@ private:
     const char *action;
   };
 
-  int fd_ = -1;
+  int fd_            = -1;
   char node_name[64] = "";
-  char mac_[32] = "";
-  App *app = nullptr;
+  char mac_[32]      = "";
+  App *app           = nullptr;
 #ifdef DS_HAVE_OPUS
   dualsense::MicFrame::Decoder mic_decoder;
 #endif
@@ -98,14 +98,14 @@ private:
 
   void trackButtons(dualsense::InputBody::Buttons buttons) {
     dualsense::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
-    actions.prevButtons = buttons;
+    actions.prevButtons                   = buttons;
 
     for (auto &b : kBindings)
       if (pressed.isOn(b.button)) emitAction(b.action, 0);
 
     if (pressed.isOn(dualsense::InputBody::Button::PsHome)) {
       actions.ps_armed = true;
-      actions.ps_at = nowMs();
+      actions.ps_at    = nowMs();
     }
 
     if (!buttons.isOn(dualsense::InputBody::Button::PsHome)) {
@@ -131,22 +131,22 @@ private:
   }
 
   void trackSensors(const dualsense::InputBody &b) {
-    int64_t now = nowMs();
-    bool jack = b.headset();
-    const dualsense::InputBody::Stick left = b.leftStick();
-    const dualsense::InputBody::Stick right = b.rightStick();
+    int64_t now                                   = nowMs();
+    bool jack                                     = b.headset();
+    const dualsense::InputBody::Stick left        = b.leftStick();
+    const dualsense::InputBody::Stick right       = b.rightStick();
     const dualsense::InputBody::Triggers triggers = b.triggers();
     int l2 = triggers.left, r2 = triggers.right;
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
     const dualsense::InputBody::Buttons buttons = b.buttons();
-    dualsense::InputBody::Dpad dpad = b.dpad();
-    bool first = !sensors.has_prev;
+    dualsense::InputBody::Dpad dpad             = b.dpad();
+    bool first                                  = !sensors.has_prev;
 
     bool real = false, analog = false;
     if (!first) {
-      real = buttons != sensors.prevButtons || dpad != sensors.prevDpad ||
-             jack != sensors.prev_jack || abs(l2 - sensors.prev_l2) > 10 ||
-             abs(r2 - sensors.prev_r2) > 10;
+      real   = buttons != sensors.prevButtons || dpad != sensors.prevDpad ||
+               jack != sensors.prev_jack || abs(l2 - sensors.prev_l2) > 10 ||
+               abs(r2 - sensors.prev_r2) > 10;
       analog = abs(lx - sensors.prev_lx) > 24 || abs(ly - sensors.prev_ly) > 24 ||
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
@@ -155,7 +155,7 @@ private:
     if (g >= 2.25f && now - sensors.last_shake > 1500) {
       emitEvent("shake");
       sensors.last_shake = now;
-      real = true;
+      real               = true;
     }
 
     if (real || analog) {
@@ -176,15 +176,15 @@ private:
       sensors.stable_jack = jack ? 1 : 0;
     } else if (jack == (sensors.stable_jack != 0)) {
       sensors.pending_jack = -1;
-      sensors.jack_since = 0;
+      sensors.jack_since   = 0;
     } else if (sensors.pending_jack != (jack ? 1 : 0) || sensors.jack_since == 0) {
       sensors.pending_jack = jack ? 1 : 0;
-      sensors.jack_since = now;
+      sensors.jack_since   = now;
     } else if (now - sensors.jack_since >= 250) {
       emitAction(jack ? "jack_plugged" : "jack_unplugged", 0);
-      sensors.stable_jack = jack ? 1 : 0;
+      sensors.stable_jack  = jack ? 1 : 0;
       sensors.pending_jack = -1;
-      sensors.jack_since = 0;
+      sensors.jack_since   = 0;
     }
 
     if (!sensors.l2_down && l2 >= 30) {
@@ -202,38 +202,38 @@ private:
       sensors.r2_down = false;
     }
 
-    sensors.has_prev = true;
+    sensors.has_prev    = true;
     sensors.prevButtons = buttons;
-    sensors.prevDpad = dpad;
-    sensors.prev_lx = lx;
-    sensors.prev_ly = ly;
-    sensors.prev_rx = rx;
-    sensors.prev_ry = ry;
-    sensors.prev_l2 = l2;
-    sensors.prev_r2 = r2;
-    sensors.prev_jack = jack;
+    sensors.prevDpad    = dpad;
+    sensors.prev_lx     = lx;
+    sensors.prev_ly     = ly;
+    sensors.prev_rx     = rx;
+    sensors.prev_ry     = ry;
+    sensors.prev_l2     = l2;
+    sensors.prev_r2     = r2;
+    sensors.prev_jack   = jack;
   }
 
   void trackDpad(dualsense::InputBody::Dpad dpad) {
-    static const int steps[] = {10, 20, 40, 60};
+    static const int steps[]     = {10, 20, 40, 60};
     static const int intervals[] = {320, 260, 190, 130};
 
     int64_t now = nowMs();
 
     if (dpad != dpad_state.prev) {
-      dpad_state.prev = dpad;
+      dpad_state.prev     = dpad;
       dpad_state.hold_dir = 0;
 
       if (dpad == dualsense::InputBody::Dpad::Left) {
         emitAction("seek", -6);
-        dpad_state.hold_dir = -1;
+        dpad_state.hold_dir  = -1;
         dpad_state.hold_step = 0;
-        dpad_state.hold_at = now + 420;
+        dpad_state.hold_at   = now + 420;
       } else if (dpad == dualsense::InputBody::Dpad::Right) {
         emitAction("seek", 6);
-        dpad_state.hold_dir = 1;
+        dpad_state.hold_dir  = 1;
         dpad_state.hold_step = 0;
-        dpad_state.hold_at = now + 420;
+        dpad_state.hold_at   = now + 420;
       } else if (dpad == dualsense::InputBody::Dpad::Up) {
         emitAction("next", 0);
       } else if (dpad == dualsense::InputBody::Dpad::Down) {
@@ -247,7 +247,7 @@ private:
     int index = dpad_state.hold_step < 4 ? dpad_state.hold_step : 3;
     emitAction("seek", dpad_state.hold_dir * steps[index]);
     dpad_state.hold_step = index + 1;
-    dpad_state.hold_at = now + intervals[index];
+    dpad_state.hold_at   = now + intervals[index];
   }
 
   static int64_t nowMs() {
@@ -275,7 +275,7 @@ private:
 
 #ifdef DS_HAVE_OPUS
     if (auto *audioFrame = dualsense::MicFrame::asFrame(buf, len)) {
-      size_t payload_len = 0;
+      size_t payload_len     = 0;
       const uint8_t *payload = audioFrame->payload(buf, len, &payload_len);
       if (!mic_decoder.isValid() && !mic_decoder.open(dualsense::MicFrame::sampleRate, 1)) return;
       int16_t pcm[dualsense::MicFrame::samples];
@@ -311,15 +311,15 @@ public:
   }
 
   void close() {
-    fd_ = -1;
+    fd_          = -1;
     node_name[0] = 0;
-    mac_[0] = 0;
-    app = nullptr;
+    mac_[0]      = 0;
+    app          = nullptr;
 #ifdef DS_HAVE_OPUS
     mic_decoder.close();
 #endif
-    actions = ActionsState{};
-    sensors = SensorsState{};
+    actions    = ActionsState{};
+    sensors    = SensorsState{};
     dpad_state = DpadState{};
   }
 

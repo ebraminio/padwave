@@ -23,12 +23,12 @@ struct HttpRequest {
 
   static constexpr size_t kMax = 8192;
 
-  char method[8] = {};
+  char method[8]  = {};
   char path[1024] = {};
-  size_t head_len = 0;   // through the final \r\n\r\n
-  size_t body_len = 0;   // Content-Length, or 0
-  bool complete = false; // the whole body is present
-  Status status = Status::Malformed;
+  size_t head_len = 0;     // through the final \r\n\r\n
+  size_t body_len = 0;     // Content-Length, or 0
+  bool complete   = false; // the whole body is present
+  Status status   = Status::Malformed;
 
   HttpRequest() = default;
 
@@ -43,11 +43,11 @@ private:
     if (!buf) return;
 
     size_t head_end = 0;
-    bool found = false;
+    bool found      = false;
     for (size_t i = 0; i + 3 < len; i++) {
       if (buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
         head_end = i + 4;
-        found = true;
+        found    = true;
         break;
       }
     }
@@ -65,13 +65,13 @@ private:
     if (memchr(head, 0, head_end) != nullptr) return;
     if (sscanf(head, "%7s %1023s", method, path) != 2) return;
 
-    size_t body = 0;
+    size_t body   = 0;
     const char *p = head;
     while ((p = strcasestr(p, "Content-Length:")) != nullptr) {
       p += 15;
       while (*p == ' ' || *p == '\t') p++;
-      char *end = nullptr;
-      errno = 0;
+      char *end           = nullptr;
+      errno               = 0;
       unsigned long value = strtoul(p, &end, 10);
       if (end == p || errno != 0 || value > kMax) return;
       if (*end != '\r' && *end != ' ' && *end != '\t') return;
@@ -83,6 +83,6 @@ private:
     head_len = head_end;
     body_len = body;
     complete = len >= head_end + body;
-    status = Status::Parsed;
+    status   = Status::Parsed;
   }
 };

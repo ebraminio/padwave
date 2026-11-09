@@ -40,10 +40,10 @@ struct App {
   friend struct Input;
 
 private:
-  static constexpr int kMaxTracks = 4096;
-  static constexpr int kMaxPath = 1024;
-  static constexpr int kMaxTitle = 160;
-  static constexpr int kMaxFolder = 96;
+  static constexpr int kMaxTracks  = 4096;
+  static constexpr int kMaxPath    = 1024;
+  static constexpr int kMaxTitle   = 160;
+  static constexpr int kMaxFolder  = 96;
   static constexpr int kMaxHistory = 48;
 
   struct Track {
@@ -125,7 +125,7 @@ private:
   static int compareTracks(const void *a, const void *b) {
     const Track *x = reinterpret_cast<const Track *>(a);
     const Track *y = reinterpret_cast<const Track *>(b);
-    int c = naturalCompare(x->folder, y->folder);
+    int c          = naturalCompare(x->folder, y->folder);
     return c ? c : naturalCompare(x->title, y->title);
   }
 
@@ -141,14 +141,14 @@ private:
     int m = vsnprintf(buf + *len, cap - *len, fmt, ap);
     va_end(ap);
     if (m < 0 || static_cast<size_t>(m) + 2 > cap - *len) {
-      *len = start;
+      *len       = start;
       buf[start] = 0;
       return;
     }
     *len += static_cast<size_t>(m);
 
     buf[(*len)++] = '\n';
-    buf[*len] = 0;
+    buf[*len]     = 0;
   }
 
   static void kvText(char *buf, size_t cap, size_t *len, const char *key, const char *value) {
@@ -163,7 +163,7 @@ private:
       buf[(*len)++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
     }
     buf[(*len)++] = '\n';
-    buf[*len] = 0;
+    buf[*len]     = 0;
   }
 
   static bool kvGet(const char *body, const char *key, char *out, size_t cap) {
@@ -171,10 +171,10 @@ private:
     size_t klen = strlen(key);
     for (const char *p = body; *p;) {
       const char *eol = strchr(p, '\n');
-      size_t n = eol ? static_cast<size_t>((eol - p)) : strlen(p);
+      size_t n        = eol ? static_cast<size_t>((eol - p)) : strlen(p);
       if (n > klen && p[klen] == '=' && strncmp(p, key, klen) == 0) {
         const char *v = p + klen + 1;
-        size_t vn = n - klen - 1;
+        size_t vn     = n - klen - 1;
         if (vn > 0 && v[vn - 1] == '\r') vn--;
         if (vn >= cap) vn = cap - 1;
         memcpy(out, v, vn);
@@ -208,7 +208,7 @@ private:
   }
 
   Track tracks[kMaxTracks];
-  int count = 0;
+  int count   = 0;
   int current = -1;
   int history[kMaxHistory];
   int history_len = 0;
@@ -219,125 +219,125 @@ private:
 
   static constexpr int kDefaultVolume = 15;
 
-  long pos_ms = 0;
-  long dur_ms = 0;
-  long sent = 0;
-  long underruns = 0;
-  bool eof = false;
-  bool playing = false;
-  bool paused = false;
-  bool paused_by_volume = false;
-  int volume = kDefaultVolume;
+  long pos_ms             = 0;
+  long dur_ms             = 0;
+  long sent               = 0;
+  long underruns          = 0;
+  bool eof                = false;
+  bool playing            = false;
+  bool paused             = false;
+  bool paused_by_volume   = false;
+  int volume              = kDefaultVolume;
   int last_nonzero_volume = kDefaultVolume;
-  int speed = 100;
+  int speed               = 100;
 
-  bool controller = false;
-  bool jack = false;
-  bool plugged_usb_data = false;
-  bool pluggedUsbPower = false;
+  bool controller          = false;
+  bool jack                = false;
+  bool plugged_usb_data    = false;
+  bool pluggedUsbPower     = false;
   // Runtime-only fallback for a shared USB host. Never persisted; cleared
   // whenever the USB data link goes away.
   bool controller_disabled = false;
-  int battery = -1;
-  char charging[16] = "unknown";
-  char powerState[32] = "unknown";
+  int battery              = -1;
+  char charging[16]        = "unknown";
+  char powerState[32]      = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
-  char dpad[16] = "none";
+  char dpad[16]     = "none";
   char buttons[256] = "";
-  int temp = 0;
+  int temp          = 0;
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-  unsigned seq = 0;
-  int rate = 0;
-  unsigned host_timestamp = 0;
+  unsigned seq              = 0;
+  int rate                  = 0;
+  unsigned host_timestamp   = 0;
   unsigned device_timestamp = 0;
   unsigned trigger_effect_r = 0;
   unsigned trigger_effect_l = 0;
-  unsigned touch_active[2] = {};
-  unsigned touch_id[2] = {};
-  unsigned touch_x[2] = {};
-  unsigned touch_y[2] = {};
-  long rate_at = 0;
-  unsigned rate_frames = 0;
-  char input_node[64] = "";
-  char controller_mac[32] = "";
-  char last_action[64] = "";
-  char raw[400] = "";
+  unsigned touch_active[2]  = {};
+  unsigned touch_id[2]      = {};
+  unsigned touch_x[2]       = {};
+  unsigned touch_y[2]       = {};
+  long rate_at              = 0;
+  unsigned rate_frames      = 0;
+  char input_node[64]       = "";
+  char controller_mac[32]   = "";
+  char last_action[64]      = "";
+  char raw[400]             = "";
 
   // Where the last session left off.
   char resume_path[kMaxPath] = "";
-  long resume_pos_ms = 0;
-  bool resume_pending = false;
-  bool playhead_dirty = false;
-  long playhead_saved_at = 0;
-  bool volume_dirty = false;
-  long volume_saved_at = 0;
+  long resume_pos_ms         = 0;
+  bool resume_pending        = false;
+  bool playhead_dirty        = false;
+  long playhead_saved_at     = 0;
+  bool volume_dirty          = false;
+  long volume_saved_at       = 0;
 
-  int reconnect_at = 0;
+  int reconnect_at                        = 0;
   static constexpr long kNoPlaybackIdleMs = 60000;
   static constexpr int kPowerSaveModeMask = 0x17;
-  long idle_since = 0;
-  long last_activity_ms = 0;
-  bool idle_warning = false;
-  bool suspended = false;
-  bool paused_by_idle = false;
-  bool paused_by_jack = false;
-  bool paused_by_disconnect = false;
-  bool paused_by_mic = false;
-  bool idle_volume_saved = false;
-  int idle_volume = 0;
-  int idle_fade_volume = -1;
-  long idle_activity_ignore_until = 0;
-  long poweroff_at = 0;
-  bool powered_off = false;
+  long idle_since                         = 0;
+  long last_activity_ms                   = 0;
+  bool idle_warning                       = false;
+  bool suspended                          = false;
+  bool paused_by_idle                     = false;
+  bool paused_by_jack                     = false;
+  bool paused_by_disconnect               = false;
+  bool paused_by_mic                      = false;
+  bool idle_volume_saved                  = false;
+  int idle_volume                         = 0;
+  int idle_fade_volume                    = -1;
+  long idle_activity_ignore_until         = 0;
+  long poweroff_at                        = 0;
+  bool powered_off                        = false;
 
   // Config that the panel edits; persisted as ~/.config/padwave/config.
-  int idle_timeout_ms = 900000;
-  int idle_warn_grace_ms = 60000;
+  int idle_timeout_ms       = 900000;
+  int idle_warn_grace_ms    = 60000;
   int poweroff_when_idle_ms = 60000;
-  bool haptic_subwoofer = false;
-  bool haptics_only = false;
-  int haptic_cutoff_hz = 150;
-  int haptic_gain = 100;
+  bool haptic_subwoofer     = false;
+  bool haptics_only         = false;
+  int haptic_cutoff_hz      = 150;
+  int haptic_gain           = 100;
 
   int rumble_left = 0, rumble_right = 0;
-  long rumble_until = 0;
+  long rumble_until      = 0;
   long idle_rumble_until = 0;
 
   // The state-coloured lightbar and the player-LED ownership. The player's
   // 0x36 snapshot carries whatever `fields` last merged into its OutputBody.
-  int led_custom[3] = {0, 0, 0};
-  bool led_custom_set = false;
-  bool led_force = true;
-  int led_last_rgb[3] = {-1, -1, -1};
-  int led_last_player = -2;
-  int led_last_state = -1;
-  bool led_warning_high = true;
-  long led_warning_at = 0;
-  long led_battery_at = 0;
-  int led_battery_phase = 0;
+  int led_custom[3]                 = {0, 0, 0};
+  bool led_custom_set               = false;
+  bool led_force                    = true;
+  int led_last_rgb[3]               = {-1, -1, -1};
+  int led_last_player               = -2;
+  int led_last_state                = -1;
+  bool led_warning_high             = true;
+  long led_warning_at               = 0;
+  long led_battery_at               = 0;
+  int led_battery_phase             = 0;
   static constexpr long kLedBlinkMs = 2000;
-  bool led_manual_player = false;
-  int led_manual_mask = 4;
-  bool led_painted = false;
-  bool lightbar_on = true;
-  int power_save_mask = 0;
-  bool power_save_mode = false;
-  bool power_save_leds_applied = false;
-  int power_save_saved_mask = 0;
-  bool lightbar_saved_on = true;
-  long led_charge_at = 0;
+  bool led_manual_player            = false;
+  int led_manual_mask               = 4;
+  bool led_painted                  = false;
+  bool lightbar_on                  = true;
+  int power_save_mask               = 0;
+  bool power_save_mode              = false;
+  bool power_save_leds_applied      = false;
+  int power_save_saved_mask         = 0;
+  bool lightbar_saved_on            = true;
+  long led_charge_at                = 0;
   dualsense::OutputBody::LightbarSetup led_charge_setup =
       dualsense::OutputBody::LightbarSetup::LightOut;
   static constexpr long kChargeBlinkMs = 1000;
 
   unsigned long mic_packets = 0;
-  unsigned long mic_frames = 0;
+  unsigned long mic_frames  = 0;
   unsigned long mic_samples = 0;
-  int mic_rms = 0;
-  int mic_peak = 0;
-  int mic_level = 0;
-  long mic_last_ms = 0;
-  bool mic_monitor = false;
+  int mic_rms               = 0;
+  int mic_peak              = 0;
+  int mic_level             = 0;
+  long mic_last_ms          = 0;
+  bool mic_monitor          = false;
 
 public:
   bool init() {
@@ -367,13 +367,13 @@ public:
     if (this->resume_path[0]) {
       int idx = findTrack(this->resume_path);
       if (idx >= 0) {
-        this->current = idx;
-        this->pos_ms = this->resume_pos_ms;
+        this->current        = idx;
+        this->pos_ms         = this->resume_pos_ms;
         this->resume_pending = true;
       }
     }
     this->playhead_saved_at = nowMs();
-    this->last_activity_ms = this->playhead_saved_at;
+    this->last_activity_ms  = this->playhead_saved_at;
     // configLoad() restored the current and last non-zero volumes. A current
     // non-zero value is by definition the latest one; only fall back to 15
     // when no non-zero value has ever been stored.
@@ -386,9 +386,9 @@ public:
   }
 
   void shutdown() {
-    this->playing = false;
+    this->playing    = false;
     this->controller = false;
-    this->led_force = true;
+    this->led_force  = true;
     serviceLeds();
     configSave();
     if (this->player) {
@@ -427,7 +427,7 @@ public:
       if (this->player.fd() >= 0) this->inputStart();
     }
     if (this->input.fd() < 0 && this->player && this->playing && !this->paused) {
-      this->paused = true;
+      this->paused               = true;
       this->paused_by_disconnect = true;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
@@ -436,7 +436,7 @@ public:
 
     long now = nowMs();
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
-      this->playhead_dirty = false;
+      this->playhead_dirty    = false;
       this->playhead_saved_at = now;
       configSave();
     } else if (this->current >= 0 && now - this->playhead_saved_at >= 30000) {
@@ -444,7 +444,7 @@ public:
       configSave();
     }
     if (this->volume_dirty && now - this->volume_saved_at >= 1000) {
-      this->volume_dirty = false;
+      this->volume_dirty    = false;
       this->volume_saved_at = now;
       configSave();
     }
@@ -481,35 +481,35 @@ public:
     if (cap) buf[0] = 0;
     const Track *s = this->current >= 0 ? &this->tracks[this->current] : nullptr;
 
-    long now = nowMs();
-    long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
+    long now             = nowMs();
+    long idle_ms         = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     bool active_playback = this->playing && !this->paused;
-    long timeout = active_playback ? this->idle_timeout_ms : kNoPlaybackIdleMs;
-    long grace = active_playback ? this->idle_warn_grace_ms : 0;
-    const char *phase = "active";
-    long warning_in = (timeout + 999) / 1000;
-    long shutdown_in = 0;
-    int fade_percent = 100;
+    long timeout         = active_playback ? this->idle_timeout_ms : kNoPlaybackIdleMs;
+    long grace           = active_playback ? this->idle_warn_grace_ms : 0;
+    const char *phase    = "active";
+    long warning_in      = (timeout + 999) / 1000;
+    long shutdown_in     = 0;
+    int fade_percent     = 100;
 
     if (this->suspended) {
-      phase = "suspended";
-      warning_in = 0;
+      phase        = "suspended";
+      warning_in   = 0;
       fade_percent = 10;
     } else if (!active_playback) {
-      long left = timeout - idle_ms;
+      long left  = timeout - idle_ms;
       warning_in = left > 0 ? (left + 999) / 1000 : 0;
     } else if (this->idle_warning && idle_ms >= timeout) {
-      phase = "warning";
-      long over = idle_ms - timeout;
+      phase        = "warning";
+      long over    = idle_ms - timeout;
       int progress = grace > 0 ? static_cast<int>((over * 100 / grace)) : 100;
       if (progress < 0) progress = 0;
       if (progress > 100) progress = 100;
       fade_percent = 100 - progress * 90 / 100;
-      warning_in = 0;
-      long left = timeout + grace - idle_ms;
-      shutdown_in = left > 0 ? (left + 999) / 1000 : 0;
+      warning_in   = 0;
+      long left    = timeout + grace - idle_ms;
+      shutdown_in  = left > 0 ? (left + 999) / 1000 : 0;
     } else {
-      long left = timeout - idle_ms;
+      long left  = timeout - idle_ms;
       warning_in = left > 0 ? (left + 999) / 1000 : 0;
     }
 
@@ -561,7 +561,7 @@ public:
     kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");
     kvAdd(buf, cap, &o, "hid.player_leds", "%d",
           this->led_last_player >= 0 ? this->led_last_player : 4);
-    int state = ledState();
+    int state        = ledState();
     const char *mode = state == 0 ? "off" : (this->led_custom_set ? "custom" : ledStateName(state));
     if (this->controller && strcmp(this->charging, "charging") == 0)
       mode = "charging";
@@ -599,8 +599,10 @@ public:
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
-    kvAdd(buf, cap, &o, "controller.plugged_usb_data", "%s", this->plugged_usb_data ? "true" : "false");
-    kvAdd(buf, cap, &o, "controller.plugged_usb_power", "%s", this->pluggedUsbPower ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.plugged_usb_data", "%s",
+          this->plugged_usb_data ? "true" : "false");
+    kvAdd(buf, cap, &o, "controller.plugged_usb_power", "%s",
+          this->pluggedUsbPower ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.usb_host", "%s", this->externalHost() ? "true" : "false");
     kvAdd(buf, cap, &o, "controller.padwave_disabled", "%s",
           this->padwaveDisabled() ? "true" : "false");
@@ -694,11 +696,11 @@ public:
 
   void micReset() {
     this->mic_packets = 0;
-    this->mic_frames = 0;
+    this->mic_frames  = 0;
     this->mic_samples = 0;
-    this->mic_rms = 0;
-    this->mic_peak = 0;
-    this->mic_level = 0;
+    this->mic_rms     = 0;
+    this->mic_peak    = 0;
+    this->mic_level   = 0;
     this->mic_last_ms = 0;
   }
 
@@ -707,15 +709,15 @@ public:
     char value[64];
 
     if (kvGet(body, "idle_timeout_ms", value, sizeof(value))) {
-      long v = atol(value);
+      long v                = atol(value);
       this->idle_timeout_ms = static_cast<int>((v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v)));
     }
     if (kvGet(body, "idle_warn_grace_ms", value, sizeof(value))) {
-      long v = atol(value);
+      long v                   = atol(value);
       this->idle_warn_grace_ms = static_cast<int>((v < 0 ? 0 : (v > 600000 ? 600000 : v)));
     }
     if (kvGet(body, "poweroff_when_idle_ms", value, sizeof(value))) {
-      long v = atol(value);
+      long v                      = atol(value);
       this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
     }
     if (kvGet(body, "haptic_subwoofer", value, sizeof(value))) {
@@ -725,11 +727,11 @@ public:
       this->haptics_only = strcmp(value, "true") == 0 || atoi(value) != 0;
     }
     if (kvGet(body, "haptic_cutoff_hz", value, sizeof(value))) {
-      int v = atoi(value);
+      int v                  = atoi(value);
       this->haptic_cutoff_hz = v < 20 ? 20 : (v > 2000 ? 2000 : v);
     }
     if (kvGet(body, "haptic_gain", value, sizeof(value))) {
-      int v = atoi(value);
+      int v             = atoi(value);
       this->haptic_gain = v < 0 ? 0 : (v > 200 ? 200 : v);
     }
     if (kvGet(body, "volume", value, sizeof(value))) setVolume(atoi(value));
@@ -763,14 +765,20 @@ public:
     int index = (id && *id) ? findId(id) : this->current;
     if (index < 0 || index >= this->count) return false;
     const Track *track = &this->tracks[index];
-    *path = track->path;
-    const char *ext = track->ext;
-    if (strcmp(ext, "mp3") == 0) *mime = "audio/mpeg";
-    else if (strcmp(ext, "m4a") == 0 || strcmp(ext, "aac") == 0) *mime = "audio/mp4";
-    else if (strcmp(ext, "flac") == 0) *mime = "audio/flac";
-    else if (strcmp(ext, "wav") == 0) *mime = "audio/wav";
-    else if (strcmp(ext, "ogg") == 0 || strcmp(ext, "opus") == 0) *mime = "audio/ogg";
-    else *mime = "application/octet-stream";
+    *path              = track->path;
+    const char *ext    = track->ext;
+    if (strcmp(ext, "mp3") == 0)
+      *mime = "audio/mpeg";
+    else if (strcmp(ext, "m4a") == 0 || strcmp(ext, "aac") == 0)
+      *mime = "audio/mp4";
+    else if (strcmp(ext, "flac") == 0)
+      *mime = "audio/flac";
+    else if (strcmp(ext, "wav") == 0)
+      *mime = "audio/wav";
+    else if (strcmp(ext, "ogg") == 0 || strcmp(ext, "opus") == 0)
+      *mime = "audio/ogg";
+    else
+      *mime = "application/octet-stream";
     return true;
   }
 
@@ -787,30 +795,30 @@ public:
       int r = 0, g = 0, b = 0;
       kvGet(body, "rgb", rgb, sizeof(rgb));
       sscanf(rgb, "%d,%d,%d", &r, &g, &b);
-      r = r < 0 ? 0 : (r > 255 ? 255 : r);
-      g = g < 0 ? 0 : (g > 255 ? 255 : g);
-      b = b < 0 ? 0 : (b > 255 ? 255 : b);
-      this->led_custom[0] = r;
-      this->led_custom[1] = g;
-      this->led_custom[2] = b;
+      r                    = r < 0 ? 0 : (r > 255 ? 255 : r);
+      g                    = g < 0 ? 0 : (g > 255 ? 255 : g);
+      b                    = b < 0 ? 0 : (b > 255 ? 255 : b);
+      this->led_custom[0]  = r;
+      this->led_custom[1]  = g;
+      this->led_custom[2]  = b;
       this->led_custom_set = true;
-      this->lightbar_on = true;
-      this->led_force = true;
+      this->lightbar_on    = true;
+      this->led_force      = true;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar %d,%d,%d\n", r, g, b);
     }
 
     if (strcmp(kind, "lightbar_reset") == 0) {
       this->led_custom_set = false;
-      this->lightbar_on = true;
-      this->led_force = true;
+      this->lightbar_on    = true;
+      this->led_force      = true;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=lightbar reset\n");
     }
 
     if (strcmp(kind, "lightbar_fade") == 0) {
       this->lightbar_on = false;
-      this->led_force = true;
+      this->led_force   = true;
       setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=light off\n");
@@ -819,9 +827,9 @@ public:
     if (strcmp(kind, "lightbar_setup") == 0) {
       int v = static_cast<int>(kvNumber(body, "value", 0));
       if (v != 1 && v != 2) return snprintf(out, out_cap, "ok=false\nerror=setup must be 1 or 2\n");
-      auto setup = static_cast<dualsense::OutputBody::LightbarSetup>(v);
+      auto setup        = static_cast<dualsense::OutputBody::LightbarSetup>(v);
       this->lightbar_on = setup == dualsense::OutputBody::LightbarSetup::LightOn;
-      this->led_force = true;
+      this->led_force   = true;
       setLightbarSetup(setup);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
@@ -839,8 +847,9 @@ public:
     }
 
     if (strcmp(kind, "controller_input") == 0) {
-      if (!this->plugged_usb_data) return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
-      int enabled = static_cast<int>(kvNumber(body, "enabled", 1));
+      if (!this->plugged_usb_data)
+        return snprintf(out, out_cap, "ok=false\nerror=no USB data link\n");
+      int enabled               = static_cast<int>(kvNumber(body, "enabled", 1));
       this->controller_disabled = enabled == 0;
       if (this->controller_disabled) playerSend("state_clear_lightbar\n");
       this->led_force = true;
@@ -850,9 +859,9 @@ public:
     }
 
     if (strcmp(kind, "player_leds") == 0) {
-      int mask = static_cast<int>(kvNumber(body, "mask", 0)) & 0x3F;
+      int mask                = static_cast<int>(kvNumber(body, "mask", 0)) & 0x3F;
       this->led_manual_player = true;
-      this->led_manual_mask = mask;
+      this->led_manual_mask   = mask;
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=player leds %d\n", mask);
     }
@@ -861,7 +870,7 @@ public:
       if (this->power_save_mode) setPowerSaveMode(false);
       char bits[64] = "";
       kvGet(body, "bits", bits, sizeof(bits));
-      int mask = 0;
+      int mask   = 0;
       char *save = nullptr;
       for (char *tok = strtok_r(bits, ",", &save); tok; tok = strtok_r(nullptr, ",", &save)) {
         int bit = atoi(tok);
@@ -882,86 +891,89 @@ public:
     }
 
     if (strcmp(kind, "rumble") == 0) {
-      int left = static_cast<int>(kvNumber(body, "left", 0));
+      int left  = static_cast<int>(kvNumber(body, "left", 0));
       int right = static_cast<int>(kvNumber(body, "right", 0));
-      long ms = kvNumber(body, "ms", 0);
-      left = left < 0 ? 0 : (left > 255 ? 255 : left);
-      right = right < 0 ? 0 : (right > 255 ? 255 : right);
+      long ms   = kvNumber(body, "ms", 0);
+      left      = left < 0 ? 0 : (left > 255 ? 255 : left);
+      right     = right < 0 ? 0 : (right > 255 ? 255 : right);
       // The main motors need both ValidFlag0 bits: Rumble (0x01) and Haptics
       // (0x02). DS4Windows and dualsense-tester both set the pair; bit 0 alone
       // is ignored by the controller.
       snprintf(fields, sizeof(fields), "motor_left=%d;motor_right=%d", left, right);
       outputFields(fields);
       this->idle_rumble_until = 0;
-      this->rumble_left = left;
-      this->rumble_right = right;
-      this->rumble_until = ms > 0 ? nowMs() + ms : 0;
+      this->rumble_left       = left;
+      this->rumble_right      = right;
+      this->rumble_until      = ms > 0 ? nowMs() + ms : 0;
       return snprintf(out, out_cap, "ok=true\nnote=rumble %d/%d\n", left, right);
     }
 
     if (strcmp(kind, "trigger") == 0 || strcmp(kind, "left_trigger") == 0 ||
         strcmp(kind, "right_trigger") == 0) {
-      char side[16] = "right";
+      char side[16]   = "right";
       char effect[32] = "vibration";
       if (strcmp(kind, "left_trigger") == 0)
         snprintf(side, sizeof(side), "left");
       else if (strcmp(kind, "trigger") == 0)
         kvGet(body, "side", side, sizeof(side));
       kvGet(body, "effect", effect, sizeof(effect));
-      int position = static_cast<int>(kvNumber(body, "position", 2));
-      int amplitude = static_cast<int>(kvNumber(body, "amplitude", 6));
-      int frequency = static_cast<int>(kvNumber(body, "frequency", 25));
-      int wall = static_cast<int>(kvNumber(body, "wall", 8));
-      int start = static_cast<int>(kvNumber(body, "start", position));
-      int end = static_cast<int>(kvNumber(body, "end", wall));
-      int level = static_cast<int>(kvNumber(body, "level", amplitude));
+      int position    = static_cast<int>(kvNumber(body, "position", 2));
+      int amplitude   = static_cast<int>(kvNumber(body, "amplitude", 6));
+      int frequency   = static_cast<int>(kvNumber(body, "frequency", 25));
+      int wall        = static_cast<int>(kvNumber(body, "wall", 8));
+      int start       = static_cast<int>(kvNumber(body, "start", position));
+      int end         = static_cast<int>(kvNumber(body, "end", wall));
+      int level       = static_cast<int>(kvNumber(body, "level", amplitude));
       int amplitude_b = static_cast<int>(kvNumber(body, "amplitude_b", 0));
-      int period = static_cast<int>(kvNumber(body, "period", 0));
+      int period      = static_cast<int>(kvNumber(body, "period", 0));
 
       using TriggerEffect = dualsense::OutputBody::TriggerEffect;
-      TriggerEffect fx = TriggerEffect::off();
-      char label[40] = "off";
-      bool off = strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0;
+      TriggerEffect fx    = TriggerEffect::off();
+      char label[40]      = "off";
+      bool off            = strcmp(effect, "off") == 0 || strcmp(effect, "none") == 0;
       if (!off) {
-        const uint8_t level8 = static_cast<uint8_t>(level);
+        const uint8_t level8     = static_cast<uint8_t>(level);
         const uint8_t frequency8 = static_cast<uint8_t>(frequency);
         if (strcmp(effect, "feedback") == 0) {
           uint8_t levels[10] = {};
-          int last = end < start ? 9 : (end > 9 ? 9 : end);
+          int last           = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
             levels[zone] = level8;
           fx = TriggerEffect::multiplePositionFeedback(levels);
         } else if (strcmp(effect, "weapon") == 0) {
-          fx = TriggerEffect::weapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx =
+              TriggerEffect::weapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
         } else if (strcmp(effect, "vibration") == 0) {
           uint8_t amplitudes[10] = {};
-          int last = end < start ? 9 : (end > 9 ? 9 : end);
+          int last               = end < start ? 9 : (end > 9 ? 9 : end);
           for (int zone = start < 0 ? 0 : (start > 9 ? 9 : start); zone <= last; ++zone)
             amplitudes[zone] = level8;
           fx = TriggerEffect::multiplePositionVibration(frequency8, amplitudes);
         } else if (strcmp(effect, "machine") == 0) {
-          fx = TriggerEffect::machine(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
-                               static_cast<uint8_t>(amplitude_b), frequency8,
-                               static_cast<uint8_t>(period));
+          fx = TriggerEffect::machine(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                      level8, static_cast<uint8_t>(amplitude_b), frequency8,
+                                      static_cast<uint8_t>(period));
         } else if (strcmp(effect, "bow") == 0) {
           fx = TriggerEffect::bow(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
-                           static_cast<uint8_t>(amplitude_b));
+                                  static_cast<uint8_t>(amplitude_b));
         } else if (strcmp(effect, "galloping") == 0) {
-          fx = TriggerEffect::galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
-                                 static_cast<uint8_t>(amplitude_b), frequency8);
+          fx = TriggerEffect::galloping(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                        level8, static_cast<uint8_t>(amplitude_b), frequency8);
         } else if (strcmp(effect, "slope") == 0) {
-          fx = TriggerEffect::slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8,
-                                     static_cast<uint8_t>(amplitude_b));
+          fx = TriggerEffect::slopeFeedback(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                            level8, static_cast<uint8_t>(amplitude_b));
         } else if (strcmp(effect, "simple-feedback") == 0) {
           fx = TriggerEffect::simpleFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "simple-weapon") == 0) {
-          fx = TriggerEffect::simpleWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx = TriggerEffect::simpleWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                           level8);
         } else if (strcmp(effect, "simple-vibration") == 0) {
           fx = TriggerEffect::simpleVibration(static_cast<uint8_t>(start), level8, frequency8);
         } else if (strcmp(effect, "limited-feedback") == 0) {
           fx = TriggerEffect::limitedFeedback(static_cast<uint8_t>(start), level8);
         } else if (strcmp(effect, "limited-weapon") == 0) {
-          fx = TriggerEffect::limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end), level8);
+          fx = TriggerEffect::limitedWeapon(static_cast<uint8_t>(start), static_cast<uint8_t>(end),
+                                            level8);
         } else if (strcmp(effect, "rewasd-full") == 0) {
           fx = TriggerEffect::rewasdFullPress();
         } else if (strcmp(effect, "rewasd-soft") == 0) {
@@ -990,7 +1002,7 @@ public:
           return snprintf(out, out_cap, "ok=false\nerror=unknown trigger effect\n");
         }
         if (!fx.isValid()) {
-          fx = TriggerEffect::off();
+          fx  = TriggerEffect::off();
           off = true;
         }
         snprintf(label, sizeof(label), "%s", effect);
@@ -1151,39 +1163,39 @@ private:
     if (this->player) this->player.dropDevice();
     this->controller = false;
     if (pause_playback && this->player && this->playing && !this->paused) {
-      this->paused = true;
+      this->paused               = true;
       this->paused_by_disconnect = true;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
     }
-    this->input_node[0] = 0;
-    this->controller_mac[0] = 0;
-    this->plugged_usb_data = false;
-    this->pluggedUsbPower = false;
+    this->input_node[0]       = 0;
+    this->controller_mac[0]   = 0;
+    this->plugged_usb_data    = false;
+    this->pluggedUsbPower     = false;
     this->controller_disabled = false;
-    this->rate = 0;
-    this->rate_at = 0;
-    this->rate_frames = 0;
-    this->led_force = true;
+    this->rate                = 0;
+    this->rate_at             = 0;
+    this->rate_frames         = 0;
+    this->led_force           = true;
     serviceLeds();
   }
 
   void playerStatus(const struct player_status &st) {
-    pos_ms = st.pos_ms;
-    dur_ms = st.dur_ms;
-    sent = st.sent;
+    pos_ms    = st.pos_ms;
+    dur_ms    = st.dur_ms;
+    sent      = st.sent;
     underruns = st.underruns;
-    paused = st.paused != 0;
-    eof = st.eof != 0;
+    paused    = st.paused != 0;
+    eof       = st.eof != 0;
   }
 
   void playerTrack(const char *path) {
     int idx = findTrack(path);
     if (idx < 0) return;
     if (current >= 0 && current != idx) pushHistory(current);
-    current = idx;
-    paused = false;
-    playing = true;
+    current        = idx;
+    paused         = false;
+    playing        = true;
     playhead_dirty = true;
     queueTrack(nextTrackIndex(idx));
   }
@@ -1225,13 +1237,13 @@ private:
 
     if (this->current >= 0 && this->current != index && this->history_len == 0)
       pushHistory(this->current);
-    this->current = index;
-    this->playing = true;
-    this->paused = false;
-    this->eof = false;
-    this->pos_ms = start_ms;
-    this->dur_ms = 0;
-    this->idle_since = nowMs();
+    this->current        = index;
+    this->playing        = true;
+    this->paused         = false;
+    this->eof            = false;
+    this->pos_ms         = start_ms;
+    this->dur_ms         = 0;
+    this->idle_since     = nowMs();
     this->playhead_dirty = true;
 
     // Gapless: queue the next track in the sorted list for the junction.
@@ -1280,14 +1292,14 @@ private:
         this->paused = false;
         playerSend("pause 0\n");
       }
-      this->paused_by_volume = false;
-      this->paused_by_jack = false;
+      this->paused_by_volume     = false;
+      this->paused_by_jack       = false;
       this->paused_by_disconnect = false;
-      this->paused_by_mic = false;
-      this->playhead_dirty = true;
+      this->paused_by_mic        = false;
+      this->playhead_dirty       = true;
     } else {
-      this->paused = true;
-      this->paused_by_volume = false;
+      this->paused               = true;
+      this->paused_by_volume     = false;
       this->paused_by_disconnect = false;
       playerSend("pause 1\n");
       this->playhead_dirty = true;
@@ -1324,7 +1336,7 @@ private:
     if (v > 0) this->last_nonzero_volume = v;
     if (v != this->volume) {
       fprintf(stderr, "padwave: volume %d%s\n", v, v == 0 ? " (muted)" : "");
-      this->volume_dirty = true;
+      this->volume_dirty    = true;
       this->volume_saved_at = nowMs();
     }
     this->volume = v;
@@ -1335,13 +1347,13 @@ private:
     if (v == 0) {
       this->paused_by_disconnect = false;
       if (this->playing && !this->paused) {
-        this->paused = true;
+        this->paused           = true;
         this->paused_by_volume = true;
         playerSend("pause 1\n");
         this->playhead_dirty = true;
       }
     } else if (this->paused_by_volume && this->playing) {
-      this->paused = false;
+      this->paused           = false;
       this->paused_by_volume = false;
       playerSend("pause 0\n");
       this->playhead_dirty = true;
@@ -1361,7 +1373,7 @@ private:
     char line[32];
     snprintf(line, sizeof(line), "seek %ld\n", ms);
     playerSend(line);
-    this->pos_ms = ms;
+    this->pos_ms         = ms;
     this->playhead_dirty = true;
   }
 
@@ -1404,7 +1416,7 @@ private:
     };
 
     size_t o = 0;
-    out[0] = 0;
+    out[0]   = 0;
     for (auto &n : names) {
       if (!buttons.isOn(n.button)) continue;
       int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
@@ -1415,10 +1427,10 @@ private:
 
   void inputFrame(const dualsense::InputBody &b, const uint8_t *raw_buf, size_t len) {
     bool was_connected = this->controller;
-    this->controller = true;
+    this->controller   = true;
     if (!was_connected) {
       if (this->power_save_mode) {
-        this->power_save_mask = kPowerSaveModeMask;
+        this->power_save_mask         = kPowerSaveModeMask;
         this->power_save_leds_applied = false;
       } else {
         this->power_save_mask = 0;
@@ -1426,20 +1438,20 @@ private:
       this->led_force = true;
       this->serviceLeds();
     }
-    const dualsense::InputBody::Stick left = b.leftStick();
-    const dualsense::InputBody::Stick right = b.rightStick();
-    this->lx = left.x;
-    this->ly = left.y;
-    this->rx = right.x;
-    this->ry = right.y;
+    const dualsense::InputBody::Stick left        = b.leftStick();
+    const dualsense::InputBody::Stick right       = b.rightStick();
+    this->lx                                      = left.x;
+    this->ly                                      = left.y;
+    this->rx                                      = right.x;
+    this->ry                                      = right.y;
     const dualsense::InputBody::Triggers triggers = b.triggers();
-    this->l2 = triggers.left;
-    this->r2 = triggers.right;
-    this->battery = b.battery();
-    bool had_jack = this->jack;
-    bool had_link = this->plugged_usb_data;
-    this->jack = b.headset();
-    this->plugged_usb_data = b.pluggedUsbData();
+    this->l2                                      = triggers.left;
+    this->r2                                      = triggers.right;
+    this->battery                                 = b.battery();
+    bool had_jack                                 = this->jack;
+    bool had_link                                 = this->plugged_usb_data;
+    this->jack                                    = b.headset();
+    this->plugged_usb_data                        = b.pluggedUsbData();
     if (!this->plugged_usb_data) this->controller_disabled = false;
     if (this->plugged_usb_data != had_link) {
       this->led_force = true;
@@ -1449,7 +1461,7 @@ private:
     if (!was_connected) {
       if (this->paused_by_disconnect) {
         this->paused_by_disconnect = false;
-        this->paused_by_jack = false;
+        this->paused_by_jack       = false;
         ensureAudibleVolume();
         if (this->paused) {
           this->paused = false;
@@ -1470,7 +1482,7 @@ private:
     snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.dpad()));
     buttonsToString(b.buttons(), this->buttons, sizeof(this->buttons));
     this->raw[0] = 0;
-    size_t r = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;
+    size_t r     = len < (sizeof(this->raw) - 1) / 2 ? len : (sizeof(this->raw) - 1) / 2;
     for (size_t i = 0; i < r; i++)
       snprintf(this->raw + i * 2, sizeof(this->raw) - i * 2, "%02x", raw_buf[i]);
     {
@@ -1482,42 +1494,42 @@ private:
                : power == PowerState::Discharging ? "discharging"
                                                   : "unknown");
       snprintf(this->powerState, sizeof(this->powerState), "%s",
-               power == PowerState::Discharging         ? "discharging"
-               : power == PowerState::Charging          ? "charging"
-               : power == PowerState::Complete          ? "complete"
-               : power == PowerState::AbnormalVoltage   ? "abnormalVoltage"
+               power == PowerState::Discharging           ? "discharging"
+               : power == PowerState::Charging            ? "charging"
+               : power == PowerState::Complete            ? "complete"
+               : power == PowerState::AbnormalVoltage     ? "abnormalVoltage"
                : power == PowerState::AbnormalTemperature ? "abnormalTemperature"
-               : power == PowerState::ChargingError     ? "chargingError"
-                                                        : "unknown");
+               : power == PowerState::ChargingError       ? "chargingError"
+                                                          : "unknown");
     }
-    const dualsense::InputBody::Gyro gyro = b.gyro();
-    this->gx = gyro.x;
-    this->gy = gyro.y;
-    this->gz = gyro.z;
+    const dualsense::InputBody::Gyro gyro           = b.gyro();
+    this->gx                                        = gyro.x;
+    this->gy                                        = gyro.y;
+    this->gz                                        = gyro.z;
     const dualsense::InputBody::Accelerometer accel = b.accelerometer();
-    this->ax = accel.x;
-    this->ay = accel.y;
-    this->az = accel.z;
-    this->seq = static_cast<unsigned>(b.sequence());
-    this->host_timestamp = b.hostTime();
-    this->device_timestamp = b.deviceTime();
-    this->trigger_effect_r = b.triggerEffectRight();
-    this->trigger_effect_l = b.triggerEffectLeft();
+    this->ax                                        = accel.x;
+    this->ay                                        = accel.y;
+    this->az                                        = accel.z;
+    this->seq                                       = static_cast<unsigned>(b.sequence());
+    this->host_timestamp                            = b.hostTime();
+    this->device_timestamp                          = b.deviceTime();
+    this->trigger_effect_r                          = b.triggerEffectRight();
+    this->trigger_effect_l                          = b.triggerEffectLeft();
     for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.touch(t);
-      this->touch_active[t] = touch.active() ? 1 : 0;
-      this->touch_id[t] = touch.id();
-      this->touch_x[t] = touch.x();
-      this->touch_y[t] = touch.y();
+      this->touch_active[t]                        = touch.active() ? 1 : 0;
+      this->touch_id[t]                            = touch.id();
+      this->touch_x[t]                             = touch.x();
+      this->touch_y[t]                             = touch.y();
     }
 
     long now = nowMs();
     if (this->rate_at == 0) this->rate_at = now;
     this->rate_frames++;
     if (now - this->rate_at >= 1000) {
-      this->rate = static_cast<int>(((this->rate_frames * 1000) / (now - this->rate_at)));
+      this->rate        = static_cast<int>(((this->rate_frames * 1000) / (now - this->rate_at)));
       this->rate_frames = 0;
-      this->rate_at = now;
+      this->rate_at     = now;
     }
   }
 
@@ -1538,21 +1550,21 @@ private:
     if (!this->mic_monitor || samples == 0) return;
 
     long long sum = 0;
-    int peak = 0;
+    int peak      = 0;
     for (size_t i = 0; i < samples; i++) {
       int v = pcm[i];
       sum += static_cast<long long>(v) * v;
       int a = v < 0 ? -v : v;
       if (a > peak) peak = a;
     }
-    int rms = static_cast<int>(sqrt(static_cast<double>(sum) / static_cast<double>(samples)));
+    int rms   = static_cast<int>(sqrt(static_cast<double>(sum) / static_cast<double>(samples)));
     double db = rms > 0 ? 20.0 * log10(static_cast<double>(rms) / 32768.0) : -90.0;
     int level = static_cast<int>(((db + 60.0) * 100.0 / 60.0));
     if (level < 0) level = 0;
     if (level > 100) level = 100;
 
-    this->mic_rms = rms;
-    this->mic_peak = peak;
+    this->mic_rms   = rms;
+    this->mic_peak  = peak;
     this->mic_level = (this->mic_level * 2 + level) / 3;
     this->mic_packets++;
     this->mic_frames++;
@@ -1590,7 +1602,7 @@ private:
       seek(this->pos_ms + static_cast<long>(value) * 1000);
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
       this->playing = false;
-      this->paused = true;
+      this->paused  = true;
       playerSend("pause 1\n");
     } else if (strcmp(name, "jack_unplugged") == 0) {
       // macOS-style: a real unplug pauses playback. The input layer only emits
@@ -1598,7 +1610,7 @@ private:
       // trigger it.
       applyOutputRoute();
       if (this->playing && !this->paused) {
-        this->paused = true;
+        this->paused         = true;
         this->paused_by_jack = true;
         playerSend("pause 1\n");
         this->playhead_dirty = true;
@@ -1628,28 +1640,28 @@ private:
     while (fgets(line, sizeof(line), f)) {
       char *eq = strchr(line, '=');
       if (!eq) continue;
-      *eq = 0;
+      *eq         = 0;
       char *value = eq + 1;
-      char *nl = strchr(value, '\n');
+      char *nl    = strchr(value, '\n');
       if (nl) *nl = 0;
 
       if (strcmp(line, "idle_timeout_ms") == 0) {
-        long v = atol(value);
+        long v                = atol(value);
         this->idle_timeout_ms = static_cast<int>((v < 1000 ? 1000 : (v > 86400000 ? 86400000 : v)));
       } else if (strcmp(line, "idle_warn_grace_ms") == 0) {
-        long v = atol(value);
+        long v                   = atol(value);
         this->idle_warn_grace_ms = static_cast<int>((v < 0 ? 0 : (v > 600000 ? 600000 : v)));
       } else if (strcmp(line, "poweroff_when_idle_ms") == 0) {
-        long v = atol(value);
+        long v                      = atol(value);
         this->poweroff_when_idle_ms = static_cast<int>((v < 0 ? 0 : (v > 86400000 ? 86400000 : v)));
       } else if (strcmp(line, "volume") == 0) {
-        int v = atoi(value);
+        int v        = atoi(value);
         this->volume = v < 0 ? 0 : (v > 100 ? 100 : v);
       } else if (strcmp(line, "last_nonzero_volume") == 0) {
-        int v = atoi(value);
+        int v                     = atoi(value);
         this->last_nonzero_volume = v < 0 ? 0 : (v > 100 ? 100 : v);
       } else if (strcmp(line, "speed") == 0) {
-        int v = atoi(value);
+        int v       = atoi(value);
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
@@ -1700,7 +1712,7 @@ private:
 
   void noteActivity() {
     this->last_activity_ms = nowMs();
-    this->idle_since = this->last_activity_ms;
+    this->idle_since       = this->last_activity_ms;
     if (this->idle_warning || this->suspended) endIdle();
   }
 
@@ -1719,11 +1731,11 @@ private:
         this->playhead_dirty = true;
       }
     }
-    this->idle_warning = false;
-    this->suspended = false;
+    this->idle_warning     = false;
+    this->suspended        = false;
     this->idle_fade_volume = -1;
-    this->poweroff_at = 0;
-    this->powered_off = false;
+    this->poweroff_at      = 0;
+    this->powered_off      = false;
   }
 
   void updateIdle() {
@@ -1735,38 +1747,38 @@ private:
     }
     if (this->suspended) return;
 
-    long idle_ms = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
+    long idle_ms         = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     bool active_playback = this->playing && !this->paused;
 
     if (!active_playback) {
       if (idle_ms < kNoPlaybackIdleMs) return;
-      this->idle_warning = false;
-      this->suspended = true;
+      this->idle_warning   = false;
+      this->suspended      = true;
       this->paused_by_idle = true;
-      this->paused = true;
+      this->paused         = true;
       this->playhead_dirty = true;
       playerSend("pause 1\n");
       this->poweroff_at = 0;
       this->powered_off = powerOffController();
-      this->led_force = true;
+      this->led_force   = true;
       serviceLeds();
       return;
     }
 
     long timeout = this->idle_timeout_ms;
-    long grace = this->idle_warn_grace_ms;
+    long grace   = this->idle_warn_grace_ms;
 
     if (!this->idle_warning && idle_ms >= timeout) {
-      this->idle_warning = true;
-      this->idle_volume = this->volume;
+      this->idle_warning      = true;
+      this->idle_volume       = this->volume;
       this->idle_volume_saved = true;
-      this->idle_fade_volume = this->volume;
+      this->idle_fade_volume  = this->volume;
       this->pulseIdleWarning();
     }
 
     if (!this->idle_warning) return;
 
-    long over = idle_ms - timeout;
+    long over    = idle_ms - timeout;
     int progress = grace > 0 ? static_cast<int>((over * 100 / grace)) : 100;
     if (progress < 0) progress = 0;
     if (progress > 100) progress = 100;
@@ -1782,10 +1794,10 @@ private:
     }
 
     if (over >= grace) {
-      this->idle_warning = false;
-      this->suspended = true;
-      this->paused_by_idle = true;
-      this->paused = true;
+      this->idle_warning     = false;
+      this->suspended        = true;
+      this->paused_by_idle   = true;
+      this->paused           = true;
       this->idle_fade_volume = 0;
       playerSend("volume 0\n");
       playerSend("pause 1\n");
@@ -1797,27 +1809,27 @@ private:
   void setPowerSaveMode(bool on, bool persist = true) {
     if (this->power_save_mode == on) return;
     if (on) {
-      this->power_save_saved_mask = this->power_save_mask;
-      this->lightbar_saved_on = this->lightbar_on;
-      this->power_save_mask = kPowerSaveModeMask; // touch, motion, haptic, mic mute
-      this->power_save_mode = true;
-      this->lightbar_on = false;
+      this->power_save_saved_mask   = this->power_save_mask;
+      this->lightbar_saved_on       = this->lightbar_on;
+      this->power_save_mask         = kPowerSaveModeMask; // touch, motion, haptic, mic mute
+      this->power_save_mode         = true;
+      this->lightbar_on             = false;
       this->power_save_leds_applied = false;
-      this->led_force = true;
+      this->led_force               = true;
       serviceLeds();
     } else {
-      this->power_save_mode = false;
-      this->power_save_mask = this->power_save_saved_mask;
-      this->lightbar_on = this->lightbar_saved_on;
+      this->power_save_mode         = false;
+      this->power_save_mask         = this->power_save_saved_mask;
+      this->lightbar_on             = this->lightbar_saved_on;
       this->power_save_leds_applied = false;
       char fields[48];
       snprintf(fields, sizeof(fields), "power_save_control=%d", this->power_save_mask);
       outputFields(fields);
-      this->led_force = true;
+      this->led_force       = true;
       this->led_last_rgb[0] = this->led_last_rgb[1] = this->led_last_rgb[2] = -1;
-      this->led_last_player = -2;
-      this->led_last_state = -1;
-      this->led_painted = false;
+      this->led_last_player                                                 = -2;
+      this->led_last_state                                                  = -1;
+      this->led_painted                                                     = false;
       serviceLeds();
     }
     if (persist) configSave();
@@ -1926,32 +1938,32 @@ private:
     }
     this->power_save_leds_applied = false;
 
-    long now = nowMs();
+    long now  = nowMs();
     int state = ledState();
 
     if (state != this->led_last_state) {
       bool was_off = this->led_last_state == 0;
-      bool is_off = state == 0;
+      bool is_off  = state == 0;
       // A custom colour survives device-down/up, but a playback/session state
       // change takes the bar back.
       if (!was_off && !is_off) this->led_custom_set = false;
       this->led_last_state = state;
       if (state == 1) {
         this->led_warning_high = true;
-        this->led_warning_at = now;
+        this->led_warning_at   = now;
       }
     }
 
     if (state == 1 && !this->led_custom_set && now - this->led_warning_at >= 600) {
       this->led_warning_high = !this->led_warning_high;
-      this->led_warning_at = now;
+      this->led_warning_at   = now;
     }
 
     bool charging_now = this->controller && strcmp(this->charging, "charging") == 0;
     if (charging_now && this->lightbar_on && !this->padwaveDisabled()) {
       if (this->led_charge_at == 0) {
         // Start the charging loop with setup 2, then 1 two seconds later.
-        this->led_charge_at = now;
+        this->led_charge_at    = now;
         this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
         setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
       } else if (now - this->led_charge_at >= kChargeBlinkMs) {
@@ -1963,9 +1975,9 @@ private:
         setLightbarSetup(this->led_charge_setup);
       }
     } else if (this->led_charge_at != 0) {
-      this->led_charge_at = 0;
+      this->led_charge_at    = 0;
       this->led_charge_setup = dualsense::OutputBody::LightbarSetup::LightOut;
-      this->led_force = this->lightbar_on;
+      this->led_force        = this->lightbar_on;
       setLightbarSetup(this->lightbar_on ? dualsense::OutputBody::LightbarSetup::LightOn
                                          : dualsense::OutputBody::LightbarSetup::LightOut);
     }
@@ -2032,9 +2044,9 @@ private:
       b = 255;
     }
 
-    bool force = this->led_force;
-    bool rgb_ok = this->lightbar_on && !charging_now && !this->padwaveDisabled() &&
-                  applyLightbar(r, g, b, force);
+    bool force   = this->led_force;
+    bool rgb_ok  = this->lightbar_on && !charging_now && !this->padwaveDisabled() &&
+                   applyLightbar(r, g, b, force);
     bool mask_ok = applyPlayerLeds(mask, force);
     if (rgb_ok || mask_ok) this->led_painted = true;
     if (mask_ok) this->led_force = false;
@@ -2044,7 +2056,7 @@ private:
     if (!this->player || !this->controller || this->padwaveDisabled()) return;
     if (this->rumble_until || this->idle_rumble_until) return;
     outputFields("motor_left=64;motor_right=64");
-    this->idle_rumble_until = nowMs() + 300;
+    this->idle_rumble_until          = nowMs() + 300;
     // The controller's own accelerometer reports the pulse as motion; do not
     // let that motion cancel the warning/fade.
     this->idle_activity_ignore_until = nowMs() + 1200;
@@ -2085,7 +2097,7 @@ private:
       toggleMute();
     else if (strcmp(action, "disconnect") == 0) {
       this->playing = false;
-      this->paused = true;
+      this->paused  = true;
       playerSend("pause 1\n");
     } else if (strcmp(action, "volume") == 0) {
       setVolume(static_cast<int>(kvNumber(body, "value", this->volume)));
