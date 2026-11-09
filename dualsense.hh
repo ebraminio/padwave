@@ -1466,6 +1466,12 @@ public:
     DSUINT8 length;
   };
 
+  struct PcmPacket {
+    PacketHeader header;
+    DSINT8 samples[64]; // 0x36: 6 kHz haptics; 0x32: 3 kHz stereo samples
+  };
+  static_assert(sizeof(PcmPacket) == 66, "PCM sub-packet must stay 66 bytes");
+
   // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
   // opens it and the input stream then also carries 0xD4 frames.
   enum class ConfigMask : uint8_t {
@@ -1502,9 +1508,7 @@ protected:
   DSUINT8 stateTag;          // 0x00b  0x10 | 0x80
   DSUINT8 stateLength;       // 0x00c  63
   State state;               // 0x00d..0x04b
-  DSUINT8 hapticsTag;        // 0x04c  0x12 | 0x80
-  DSUINT8 hapticsLength;     // 0x04d  64
-  DSINT8 hapticsPcm[64];     // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  PcmPacket hapticsPacket;   // 0x04c..0x08d  0x12, length 64, 6 kHz PCM
   DSUINT8 speakerTagValue;   // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
   DSUINT8 speakerLength;     // 0x08f  200
   DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
@@ -1618,10 +1622,10 @@ public:
     configHeader.length = 7;
     enableMaskValue     = static_cast<uint8_t>(mask);
     for (unsigned i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
-    stateTag      = packetPid(SubPacketId::State);
-    stateLength   = stateSize;
-    hapticsTag    = packetPid(SubPacketId::Data);
-    hapticsLength = hapticSize;
+    stateTag                    = packetPid(SubPacketId::State);
+    stateLength                 = stateSize;
+    hapticsPacket.header.pid    = packetPid(SubPacketId::Data);
+    hapticsPacket.header.length = hapticSize;
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
     speakerLength = opusSize;
@@ -1647,8 +1651,8 @@ public:
   // haptic frame cannot leak the previous report's samples.
   constexpr void setHaptics(const int8_t *data, size_t len) {
     size_t n = len < hapticSize ? len : hapticSize;
-    for (size_t i = 0; i < n; ++i) hapticsPcm[i] = data[i];
-    for (size_t i = n; i < hapticSize; ++i) hapticsPcm[i] = 0;
+    for (size_t i = 0; i < n; ++i) hapticsPacket.samples[i] = data[i];
+    for (size_t i = n; i < hapticSize; ++i) hapticsPacket.samples[i] = 0;
   }
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
@@ -1949,10 +1953,7 @@ public:
     Config config;
   };
 
-  struct SamplePacket {
-    PacketHeader header;
-    DSINT8 samples[64]; // signed 8-bit stereo PCM, 32 frames at 3 kHz
-  };
+  using SamplePacket = AudioReport::PcmPacket;
 
 protected:
   ReportId reportIdValue;    // 0x000  ReportId::Haptics
