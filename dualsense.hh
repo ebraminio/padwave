@@ -112,13 +112,8 @@ static constexpr uint32_t crc_of(const Report &report, uint8_t crcSeed) {
 }
 
 // ===========================================================================
-// Output: the 47-byte state body shared by 0x31 (Bluetooth) and 0x02 (USB)
-//
-// +0x00 in these comments is the offset inside this payload: 0x01 in a USB
-// report, 0x03 in a Bluetooth one (after the id, sequence tag and 0x10 tag
-// byte). Only the fields whose valid_flag* bit is set are applied by the
-// controller — a claim, not a change notification — which is what makes a
-// lightbar-only update safe while the audio stream is running.
+// Output: 47-byte state body shared by 0x31 and 0x02. Valid bits claim fields;
+// clear bits leave them untouched.
 // ===========================================================================
 
 // Report ordinals, common to every schema. 0x31 is both the input and the
@@ -945,23 +940,8 @@ static_assert(sizeof(UsbOutputReport) == 63, "0x02 must stay 63 bytes");
 // Input: the 63-byte body shared by 0x31 (Bluetooth) and 0x01 (USB)
 // ===========================================================================
 
-// The 63-byte input payload shared by USB (0x01) and Bluetooth (0x31).
-//
-// `+0x00` in these comments is the offset inside this payload: 0x01 in a USB
-// report, 0x02 in a Bluetooth one. The kernel parses both with a single
-// `struct dualsense_input_report`, pointing at &data[1] (USB) or &data[2]
-// (Bluetooth); this struct is the same body, and the two packet wrappers below
-// splice it in.
-//
-// When microphone duplex is on, not every 0x31 frame is a gamepad report: the
-// controller interleaves audio frames that keep the report id but put the Opus
-// TOC 0xD4 at report byte 3 (payload +0x01, i.e. where ly normally is). Demux
-// on that byte before trusting any of these fields; MicFrame is the schema for
-// those frames.
-//
-// Every byte is named, either with what it does or with an honest reserved/
-// feedback name, and every multi-byte integer is little-endian. Sizes come from
-// hid-playstation.c: DS_INPUT_REPORT_USB_SIZE 64, DS_INPUT_REPORT_BT_SIZE 78.
+// Input body shared by USB 0x01 and Bluetooth 0x31. With microphone duplex
+// enabled, 0x31 frames carrying Opus TOC 0xD4 are audio, not gamepad data.
 struct InputBody {
 private:
   using DSUINT8  = internal::DSUINT8;
@@ -1309,51 +1289,10 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 // Audio 0x36 (Bluetooth, 398 bytes)
 // ===========================================================================
 //
-// The undocumented Bluetooth speaker path. Sony says the speaker is USB-only;
-// over Bluetooth the controller speaks a proprietary Opus-in-HID protocol that
-// LinuxAudio4Dualsense5 reverse-engineered and streams at 93.75 Hz (one packet
-// every 512/48000 s). Layout, verified against reverse_engineered/
-// ps5bt_membrane.py and the protocol tables:
-//
-//   0x000  report id 0x36
-//   0x001  sequence tagValue, high nibble (a counter separate from 0x31)
-//   0x002  sub-packet 0x11 | 0x80 — audio configuration, length 7
-//   0x004  enable mask: bit 0 = microphone capture (0xFE shut, 0xFF open)
-//   0x005  5 × haptic block length (64)
-//   0x00a  free-running 8-bit counter
-//
-// The 0x11 data is therefore [mask, haptic_len0..4, counter]. The mask is the
-// same switch as the 0x32 container: clearing bit 0 keeps the gamepad input
-// clean, while setting it enables the 0xD4 microphone stream.
-//   0x00b  sub-packet 0x10 | 0x80 — state snapshot, length 63
-//   0x04c  sub-packet 0x12 | 0x80 — haptics PCM, length 64
-//   0x08e  sub-packet 0x13 | 0x80 — speaker Opus (0x16 = headphone jack), 200
-//   0x158  50 bytes of padding
-//   0x18a  CRC-32, seed 0xA2, little-endian (the same scheme as 0x31)
-//
-// Three details are the whole difficulty: the 10.667 ms frame interval (not
-// 10 ms), Opus CBR 160 kbps, and enable-mask bit 0, which turns on microphone
-// capture and floods the link if left set.
-//
-// Before streaming, 0x31 must select the speaker path: audio_control = 0x30
-// (headphones muted, right channel to the mono speaker), preamp gain in
-// audio_control2, and speaker volume in the firmware-accepted 0x3D..0x64 range.
-// The speaker sub-packet is 0x13 for the membrane and 0x16 for the headphone
-// jack; both carry the same 200-byte Opus frame.
-//
-// The microphone comes back inside the normal 0x31 input report (marker 0xD4,
-// Opus 48 kHz mono, 10 ms) when duplex is enabled; see MicFrame below for the
-// full recipe. That is why the state snapshot must not mute the mic when
-// capture is wanted.
-//
-// The state snapshot is a whole output payload: its first 47 bytes are
-// byte-for-byte OutputBody followed by sixteen bytes of padding, so this
-// stream re-states the controller's output configuration 93 times a second and
-// every field it does not own must have its valid bit clear or it silently
-// overwrites another writer. The cancelled-trigger bug was exactly this: the
-// snapshot claimed both trigger effects (0xFD) with a zeroed block; sending
-// 0xF1 (volumes and routing only) fixed it. The lightbar was never affected
-// because the high byte (0xE3) does not claim the LED colour bit.
+// Bluetooth speaker/haptics stream: config, OutputBody state snapshot, 6 kHz
+// haptics PCM and a 200-byte Opus speaker frame. The microphone returns as 0xD4
+// frames in 0x31. Do not claim triggers in the snapshot; it is re-sent every
+// frame.
 
 struct HapticsReport;
 
@@ -1680,24 +1619,9 @@ public:
 // Feature reports — the configuration channel
 // ===========================================================================
 //
-// Read (and occasionally written) with a HID GET_REPORT/SET_REPORT on report
-// ids that are not part of the streaming protocol. The kernel uses 0x05, 0x09
-// and 0x20 and the offsets below come from hid-playstation.c; DualSenseClient's
-// descriptor notes corroborate the ids and lengths. Feature reports are signed
-// with CRC-32 seed 0xA3 over Bluetooth (the streams use 0xA1 input, 0xA2
-// output). This header models the reports; a platform layer performs the HID
-// GET_FEATURE/SET_FEATURE calls.
-//
-//   id   length  what
-//   0x05 41      motion-sensor calibration: 17 int16 LE at buf[1..34]
-//   0x09 20      pairing info; MAC at buf[1..6] (some clients read it reversed)
-//   0x20 64      firmware/hardware: hw buf[24], fw buf[28], update buf[44]
-//   0x80 —       factory command write (Edge/vendor tooling)
-//   0x81 64      the matching command response
-//   0x65 64      DualSense Edge factory handshake
-//
-// The Edge also exposes profile reports in the 0x60..0x7B range; they are
-// outside this header's modeled subset.
+// Feature reports use HID GET/SET reports; Bluetooth signs with seed 0xA3.
+// 0x05 calibration, 0x09 pairing, 0x20 firmware, 0x80/0x81 commands. Edge
+// factory/profile ranges are outside the modeled subset.
 
 namespace internal {
 
