@@ -1438,9 +1438,12 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 // 0xF1 (volumes and routing only) fixed it. The lightbar was never affected
 // because the high byte (0xE3) does not claim the LED colour bit.
 
+struct HapticsReport;
+
 struct AudioReport {
   friend struct internal::ReportProbe;
   friend struct internal::AudioReportProbe;
+  friend struct HapticsReport;
 
 private:
   using DSUINT8  = internal::DSUINT8;
@@ -1449,6 +1452,21 @@ private:
   using DSINT16  = internal::DSINT16;
   using ReportId = internal::ReportId;
 
+public:
+  struct PacketHeader {
+    DSUINT8 pid;
+    DSUINT8 length;
+  };
+
+  // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
+  // opens it and the input stream then also carries 0xD4 frames.
+  enum class ConfigMask : uint8_t {
+    MicrophoneCapture = 0x01,
+    SpeakerOnly       = 0xFE,
+    SpeakerAndMic     = 0xFF,
+  };
+
+private:
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
   // padding. Note validFlag0: claiming RightTrigger or LeftTrigger here hands
   // the trigger effect to this stream, which writes zeros to it 93 times a
@@ -1467,24 +1485,23 @@ private:
   static_assert(sizeof(State) == 63, "State must stay 63 bytes");
 
 protected:
-  ReportId reportIdValue;   // 0x000  ReportId::Audio
-  DSUINT8 seqTag;           // 0x001  high nibble = counter, low nibble = 0
-  DSUINT8 configTag;        // 0x002  0x11 | 0x80 (more sub-packets follow)
-  DSUINT8 configLength;     // 0x003  7
-  DSUINT8 enableMaskValue;  // 0x004  EnableMask bits
-  DSUINT8 hapticLengths[5]; // 0x005..0x009  64 each
-  DSUINT8 counter;          // 0x00a  free-running 8-bit counter
-  DSUINT8 stateTag;         // 0x00b  0x10 | 0x80
-  DSUINT8 stateLength;      // 0x00c  63
-  State state;              // 0x00d..0x04b
-  DSUINT8 hapticsTag;       // 0x04c  0x12 | 0x80
-  DSUINT8 hapticsLength;    // 0x04d  64
-  DSINT8 hapticsPcm[64];    // 0x04e..0x08d  64 x int8 PCM at 6 kHz
-  DSUINT8 speakerTagValue;  // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
-  DSUINT8 speakerLength;    // 0x08f  200
-  DSUINT8 opus[200];        // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
-  DSUINT8 padding[50];      // 0x158..0x189
-  DSUINT32 crc;             // 0x18a..0x18d  seed 0xA2
+  ReportId reportIdValue;    // 0x000  ReportId::Audio
+  DSUINT8 seqTag;            // 0x001  high nibble = counter, low nibble = 0
+  PacketHeader configHeader; // 0x002  0x11 | 0x80, length 7
+  DSUINT8 enableMaskValue;   // 0x004  ConfigMask bits
+  DSUINT8 hapticLengths[5];  // 0x005..0x009  64 each
+  DSUINT8 counter;           // 0x00a  free-running 8-bit counter
+  DSUINT8 stateTag;          // 0x00b  0x10 | 0x80
+  DSUINT8 stateLength;       // 0x00c  63
+  State state;               // 0x00d..0x04b
+  DSUINT8 hapticsTag;        // 0x04c  0x12 | 0x80
+  DSUINT8 hapticsLength;     // 0x04d  64
+  DSINT8 hapticsPcm[64];     // 0x04e..0x08d  64 x int8 PCM at 6 kHz
+  DSUINT8 speakerTagValue;   // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerLength;     // 0x08f  200
+  DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
+  DSUINT8 padding[50];       // 0x158..0x189
+  DSUINT32 crc;              // 0x18a..0x18d  seed 0xA2
 
 public:
 #ifdef DS_HAVE_OPUS
@@ -1527,14 +1544,6 @@ public:
   };
 #endif
 
-  // +0x004. Bit 0 is the microphone capture request: 0xFE keeps it shut, 0xFF
-  // opens it and the input stream then also carries 0xD4 frames.
-  enum class EnableMask : uint8_t {
-    MicrophoneCapture = 0x01,
-    SpeakerOnly       = 0xFE,
-    SpeakerAndMic     = 0xFF,
-  };
-
   // +0x08e: 0x13 for the membrane speaker, 0x16 for the headphone jack.
   enum class SpeakerTag : uint8_t {
     Speaker = 0x13,
@@ -1542,15 +1551,18 @@ public:
   };
 
 private:
-  static constexpr ReportId reportId = ReportId::Audio;
-  static constexpr uint8_t crcSeed   = 0xA2;
-  static constexpr uint8_t stateSize = 63;
-  static constexpr uint8_t opusSize  = 200;
+  static constexpr ReportId reportId      = ReportId::Audio;
+  static constexpr uint8_t crcSeed        = 0xA2;
+  static constexpr uint8_t stateSize      = 63;
+  static constexpr uint8_t opusSize       = 200;
+  static constexpr uint8_t packetSizedBit = 0x80;
+  static constexpr uint8_t configPacketId = 0x11;
+  static constexpr uint8_t samplePacketId = 0x12;
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { counter = value; }
 
-  constexpr EnableMask enableMask() const {
-    return static_cast<EnableMask>(static_cast<uint8_t>(enableMaskValue));
+  constexpr ConfigMask enableMask() const {
+    return static_cast<ConfigMask>(static_cast<uint8_t>(enableMaskValue));
   }
 
   constexpr SpeakerTag speakerTag() const {
@@ -1590,12 +1602,12 @@ public:
 public:
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
-  constexpr void init(SpeakerTag tagValue, EnableMask mask) {
-    *this           = AudioReport{};
-    reportIdValue   = reportId;
-    configTag       = 0x11 | 0x80;
-    configLength    = 7;
-    enableMaskValue = static_cast<uint8_t>(mask);
+  constexpr void init(SpeakerTag tagValue, ConfigMask mask) {
+    *this               = AudioReport{};
+    reportIdValue       = reportId;
+    configHeader.pid    = static_cast<uint8_t>(configPacketId | packetSizedBit);
+    configHeader.length = 7;
+    enableMaskValue     = static_cast<uint8_t>(mask);
     for (unsigned i = 0; i < 5; ++i) hapticLengths[i] = hapticSize;
     stateTag        = 0x10 | 0x80;
     stateLength     = stateSize;
@@ -1638,8 +1650,8 @@ struct AudioReportProbe {
   using ReportId = internal::ReportId;
   static constexpr ReportId reportIdValue(const AudioReport &r) { return r.reportIdValue; }
   static constexpr uint8_t seqTag(const AudioReport &r) { return r.seqTag; }
-  static constexpr uint8_t configTag(const AudioReport &r) { return r.configTag; }
-  static constexpr uint8_t configLength(const AudioReport &r) { return r.configLength; }
+  static constexpr uint8_t configTag(const AudioReport &r) { return r.configHeader.pid; }
+  static constexpr uint8_t configLength(const AudioReport &r) { return r.configHeader.length; }
 
   static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
     return r.hapticLengths[i];
@@ -1652,7 +1664,7 @@ struct AudioReportProbe {
   static constexpr void setSeqTag(AudioReport &r, uint8_t v) { r.setSeqTag(v); }
   static constexpr void setCounter(AudioReport &r, uint8_t v) { r.setCounter(v); }
 
-  static constexpr AudioReport::EnableMask enableMask(const AudioReport &r) {
+  static constexpr AudioReport::ConfigMask enableMask(const AudioReport &r) {
     return r.enableMask();
   }
 
@@ -1910,16 +1922,10 @@ private:
   using ReportId = internal::ReportId;
 
 public:
-  struct PacketHeader {
-    DSUINT8 pid;    // bits 0..5 pid, bit 6 unknown, bit 7 sized
-    DSUINT8 length; // payload length
-  };
+  using PacketHeader = AudioReport::PacketHeader;
 
   struct Config {
-    enum class Mask : uint8_t {
-      SpeakerOnly   = 0xFE, // bit 0 clear: no microphone capture
-      SpeakerAndMic = 0xFF, // bit 0 set: enables the 0xD4 microphone stream
-    };
+    using Mask = AudioReport::ConfigMask;
 
     Mask mask;
     DSUINT8 route; // unconfirmed; suspected haptics/speaker selector
@@ -1947,11 +1953,7 @@ protected:
   DSUINT32 crc;              // 0x08a..0x08d  CRC-32, seed 0xA2
 
 private:
-  static constexpr ReportId reportId      = ReportId::Haptics;
-  static constexpr uint8_t crcSeed        = 0xA2;
-  static constexpr uint8_t configReportId = 0x11;
-  static constexpr uint8_t sampleReportId = 0x12;
-  static constexpr uint8_t sizedBit       = 0x80;
+  static constexpr ReportId reportId = ReportId::Haptics;
 
 public:
   static constexpr uint32_t sampleRate = 3000;
@@ -1962,14 +1964,16 @@ public:
   static_assert(sizeof(SamplePacket) == 66, "0x32 sample packet must stay 66 bytes");
 
   constexpr void init() {
-    *this                        = HapticsReport{};
-    reportIdValue                = reportId;
-    configPacket.header.pid      = static_cast<uint8_t>(configReportId | sizedBit);
+    *this         = HapticsReport{};
+    reportIdValue = reportId;
+    configPacket.header.pid =
+        static_cast<uint8_t>(AudioReport::configPacketId | AudioReport::packetSizedBit);
     configPacket.header.length   = sizeof(Config);
     configPacket.config.mask     = Config::Mask::SpeakerOnly;
     configPacket.config.unknown5 = 0xFF;
-    samplePacket.header.pid      = static_cast<uint8_t>(sampleReportId | sizedBit);
-    samplePacket.header.length   = sampleBytes;
+    samplePacket.header.pid =
+        static_cast<uint8_t>(AudioReport::samplePacketId | AudioReport::packetSizedBit);
+    samplePacket.header.length = sampleBytes;
   }
 
   // The 0x32 wire format is signed 8-bit PCM.
@@ -1981,7 +1985,7 @@ public:
 
   constexpr void setSequence(uint8_t value) { configPacket.config.counter = value; }
 
-  constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
+  constexpr void sign() { crc = internal::crc_of(*this, AudioReport::crcSeed); }
 };
 static_assert(sizeof(HapticsReport) == 142, "0x32 must stay 142 bytes");
 
@@ -2139,7 +2143,7 @@ static_assert(kChained == 0xCBF43926u);
 
 constexpr AudioReport kReport = [] {
   AudioReport r{};
-  r.init(AudioReport::SpeakerTag::Jack, AudioReport::EnableMask::SpeakerOnly);
+  r.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly);
   r.stateBody().init(OutputBody::AudioControl::Headphones);
   internal::AudioReportProbe::setSeqTag(r, 0x00);
   internal::AudioReportProbe::setCounter(r, 0);
@@ -2155,7 +2159,7 @@ static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
 static_assert(internal::AudioReportProbe::configTag(kReport) == 0x91);
 static_assert(internal::AudioReportProbe::configLength(kReport) == 7);
 static_assert(internal::AudioReportProbe::enableMask(kReport) ==
-              AudioReport::EnableMask::SpeakerOnly);
+              AudioReport::ConfigMask::SpeakerOnly);
 static_assert(internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
 static_assert(internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
 static_assert(internal::AudioReportProbe::counter(kReport) == 0);

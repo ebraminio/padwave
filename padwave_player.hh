@@ -1074,8 +1074,8 @@ private:
 
     report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
                         : dualsense::AudioReport::SpeakerTag::Jack,
-                mic ? dualsense::AudioReport::EnableMask::SpeakerAndMic
-                    : dualsense::AudioReport::EnableMask::SpeakerOnly);
+                mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
+                    : dualsense::AudioReport::ConfigMask::SpeakerOnly);
 
     report.stateBody() = state;
     report.stateBody().setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
