@@ -1398,13 +1398,48 @@ public:
   };
 
   struct PacketHeader {
-    DSUINT8 pid; // SubPacketId | sized bit
-    DSUINT8 length;
+  private:
+    DSUINT8 pidValue;
+    DSUINT8 lengthValue;
+
+  public:
+    constexpr PacketHeader() = default;
+    constexpr PacketHeader(SubPacketId id, uint8_t length)
+        : pidValue(static_cast<uint8_t>(id) | packetSizedBit), lengthValue(length) {}
+
+    constexpr uint8_t pid() const { return pidValue; }
+    constexpr uint8_t length() const { return lengthValue; }
   };
+  static_assert(sizeof(PacketHeader) == 2, "packet header must stay 2 bytes");
 
   struct PcmPacket {
-    PacketHeader header;
-    DSINT8 samples[64]; // 0x36: 6 kHz haptics; 0x32: 3 kHz stereo samples
+  private:
+    PacketHeader headerValue;
+    DSINT8 samplesValue[64];
+
+  public:
+    constexpr PcmPacket() = default;
+
+    constexpr PcmPacket(SubPacketId id, uint8_t length) : headerValue(id, length), samplesValue() {}
+
+    template <typename Fill>
+    constexpr PcmPacket(SubPacketId id, uint8_t length, Fill fill)
+        : headerValue(id, length), samplesValue() {
+      for (size_t i = 0; i < 64; ++i) samplesValue[i] = fill(i);
+    }
+
+    constexpr const PacketHeader &header() const { return headerValue; }
+    constexpr void setHeader(SubPacketId id, uint8_t length) {
+      headerValue = PacketHeader(id, length);
+    }
+
+    constexpr void setSamples(const int8_t *data, size_t len) {
+      size_t n = len < 64 ? len : 64;
+      for (size_t i = 0; i < n; ++i) samplesValue[i] = data[i];
+      for (size_t i = n; i < 64; ++i) samplesValue[i] = 0;
+    }
+
+    constexpr int8_t sample(size_t i) const { return samplesValue[i]; }
   };
   static_assert(sizeof(PcmPacket) == 66, "PCM sub-packet must stay 66 bytes");
 
@@ -1416,12 +1451,12 @@ public:
     SpeakerAndMic     = 0xFF,
   };
 
-  struct Config {
+  struct AudioConfig {
     ConfigMask mask;
     DSUINT8 hapticLengths[5];
     DSUINT8 counter;
   };
-  static_assert(sizeof(Config) == 7, "audio config must stay 7 bytes");
+  static_assert(sizeof(AudioConfig) == 7, "audio config must stay 7 bytes");
 
 private:
   // The state snapshot is the 0x31 output payload plus sixteen bytes of
@@ -1445,7 +1480,7 @@ protected:
   ReportId reportIdValue;    // 0x000  ReportId::Audio
   DSUINT8 seqTag;            // 0x001  high nibble = counter, low nibble = 0
   PacketHeader configHeader; // 0x002  0x11 | 0x80, sizeof(Config)
-  Config config;             // 0x004..0x00a  mask, lengths, counter
+  AudioConfig config;        // 0x004..0x00a  mask, lengths, counter
   DSUINT8 stateTag;          // 0x00b  0x10 | 0x80
   DSUINT8 stateLength;       // 0x00c  63
   State state;               // 0x00d..0x04b
@@ -1555,16 +1590,14 @@ public:
   // Fill the constant parts, then set seq, counter and whatever state fields
   // this writer owns.
   constexpr void init(SpeakerTag tagValue, ConfigMask mask) {
-    *this               = AudioReport{};
-    reportIdValue       = reportId;
-    configHeader.pid    = packetPid(SubPacketId::Config);
-    configHeader.length = sizeof(Config);
-    config.mask         = mask;
+    *this         = AudioReport{};
+    reportIdValue = reportId;
+    configHeader  = PacketHeader(SubPacketId::Config, sizeof(AudioConfig));
+    config.mask   = mask;
     for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
-    stateTag                    = packetPid(SubPacketId::State);
-    stateLength                 = stateSize;
-    hapticsPacket.header.pid    = packetPid(SubPacketId::Data);
-    hapticsPacket.header.length = hapticSize;
+    stateTag    = packetPid(SubPacketId::State);
+    stateLength = stateSize;
+    hapticsPacket.setHeader(SubPacketId::Data, hapticSize);
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
     speakerLength = opusSize;
@@ -1588,11 +1621,7 @@ public:
 
   // 64 signed 8-bit samples at 6 kHz. Zero-fill any unused tail so a short
   // haptic frame cannot leak the previous report's samples.
-  constexpr void setHaptics(const int8_t *data, size_t len) {
-    size_t n = len < hapticSize ? len : hapticSize;
-    for (size_t i = 0; i < n; ++i) hapticsPacket.samples[i] = data[i];
-    for (size_t i = n; i < hapticSize; ++i) hapticsPacket.samples[i] = 0;
-  }
+  constexpr void setHaptics(const int8_t *data, size_t len) { hapticsPacket.setSamples(data, len); }
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 };
@@ -1649,8 +1678,8 @@ public:
     }();
     static_assert(report.reportIdValue == ReportId::Audio);
     static_assert(report.seqTag == 0x00);
-    static_assert(report.configHeader.pid == 0x91);
-    static_assert(report.configHeader.length == sizeof(AudioReport::Config));
+    static_assert(report.configHeader.pid() == 0x91);
+    static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
     static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
     static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
     static_assert(report.config.counter == 0);
@@ -1925,11 +1954,11 @@ private:
 
 public:
   using PacketHeader = AudioReport::PacketHeader;
+  using ConfigMask   = AudioReport::ConfigMask;
+  using PcmPacket    = AudioReport::PcmPacket;
 
   struct Config {
-    using Mask = AudioReport::ConfigMask;
-
-    Mask mask;
+    ConfigMask mask;
     DSUINT8 route; // unconfirmed; suspected haptics/speaker selector
     DSUINT8 reserved[3];
     DSUINT8 unknown5; // 0xFF; meaning unconfirmed
@@ -1937,22 +1966,26 @@ public:
   };
 
   struct ConfigPacket {
-    PacketHeader header;
-    Config config;
+  private:
+    PacketHeader headerValue;
+    Config configValue;
+
+  public:
+    constexpr explicit ConfigPacket(uint8_t sequence)
+        : headerValue(AudioReport::SubPacketId::Config, sizeof(Config)), configValue{} {
+      configValue.mask     = ConfigMask::SpeakerOnly;
+      configValue.unknown5 = 0xFF;
+      configValue.counter  = sequence;
+    }
   };
 
-  using SamplePacket = AudioReport::PcmPacket;
-
 protected:
-  ReportId reportIdValue;    // 0x000  ReportId::Haptics
-  DSUINT8 tagValue;          // 0x001  low nibble tag, high nibble sequence
-  ConfigPacket configPacket; // 0x002..0x00a
-  SamplePacket samplePacket; // 0x00b..0x04c
-  DSUINT8 padding[61];       // 0x04d..0x089  container padding
-  DSUINT32 crc;              // 0x08a..0x08d  CRC-32, seed 0xA2
-
-private:
-  static constexpr ReportId reportId = ReportId::Haptics;
+  ReportId reportId = ReportId::Haptics; // 0x000
+  DSUINT8 tagValue{};                    // 0x001  low nibble tag, high nibble sequence
+  ConfigPacket configPacket;             // 0x002..0x00a
+  PcmPacket samplePacket;                // 0x00b..0x04c
+  DSUINT8 padding[61] = {};              // 0x04d..0x089  container padding
+  DSUINT32 crc{};                        // 0x08a..0x08d  CRC-32, seed 0xA2
 
 public:
   static constexpr uint32_t sampleRate = 3000;
@@ -1960,29 +1993,19 @@ public:
   static constexpr size_t sampleFrames = sampleBytes / 2;
 
   static_assert(sizeof(ConfigPacket) == 9, "0x32 config packet must stay 9 bytes");
-  static_assert(sizeof(SamplePacket) == 66, "0x32 sample packet must stay 66 bytes");
-
-  constexpr void init() {
-    *this                        = HapticsReport{};
-    reportIdValue                = reportId;
-    configPacket.header.pid      = AudioReport::packetPid(AudioReport::SubPacketId::Config);
-    configPacket.header.length   = sizeof(Config);
-    configPacket.config.mask     = Config::Mask::SpeakerOnly;
-    configPacket.config.unknown5 = 0xFF;
-    samplePacket.header.pid      = AudioReport::packetPid(AudioReport::SubPacketId::Data);
-    samplePacket.header.length   = sampleBytes;
-  }
+  static_assert(sizeof(PcmPacket) == 66, "0x32 pcm packet must stay 66 bytes");
 
   // The 0x32 wire format is signed 8-bit PCM.
-  constexpr void setSamples(const int8_t *pcm, size_t len) {
-    size_t n = len < sampleBytes ? len : sampleBytes;
-    for (size_t i = 0; i < n; ++i) samplePacket.samples[i] = pcm[i];
-    for (size_t i = n; i < sampleBytes; ++i) samplePacket.samples[i] = 0;
+  template <typename Callback>
+  constexpr HapticsReport(uint8_t sequence, Callback callback)
+      : configPacket(sequence),
+        samplePacket(AudioReport::SubPacketId::Data, sampleBytes, callback) {
+    tagValue = 0;
+    for (auto &byte : padding) byte = 0;
+    crc = internal::crc_of(*this, AudioReport::crcSeed);
   }
-
-  constexpr void setSequence(uint8_t value) { configPacket.config.counter = value; }
-
-  constexpr void sign() { crc = internal::crc_of(*this, AudioReport::crcSeed); }
+  HapticsReport(const HapticsReport &)            = delete;
+  HapticsReport &operator=(const HapticsReport &) = delete;
 };
 static_assert(sizeof(HapticsReport) == 142, "0x32 must stay 142 bytes");
 

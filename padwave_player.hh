@@ -1048,22 +1048,15 @@ private:
     const float hgain           = vgain * static_cast<float>(haptic_gain) / 100.0f;
     const size_t bytesPerReport = dualsense::HapticsReport::sampleBytes * sizeof(int16_t);
     while (haptic_pending_len >= bytesPerReport) {
-      int8_t samples[dualsense::HapticsReport::sampleBytes];
-      for (size_t i = 0; i < sizeof(samples); i++) {
+      dualsense::HapticsReport report(haptics_sequence++, [&](size_t i) {
         int sample = static_cast<int>(static_cast<float>(haptic_pending[i] >> 8) * hgain);
         if (sample < -128) sample = -128;
         if (sample > 127) sample = 127;
-        samples[i] = static_cast<int8_t>(sample);
-      }
+        return static_cast<int8_t>(sample);
+      });
       memmove(haptic_pending, reinterpret_cast<uint8_t *>(haptic_pending) + bytesPerReport,
               haptic_pending_len - bytesPerReport);
       haptic_pending_len -= bytesPerReport;
-
-      dualsense::HapticsReport report;
-      report.init();
-      report.setSamples(samples, sizeof(samples));
-      report.setSequence(haptics_sequence++);
-      report.sign();
       if (writeDevice(&report, sizeof(report))) sent++;
     }
   }
