@@ -653,11 +653,6 @@ private:
   constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
 public:
-  constexpr void clearOneShotLightbar() {
-    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::ReleaseLEDs));
-    validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
-  }
-
   constexpr void setMotorRight(uint8_t v) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
@@ -718,6 +713,8 @@ public:
     claim(ValidFlag1::AudioControl2Enable);
     audioControl2 = static_cast<uint8_t>((audioControl2 & 0xF8) | (gainCode & 0x07));
   }
+
+  constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
     claim(ValidFlag2::LightbarSetupControlEnable);
@@ -794,10 +791,6 @@ public:
     setMicMuted(volume == 0);
   }
 
-  constexpr void clearPlayerLeds() {
-    validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::PlayerIndicatorControlEnable));
-  }
-
   constexpr void clearLightbar() {
     validFlag1    = static_cast<uint8_t>(validFlag1 & ~bit(ValidFlag1::LightbarControlEnable));
     validFlag2    = static_cast<uint8_t>(validFlag2 & ~bit(ValidFlag2::LightbarSetupControlEnable));
@@ -805,6 +798,24 @@ public:
     lightbarRed   = 0;
     lightbarGreen = 0;
     lightbarBlue  = 0;
+  }
+
+  // Claims only the continuous audio/power fields, which are sent separately
+  // in 0x31. One-shot LED/trigger claims stay on the normal 0x31 path.
+  constexpr OutputBody audioSnapshot() const {
+    OutputBody out = *this;
+    constexpr uint8_t motor =
+        static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
+    constexpr uint8_t flag0 = static_cast<uint8_t>(
+        motor | bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
+        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
+    constexpr uint8_t flag1 = static_cast<uint8_t>(
+        bit(ValidFlag1::PowerSaveControlEnable) | bit(ValidFlag1::HapticLowPassFilterEnable) |
+        bit(ValidFlag1::VibrationAttenuationEnable) | bit(ValidFlag1::AudioControl2Enable));
+    out.validFlag0 = static_cast<uint8_t>(out.validFlag0 & flag0);
+    out.validFlag1 = static_cast<uint8_t>(out.validFlag1 & flag1);
+    out.validFlag2 = 0;
+    return out;
   }
 
   constexpr OutputBody() {}
@@ -1289,10 +1300,9 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 // Audio 0x36 (Bluetooth, 398 bytes)
 // ===========================================================================
 //
-// Bluetooth speaker/haptics stream: config, OutputBody state snapshot, 6 kHz
+// Bluetooth speaker/haptics stream: config, a zeroed state block, 6 kHz
 // haptics PCM and a 200-byte Opus speaker frame. The microphone returns as 0xD4
-// frames in 0x31. Do not claim triggers in the snapshot; it is re-sent every
-// frame.
+// frames in 0x31; output state is sent separately in 0x31 reports.
 
 struct HapticsReport;
 
@@ -1494,8 +1504,7 @@ public:
   constexpr const OutputBody &stateBody() const { return state.body; }
 
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
-                                 OutputReport::Sequence &sequence, const OutputBody &body,
-                                 OutputBody::AudioControl audio, bool lowPass) {
+                                 OutputReport::Sequence &sequence) {
     reportIdValue = reportId;
     configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
     config.mask = mask;
@@ -1509,10 +1518,7 @@ public:
     state         = State{};
     for (auto &byte : padding) byte = 0;
     for (auto &byte : opus) byte = 0;
-    crc        = 0;
-    state.body = body;
-    state.body.setAudio(audio);
-    if (lowPass) state.body.setHapticLowPassFilter(true);
+    crc            = 0;
     seqTag         = sequence.next();
     config.counter = sequence.nextCounter();
   }
@@ -1587,10 +1593,9 @@ public:
     static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
 
     constexpr AudioReport report = [] {
-      OutputBody body(OutputBody::AudioControl::Headphones);
       OutputReport::Sequence sequence;
       return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
-                         sequence, body, OutputBody::AudioControl::Headphones, false);
+                         sequence);
     }();
     static_assert(report.reportIdValue == ReportId::Audio);
     static_assert(report.seqTag == 0x00);
@@ -1601,10 +1606,8 @@ public:
     static_assert(report.config.counter == 0);
     static_assert(report.stateTag == 0x90);
     static_assert(report.stateLength == 63);
-    static_assert(report.stateBody().validFlag0 == 0xF0);
-    static_assert(report.stateBody().validFlag1 == 0x80);
-    static_assert(report.stateBody().headphoneVolume() == 0x7F);
-    static_assert(report.stateBody().speakerVolume() == 0x64);
+    static_assert(report.stateBody().validFlag0 == 0);
+    static_assert(report.stateBody().validFlag1 == 0);
     static_assert(report.speakerTag() == AudioReport::SpeakerTag::Jack);
     static_assert(report.speakerLength == 200);
     static_assert(report.opus[0] == 0);

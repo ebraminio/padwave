@@ -515,21 +515,24 @@ private:
     return true;
   }
 
-  void sendAudioRoute() {
-    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
-                         : dualsense::OutputBody::AudioControl::Headphones;
+  void sendAudioState() {
+    dualsense::OutputBody body = state.audioSnapshot();
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      // USB audio routing needs the full audio block, not just AudioRouting.
-      report.body().setAudio(route);
+      report.body() = body;
       writeDevice(&report, sizeof(report));
       return;
     }
-
     dualsense::OutputReport report(output_sequence);
-    report.body().setAudioRoute(route);
+    report.body() = body;
     report.sign();
     writeDevice(&report, sizeof(report));
+  }
+
+  void sendAudioRoute() {
+    state.setAudio(speaker ? dualsense::OutputBody::AudioControl::Speaker
+                           : dualsense::OutputBody::AudioControl::Headphones);
+    sendAudioState();
   }
 
   bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
@@ -662,8 +665,6 @@ public:
       state.setLeftTriggerEffect(effect);
     else
       state.setRightTriggerEffect(effect);
-    state.clearPlayerLeds();
-    state.clearOneShotLightbar();
 
     // One-sided update: the untouched block stays all zero, matching the
     // reference one-sided writers. Only the selected valid bit is claimed.
@@ -1047,10 +1048,7 @@ private:
                 : dualsense::AudioReport::SpeakerTag::Jack,
         mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
             : dualsense::AudioReport::ConfigMask::SpeakerOnly,
-        audio_sequence, state,
-        speaker ? dualsense::OutputBody::AudioControl::Speaker
-                : dualsense::OutputBody::AudioControl::Headphones,
-        haptic_subwoofer);
+        audio_sequence);
 
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
@@ -1166,7 +1164,16 @@ private:
     }
 
     if (strcmp(line, "state_clear_lightbar") == 0) {
-      state.clearLightbar();
+      if (is_usb) {
+        dualsense::UsbOutputReport report{};
+        report.body().releaseLEDs();
+        writeDevice(&report, sizeof(report));
+      } else {
+        dualsense::OutputReport report(output_sequence);
+        report.body().releaseLEDs();
+        report.sign();
+        writeDevice(&report, sizeof(report));
+      }
       return;
     }
 
@@ -1182,11 +1189,6 @@ private:
         if (!writeDevice(&out, sizeof(out))) return;
       }
       padwave_fields::apply_fields(&state, line + 7);
-      // One-shot 0x31 features must not be re-claimed by the 0x36 snapshot.
-      // In particular, a repeated player-LED claim restarts the firmware's
-      // fade-in every 10.7 ms, so only the instant bit appeared to work.
-      state.clearPlayerLeds();
-      state.clearOneShotLightbar();
       return;
     }
 
@@ -1207,6 +1209,7 @@ private:
     if (sscanf(line, "mic %ld", &value) == 1) {
       mic = value != 0;
       state.setMic(mic ? dualsense::OutputBody::micMaxVolume : 0);
+      sendAudioState();
       // The controller only starts/stops microphone capture when it sees a
       // 0x36 report with the enable-mask bit changed. Send the state packet
       // immediately, and reassert the pause-only mute LED with a one-shot
@@ -1225,7 +1228,11 @@ private:
       haptic_gain      = gain < 0 ? 0 : (gain > 200 ? 200 : static_cast<int>(gain));
       haptics_only     = only != 0;
       haptic_lp        = 0;
-      if (was != haptic_subwoofer) stopUsbAudio();
+      if (was != haptic_subwoofer) {
+        stopUsbAudio();
+        state.setHapticLowPassFilter(haptic_subwoofer);
+        sendAudioState();
+      }
       return;
     }
 
