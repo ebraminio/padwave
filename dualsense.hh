@@ -152,20 +152,18 @@ enum class ReportId : uint8_t {
   AuthStatus         = 0xF2,
 };
 
-struct OutputBodyProbe;
-struct AudioReportProbe;
-struct ReportProbe;
+struct WireProbe;
 } // namespace internal
 
 struct OutputBody {
-  friend struct internal::OutputBodyProbe;
+  friend struct internal::WireProbe;
 
 public:
   // Canonical 11-byte adaptive-trigger block: type byte followed by ten
   // parameters. Encoders adapted from ExtendInput.DataTools.DualSense
   // TriggerEffectGenerator (revision 6) by John "Nielk1" Klein, MIT License.
   struct TriggerEffect {
-    friend struct internal::OutputBodyProbe;
+    friend struct internal::WireProbe;
     friend struct OutputBody;
 
   private:
@@ -831,59 +829,6 @@ public:
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
-namespace internal {
-struct OutputBodyProbe {
-  static constexpr uint8_t valid0(const OutputBody &b) { return b.validFlag0; }
-  static constexpr uint8_t valid1(const OutputBody &b) { return b.validFlag1; }
-
-  static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &e, size_t i) {
-    return i == 0 ? static_cast<uint8_t>(e.mode) : e.parameters[i - 1];
-  }
-};
-} // namespace internal
-
-constexpr OutputBody::TriggerEffect kFeedbackEffect = [] {
-  constexpr uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  return OutputBody::TriggerEffect::multiplePositionFeedback(levels);
-}();
-static_assert(OutputBody::TriggerEffect::off().isValid());
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 0) == 0x21);
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 1) == 0xFF &&
-              internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 2) == 0x03);
-static_assert(internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 3) == 0 &&
-              internal::OutputBodyProbe::triggerByte(kFeedbackEffect, 6) == 0);
-
-constexpr OutputBody::TriggerEffect kWeaponEffect = OutputBody::TriggerEffect::weapon(2, 8, 8);
-static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 0) == 0x25);
-static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 1) == 0x04 &&
-              internal::OutputBodyProbe::triggerByte(kWeaponEffect, 2) == 0x01);
-static_assert(internal::OutputBodyProbe::triggerByte(kWeaponEffect, 3) == 7);
-
-constexpr OutputBody::TriggerEffect kVibrationEffect = [] {
-  constexpr uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  return OutputBody::TriggerEffect::multiplePositionVibration(25, amplitudes);
-}();
-static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 0) == 0x26);
-static_assert(internal::OutputBodyProbe::triggerByte(kVibrationEffect, 1) == 0x01 &&
-              internal::OutputBodyProbe::triggerByte(kVibrationEffect, 9) == 25);
-
-constexpr OutputBody::TriggerEffect kBowEffect = OutputBody::TriggerEffect::bow(2, 8, 6, 4);
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 0) == 0x22);
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 1) == 0x04 &&
-              internal::OutputBodyProbe::triggerByte(kBowEffect, 2) == 0x01);
-static_assert(internal::OutputBodyProbe::triggerByte(kBowEffect, 3) == 0x1D);
-
-constexpr OutputBody::TriggerEffect kGallopingEffect =
-    OutputBody::TriggerEffect::galloping(2, 8, 2, 4, 25);
-static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 0) == 0x23);
-static_assert(internal::OutputBodyProbe::triggerByte(kGallopingEffect, 4) == 25);
-
-constexpr OutputBody::TriggerEffect kMachineEffect =
-    OutputBody::TriggerEffect::machine(2, 8, 6, 4, 25, 10);
-static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 0) == 0x27);
-static_assert(internal::OutputBodyProbe::triggerByte(kMachineEffect, 4) == 25 &&
-              internal::OutputBodyProbe::triggerByte(kMachineEffect, 5) == 10);
-
 // Saturating conversions used by the Swift schema when mapping normalized
 // [0, 1] values onto the byte/zone/level wire fields.
 struct DSScale {
@@ -924,8 +869,6 @@ struct DSScale {
 // Wire report types. The internal namespace owns storage and probes; these
 // public wrappers expose construction, accessors and framing helpers.
 struct OutputReport {
-  friend struct internal::ReportProbe;
-
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -985,8 +928,6 @@ static_assert(sizeof(OutputReport) == 78, "0x31 must stay 78 bytes");
 // transport — and the same 47-byte body; sizes from hid-playstation.c:
 // DS_OUTPUT_REPORT_USB_SIZE 63, DS_OUTPUT_REPORT_BT_SIZE 78.
 struct UsbOutputReport {
-  friend struct internal::ReportProbe;
-
 private:
   using DSUINT8  = internal::DSUINT8;
   using ReportId = internal::ReportId;
@@ -1317,8 +1258,6 @@ static_assert(sizeof(InputBody) == 63, "input body must stay 63 bytes");
 // ===========================================================================
 
 struct InputReport {
-  friend struct internal::ReportProbe;
-
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSUINT32 = internal::DSUINT32;
@@ -1361,8 +1300,6 @@ static_assert(sizeof(InputReport) == 78, "input 0x31 must stay 78 bytes");
 
 // USB 0x01 input report: one report-id byte followed by the same 63-byte body.
 struct UsbInputReport {
-  friend struct internal::ReportProbe;
-
 private:
   using DSUINT8                      = internal::DSUINT8;
   using ReportId                     = internal::ReportId;
@@ -1441,8 +1378,7 @@ static_assert(sizeof(UsbInputReport) == 64, "input 0x01 must stay 64 bytes");
 struct HapticsReport;
 
 struct AudioReport {
-  friend struct internal::ReportProbe;
-  friend struct internal::AudioReportProbe;
+  friend struct internal::WireProbe;
   friend struct HapticsReport;
 
 private:
@@ -1660,36 +1596,85 @@ public:
 static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
 
 namespace internal {
-struct AudioReportProbe {
-  using ReportId = internal::ReportId;
-  static constexpr ReportId reportIdValue(const AudioReport &r) { return r.reportIdValue; }
-  static constexpr uint8_t seqTag(const AudioReport &r) { return r.seqTag; }
-  static constexpr uint8_t configTag(const AudioReport &r) { return r.configHeader.pid; }
-  static constexpr uint8_t configLength(const AudioReport &r) { return r.configHeader.length; }
-
-  static constexpr uint8_t hapticLength(const AudioReport &r, size_t i) {
-    return r.hapticLengths[i];
+struct WireProbe {
+private:
+  static constexpr uint8_t triggerByte(const OutputBody::TriggerEffect &effect, size_t i) {
+    return i == 0 ? static_cast<uint8_t>(effect.mode) : effect.parameters[i - 1];
   }
 
-  static constexpr uint8_t counter(const AudioReport &r) { return r.counter; }
-  static constexpr uint8_t stateTag(const AudioReport &r) { return r.stateTag; }
-  static constexpr uint8_t stateLength(const AudioReport &r) { return r.stateLength; }
-  static constexpr uint8_t speakerLength(const AudioReport &r) { return r.speakerLength; }
-  static constexpr void setSeqTag(AudioReport &r, uint8_t v) { r.setSeqTag(v); }
-  static constexpr void setCounter(AudioReport &r, uint8_t v) { r.setCounter(v); }
+public:
+  static constexpr bool all() {
+    static_assert(sizeof(AudioReport) == 398, "0x36 must stay 398 bytes");
+    static_assert(sizeof(AudioReport::State) == 63, "state must stay 63 bytes");
+    static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
-  static constexpr AudioReport::ConfigMask enableMask(const AudioReport &r) {
-    return r.enableMask();
+    constexpr uint8_t levels[10] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    constexpr auto feedback      = OutputBody::TriggerEffect::multiplePositionFeedback(levels);
+    static_assert(OutputBody::TriggerEffect::off().isValid());
+    static_assert(triggerByte(feedback, 0) == 0x21);
+    static_assert(triggerByte(feedback, 1) == 0xFF && triggerByte(feedback, 2) == 0x03);
+    static_assert(triggerByte(feedback, 3) == 0 && triggerByte(feedback, 6) == 0);
+
+    constexpr auto weapon = OutputBody::TriggerEffect::weapon(2, 8, 8);
+    static_assert(triggerByte(weapon, 0) == 0x25);
+    static_assert(triggerByte(weapon, 1) == 0x04 && triggerByte(weapon, 2) == 0x01);
+    static_assert(triggerByte(weapon, 3) == 7);
+
+    constexpr uint8_t amplitudes[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    constexpr auto vibration = OutputBody::TriggerEffect::multiplePositionVibration(25, amplitudes);
+    static_assert(triggerByte(vibration, 0) == 0x26);
+    static_assert(triggerByte(vibration, 1) == 0x01 && triggerByte(vibration, 9) == 25);
+
+    constexpr auto bow = OutputBody::TriggerEffect::bow(2, 8, 6, 4);
+    static_assert(triggerByte(bow, 0) == 0x22);
+    static_assert(triggerByte(bow, 1) == 0x04 && triggerByte(bow, 2) == 0x01);
+    static_assert(triggerByte(bow, 3) == 0x1D);
+
+    constexpr auto galloping = OutputBody::TriggerEffect::galloping(2, 8, 2, 4, 25);
+    static_assert(triggerByte(galloping, 0) == 0x23);
+    static_assert(triggerByte(galloping, 4) == 25);
+
+    constexpr auto machine = OutputBody::TriggerEffect::machine(2, 8, 6, 4, 25, 10);
+    static_assert(triggerByte(machine, 0) == 0x27);
+    static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
+
+    constexpr AudioReport report = [] {
+      AudioReport r{};
+      r.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly);
+      r.stateBody().init(OutputBody::AudioControl::Headphones);
+      return r;
+    }();
+    static_assert(report.reportIdValue == ReportId::Audio);
+    static_assert(report.seqTag == 0x00);
+    static_assert(report.configHeader.pid == 0x91);
+    static_assert(report.configHeader.length == 7);
+    static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
+    static_assert(report.hapticLengths[0] == 64 && report.hapticLengths[4] == 64);
+    static_assert(report.counter == 0);
+    static_assert(report.stateTag == 0x90);
+    static_assert(report.stateLength == 63);
+    static_assert(report.stateBody().validFlag0 == 0xF0);
+    static_assert(report.stateBody().validFlag1 == 0x80);
+    static_assert(report.stateBody().headphoneVolume() == 0x7F);
+    static_assert(report.stateBody().speakerVolume() == 0x64);
+    static_assert(report.speakerTag() == AudioReport::SpeakerTag::Jack);
+    static_assert(report.speakerLength == 200);
+    static_assert(report.opus[0] == 0);
+
+    constexpr AudioReport signedReport = [report] {
+      AudioReport r = report;
+      r.sign();
+      return r;
+    }();
+    static_assert(signedReport.isValid());
+
+    constexpr auto raw         = __builtin_bit_cast(WireBytes<AudioReport>, signedReport);
+    constexpr AudioReport copy = __builtin_bit_cast(AudioReport, raw);
+    static_assert(copy.isValid());
+    return true;
   }
-
-  static constexpr AudioReport::SpeakerTag speakerTag(const AudioReport &r) {
-    return r.speakerTag();
-  }
-
-  static constexpr bool isValid(const AudioReport &r) { return r.isValid(); }
-  static constexpr uint8_t opusByte(const AudioReport &r, size_t i) { return r.opus[i]; }
-  static constexpr size_t stateSize() { return sizeof(AudioReport::State); }
 };
+} // namespace internal
 
 // ===========================================================================
 // Feature reports — the configuration channel
@@ -1713,6 +1698,8 @@ struct AudioReportProbe {
 //
 // The Edge also exposes profile reports in the 0x60..0x7B range; they are
 // outside this header's modeled subset.
+
+namespace internal {
 
 // Calibration math from the Swift schema. The feature report stores raw
 // per-axis bias and plus/minus endpoints; converting them to the coefficients
@@ -1927,8 +1914,6 @@ static_assert(sizeof(Firmware) == 64, "0x20 must stay 64 bytes");
 // speaker path; 0x36 carries the 6 kHz haptics and Opus speaker streams.
 // ===========================================================================
 struct HapticsReport {
-  friend struct internal::ReportProbe;
-
 private:
   using DSUINT8  = internal::DSUINT8;
   using DSINT8   = internal::DSINT8;
@@ -2148,52 +2133,9 @@ constexpr uint32_t kChained = [] {
 }();
 static_assert(kChained == 0xCBF43926u);
 
-// --- initialized reports and offsets --------------------------------------
+// --- initialized reports, triggers and byte copy ---------------------------
 
-constexpr AudioReport kReport = [] {
-  AudioReport r{};
-  r.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly);
-  r.stateBody().init(OutputBody::AudioControl::Headphones);
-  internal::AudioReportProbe::setSeqTag(r, 0x00);
-  internal::AudioReportProbe::setCounter(r, 0);
-  return r;
-}();
-
-static_assert(sizeof(AudioReport) == 398);
-static_assert(internal::AudioReportProbe::stateSize() == 63);
-static_assert(sizeof(OutputBody) == 47);
-
-static_assert(internal::AudioReportProbe::reportIdValue(kReport) == ReportId::Audio);
-static_assert(internal::AudioReportProbe::seqTag(kReport) == 0x00);
-static_assert(internal::AudioReportProbe::configTag(kReport) == 0x91);
-static_assert(internal::AudioReportProbe::configLength(kReport) == 7);
-static_assert(internal::AudioReportProbe::enableMask(kReport) ==
-              AudioReport::ConfigMask::SpeakerOnly);
-static_assert(internal::AudioReportProbe::hapticLength(kReport, 0) == 64);
-static_assert(internal::AudioReportProbe::hapticLength(kReport, 4) == 64);
-static_assert(internal::AudioReportProbe::counter(kReport) == 0);
-static_assert(internal::AudioReportProbe::stateTag(kReport) == 0x90);
-static_assert(internal::AudioReportProbe::stateLength(kReport) == 63);
-static_assert(internal::OutputBodyProbe::valid0(kReport.stateBody()) == 0xF0);
-static_assert(internal::OutputBodyProbe::valid1(kReport.stateBody()) == 0x80);
-static_assert(kReport.stateBody().headphoneVolume() == 0x7F);
-static_assert(kReport.stateBody().speakerVolume() == 0x64);
-static_assert(internal::AudioReportProbe::speakerTag(kReport) == AudioReport::SpeakerTag::Jack);
-static_assert(internal::AudioReportProbe::speakerLength(kReport) == 200);
-static_assert(internal::AudioReportProbe::opusByte(kReport, 0) == 0);
-
-// --- sign / validate / byte copy, all constexpr ---------------------------
-
-constexpr AudioReport kSigned = [] {
-  AudioReport r = kReport;
-  r.sign();
-  return r;
-}();
-static_assert(internal::AudioReportProbe::isValid(kSigned));
-
-constexpr auto kRaw         = __builtin_bit_cast(internal::WireBytes<AudioReport>, kSigned);
-constexpr AudioReport kCopy = __builtin_bit_cast(AudioReport, kRaw);
-static_assert(internal::AudioReportProbe::isValid(kCopy));
+static_assert(internal::WireProbe::all());
 
 } // namespace wire_test
 } // namespace internal
