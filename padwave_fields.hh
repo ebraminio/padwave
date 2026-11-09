@@ -22,12 +22,18 @@
 
 namespace padwave_fields {
 
-using Body   = dualsense::OutputBody;
-using Setter = void (Body::*)(uint8_t);
+using Body       = dualsense::OutputBody;
+using Setter     = void (Body::*)(uint8_t);
+using BoolSetter = void (Body::*)(bool);
 
 struct u8_field {
   const char *name;
   Setter set;
+};
+
+struct bool_field {
+  const char *name;
+  BoolSetter set;
 };
 
 inline const u8_field kU8Fields[] = {
@@ -40,9 +46,12 @@ inline const u8_field kU8Fields[] = {
     {"mute_button_led", &Body::setMuteButtonLed},
     {"power_save_control", &Body::setPowerSaveControl},
     {"motor_power_level", &Body::setMotorPowerLevel},
-    {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
     {"speaker_preamp_gain", &Body::setSpeakerPreampGain},
     {"lightbar_setup", nullptr},
+};
+
+inline const bool_field kBoolFields[] = {
+    {"haptic_low_pass_filter", &Body::setHapticLowPassFilter},
 };
 
 // "fields a=1;b=2,3" -> fills the body, returns false on an unknown field.
@@ -93,7 +102,15 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     }
     if (found) continue;
 
-    if (!found) return false;
+    for (size_t i = 0; i < sizeof(kBoolFields) / sizeof(kBoolFields[0]); i++) {
+      if (strcmp(kBoolFields[i].name, name) != 0) continue;
+      (body->*(kBoolFields[i].set))(strtoul(value, nullptr, 0) != 0);
+      found = true;
+      break;
+    }
+    if (found) continue;
+
+    return false;
   }
   return true;
 }

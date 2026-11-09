@@ -709,9 +709,9 @@ public:
     motorPowerLevel = v;
   }
 
-  constexpr void setHapticLowPassFilter(uint8_t value) {
+  constexpr void setHapticLowPassFilter(bool on) {
     claim(ValidFlag1::HapticLowPassFilterEnable);
-    hapticLowPassFilter = value != 0 ? 1 : 0;
+    hapticLowPassFilter = on ? 1 : 0;
   }
 
   constexpr void setHostTimestamp(uint32_t v) { hostTimestamp = v; }
