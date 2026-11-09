@@ -1493,7 +1493,6 @@ public:
   constexpr OutputBody &stateBody() { return state.body; }
   constexpr const OutputBody &stateBody() const { return state.body; }
 
-public:
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
                                  OutputReport::Sequence &sequence, const OutputBody &body,
                                  OutputBody::AudioControl audio, bool lowPass) {
@@ -1613,7 +1612,6 @@ public:
     return true;
   }
 };
-} // namespace internal
 
 // ===========================================================================
 // Feature reports — the configuration channel
@@ -1623,41 +1621,40 @@ public:
 // 0x05 calibration, 0x09 pairing, 0x20 firmware, 0x80/0x81 commands. Edge
 // factory/profile ranges are outside the modeled subset.
 
-namespace internal {
-
 // Calibration math from the Swift schema. The feature report stores raw
 // per-axis bias and plus/minus endpoints; converting them to the coefficients
 // below is what turns raw IMU counts into usable units.
-struct AxisCalibration {
-  int bias;
-  int numerator;
-  int denominator;
-
-  constexpr AxisCalibration() : bias(0), numerator(0), denominator(1) {}
-  constexpr AxisCalibration(int biasValue, int numeratorValue, int denominatorValue)
-      : bias(biasValue), numerator(numeratorValue), denominator(denominatorValue) {}
-
-  constexpr int apply(int raw) const {
-    if (denominator == 0) return 0;
-    return numerator * (raw - bias) / denominator;
-  }
-
-  static constexpr AxisCalibration fallback(int range) { return {0, range, 32767}; }
-};
-
-struct ImuCalibration {
-  static constexpr int gyroResolutionPerDps = 1024;
-  static constexpr int accelResolutionPerG  = 8192;
-  static constexpr int accelRange           = 4 * accelResolutionPerG;
-  static constexpr int gyroRange            = 2048 * gyroResolutionPerDps;
-
-  AxisCalibration gyro[3];
-  AxisCalibration accel[3];
-};
-static_assert(sizeof(ImuCalibration) == 72, "IMU calibration must stay 72 bytes");
-
 struct Calibration {
   using ReportId = internal::ReportId;
+
+public:
+  struct ImuCalibration {
+    struct AxisCalibration {
+      int bias;
+      int numerator;
+      int denominator;
+
+      constexpr AxisCalibration() : bias(0), numerator(0), denominator(1) {}
+      constexpr AxisCalibration(int biasValue, int numeratorValue, int denominatorValue)
+          : bias(biasValue), numerator(numeratorValue), denominator(denominatorValue) {}
+
+      constexpr int apply(int raw) const {
+        if (denominator == 0) return 0;
+        return numerator * (raw - bias) / denominator;
+      }
+
+      static constexpr AxisCalibration fallback(int range) { return {0, range, 32767}; }
+    };
+
+    static constexpr int gyroResolutionPerDps = 1024;
+    static constexpr int accelResolutionPerG  = 8192;
+    static constexpr int accelRange           = 4 * accelResolutionPerG;
+    static constexpr int gyroRange            = 2048 * gyroResolutionPerDps;
+
+    AxisCalibration gyro[3];
+    AxisCalibration accel[3];
+  };
+  static_assert(sizeof(ImuCalibration) == 72, "IMU calibration must stay 72 bytes");
 
 protected:
   ReportId reportIdValue; // 0x00  ReportId::FeatureCalibration
@@ -1698,13 +1695,15 @@ public:
     result.gyro[1] = {0, gyro_numerator, gyroYawPlus - yaw_bias + gyroYawMinus - yaw_bias};
     result.gyro[2] = {0, gyro_numerator, gyroRollPlus - roll_bias + gyroRollMinus - roll_bias};
     for (auto &axis : result.gyro)
-      if (axis.denominator == 0) axis = AxisCalibration::fallback(ImuCalibration::gyroRange);
+      if (axis.denominator == 0)
+        axis = ImuCalibration::AxisCalibration::fallback(ImuCalibration::gyroRange);
 
     auto accel_axis = [](int plus, int minus) {
       int range_2g = plus - minus;
-      if (range_2g == 0) return AxisCalibration::fallback(ImuCalibration::accelRange);
-      return AxisCalibration{plus - range_2g / 2, 2 * ImuCalibration::accelResolutionPerG,
-                             range_2g};
+      if (range_2g == 0)
+        return ImuCalibration::AxisCalibration::fallback(ImuCalibration::accelRange);
+      return ImuCalibration::AxisCalibration{plus - range_2g / 2,
+                                             2 * ImuCalibration::accelResolutionPerG, range_2g};
     };
     result.accel[0] = accel_axis(accXPlus, accXMinus);
     result.accel[1] = accel_axis(accYPlus, accYMinus);
