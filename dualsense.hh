@@ -758,21 +758,30 @@ public:
     audioControl = static_cast<uint8_t>(routing);
   }
 
-  constexpr void setAudio(AudioControl routing) {
-    // Keep the main-motor claims so a 0x36 snapshot does not stop a 0x31
-    // rumble on the next packet. Trigger claims stay cleared: this stream
-    // writes zeros into those blocks.
+private:
+  // Preserve motor claims; trigger claims stay cleared because this stream
+  // writes zeros into those blocks.
+  constexpr void claimAudioFields() {
     constexpr uint8_t motorMask =
         static_cast<uint8_t>(bit(ValidFlag0::CompatibleVibration) | bit(ValidFlag0::HapticsSelect));
     validFlag0 = static_cast<uint8_t>(
         (validFlag0 & motorMask) | bit(ValidFlag0::HeadphoneVolumeEnable) |
         bit(ValidFlag0::SpeakerVolumeEnable) | bit(ValidFlag0::MicVolumeEnable) |
         bit(ValidFlag0::AudioControlEnable));
-    validFlag1           = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
+    validFlag1 = static_cast<uint8_t>(validFlag1 | bit(ValidFlag1::AudioControl2Enable));
+  }
+
+  constexpr void resetAudioDefaults(AudioControl routing) {
     volumeHeadphones     = 0x7F;
     volumeSpeaker        = 0x64;
     audioControl         = static_cast<uint8_t>(routing);
     speakerPreampControl = 0x0A;
+  }
+
+public:
+  constexpr void setAudio(AudioControl routing) {
+    claimAudioFields();
+    resetAudioDefaults(routing);
   }
 
   constexpr void setMicMuted(bool muted) {
@@ -791,14 +800,8 @@ public:
   constexpr OutputBody() {}
   // Claims only what the audio path writes: the volumes and the routing.
   constexpr explicit OutputBody(AudioControl routing) : OutputBody() {
-    validFlag0 = static_cast<uint8_t>(
-        bit(ValidFlag0::HeadphoneVolumeEnable) | bit(ValidFlag0::SpeakerVolumeEnable) |
-        bit(ValidFlag0::MicVolumeEnable) | bit(ValidFlag0::AudioControlEnable));
-    validFlag1           = bit(ValidFlag1::AudioControl2Enable);
-    volumeHeadphones     = 0x7F;
-    volumeSpeaker        = 0x64;
-    audioControl         = static_cast<uint8_t>(routing);
-    speakerPreampControl = 0x0A;
+    claimAudioFields();
+    resetAudioDefaults(routing);
   }
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
