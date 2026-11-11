@@ -659,13 +659,6 @@ private:
   constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
 public:
-  struct Motors {
-    uint8_t left;
-    uint8_t right;
-  };
-
-  constexpr Motors getMotors() const { return {motorLeft, motorRight}; }
-
   constexpr void setMotors(uint8_t left, uint8_t right) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);

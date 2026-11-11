@@ -56,6 +56,8 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
   char copy[4096];
   snprintf(copy, sizeof(copy), "%s", text);
   char *save_pairs = nullptr;
+  uint8_t motor_left = 0, motor_right = 0;
+  bool has_motors = false;
   for (char *pair = strtok_r(copy, ";", &save_pairs); pair;
        pair       = strtok_r(nullptr, ";", &save_pairs)) {
     char *eq = strchr(pair, '=');
@@ -65,13 +67,12 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     const char *value = eq + 1;
 
     if (strcmp(name, "motor_left") == 0 || strcmp(name, "motor_right") == 0) {
-      auto motors       = body->getMotors();
       uint8_t byteValue = static_cast<uint8_t>(strtoul(value, nullptr, 0));
       if (strcmp(name, "motor_left") == 0)
-        motors.left = byteValue;
+        motor_left = byteValue;
       else
-        motors.right = byteValue;
-      body->setMotors(motors.left, motors.right);
+        motor_right = byteValue;
+      has_motors = true;
       continue;
     }
 
@@ -127,6 +128,7 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
 
     return false;
   }
+  if (has_motors) body->setMotors(motor_left, motor_right);
   return true;
 }
 
