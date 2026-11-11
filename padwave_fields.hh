@@ -46,7 +46,7 @@ inline const u8_field kU8Fields[] = {
     {"mute_button_led", &Body::setMuteButtonLed},
     {"power_save_control", &Body::setPowerSaveControl},
     {"motor_power_level", &Body::setMotorPowerLevel},
-    {"speaker_preamp_control", &Body::setSpeakerPreampControl},
+    {"speaker_preamp_control", static_cast<Setter>(&Body::setSpeakerPreampControl)},
     {"lightbar_setup", nullptr},
 };
 

@@ -627,6 +627,20 @@ public:
     LightOut = 1u << 1,
   };
 
+  // Low three bits of speakerPreampControl. Only Gain2 is documented (+6 dB);
+  // the rest are the remaining raw codes.
+  enum class SpeakerPreampGain : uint8_t {
+    Gain0 = 0,
+    Gain1 = 1,
+    Gain2 = 2,
+    Gain3 = 3,
+    Gain4 = 4,
+    Gain5 = 5,
+    Gain6 = 6,
+    Gain7 = 7,
+  };
+  static constexpr SpeakerPreampGain speakerPreamp6dB = SpeakerPreampGain::Gain2;
+
   // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
   // use, which is why a silent jack was the first symptom of getting this
@@ -711,6 +725,10 @@ public:
   constexpr void setSpeakerPreampControl(uint8_t value) {
     claim(ValidFlag1::AudioControl2Enable);
     speakerPreampControl = value;
+  }
+
+  constexpr void setSpeakerPreampControl(SpeakerPreampGain gain) {
+    setSpeakerPreampControl(static_cast<uint8_t>(gain));
   }
 
   constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }

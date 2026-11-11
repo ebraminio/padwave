@@ -277,8 +277,8 @@ private:
   uint8_t mic_volume                         = 0;
   uint8_t power_save_control                 = 0;
   uint8_t audio_routing                      = 0;
-  static constexpr uint8_t kSpeakerPreamp6dB = 0x02;
-  uint8_t speaker_preamp_control             = kSpeakerPreamp6dB;
+  dualsense::OutputBody::SpeakerPreampGain speaker_preamp_control =
+      dualsense::OutputBody::speakerPreamp6dB;
   bool haptic_lowpass                        = false;
   SwrContext *haptic_swr                     = nullptr;
   int16_t haptic_pending[256]                = {};
