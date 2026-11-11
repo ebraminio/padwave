@@ -77,9 +77,9 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     }
 
     if (strcmp(name, "speaker_preamp_control") == 0) {
-      unsigned gain = static_cast<unsigned>(strtoul(value, nullptr, 0));
-      if (gain > 7) return false;
-      body->setSpeakerPreampControl(static_cast<Body::SpeakerPreampGain>(gain));
+      unsigned control = static_cast<unsigned>(strtoul(value, nullptr, 0));
+      if (control > 7) return false;
+      body->setSpeakerPreampControl(static_cast<Body::SpeakerPreamp>(control));
       continue;
     }
 

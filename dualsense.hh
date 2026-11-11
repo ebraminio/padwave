@@ -622,17 +622,9 @@ public:
 
   // Low three bits of speakerPreampControl. Only Gain2 is documented (+6 dB);
   // the rest are the remaining raw codes.
-  enum class SpeakerPreampGain : uint8_t {
-    Gain0 = 0,
-    Gain1 = 1,
-    Gain2 = 2,
-    Gain3 = 3,
-    Gain4 = 4,
-    Gain5 = 5,
-    Gain6 = 6,
-    Gain7 = 7,
+  enum class SpeakerPreamp : uint8_t {
+    Gain6dB = 0x02,
   };
-  static constexpr SpeakerPreampGain speakerPreamp6dB = SpeakerPreampGain::Gain2;
 
   // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
   // jack; the audio service patched the snapshot to 0x00 when the jack is in
@@ -710,9 +702,9 @@ public:
 
   // Low three bits are the speaker preamp gain (0x2 is +6 dB); the upper
   // bits are undocumented.
-  constexpr void setSpeakerPreampControl(SpeakerPreampGain gain) {
+  constexpr void setSpeakerPreampControl(SpeakerPreamp control) {
     claim(ValidFlag1::AudioControl2Enable);
-    speakerPreampControl = static_cast<uint8_t>(gain);
+    speakerPreampControl = static_cast<uint8_t>(control);
   }
 
   constexpr void setReleaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
