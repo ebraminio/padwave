@@ -262,26 +262,27 @@ private:
   int64_t npushed                 = 0;
 
   bool playing = false, paused = false, eof = false, primed = false;
-  int volume                     = 80;
-  int speed_percent              = 100;
-  bool haptic_subwoofer          = false;
-  bool haptics_only              = false;
-  int haptic_cutoff              = 150;
-  int haptic_gain                = 100;
-  float haptic_lp                = 0;
-  uint8_t motor_left             = 0;
-  uint8_t motor_right            = 0;
-  uint8_t motor_power_level      = 0;
-  uint8_t headphone_volume       = 0x7F;
-  uint8_t speaker_volume         = 0x64;
-  uint8_t mic_volume             = 0;
-  uint8_t power_save_control     = 0;
-  uint8_t audio_routing          = 0;
-  uint8_t speaker_preamp_control = 0x0A;
-  bool haptic_lowpass            = false;
-  SwrContext *haptic_swr         = nullptr;
-  int16_t haptic_pending[256]    = {};
-  size_t haptic_pending_len      = 0;
+  int volume                                 = 80;
+  int speed_percent                          = 100;
+  bool haptic_subwoofer                      = false;
+  bool haptics_only                          = false;
+  int haptic_cutoff                          = 150;
+  int haptic_gain                            = 100;
+  float haptic_lp                            = 0;
+  uint8_t motor_left                         = 0;
+  uint8_t motor_right                        = 0;
+  uint8_t motor_power_level                  = 0;
+  uint8_t headphone_volume                   = 0x7F;
+  uint8_t speaker_volume                     = 0x64;
+  uint8_t mic_volume                         = 0;
+  uint8_t power_save_control                 = 0;
+  uint8_t audio_routing                      = 0;
+  static constexpr uint8_t kSpeakerPreamp6dB = 0x02;
+  uint8_t speaker_preamp_control             = kSpeakerPreamp6dB;
+  bool haptic_lowpass                        = false;
+  SwrContext *haptic_swr                     = nullptr;
+  int16_t haptic_pending[256]                = {};
+  size_t haptic_pending_len                  = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -581,8 +582,8 @@ private:
   }
 
   void sendAudioRoute() {
-    auto route = speaker ? dualsense::OutputBody::AudioControl::Speaker
-                         : dualsense::OutputBody::AudioControl::Headphones;
+    auto route    = speaker ? dualsense::OutputBody::AudioControl::Speaker
+                            : dualsense::OutputBody::AudioControl::Headphones;
     audio_routing = static_cast<uint8_t>(route);
     sendAudioState();
   }
