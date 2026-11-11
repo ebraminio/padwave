@@ -781,6 +781,9 @@ public:
   }
 
   constexpr OutputBody() {}
+  // Mutable field-by-field, but never replace the body wholesale.
+  OutputBody(const OutputBody &)            = default;
+  OutputBody &operator=(const OutputBody &) = delete;
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
 
@@ -1211,7 +1214,6 @@ public:
   constexpr InputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
 
   constexpr const InputBody &getBody() const { return bodyData; }
-  constexpr InputBody &getBody() { return bodyData; }
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
@@ -1451,8 +1453,12 @@ public:
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   static constexpr uint16_t pcmFrames = 480;
 
-  constexpr OutputBody &getStateBody() { return state.body; }
   constexpr const OutputBody &getStateBody() const { return state.body; }
+
+  constexpr void setMotors(uint8_t right, uint8_t left) {
+    state.body.setMotorRight(right);
+    state.body.setMotorLeft(left);
+  }
 
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
                                  OutputReport::Sequence &sequence) {
@@ -1466,7 +1472,6 @@ public:
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
     speakerLength = opusSize;
-    state         = State{};
     for (auto &byte : padding) byte = 0;
     for (auto &byte : opus) byte = 0;
     crc            = 0;
