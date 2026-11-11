@@ -556,11 +556,11 @@ private:
   bool sendOutput(Fill fill) {
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      if (!fill(report.body())) return false;
+      if (!fill(report.getBody())) return false;
       return writeDevice(&report, sizeof(report));
     }
     dualsense::OutputReport report(output_sequence);
-    if (!fill(report.body())) return false;
+    if (!fill(report.getBody())) return false;
     report.sign();
     return writeDevice(&report, sizeof(report));
   }
@@ -596,7 +596,7 @@ private:
     if (ioctl(hidraw, HIDIOCSFEATURE(sizeof(request)), &request) < 0) return false;
     for (int attempt = 0; attempt < 10; ++attempt) {
       if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(response)), &response) < 0) return false;
-      if (response.matches(device, action) && (response.complete() || response.completeMore()))
+      if (response.isMatch(device, action) && (response.isComplete() || response.isCompleteMore()))
         return true;
       usleep(1000);
     }
@@ -713,9 +713,9 @@ private:
   }
 
 public:
-  bool releaseLEDs() {
+  bool setReleaseLEDs() {
     return sendOutput([](dualsense::OutputBody &body) {
-      body.releaseLEDs();
+      body.setReleaseLEDs();
       return true;
     });
   }
@@ -752,27 +752,27 @@ public:
     char line[192];
     append("ok=true\nfirmware.valid=true\n");
     {
-      auto [value, length] = info.buildDateText();
+      auto [value, length] = info.getBuildDateText();
       snprintf(line, sizeof(line), "firmware.build_date=%.*s\n", static_cast<int>(length), value);
     }
     append(line);
     {
-      auto [value, length] = info.buildTimeText();
+      auto [value, length] = info.getBuildTimeText();
       snprintf(line, sizeof(line), "firmware.build_time=%.*s\n", static_cast<int>(length), value);
     }
     append(line);
-    snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.typeValue()));
+    snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.getTypeValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.series=%u\n", static_cast<unsigned>(info.seriesValue()));
+    snprintf(line, sizeof(line), "firmware.series=%u\n", static_cast<unsigned>(info.getSeriesValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.hardware=0x%08X\n", info.hardwareInfoValue());
+    snprintf(line, sizeof(line), "firmware.hardware=0x%08X\n", info.getHardwareInfoValue());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version=0x%08X\n", info.firmwareVersionValue());
+    snprintf(line, sizeof(line), "firmware.version=0x%08X\n", info.getFirmwareVersionValue());
     append(line);
     char hex[129];
     size_t h = 0;
     {
-      auto [value, length] = info.deviceInfoText();
+      auto [value, length] = info.getDeviceInfoText();
       for (unsigned i = 0; i < length; ++i) {
         int n = snprintf(hex + h, sizeof(hex) - h, "%02x", static_cast<unsigned>(value[i]));
         if (n > 0) h += static_cast<size_t>(n);
@@ -781,24 +781,24 @@ public:
     snprintf(line, sizeof(line), "firmware.device_info=%s\n", hex);
     append(line);
     snprintf(line, sizeof(line), "firmware.update_version=0x%04X\n",
-             static_cast<unsigned>(info.updateVersionValue()));
+             static_cast<unsigned>(info.getUpdateVersionValue()));
     append(line);
     snprintf(line, sizeof(line), "firmware.update_image=%u\n",
-             static_cast<unsigned>(info.updateImageInfoValue()));
+             static_cast<unsigned>(info.getUpdateImageInfoValue()));
     append(line);
     snprintf(line, sizeof(line), "firmware.update_unknown=%u\n",
-             static_cast<unsigned>(info.updateUnkValue()));
+             static_cast<unsigned>(info.getUpdateUnkValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.version1=0x%08X\n", info.fwVersion1Value());
+    snprintf(line, sizeof(line), "firmware.version1=0x%08X\n", info.getFwVersion1Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version2=0x%08X\n", info.fwVersion2Value());
+    snprintf(line, sizeof(line), "firmware.version2=0x%08X\n", info.getFwVersion2Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.version3=0x%08X\n", info.fwVersion3Value());
+    snprintf(line, sizeof(line), "firmware.version3=0x%08X\n", info.getFwVersion3Value());
     append(line);
-    snprintf(line, sizeof(line), "firmware.crc=0x%08X\n", info.crcValue());
+    snprintf(line, sizeof(line), "firmware.crc=0x%08X\n", info.getCrcValue());
     append(line);
     snprintf(line, sizeof(line), "firmware.vibration_v2=%s\n",
-             info.usesVibrationV2() ? "true" : "false");
+             info.isUsingVibrationV2() ? "true" : "false");
     append(line);
     const auto *raw = reinterpret_cast<const uint8_t *>(&info);
     h               = 0;
@@ -890,7 +890,7 @@ public:
     textField("extras.vcm_left_barcode", CommandDevice::MainMcu, 26, 16, false, nullptr, 0);
     textField("extras.vcm_right_barcode", CommandDevice::MainMcu, 28, 16, false, nullptr, 0);
     SerialNumber serialNumber(serial);
-    snprintf(line, sizeof(line), "extras.color=%s\n", serialNumber.colorName());
+    snprintf(line, sizeof(line), "extras.color=%s\n", serialNumber.getColorName());
     append(line);
 
     if (readExtraCommand(CommandDevice::Audio, 3, response)) {
@@ -987,14 +987,14 @@ public:
 
     dualsense::Firmware firmware{};
     if (ioctl(hidraw, HIDIOCGFEATURE(sizeof(firmware)), &firmware) >= 0 && firmware.isValid(true)) {
-      appendHex("extras.hw_model", firmware.hardwareInfoValue());
-      snprintf(line, sizeof(line), "extras.board_model=%s\n", firmware.boardModel());
+      appendHex("extras.hw_model", firmware.getHardwareInfoValue());
+      snprintf(line, sizeof(line), "extras.board_model=%s\n", firmware.getBoardModel());
       append(line);
       time_t now      = time(nullptr);
       struct tm *tm   = localtime(&now);
       int currentYear = tm ? tm->tm_year + 1900 : 0;
       snprintf(line, sizeof(line), "extras.device_type=%s\n",
-               firmware.deviceType(finetuneValid, currentYear));
+               firmware.getDeviceType(finetuneValid, currentYear));
       append(line);
     } else {
       append("extras.hw_model=unavailable\n");
@@ -1093,7 +1093,7 @@ private:
     dualsense::OutputBody motors;
     motors.setMotorRight(motor_right);
     motors.setMotorLeft(motor_left);
-    report.stateBody() = motors;
+    report.getStateBody() = motors;
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
       const size_t first = i * 8;

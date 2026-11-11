@@ -720,7 +720,7 @@ public:
     speakerPreampControl = static_cast<uint8_t>(gain);
   }
 
-  constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
+  constexpr void setReleaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }
 
   constexpr void setLightbarSetup(LightbarSetup v) {
     claim(ValidFlag2::LightbarSetupControlEnable);
@@ -865,8 +865,8 @@ public:
     seqTag = sequence.next();
   }
 
-  constexpr const OutputBody &body() const { return bodyData; }
-  constexpr OutputBody &body() { return bodyData; }
+  constexpr const OutputBody &getBody() const { return bodyData; }
+  constexpr OutputBody &getBody() { return bodyData; }
   constexpr void sign() {
     constexpr uint8_t crcSeed = 0xA2;
     crc                       = internal::crc_of(*this, crcSeed);
@@ -893,8 +893,8 @@ private:
 public:
   constexpr UsbOutputReport() : reportIdValue(reportId) {}
 
-  constexpr const OutputBody &body() const { return bodyData; }
-  constexpr OutputBody &body() { return bodyData; }
+  constexpr const OutputBody &getBody() const { return bodyData; }
+  constexpr OutputBody &getBody() { return bodyData; }
 };
 static_assert(sizeof(UsbOutputReport) == 63, "0x02 must stay 63 bytes");
 
@@ -921,12 +921,12 @@ public:
     DSUINT8 yHigh;
 
   public:
-    constexpr bool active() const { return (contact & 0x80) == 0; }
-    constexpr unsigned id() const { return contact & 0x7F; }
+    constexpr bool isActive() const { return (contact & 0x80) == 0; }
+    constexpr unsigned getId() const { return contact & 0x7F; }
 
-    constexpr unsigned x() const { return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8)); }
+    constexpr unsigned getX() const { return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8)); }
 
-    constexpr unsigned y() const { return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4)); }
+    constexpr unsigned getY() const { return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4)); }
   };
   static_assert(sizeof(TouchPoint) == 4, "touch point must stay 4 bytes");
 
@@ -945,8 +945,8 @@ public:
     uint8_t value;
 
   public:
-    constexpr unsigned stopLocation() const { return value & 0x0F; }
-    constexpr unsigned status() const { return value >> 4; }
+    constexpr unsigned getStopLocation() const { return value & 0x0F; }
+    constexpr unsigned getStatus() const { return value >> 4; }
   };
   static_assert(sizeof(TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
 
@@ -970,7 +970,7 @@ protected:
   DSINT16 accelY;               // +0x17
   DSINT16 accelZ;               // +0x19
   DSUINT32 sensorTime;          // +0x1b  timestamp, 0.33 us units
-  DSUINT8 temperatureC;         // +0x1f  controller temperature, degrees C
+  DSUINT8 temperature;          // +0x1f  controller temperature, degrees C
   TouchData touchData;          // +0x20  two contacts + timestamp
   TriggerFeedback triggerRight; // +0x29  stop location + status
   TriggerFeedback triggerLeft;  // +0x2a
@@ -1000,10 +1000,10 @@ public:
   static constexpr int touchpadWidth  = 1920;
   static constexpr int touchpadHeight = 1080;
 
-  Stick leftStick() const { return {lx, ly}; }
-  Stick rightStick() const { return {rx, ry}; }
-  Triggers triggers() const { return {l2, r2}; }
-  int sequence() const { return seq; }
+  Stick getLeftStick() const { return {lx, ly}; }
+  Stick getRightStick() const { return {rx, ry}; }
+  Triggers getTriggers() const { return {l2, r2}; }
+  int getSequence() const { return seq; }
 
   // Normalized full-scale angular rate: -1..1.
   struct Gyro {
@@ -1018,7 +1018,7 @@ public:
     static constexpr float countsPerFullScale = 32768.f;
   };
 
-  Gyro gyro() const { return {gyroX, gyroY, gyroZ}; }
+  Gyro getGyro() const { return {gyroX, gyroY, gyroZ}; }
 
   // Acceleration in g: ~8192 raw counts per g.
   struct Accelerometer {
@@ -1027,14 +1027,14 @@ public:
     constexpr Accelerometer(int raw_x, int raw_y, int raw_z)
         : x(static_cast<float>(raw_x) / countsPerG), y(static_cast<float>(raw_y) / countsPerG),
           z(static_cast<float>(raw_z) / countsPerG) {}
-    float len() const { return sqrtf(x * x + y * y + z * z); }
+    float getLength() const { return sqrtf(x * x + y * y + z * z); }
 
   private:
     static constexpr float countsPerG = 8192.f;
   };
 
-  Accelerometer accelerometer() const { return {accelX, accelY, accelZ}; }
-  uint8_t temperature() const { return temperatureC; }
+  Accelerometer getAccelerometer() const { return {accelX, accelY, accelZ}; }
+  uint8_t getTemperature() const { return temperature; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -1050,7 +1050,7 @@ public:
     None      = 8,
   };
 
-  Dpad dpad() const { return static_cast<Dpad>(buttonsData & dpadMask); }
+  Dpad getDpad() const { return static_cast<Dpad>(buttonsData & dpadMask); }
 
   // Four button bytes merged into one little-endian 32-bit field: bits 0..7
   // are the byte at +0x07, 8..15 at +0x08, and so on. Bit positions:
@@ -1093,7 +1093,7 @@ public:
     constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
     constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
 
-    const Buttons pressed(const Buttons &prev) const { return Buttons(buttons & ~prev.buttons); }
+    const Buttons getPressed(const Buttons &prev) const { return Buttons(buttons & ~prev.buttons); }
 
   private:
     constexpr Buttons(uint32_t v) : buttons(v) {}
@@ -1101,12 +1101,12 @@ public:
     uint32_t buttons;
   };
 
-  constexpr const Buttons buttons() const { return Buttons(buttonsData & ~dpadMask); }
+  constexpr const Buttons getButtons() const { return Buttons(buttonsData & ~dpadMask); }
 
   // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
   // high nibble is PowerState. The controller can report Complete before the
   // level reaches 10, especially on an aged pack.
-  constexpr int battery() const {
+  constexpr int getBattery() const {
     int percent = (status0 & 0x0F) * 10;
     return percent > 100 ? 100 : percent;
   }
@@ -1120,7 +1120,7 @@ public:
     ChargingError       = 0x0F,
   };
 
-  constexpr PowerState powerState() const { return static_cast<PowerState>(status0 >> 4); }
+  constexpr PowerState getPowerState() const { return static_cast<PowerState>(status0 >> 4); }
 
   // +0x35. PluggedUsbData/Power are the two bits observed during USB/charger
   // testing; the kernel only documents the headset/mic/mute bits.
@@ -1138,41 +1138,41 @@ public:
     HapticLowPassFilter = 1u << 1, // bit 1
   };
 
-  constexpr bool headset() const {
+  constexpr bool isHeadset() const {
     return (status1 & static_cast<uint8_t>(Status1::HeadphoneDetect)) != 0;
   }
 
-  constexpr bool pluggedUsbData() const {
+  constexpr bool isPluggedUsbData() const {
     return (status1 & static_cast<uint8_t>(Status1::PluggedUsbData)) != 0;
   }
 
-  constexpr bool pluggedUsbPower() const {
+  constexpr bool isPluggedUsbPower() const {
     return (status1 & static_cast<uint8_t>(Status1::PluggedUsbPower)) != 0;
   }
 
-  constexpr bool microphone() const {
+  constexpr bool isMicrophone() const {
     return (status1 & static_cast<uint8_t>(Status1::MicDetect)) != 0;
   }
 
-  constexpr bool micMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
+  constexpr bool isMicMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
 
-  constexpr bool pluggedExternalMic() const {
+  constexpr bool isPluggedExternalMic() const {
     return (status2 & static_cast<uint8_t>(Status2::PluggedExternalMic)) != 0;
   }
 
-  constexpr bool hapticLowPassFilter() const {
+  constexpr bool isHapticLowPassFilter() const {
     return (status2 & static_cast<uint8_t>(Status2::HapticLowPassFilter)) != 0;
   }
 
-  TouchPoint touch(unsigned index) const { return touchData.getFinger(index); }
-  unsigned triggerStopLocationLeft() const { return triggerLeft.stopLocation(); }
-  unsigned triggerStatusLeft() const { return triggerLeft.status(); }
-  unsigned triggerStopLocationRight() const { return triggerRight.stopLocation(); }
-  unsigned triggerStatusRight() const { return triggerRight.status(); }
-  unsigned triggerEffectLeft() const { return triggerEffect >> 4; }
-  unsigned triggerEffectRight() const { return triggerEffect & 0x0F; }
-  uint32_t hostTime() const { return hostTimestamp; }
-  uint32_t deviceTime() const { return deviceTimestamp; }
+  TouchPoint getTouch(unsigned index) const { return touchData.getFinger(index); }
+  unsigned getTriggerStopLocationLeft() const { return triggerLeft.getStopLocation(); }
+  unsigned getTriggerStatusLeft() const { return triggerLeft.getStatus(); }
+  unsigned getTriggerStopLocationRight() const { return triggerRight.getStopLocation(); }
+  unsigned getTriggerStatusRight() const { return triggerRight.getStatus(); }
+  unsigned getTriggerEffectLeft() const { return triggerEffect >> 4; }
+  unsigned getTriggerEffectRight() const { return triggerEffect & 0x0F; }
+  uint32_t getHostTime() const { return hostTimestamp; }
+  uint32_t getDeviceTime() const { return deviceTimestamp; }
 };
 static_assert(sizeof(InputBody) == 63, "input body must stay 63 bytes");
 
@@ -1210,8 +1210,8 @@ private:
 public:
   constexpr InputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
 
-  constexpr const InputBody &body() const { return bodyData; }
-  constexpr InputBody &body() { return bodyData; }
+  constexpr const InputBody &getBody() const { return bodyData; }
+  constexpr InputBody &getBody() { return bodyData; }
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
@@ -1237,7 +1237,7 @@ protected:
 public:
   constexpr UsbInputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
 
-  constexpr const InputBody &body() const { return bodyData; }
+  constexpr const InputBody &getBody() const { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
     if (!buf || len < sizeof(UsbInputReport) || buf[0] != static_cast<uint8_t>(reportId))
@@ -1435,9 +1435,9 @@ private:
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { config.counter = value; }
 
-  constexpr ConfigMask enableMask() const { return config.mask; }
+  constexpr ConfigMask getEnableMask() const { return config.mask; }
 
-  constexpr SpeakerTag speakerTag() const {
+  constexpr SpeakerTag getSpeakerTag() const {
     return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
   }
 
@@ -1451,8 +1451,8 @@ public:
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   static constexpr uint16_t pcmFrames = 480;
 
-  constexpr OutputBody &stateBody() { return state.body; }
-  constexpr const OutputBody &stateBody() const { return state.body; }
+  constexpr OutputBody &getStateBody() { return state.body; }
+  constexpr const OutputBody &getStateBody() const { return state.body; }
 
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
                                  OutputReport::Sequence &sequence) {
@@ -1571,7 +1571,7 @@ protected:
 public:
   static constexpr ReportId reportId = ReportId::FeatureCalibration;
 
-  constexpr ImuCalibration imu() const {
+  constexpr ImuCalibration getImu() const {
     ImuCalibration result{};
     int speed_2x       = gyroSpeedPlus + gyroSpeedMinus;
     int gyro_numerator = speed_2x * ImuCalibration::gyroResolutionPerDps;
@@ -1662,25 +1662,25 @@ public:
 
   constexpr Firmware() : reportIdValue(reportId) {}
 
-  constexpr const String buildDateText() const { return String(buildDate); }
-  constexpr const String buildTimeText() const { return String(buildTime); }
-  constexpr const String deviceInfoText() const { return String(deviceInfo); }
-  constexpr uint16_t typeValue() const { return fwType; }
-  constexpr uint16_t seriesValue() const { return swSeries; }
-  constexpr uint32_t hardwareInfoValue() const { return hardwareInfo; }
-  constexpr uint32_t firmwareVersionValue() const { return firmwareVersion; }
-  constexpr uint16_t updateVersionValue() const { return updateVersion; }
-  constexpr uint8_t updateImageInfoValue() const { return updateImageInfo; }
-  constexpr uint8_t updateUnkValue() const { return updateUnk; }
-  constexpr uint32_t fwVersion1Value() const { return fwVersion1; }
-  constexpr uint32_t fwVersion2Value() const { return fwVersion2; }
-  constexpr uint32_t fwVersion3Value() const { return fwVersion3; }
-  constexpr uint32_t crcValue() const { return crc; }
+  constexpr const String getBuildDateText() const { return String(buildDate); }
+  constexpr const String getBuildTimeText() const { return String(buildTime); }
+  constexpr const String getDeviceInfoText() const { return String(deviceInfo); }
+  constexpr uint16_t getTypeValue() const { return fwType; }
+  constexpr uint16_t getSeriesValue() const { return swSeries; }
+  constexpr uint32_t getHardwareInfoValue() const { return hardwareInfo; }
+  constexpr uint32_t getFirmwareVersionValue() const { return firmwareVersion; }
+  constexpr uint16_t getUpdateVersionValue() const { return updateVersion; }
+  constexpr uint8_t getUpdateImageInfoValue() const { return updateImageInfo; }
+  constexpr uint8_t getUpdateUnkValue() const { return updateUnk; }
+  constexpr uint32_t getFwVersion1Value() const { return fwVersion1; }
+  constexpr uint32_t getFwVersion2Value() const { return fwVersion2; }
+  constexpr uint32_t getFwVersion3Value() const { return fwVersion3; }
+  constexpr uint32_t getCrcValue() const { return crc; }
 
-  constexpr bool usesVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
+  constexpr bool isUsingVibrationV2() const { return updateVersion >= vibrationV2MinimumVersion; }
 
-  constexpr int buildYear() const {
-    auto date = buildDateText();
+  constexpr int getBuildYear() const {
+    auto date = getBuildDateText();
     if (date.length < 4) return 0;
     int year = 0;
     for (size_t i = date.length - 4; i < date.length; ++i) {
@@ -1690,8 +1690,8 @@ public:
     return year;
   }
 
-  constexpr const char *boardModel() const {
-    switch ((this->hardwareInfoValue() >> 8) & 0xFF) {
+  constexpr const char *getBoardModel() const {
+    switch ((this->getHardwareInfoValue() >> 8) & 0xFF) {
     case 0x03: return "BDM-010";
     case 0x04: return "BDM-020";
     case 0x05: return "BDM-030";
@@ -1705,9 +1705,9 @@ public:
     }
   }
 
-  constexpr const char *deviceType(bool finetuneValid, int currentYear) const {
+  constexpr const char *getDeviceType(bool finetuneValid, int currentYear) const {
     if (!finetuneValid) return "clone";
-    int year = buildYear();
+    int year = getBuildYear();
     if (year == 0 || year > currentYear) return "clone";
     return "original";
   }
@@ -1891,7 +1891,7 @@ public:
   }
 
   // The Opus packet: everything after the TOC byte, minus the trailing CRC.
-  static const uint8_t *payload(const uint8_t *buf, size_t len, size_t *out_len) {
+  static const uint8_t *getPayload(const uint8_t *buf, size_t len, size_t *out_len) {
     if (!asFrame(buf, len)) return nullptr;
     *out_len = len - 3 - crcBytes;
     return buf + 3;
@@ -1950,14 +1950,14 @@ public:
     static_assert(report.seqTag == 0x00);
     static_assert(report.configHeader.pid() == 0x91);
     static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
-    static_assert(report.enableMask() == AudioReport::ConfigMask::SpeakerOnly);
+    static_assert(report.getEnableMask() == AudioReport::ConfigMask::SpeakerOnly);
     static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
     static_assert(report.config.counter == 0);
     static_assert(report.stateTag == 0x90);
     static_assert(report.stateLength == 63);
-    static_assert(report.stateBody().validFlag0 == 0);
-    static_assert(report.stateBody().validFlag1 == 0);
-    static_assert(report.speakerTag() == AudioReport::SpeakerTag::Jack);
+    static_assert(report.getStateBody().validFlag0 == 0);
+    static_assert(report.getStateBody().validFlag1 == 0);
+    static_assert(report.getSpeakerTag() == AudioReport::SpeakerTag::Jack);
     static_assert(report.speakerLength == 200);
     static_assert(report.opus[0] == 0);
 

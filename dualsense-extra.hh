@@ -275,7 +275,7 @@ struct SerialNumber {
     value[length] = 0;
   }
 
-  constexpr const char *colorName() const {
+  constexpr const char *getColorName() const {
     if (length < 6) return "Unknown";
     static constexpr struct {
       char first;
@@ -368,17 +368,17 @@ public:
   constexpr CommandResponse()
       : reportIdValue(reportId), device(0), action(0), status(0), payload(), reserved() {}
 
-  constexpr bool matches(CommandDevice deviceValue, uint8_t actionValue) const {
+  constexpr bool isMatch(CommandDevice deviceValue, uint8_t actionValue) const {
     return this->reportIdValue == reportId &&
            static_cast<uint8_t>(this->device) == static_cast<uint8_t>(deviceValue) &&
            static_cast<uint8_t>(this->action) == actionValue;
   }
 
-  constexpr bool complete() const {
+  constexpr bool isComplete() const {
     return static_cast<uint8_t>(this->status) == static_cast<uint8_t>(CommandStatus::Complete);
   }
 
-  constexpr bool completeMore() const {
+  constexpr bool isCompleteMore() const {
     return static_cast<uint8_t>(this->status) == static_cast<uint8_t>(CommandStatus::CompleteMore);
   }
 };
@@ -391,7 +391,7 @@ struct Finetune {
 
 inline constexpr Finetune parseFinetune(const CommandResponse &response) {
   Finetune result{};
-  if (!response.complete()) return result;
+  if (!response.isComplete()) return result;
   for (unsigned i = 0; i < 12; ++i)
     result.values[i] = static_cast<uint16_t>(
         static_cast<uint8_t>(response.payload[i * 2]) |
@@ -408,7 +408,7 @@ struct McuUniqueId {
 // The USB command returns one status/success byte followed by the eight-byte
 // little-endian MCU ID.
 inline constexpr McuUniqueId parseMcuUniqueId(const CommandResponse &response) {
-  if (!response.complete() || static_cast<uint8_t>(response.payload[0]) != 0) return {0, false};
+  if (!response.isComplete() || static_cast<uint8_t>(response.payload[0]) != 0) return {0, false};
   uint64_t value = 0;
   for (unsigned i = 0; i < 8; ++i)
     value |= static_cast<uint64_t>(static_cast<uint8_t>(response.payload[i + 1])) << (8 * i);
@@ -422,7 +422,7 @@ struct BluetoothAddress {
 
 // Six bytes in little-endian controller order: bytes[0] is the last MAC octet.
 inline constexpr BluetoothAddress parseBluetoothAddress(const CommandResponse &response) {
-  if (!response.complete()) return {{0, 0, 0, 0, 0, 0}, false};
+  if (!response.isComplete()) return {{0, 0, 0, 0, 0, 0}, false};
   BluetoothAddress address{};
   for (unsigned i = 0; i < 6; ++i) address.bytes[i] = static_cast<uint8_t>(response.payload[i]);
   address.valid = true;
@@ -439,7 +439,7 @@ struct PatchInfo {
 // Read Patch Info returns three little-endian 32-bit fields; their exact
 // semantics are not documented by the reference material.
 inline constexpr PatchInfo parsePatchInfo(const CommandResponse &response) {
-  if (!response.complete()) return {0, 0, 0, false};
+  if (!response.isComplete()) return {0, 0, 0, false};
   auto word = [&](unsigned offset) {
     uint32_t value = 0;
     for (unsigned i = 0; i < 4; ++i)
@@ -456,7 +456,7 @@ struct DeviceInfo {
 
 inline constexpr DeviceInfo parseDeviceInfo(const CommandResponse &response) {
   DeviceInfo info{};
-  if (!response.complete()) return info;
+  if (!response.isComplete()) return info;
   for (unsigned i = 0; i < 12; ++i) info.bytes[i] = static_cast<uint8_t>(response.payload[i]);
   info.valid = true;
   return info;
@@ -468,7 +468,7 @@ struct SpiderStatus {
 };
 
 inline constexpr SpiderStatus parseSpiderStatus(const CommandResponse &response) {
-  if (!response.complete()) return {0, false};
+  if (!response.isComplete()) return {0, false};
   return {static_cast<uint8_t>(response.payload[0]), true};
 }
 

@@ -97,7 +97,7 @@ private:
   };
 
   void trackButtons(dualsense::InputBody::Buttons buttons) {
-    dualsense::InputBody::Buttons pressed = buttons.pressed(actions.prevButtons);
+    dualsense::InputBody::Buttons pressed = buttons.getPressed(actions.prevButtons);
     actions.prevButtons                   = buttons;
 
     for (auto &b : kBindings)
@@ -132,14 +132,14 @@ private:
 
   void trackSensors(const dualsense::InputBody &b) {
     int64_t now                                   = nowMs();
-    bool jack                                     = b.headset();
-    const dualsense::InputBody::Stick left        = b.leftStick();
-    const dualsense::InputBody::Stick right       = b.rightStick();
-    const dualsense::InputBody::Triggers triggers = b.triggers();
+    bool jack                                     = b.isHeadset();
+    const dualsense::InputBody::Stick left        = b.getLeftStick();
+    const dualsense::InputBody::Stick right       = b.getRightStick();
+    const dualsense::InputBody::Triggers triggers = b.getTriggers();
     int l2 = triggers.left, r2 = triggers.right;
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
-    const dualsense::InputBody::Buttons buttons = b.buttons();
-    dualsense::InputBody::Dpad dpad             = b.dpad();
+    const dualsense::InputBody::Buttons buttons = b.getButtons();
+    dualsense::InputBody::Dpad dpad             = b.getDpad();
     bool first                                  = !sensors.has_prev;
 
     bool real = false, analog = false;
@@ -151,7 +151,7 @@ private:
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
 
-    float g = b.accelerometer().len();
+    float g = b.getAccelerometer().getLength();
     if (g >= 2.25f && now - sensors.last_shake > 1500) {
       emitEvent("shake");
       sensors.last_shake = now;
@@ -263,9 +263,9 @@ private:
 
   void emitFrame(const dualsense::InputBody &b, const uint8_t *raw, size_t len) {
     emitFrameToApp(b, raw, len);
-    trackDpad(b.dpad());
-    trackButtons(b.buttons());
-    const dualsense::InputBody::Triggers triggers = b.triggers();
+    trackDpad(b.getDpad());
+    trackButtons(b.getButtons());
+    const dualsense::InputBody::Triggers triggers = b.getTriggers();
     trackTriggers(triggers.left, triggers.right);
     trackSensors(b);
   }
@@ -276,7 +276,7 @@ private:
 #ifdef DS_HAVE_OPUS
     if (auto *audioFrame = dualsense::MicFrame::asFrame(buf, len)) {
       size_t payload_len     = 0;
-      const uint8_t *payload = audioFrame->payload(buf, len, &payload_len);
+      const uint8_t *payload = audioFrame->getPayload(buf, len, &payload_len);
       if (!mic_decoder.isValid() && !mic_decoder.open(dualsense::MicFrame::sampleRate, 1)) return;
       int16_t pcm[dualsense::MicFrame::samples];
       int n = mic_decoder.decode(payload, payload_len, pcm, dualsense::MicFrame::samples);
@@ -286,12 +286,12 @@ private:
 #endif
 
     if (auto *r = dualsense::InputReport::asFrame(buf, len)) {
-      emitFrame(r->body(), buf, sizeof(*r));
+      emitFrame(r->getBody(), buf, sizeof(*r));
       return;
     }
 
     if (auto *r = dualsense::UsbInputReport::asFrame(buf, len)) {
-      emitFrame(r->body(), buf, sizeof(*r));
+      emitFrame(r->getBody(), buf, sizeof(*r));
     }
   }
 
