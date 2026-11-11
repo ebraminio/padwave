@@ -722,13 +722,9 @@ public:
 
   // Low three bits are the speaker preamp gain (0x2 is +6 dB); the upper
   // bits are undocumented.
-  constexpr void setSpeakerPreampControl(uint8_t value) {
-    claim(ValidFlag1::AudioControl2Enable);
-    speakerPreampControl = value;
-  }
-
   constexpr void setSpeakerPreampControl(SpeakerPreampGain gain) {
-    setSpeakerPreampControl(static_cast<uint8_t>(gain));
+    claim(ValidFlag1::AudioControl2Enable);
+    speakerPreampControl = static_cast<uint8_t>(gain);
   }
 
   constexpr void releaseLEDs() { claim(ValidFlag1::ReleaseLEDs); }

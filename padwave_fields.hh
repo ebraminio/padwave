@@ -46,7 +46,6 @@ inline const u8_field kU8Fields[] = {
     {"mute_button_led", &Body::setMuteButtonLed},
     {"power_save_control", &Body::setPowerSaveControl},
     {"motor_power_level", &Body::setMotorPowerLevel},
-    {"speaker_preamp_control", static_cast<Setter>(&Body::setSpeakerPreampControl)},
     {"lightbar_setup", nullptr},
 };
 
@@ -66,6 +65,13 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     *eq               = 0;
     const char *name  = pair;
     const char *value = eq + 1;
+
+    if (strcmp(name, "speaker_preamp_control") == 0) {
+      unsigned gain = static_cast<unsigned>(strtoul(value, nullptr, 0));
+      if (gain > 7) return false;
+      body->setSpeakerPreampControl(static_cast<Body::SpeakerPreampGain>(gain));
+      continue;
+    }
 
     if (strcmp(name, "player_led_brightness") == 0) {
       unsigned level = static_cast<unsigned>(strtoul(value, nullptr, 0));
