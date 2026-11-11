@@ -37,8 +37,6 @@ struct bool_field {
 };
 
 inline const u8_field kU8Fields[] = {
-    {"motor_right", &Body::setMotorRight},
-    {"motor_left", &Body::setMotorLeft},
     {"headphone_volume", &Body::setHeadphoneVolume},
     {"speaker_volume", &Body::setSpeakerVolume},
     {"mic_volume", &Body::setMicVolume},
@@ -65,6 +63,17 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
     *eq               = 0;
     const char *name  = pair;
     const char *value = eq + 1;
+
+    if (strcmp(name, "motor_left") == 0 || strcmp(name, "motor_right") == 0) {
+      auto motors       = body->getMotors();
+      uint8_t byteValue = static_cast<uint8_t>(strtoul(value, nullptr, 0));
+      if (strcmp(name, "motor_left") == 0)
+        motors.left = byteValue;
+      else
+        motors.right = byteValue;
+      body->setMotors(motors.left, motors.right);
+      continue;
+    }
 
     if (strcmp(name, "speaker_preamp_control") == 0) {
       unsigned gain = static_cast<unsigned>(strtoul(value, nullptr, 0));

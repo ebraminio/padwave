@@ -659,16 +659,18 @@ private:
   constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
 public:
-  constexpr void setMotorRight(uint8_t v) {
-    claim(ValidFlag0::CompatibleVibration);
-    claim(ValidFlag0::HapticsSelect);
-    motorRight = v;
-  }
+  struct Motors {
+    uint8_t left;
+    uint8_t right;
+  };
 
-  constexpr void setMotorLeft(uint8_t v) {
+  constexpr Motors getMotors() const { return {motorLeft, motorRight}; }
+
+  constexpr void setMotors(uint8_t left, uint8_t right) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
-    motorLeft = v;
+    motorLeft  = left;
+    motorRight = right;
   }
 
   constexpr void setHeadphoneVolume(uint8_t v) {
@@ -760,11 +762,6 @@ public:
   constexpr void setLeftTriggerEffect(const TriggerEffect &effect) {
     claim(ValidFlag0::LeftTriggerMotorEnable);
     leftTrigger = effect;
-  }
-
-  constexpr void setAudioRoute(AudioControl routing) {
-    claim(ValidFlag0::AudioControlEnable);
-    audioControl = static_cast<uint8_t>(routing);
   }
 
   constexpr void setMicMuted(bool muted) {
@@ -1455,9 +1452,8 @@ public:
 
   constexpr const OutputBody &getStateBody() const { return state.body; }
 
-  constexpr void setMotors(uint8_t right, uint8_t left) {
-    state.body.setMotorRight(right);
-    state.body.setMotorLeft(left);
+  constexpr void setMotors(uint8_t left, uint8_t right) {
+    state.body.setMotors(left, right);
   }
 
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
