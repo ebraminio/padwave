@@ -763,8 +763,7 @@ public:
   }
 
   constexpr OutputBody() {}
-  // Mutable field-by-field, but never replace the body wholesale.
-  OutputBody(const OutputBody &)            = default;
+  OutputBody(const OutputBody &)            = delete;
   OutputBody &operator=(const OutputBody &) = delete;
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
