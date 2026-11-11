@@ -19,7 +19,7 @@ namespace dualsense {
 namespace internal {
 struct WireProbe;
 
-template <typename Type, typename UnsignedType = Type>
+template <typename Type>
 struct NumType {
   friend struct WireProbe;
   constexpr NumType() { *this = Type{}; }
@@ -27,18 +27,18 @@ struct NumType {
   constexpr explicit NumType(Type value) { *this = value; }
 
   constexpr NumType &operator=(Type value) {
-    UnsignedType v = static_cast<UnsignedType>(value);
+    auto v = static_cast<std::make_unsigned_t<Type>>(value);
     for (unsigned i = 0; i < sizeof(Type); ++i) {
       bytes[i] = static_cast<unsigned char>((v & 0xFF));
-      v        = static_cast<UnsignedType>((v >> 8));
+      v        = static_cast<std::make_unsigned_t<Type>>((v >> 8));
     }
     return *this;
   }
 
   constexpr operator Type() const {
-    UnsignedType v = 0;
+    auto v = static_cast<std::make_unsigned_t<Type>>(0);
     for (unsigned i = 0; i < sizeof(Type); ++i)
-      v = static_cast<UnsignedType>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
+      v = static_cast<std::make_unsigned_t<Type>>(((v << 8) | bytes[sizeof(Type) - 1 - i]));
     return static_cast<Type>(v);
   }
 
@@ -62,16 +62,9 @@ private:
 using DSUINT8  = NumType<uint8_t>;
 using DSUINT16 = NumType<uint16_t>;
 using DSUINT32 = NumType<uint32_t>;
-using DSINT8   = NumType<int8_t, uint8_t>;
-using DSINT16  = NumType<int16_t, uint16_t>;
-using DSINT32  = NumType<int32_t, uint32_t>;
-
-static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
-static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
-static_assert(sizeof(DSUINT32) == 4, "DSUINT32 is four bytes");
-static_assert(sizeof(DSINT8) == 1, "DSINT8 is one byte");
-static_assert(sizeof(DSINT16) == 2, "DSINT16 is two bytes");
-static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
+using DSINT8   = NumType<int8_t>;
+using DSINT16  = NumType<int16_t>;
+using DSINT32  = NumType<int32_t>;
 
 // The CRC the controller checks: standard CRC-32 (IEEE 802.3, reflected
 // polynomial 0xEDB88320), seeded with the stream's seed byte (0xA1 input,
@@ -2000,6 +1993,26 @@ public:
       return v;
     }();
     static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
+
+
+    static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
+    static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
+    static_assert(sizeof(DSUINT32) == 4, "DSUINT32 is four bytes");
+    static_assert(sizeof(DSINT8) == 1, "DSINT8 is one byte");
+    static_assert(sizeof(DSINT16) == 2, "DSINT16 is two bytes");
+    static_assert(sizeof(DSINT32) == 4, "DSINT32 is four bytes");
+    static_assert(std::is_trivially_copyable_v<DSUINT8>, "wire integers are POD");
+    static_assert(std::is_trivially_copyable_v<DSUINT16>, "wire integers are POD");
+    static_assert(std::is_trivially_copyable_v<DSUINT32>, "wire integers are POD");
+    static_assert(std::is_trivially_copyable_v<DSINT8>, "wire integers are POD");
+    static_assert(std::is_trivially_copyable_v<DSINT16>, "wire integers are POD");
+    static_assert(std::is_trivially_copyable_v<DSINT32>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSUINT8>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSUINT16>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSUINT32>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSINT8>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSINT16>, "wire integers are POD");
+    static_assert(std::is_standard_layout_v<DSINT32>, "wire integers are POD");
 
     // --- CRC-32 ----------------------------------------------------------------
 
