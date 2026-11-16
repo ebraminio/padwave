@@ -224,6 +224,8 @@ private:
   char controller_mac[32] = "";
   bool is_usb             = false;
   bool speaker            = false;
+  bool audio_state_synced = false;
+  int audio_state_frames  = 0;
   FILE *usb_audio         = nullptr;
   App *app                = nullptr;
 
@@ -582,8 +584,9 @@ private:
   void sendAudioRoute() {
     auto route    = speaker ? dualsense::OutputBody::AudioControl::Speaker
                             : dualsense::OutputBody::AudioControl::Headphones;
-    audio_routing = static_cast<uint8_t>(route);
-    if (is_usb) sendAudioState();
+    audio_routing      = static_cast<uint8_t>(route);
+    audio_state_synced = false;
+    sendAudioState();
   }
 
   bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
@@ -1089,8 +1092,6 @@ private:
                                   audio_sequence);
 
     report.setMotors(motor_left, motor_right);
-    report.setRouting(speaker ? dualsense::OutputBody::AudioControl::Speaker
-                              : dualsense::OutputBody::AudioControl::Headphones);
     report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
       const size_t first = i * 8;
@@ -1118,11 +1119,25 @@ private:
       else if (!openDevice())
         hidraw_retry = 5;
     }
+    bool wrote = false;
     if (hidraw >= 0) {
       ssize_t n = write(hidraw, &report, sizeof(report));
-      if (n != static_cast<ssize_t>(sizeof(report))) {
+      if (n == static_cast<ssize_t>(sizeof(report))) {
+        wrote = true;
+      } else {
         dropDevice();
         hidraw_retry = 5;
+      }
+    }
+
+    // The startup route is written before 0x36 exists. Some firmware ignores
+    // that early 0x31; resend the audio state once the stream is live.
+    if (wrote) {
+      if (!audio_state_synced || ++audio_state_frames >= 100) {
+        if (sendAudioState()) {
+          audio_state_synced = true;
+          audio_state_frames = 0;
+        }
       }
     }
 
@@ -1463,6 +1478,8 @@ public:
   bool create(const char *node = nullptr) {
     destroy();
     is_usb             = false;
+    audio_state_synced = false;
+    audio_state_frames = 0;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
