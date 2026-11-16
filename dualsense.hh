@@ -626,12 +626,15 @@ public:
     Gain6dB = 0x02,
   };
 
-  // +0x07 audio_control: microphone select in bits 0-1, echo/noise cancel
-  // in bits 2-3, output path in bits 4-5, input path in bits 6-7. This header
-  // only exposes the output path.
+  // +0x07 audio_control:
+  //   bits 0-1  microphone select
+  //   bit  2    echo cancellation
+  //   bit  3    noise cancellation
+  //   bits 4-5  output path
+  //   bits 6-7  input path (values unpublished; mask only)
   //
-  // The 2-bit selector routes the stereo source into the headphone pair and
-  // the mono speaker:
+  // The 2-bit output selector routes the stereo source into the headphone pair
+  // and the mono speaker:
   enum class AudioOutputPath : uint8_t {
     HeadphonesStereo     = 0, // L to left earpiece, R to right earpiece, speaker muted
     HeadphonesMono       = 1, // L to both earpieces, speaker muted
@@ -640,9 +643,20 @@ public:
   };
 
   enum class AudioControl : uint8_t {
+    MicAuto     = 0x00, // bits 0-1
+    MicInternal = 0x01,
+    MicExternal = 0x02,
+    MicMask     = 0x03,
+
+    EchoCancel  = 0x04, // bit 2
+    NoiseCancel = 0x08, // bit 3
+
     Headphones           = static_cast<uint8_t>(AudioOutputPath::HeadphonesStereo) << 4,
     HeadphonesAndSpeaker = static_cast<uint8_t>(AudioOutputPath::HeadphonesAndSpeaker) << 4,
     Speaker              = static_cast<uint8_t>(AudioOutputPath::SpeakerMono) << 4,
+    OutputPathMask       = 0x30, // bits 4-5
+
+    InputPathMask = 0xC0, // bits 6-7
   };
 
 private:
