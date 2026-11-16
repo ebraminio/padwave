@@ -626,20 +626,23 @@ public:
     Gain6dB = 0x02,
   };
 
-  // +0x07: the output path. 0x09 is the membrane speaker, 0x00 the headphone
-  // jack; the audio service patched the snapshot to 0x00 when the jack is in
-  // use, which is why a silent jack was the first symptom of getting this
-  // wrong.
+  // +0x07 audio_control: microphone select in bits 0-1, echo/noise cancel
+  // in bits 2-3, output path in bits 4-5, input path in bits 6-7. This header
+  // only exposes the output path.
+  //
+  // The 2-bit selector routes the stereo source into the headphone pair and
+  // the mono speaker:
   enum class AudioOutputPath : uint8_t {
-    L_R_X = 0,
-    L_L_X = 1,
-    L_L_R = 2,
-    X_X_R = 3,
+    HeadphonesStereo     = 0, // L to left earpiece, R to right earpiece, speaker muted
+    HeadphonesMono       = 1, // L to both earpieces, speaker muted
+    HeadphonesAndSpeaker = 2, // L to headphones, R to the mono speaker
+    SpeakerMono          = 3, // headphones muted, R to the mono speaker
   };
 
   enum class AudioControl : uint8_t {
-    Headphones = 0x00,
-    Speaker    = static_cast<uint8_t>(AudioOutputPath::X_X_R) << 4,
+    Headphones           = static_cast<uint8_t>(AudioOutputPath::HeadphonesStereo) << 4,
+    HeadphonesAndSpeaker = static_cast<uint8_t>(AudioOutputPath::HeadphonesAndSpeaker) << 4,
+    Speaker              = static_cast<uint8_t>(AudioOutputPath::SpeakerMono) << 4,
   };
 
 private:
