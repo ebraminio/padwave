@@ -225,6 +225,7 @@ private:
   bool is_usb             = false;
   bool speaker            = false;
   bool audio_state_synced = false;
+  int audio_state_frames  = 0;
   FILE *usb_audio         = nullptr;
   App *app                = nullptr;
 
@@ -1131,7 +1132,14 @@ private:
 
     // The startup route is written before 0x36 exists. Some firmware ignores
     // that early 0x31; resend the audio state once the stream is live.
-    if (wrote && !audio_state_synced) audio_state_synced = sendAudioState();
+    if (wrote) {
+      if (!audio_state_synced || ++audio_state_frames >= 100) {
+        if (sendAudioState()) {
+          audio_state_synced = true;
+          audio_state_frames = 0;
+        }
+      }
+    }
 
     sent++;
   }
@@ -1471,6 +1479,7 @@ public:
     destroy();
     is_usb             = false;
     audio_state_synced = false;
+    audio_state_frames = 0;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
