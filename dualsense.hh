@@ -1471,18 +1471,20 @@ public:
 
 #ifdef DS_HAVE_OPUS
   bool setPcm(const float *pcm, int frames, Encoder &encoder) {
-    uint8_t payload[opusSize];
-    int n = encoder.encode(pcm, frames, payload, static_cast<int>(sizeof(payload)));
-    if (n < 0) n = 0;
-    setOpus(payload, static_cast<size_t>(n));
-    return n > 0;
+    return setOpus([&](uint8_t *out, size_t cap) {
+      return encoder.encode(pcm, frames, out, static_cast<int>(cap));
+    });
   }
 #endif
 
-  constexpr void setOpus(const uint8_t *data, size_t len) {
-    size_t n = len < opusSize ? len : opusSize;
-    for (size_t i = 0; i < n; ++i) opus[i] = data[i];
-    for (size_t i = n; i < opusSize; ++i) opus[i] = 0;
+  template <typename Fill>
+  bool setOpus(Fill fill) {
+    auto *out = reinterpret_cast<uint8_t *>(opus);
+    int n     = fill(out, opusSize);
+    if (n < 0) n = 0;
+    if (n > static_cast<int>(opusSize)) n = opusSize;
+    for (size_t i = static_cast<size_t>(n); i < opusSize; ++i) opus[i] = 0;
+    return n > 0;
   }
 
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
