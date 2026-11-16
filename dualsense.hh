@@ -1453,8 +1453,17 @@ public:
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   static constexpr uint16_t pcmFrames = 480;
 
+  // Set the vibration motors' cancels haptic feedback if either motor is active
   constexpr void setMotors(uint8_t left, uint8_t right) {
-    state.body.setMotors(left, right);
+    if (left != 0 || right != 0) state.body.setMotors(left, right);
+  }
+
+  constexpr void setHeadphoneVolume(uint8_t v) {
+    state.body.setHeadphoneVolume(v);
+  }
+
+  constexpr void setSpeakerVolume(uint8_t v) {
+    state.body.setSpeakerVolume(v);
   }
 
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
