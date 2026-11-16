@@ -1428,13 +1428,13 @@ private:
     return reportIdValue == reportId && crc == internal::crc_of(*this, crcSeed);
   }
 
+  constexpr const OutputBody &getStateBody() const { return state.body; }
+
 public:
   static constexpr uint8_t hapticSize = 64;
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
   // CBR 160 kbps = 200 bytes) fed from 512-sample decoder blocks.
   static constexpr uint16_t pcmFrames = 480;
-
-  constexpr const OutputBody &getStateBody() const { return state.body; }
 
   constexpr void setMotors(uint8_t left, uint8_t right) {
     state.body.setMotors(left, right);
