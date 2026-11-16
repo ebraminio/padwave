@@ -1486,6 +1486,15 @@ public:
     reportIdValue = reportId;
   }
 
+private:
+  // Only exposed for WireProbe, otherwise the simpler constructor+init()
+  // method calls should be used.
+  constexpr AudioReport(SpeakerTag tagValue, ConfigMask mask, OutputReport::Sequence &sequence)
+      : AudioReport() {
+    init(tagValue, mask, sequence);
+  }
+
+public:
   constexpr void init(SpeakerTag tagValue, ConfigMask mask, OutputReport::Sequence &sequence) {
     configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
     config.mask = mask;
@@ -1973,28 +1982,25 @@ public:
     static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
 
     constexpr AudioReport report = [] {
-      // OutputReport::Sequence sequence;
-      // report.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly, sequence);
-      // auto report = AudioReport{};
-      return AudioReport{};
-      // report.init(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly, sequence);
-      // return report;
+      OutputReport::Sequence sequence;
+      return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
+                         sequence);
     }();
     static_assert(sizeof(report) == sizeof(AudioReport));
-    // static_assert(report.reportIdValue == ReportId::Audio);
-    // static_assert(report.seqTag == 0x00);
-    // static_assert(report.configHeader.pid() == 0x91);
-    // static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
-    // static_assert(report.getEnableMask() == AudioReport::ConfigMask::SpeakerOnly);
-    // static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
-    // static_assert(report.config.counter == 0);
-    // static_assert(report.stateTag == 0x90);
-    // static_assert(report.stateLength == 63);
-    // static_assert(report.getStateBody().validFlag0 == 0);
-    // static_assert(report.getStateBody().validFlag1 == 0);
-    // static_assert(report.getSpeakerTag() == AudioReport::SpeakerTag::Jack);
-    // static_assert(report.speakerLength == 200);
-    // static_assert(report.opus[0] == 0);
+    static_assert(report.reportIdValue == ReportId::Audio);
+    static_assert(report.seqTag == 0x00);
+    static_assert(report.configHeader.pid() == 0x91);
+    static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
+    static_assert(report.getEnableMask() == AudioReport::ConfigMask::SpeakerOnly);
+    static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
+    static_assert(report.config.counter == 0);
+    static_assert(report.stateTag == 0x90);
+    static_assert(report.stateLength == 63);
+    static_assert(report.getStateBody().validFlag0 == 0);
+    static_assert(report.getStateBody().validFlag1 == 0);
+    static_assert(report.getSpeakerTag() == AudioReport::SpeakerTag::Jack);
+    static_assert(report.speakerLength == 200);
+    static_assert(report.opus[0] == 0);
 
     // --- byte order ------------------------------------------------------------
     constexpr DSUINT16 kU16 = [] {
