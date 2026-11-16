@@ -554,7 +554,7 @@ public:
 
     kvAdd(buf, cap, &o, "audio.present", "%s", this->player.isValid() ? "true" : "false");
     kvText(buf, cap, &o, "audio.sink", this->player.audioSink());
-    kvText(buf, cap, &o, "audio.route", this->player.speakerOutput() ? "speaker" : "headphones");
+    kvText(buf, cap, &o, "audio.route", audioPathName(this->player.getAudioPath()));
     kvText(buf, cap, &o, "audio.state",
            this->player.audioActive() ? "running" : (this->player.isValid() ? "ready" : "null"));
 
@@ -838,6 +838,22 @@ public:
       setLightbarSetup(setup);
       serviceLeds();
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
+    }
+
+    if (strcmp(kind, "audio_route") == 0) {
+      int value = static_cast<int>(kvNumber(body, "value", 0));
+      if (value < 0 || value > 3)
+        return snprintf(out, out_cap, "ok=false\nerror=route must be 0..3\n");
+      auto route = static_cast<dualsense::OutputBody::AudioOutputPath>(value);
+      if (!this->player.setAudioPath(route))
+        return snprintf(out, out_cap, "ok=false\nerror=route write failed\n");
+      return snprintf(out, out_cap, "ok=true\nnote=%s\n", audioPathName(route));
+    }
+
+    if (strcmp(kind, "audio_route_auto") == 0) {
+      applyOutputRoute();
+      return snprintf(out, out_cap, "ok=true\nnote=%s\n",
+                      audioPathName(this->player.getAudioPath()));
     }
 
     if (strcmp(kind, "player_led_brightness") == 0) {
@@ -1236,6 +1252,15 @@ private:
   bool externalHost() const { return this->plugged_usb_data && !this->player.isUsb(); }
 
   bool padwaveDisabled() const { return this->plugged_usb_data && this->controller_disabled; }
+
+  static const char *audioPathName(dualsense::OutputBody::AudioOutputPath path) {
+    using Path = dualsense::OutputBody::AudioOutputPath;
+    if (path == Path::HeadphonesStereo) return "headphones-stereo";
+    if (path == Path::HeadphonesMono) return "headphones-mono";
+    if (path == Path::HeadphonesAndSpeaker) return "headphones-speaker";
+    if (path == Path::SpeakerMono) return "speaker-mono";
+    return "unknown";
+  }
 
   void applyOutputRoute() {
     if (this->player) this->player.setSpeaker(!this->jack);

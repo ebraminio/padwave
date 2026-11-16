@@ -224,6 +224,8 @@ private:
   char controller_mac[32] = "";
   bool is_usb             = false;
   bool speaker            = false;
+  dualsense::OutputBody::AudioOutputPath audio_path =
+      dualsense::OutputBody::AudioOutputPath::HeadphonesStereo;
   FILE *usb_audio         = nullptr;
   App *app                = nullptr;
 
@@ -577,11 +579,11 @@ private:
     });
   }
 
-  void sendAudioRoute() {
-    auto route    = speaker ? dualsense::OutputBody::AudioControl::Speaker
-                            : dualsense::OutputBody::AudioControl::Headphones;
-    audio_routing = static_cast<uint8_t>(route);
-    sendAudioState();
+  bool sendAudioRoute() {
+    return sendOutput([&](dualsense::OutputBody &body) {
+      body.setAudioRouting(audio_routing);
+      return true;
+    });
   }
 
   bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
@@ -1417,13 +1419,20 @@ public:
 
   void attach(App *owner) { app = owner; }
 
-  void setSpeaker(bool on) {
-    if (on == speaker) return;
-    speaker = on;
-    sendAudioRoute();
+  bool setAudioPath(dualsense::OutputBody::AudioOutputPath route) {
+    audio_path    = route;
+    speaker       = route == dualsense::OutputBody::AudioOutputPath::SpeakerMono ||
+              route == dualsense::OutputBody::AudioOutputPath::HeadphonesAndSpeaker;
+    audio_routing = static_cast<uint8_t>(static_cast<uint8_t>(route) << 4);
+    return sendAudioRoute();
   }
 
-  bool speakerOutput() const { return speaker; }
+  void setSpeaker(bool on) {
+    setAudioPath(on ? dualsense::OutputBody::AudioOutputPath::SpeakerMono
+                    : dualsense::OutputBody::AudioOutputPath::HeadphonesStereo);
+  }
+
+  dualsense::OutputBody::AudioOutputPath getAudioPath() const { return audio_path; }
 
   void setSpeed(int percent) {
     if (percent < 50) percent = 50;

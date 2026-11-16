@@ -413,6 +413,19 @@
       </div>
 
       <div class="lab-row">
+        <b>audio route</b>
+        <select id="labAudioRoute" title="audio_control output path (bits 4-5)">
+          <option value="0">headphones stereo</option>
+          <option value="1">headphones mono</option>
+          <option value="2">headphones + speaker</option>
+          <option value="3">speaker mono</option>
+        </select>
+        <button id="labAudioRouteApply">apply</button>
+        <button id="labAudioRouteAuto">auto (jack)</button>
+        <span id="labAudioRouteMsg" style="font-family:var(--mono);font-size:11px"></span>
+      </div>
+
+      <div class="lab-row">
         <b>player LEDs</b>
         <button class="led" data-led="1">1</button>
         <button class="led" data-led="2">2</button>
@@ -1158,6 +1171,19 @@ document.querySelectorAll("[data-led]").forEach(btn => {
 $("#labLedInstant").onchange = (e) => {
   labLedInstant = e.target.checked;
   labSend({ kind: "player_leds", mask: labLedPayload() });
+};
+
+$("#labAudioRouteApply").onclick = async () => {
+  const data = await labSend({
+    kind: "audio_route",
+    value: Number($("#labAudioRoute").value)
+  });
+  $("#labAudioRouteMsg").textContent = data.ok === true ? (data.note || "sent") : "failed";
+};
+
+$("#labAudioRouteAuto").onclick = async () => {
+  const data = await labSend({ kind: "audio_route_auto" });
+  $("#labAudioRouteMsg").textContent = data.ok === true ? (data.note || "auto") : "failed";
 };
 
 $("#labBarApply").onclick = () => {

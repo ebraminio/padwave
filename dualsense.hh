@@ -653,6 +653,7 @@ public:
     NoiseCancel = 0x08, // bit 3
 
     Headphones           = static_cast<uint8_t>(AudioOutputPath::HeadphonesStereo) << 4,
+    HeadphonesMono       = static_cast<uint8_t>(AudioOutputPath::HeadphonesMono) << 4,
     HeadphonesAndSpeaker = static_cast<uint8_t>(AudioOutputPath::HeadphonesAndSpeaker) << 4,
     Speaker              = static_cast<uint8_t>(AudioOutputPath::SpeakerMono) << 4,
     OutputPathMask       = 0x30, // bits 4-5
