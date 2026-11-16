@@ -224,6 +224,7 @@ private:
   char controller_mac[32] = "";
   bool is_usb             = false;
   bool speaker            = false;
+  bool audio_state_synced = false;
   FILE *usb_audio         = nullptr;
   App *app                = nullptr;
 
@@ -565,8 +566,8 @@ private:
     return writeDevice(&report, sizeof(report));
   }
 
-  void sendAudioState() {
-    sendOutput([&](dualsense::OutputBody &body) {
+  bool sendAudioState() {
+    return sendOutput([&](dualsense::OutputBody &body) {
       body.setHeadphoneVolume(headphone_volume);
       body.setSpeakerVolume(speaker_volume);
       body.setMicVolume(mic_volume);
@@ -582,7 +583,8 @@ private:
   void sendAudioRoute() {
     auto route    = speaker ? dualsense::OutputBody::AudioControl::Speaker
                             : dualsense::OutputBody::AudioControl::Headphones;
-    audio_routing = static_cast<uint8_t>(route);
+    audio_routing      = static_cast<uint8_t>(route);
+    audio_state_synced = false;
     sendAudioState();
   }
 
@@ -1116,13 +1118,20 @@ private:
       else if (!openDevice())
         hidraw_retry = 5;
     }
+    bool wrote = false;
     if (hidraw >= 0) {
       ssize_t n = write(hidraw, &report, sizeof(report));
-      if (n != static_cast<ssize_t>(sizeof(report))) {
+      if (n == static_cast<ssize_t>(sizeof(report))) {
+        wrote = true;
+      } else {
         dropDevice();
         hidraw_retry = 5;
       }
     }
+
+    // The startup route is written before 0x36 exists. Some firmware ignores
+    // that early 0x31; resend the audio state once the stream is live.
+    if (wrote && !audio_state_synced) audio_state_synced = sendAudioState();
 
     sent++;
   }
@@ -1460,7 +1469,8 @@ public:
 
   bool create(const char *node = nullptr) {
     destroy();
-    is_usb = false;
+    is_usb             = false;
+    audio_state_synced = false;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);
@@ -1478,7 +1488,6 @@ public:
 
     if (is_usb && !startUsbAudio()) fprintf(stderr, "padwave player: USB audio unavailable\n");
     sendMuteLed(false);
-    sendAudioRoute();
 
     pkt     = av_packet_alloc();
     frame   = av_frame_alloc();
