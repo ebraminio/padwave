@@ -40,7 +40,7 @@ inline const u8_field kU8Fields[] = {
     {"headphone_volume", &Body::setHeadphoneVolume},
     {"speaker_volume", &Body::setSpeakerVolume},
     {"mic_volume", &Body::setMicVolume},
-    {"audio_control", &Body::setAudioRouting},
+    {"audio_control", &Body::setAudioControl},
     {"mute_button_led", &Body::setMuteButtonLed},
     {"power_save_control", &Body::setPowerSaveControl},
     {"motor_power_level", &Body::setMotorPowerLevel},

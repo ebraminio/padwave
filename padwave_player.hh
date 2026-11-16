@@ -279,7 +279,7 @@ private:
   uint8_t speaker_volume                     = 0x64;
   uint8_t mic_volume                         = 0;
   uint8_t power_save_control                 = 0;
-  uint8_t audio_routing                      = 0;
+  uint8_t audio_control                     = 0;
   dualsense::OutputBody::SpeakerPreamp speaker_preamp_control =
       dualsense::OutputBody::SpeakerPreamp::Gain6dB;
   bool haptic_lowpass                        = false;
@@ -551,7 +551,10 @@ private:
     if (fieldNumber(text, "mic_volume", value)) mic_volume = static_cast<uint8_t>(value);
     if (fieldNumber(text, "power_save_control", value))
       power_save_control = static_cast<uint8_t>(value);
-    if (fieldNumber(text, "audio_control", value)) audio_routing = static_cast<uint8_t>(value);
+    if (fieldNumber(text, "audio_control", value)) {
+      audio_control = static_cast<uint8_t>(value);
+      updateAudioPath();
+    }
     if (fieldNumber(text, "haptic_low_pass_filter", value)) haptic_lowpass = value != 0;
   }
 
@@ -579,9 +582,15 @@ private:
     });
   }
 
-  bool sendAudioRoute() {
+  void updateAudioPath() {
+    audio_path = static_cast<dualsense::OutputBody::AudioOutputPath>((audio_control >> 4) & 0x03);
+    speaker    = audio_path == dualsense::OutputBody::AudioOutputPath::SpeakerMono ||
+              audio_path == dualsense::OutputBody::AudioOutputPath::HeadphonesAndSpeaker;
+  }
+
+  bool sendAudioControl() {
     return sendOutput([&](dualsense::OutputBody &body) {
-      body.setAudioRouting(audio_routing);
+      body.setAudioControl(audio_control);
       return true;
     });
   }
@@ -1420,11 +1429,16 @@ public:
   void attach(App *owner) { app = owner; }
 
   bool setAudioPath(dualsense::OutputBody::AudioOutputPath route) {
-    audio_path    = route;
-    speaker       = route == dualsense::OutputBody::AudioOutputPath::SpeakerMono ||
-              route == dualsense::OutputBody::AudioOutputPath::HeadphonesAndSpeaker;
-    audio_routing = static_cast<uint8_t>(static_cast<uint8_t>(route) << 4);
-    return sendAudioRoute();
+    audio_control = static_cast<uint8_t>((audio_control & ~0x30) |
+                                         (static_cast<uint8_t>(route) << 4));
+    updateAudioPath();
+    return sendAudioControl();
+  }
+
+  bool setAudioControl(uint8_t value) {
+    audio_control = value;
+    updateAudioPath();
+    return sendAudioControl();
   }
 
   void setSpeaker(bool on) {

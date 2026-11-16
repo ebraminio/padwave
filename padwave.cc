@@ -61,7 +61,7 @@ private:
   int timer_fd           = -1;
   int64_t start_ms       = 0;
   unsigned long requests = 0;
-  char index_response[70000];
+  char index_response[100000];
   size_t index_len = 0;
   App *app         = nullptr;
 

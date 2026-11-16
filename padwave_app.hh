@@ -840,17 +840,17 @@ public:
       return snprintf(out, out_cap, "ok=true\nnote=setup %d\n", v);
     }
 
-    if (strcmp(kind, "audio_route") == 0) {
+    if (strcmp(kind, "audio_control") == 0) {
       int value = static_cast<int>(kvNumber(body, "value", 0));
-      if (value < 0 || value > 3)
-        return snprintf(out, out_cap, "ok=false\nerror=route must be 0..3\n");
-      auto route = static_cast<dualsense::OutputBody::AudioOutputPath>(value);
-      if (!this->player.setAudioPath(route))
-        return snprintf(out, out_cap, "ok=false\nerror=route write failed\n");
-      return snprintf(out, out_cap, "ok=true\nnote=%s\n", audioPathName(route));
+      if (value < 0 || value > 255)
+        return snprintf(out, out_cap, "ok=false\nerror=value must be 0..255\n");
+      if (!this->player.setAudioControl(static_cast<uint8_t>(value)))
+        return snprintf(out, out_cap, "ok=false\nerror=audio control write failed\n");
+      return snprintf(out, out_cap, "ok=true\nnote=0x%02x %s\n",
+                      static_cast<unsigned>(value), audioPathName(this->player.getAudioPath()));
     }
 
-    if (strcmp(kind, "audio_route_auto") == 0) {
+    if (strcmp(kind, "audio_control_auto") == 0) {
       applyOutputRoute();
       return snprintf(out, out_cap, "ok=true\nnote=%s\n",
                       audioPathName(this->player.getAudioPath()));

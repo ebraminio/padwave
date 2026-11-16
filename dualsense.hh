@@ -706,7 +706,7 @@ public:
     micVolume = v;
   }
 
-  constexpr void setAudioRouting(uint8_t v) {
+  constexpr void setAudioControl(uint8_t v) {
     claim(ValidFlag0::AudioControlEnable);
     audioControl = v;
   }
