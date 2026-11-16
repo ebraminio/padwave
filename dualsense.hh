@@ -1484,6 +1484,15 @@ public:
 
   constexpr explicit AudioReport() {
     reportIdValue = reportId;
+    configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
+    for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
+    stateTag    = packetPid(SubPacketId::State);
+    stateLength = stateSize;
+    hapticsPacket.setHeader(SubPacketId::Data, hapticSize);
+    speakerLength = opusSize;
+    for (auto &byte : padding) byte = 0;
+    for (auto &byte : opus) byte = 0;
+    crc = 0;
   }
 
 private:
@@ -1491,23 +1500,22 @@ private:
   // method calls should be used.
   constexpr AudioReport(SpeakerTag tagValue, ConfigMask mask, OutputReport::Sequence &sequence)
       : AudioReport() {
-    init(tagValue, mask, sequence);
+    setSpeakTag(tagValue);
+    setConfig(mask);
+    setSequence(sequence);
   }
 
 public:
-  constexpr void init(SpeakerTag tagValue, ConfigMask mask, OutputReport::Sequence &sequence) {
-    configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
-    config.mask = mask;
-    for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
-    stateTag    = packetPid(SubPacketId::State);
-    stateLength = stateSize;
-    hapticsPacket.setHeader(SubPacketId::Data, hapticSize);
+  constexpr void setSpeakTag(SpeakerTag tagValue) {
     speakerTagValue =
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
-    speakerLength = opusSize;
-    for (auto &byte : padding) byte = 0;
-    for (auto &byte : opus) byte = 0;
-    crc            = 0;
+  }
+
+  constexpr void setConfig(ConfigMask mask) {
+    config.mask = mask;
+  }
+
+  constexpr void setSequence(OutputReport::Sequence &sequence) {
     seqTag         = sequence.next();
     config.counter = sequence.nextCounter();
   }
