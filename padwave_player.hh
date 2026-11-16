@@ -227,6 +227,7 @@ private:
   FILE *usb_audio         = nullptr;
   App *app                = nullptr;
 
+  dualsense::AudioReport audio_report{};
   dualsense::AudioReport::Encoder enc;
   dualsense::OutputReport::Sequence audio_sequence;
 
@@ -1079,16 +1080,15 @@ private:
   void sendReport(const float *pcm, int frames) {
     if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     const float hgain = static_cast<float>(haptic_gain) / 100.0f;
-    dualsense::AudioReport report(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
-                                          : dualsense::AudioReport::SpeakerTag::Jack,
-                                  mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
-                                      : dualsense::AudioReport::ConfigMask::SpeakerOnly,
-                                  audio_sequence);
-
-    report.setMotors(motor_left, motor_right);
-    report.setHeadphoneVolume(headphone_volume);
-    report.setSpeakerVolume(speaker_volume);
-    report.setHaptics([&](size_t i) {
+    audio_report.init(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
+                              : dualsense::AudioReport::SpeakerTag::Jack,
+                      mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
+                          : dualsense::AudioReport::ConfigMask::SpeakerOnly,
+                      audio_sequence);
+    audio_report.setMotors(motor_left, motor_right);
+    audio_report.setHeadphoneVolume(headphone_volume);
+    audio_report.setSpeakerVolume(speaker_volume);
+    audio_report.setHaptics([&](size_t i) {
       if (!haptic_subwoofer) return int8_t{0};
       const size_t first = i * 8;
       if (first >= static_cast<size_t>(frames)) return int8_t{0};
@@ -1103,9 +1103,9 @@ private:
       return static_cast<int8_t>(output * 127.0f);
     });
 
-    report.setPcm(pcm, frames, enc);
+    audio_report.setPcm(pcm, frames, enc);
 
-    report.sign();
+    audio_report.sign();
 
     // The controller can sleep (idle power-off) and come back on a new hidraw
     // node. Retry about once a second, and drop a stale fd on a failed write.
@@ -1116,8 +1116,8 @@ private:
         hidraw_retry = 5;
     }
     if (hidraw >= 0) {
-      ssize_t n = write(hidraw, &report, sizeof(report));
-      if (n != static_cast<ssize_t>(sizeof(report))) {
+      ssize_t n = write(hidraw, &audio_report, sizeof(audio_report));
+      if (n != static_cast<ssize_t>(sizeof(audio_report))) {
         dropDevice();
         hidraw_retry = 5;
       }
