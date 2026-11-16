@@ -1440,6 +1440,10 @@ public:
     state.body.setMotors(left, right);
   }
 
+  constexpr void setRouting(OutputBody::AudioControl routing) {
+    state.body.setAudioRouting(static_cast<uint8_t>(routing));
+  }
+
   constexpr explicit AudioReport(SpeakerTag tagValue, ConfigMask mask,
                                  OutputReport::Sequence &sequence) {
     reportIdValue = reportId;
