@@ -673,11 +673,11 @@ private:
   constexpr void clear(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(f)); }
   constexpr void clear(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(f)); }
 
-  // This is only for AudioReport to clear motor-related flags, this is
-  // specially crafted to support both supporting compatible vibration
-  // and haptics outputs where body isn't changed.
+  // This is only exposed for AudioReport to clear motor-related flags, 
+  // this is specially crafted to support both supporting compatible
+  // vibration and haptics outputs where body isn't changed.
   constexpr void clearMotorsClaims() {
-    if (motorLeft == 0 || motorRight == 0) {
+    if (motorLeft == 0 && motorRight == 0) {
       clear(ValidFlag0::CompatibleVibration);
       clear(ValidFlag0::HapticsSelect);
     } else setMotors(0, 0);
