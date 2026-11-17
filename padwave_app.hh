@@ -408,6 +408,9 @@ public:
     micReset();
   }
 
+  // hcitool is a thin wrapper over the unprivileged AF_BLUETOOTH HCI socket
+  // used by libbluetooth. It runs as the service user here without root or
+  // capabilities; the CLI avoids adding a libbluetooth-dev build dependency.
   void updateLinkStats() {
     if (!this->controller || this->player.isUsb() || !this->controller_mac[0]) {
       this->rssi_valid  = false;
