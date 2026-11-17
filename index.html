@@ -446,6 +446,14 @@
       </div>
 
       <div class="lab-row">
+        <b>bluetooth link</b>
+        <span>rssi <b id="labRssi">—</b></span>
+        <span>lq <b id="labLq">—</b></span>
+        <span>tx <b id="labTpl">—</b></span>
+        <span>afh <b id="labAfh">—</b></span>
+      </div>
+
+      <div class="lab-row">
         <b>player LEDs</b>
         <button class="led" data-led="1">1</button>
         <button class="led" data-led="2">2</button>
@@ -705,6 +713,11 @@ function render(s) {
   $("#battText").textContent =
     c.battery != null ? `${c.battery}%${chargeMark}` : "—";
   $("#rssiText").textContent = c.rssi != null ? `${c.rssi} dBm` : "—";
+  $("#labRssi").textContent = c.rssi != null ? `${c.rssi} dBm` : "—";
+  $("#labLq").textContent = c.link_quality != null ? c.link_quality : "—";
+  $("#labTpl").textContent = c.tx_power != null ? c.tx_power : "—";
+  $("#labAfh").textContent = c.afh_channels != null ? `${c.afh_channels}/79` : "—";
+  $("#labAfh").title = c.afh_map || "";
   const powerNames = {
     discharging: "discharging",
     charging: "charging",

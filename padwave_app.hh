@@ -241,6 +241,10 @@ private:
   int battery              = -1;
   int rssi                 = 0;
   bool rssi_valid           = false;
+  int link_quality         = -1;
+  int tx_power             = -1;
+  int afh_channels         = -1;
+  char afh_map[24]         = "";
   long rssi_at              = 0;
   char charging[16]        = "unknown";
   char powerState[32]      = "unknown";
@@ -404,31 +408,54 @@ public:
     micReset();
   }
 
-  void updateRssi() {
+  void updateLinkStats() {
     if (!this->controller || this->player.isUsb() || !this->controller_mac[0]) {
-      this->rssi_valid = false;
+      this->rssi_valid  = false;
+      this->link_quality = -1;
+      this->tx_power     = -1;
+      this->afh_channels = -1;
+      this->afh_map[0]   = 0;
       return;
     }
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "hcitool rssi %s 2>/dev/null", this->controller_mac);
+    char cmd[320];
+    snprintf(cmd, sizeof(cmd),
+             "hcitool rssi %s 2>/dev/null; hcitool lq %s 2>/dev/null; "
+             "hcitool tpl %s 2>/dev/null; hcitool afh %s 2>/dev/null",
+             this->controller_mac, this->controller_mac, this->controller_mac,
+             this->controller_mac);
     FILE *pipe = popen(cmd, "r");
     if (!pipe) {
       this->rssi_valid = false;
       return;
     }
-    char line[128];
-    int value  = 0;
-    bool found = false;
+    char line[160];
+    this->rssi_valid  = false;
+    this->link_quality = -1;
+    this->tx_power     = -1;
+    this->afh_channels = -1;
+    this->afh_map[0]   = 0;
     while (fgets(line, sizeof(line), pipe)) {
-      if (sscanf(line, "RSSI return value: %d", &value) == 1) found = true;
+      int value = 0;
+      if (sscanf(line, "RSSI return value: %d", &value) == 1) {
+        this->rssi       = value;
+        this->rssi_valid = true;
+      } else if (sscanf(line, "Link quality: %d", &value) == 1) {
+        this->link_quality = value;
+      } else if (sscanf(line, "Current transmit power level: %d", &value) == 1) {
+        this->tx_power = value;
+      } else if (sscanf(line, "AFH map: 0x%23s", this->afh_map) == 1) {
+        int channels = 0;
+        for (const char *p = this->afh_map; *p; ++p) {
+          int digit = *p >= '0' && *p <= '9' ? *p - '0'
+                      : *p >= 'a' && *p <= 'f' ? *p - 'a' + 10
+                      : *p >= 'A' && *p <= 'F' ? *p - 'A' + 10
+                                              : 0;
+          channels += __builtin_popcount(static_cast<unsigned>(digit));
+        }
+        this->afh_channels = channels;
+      }
     }
     pclose(pipe);
-    if (found) {
-      this->rssi       = value;
-      this->rssi_valid = true;
-    } else {
-      this->rssi_valid = false;
-    }
   }
 
   void tick() {
@@ -481,7 +508,7 @@ public:
     }
     if (now - this->rssi_at >= 2000) {
       this->rssi_at = now;
-      updateRssi();
+      updateLinkStats();
     }
   }
 
@@ -635,6 +662,21 @@ public:
       kvAdd(buf, cap, &o, "controller.rssi", "%d", this->rssi);
     else
       kvText(buf, cap, &o, "controller.rssi", "null");
+    if (this->link_quality >= 0)
+      kvAdd(buf, cap, &o, "controller.link_quality", "%d", this->link_quality);
+    else
+      kvText(buf, cap, &o, "controller.link_quality", "null");
+    if (this->tx_power >= 0)
+      kvAdd(buf, cap, &o, "controller.tx_power", "%d", this->tx_power);
+    else
+      kvText(buf, cap, &o, "controller.tx_power", "null");
+    if (this->afh_channels >= 0) {
+      kvAdd(buf, cap, &o, "controller.afh_channels", "%d", this->afh_channels);
+      kvText(buf, cap, &o, "controller.afh_map", this->afh_map);
+    } else {
+      kvText(buf, cap, &o, "controller.afh_channels", "null");
+      kvText(buf, cap, &o, "controller.afh_map", "");
+    }
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
@@ -1239,6 +1281,10 @@ private:
     this->input_node[0]       = 0;
     this->controller_mac[0]   = 0;
     this->rssi_valid          = false;
+    this->link_quality        = -1;
+    this->tx_power            = -1;
+    this->afh_channels        = -1;
+    this->afh_map[0]          = 0;
     this->plugged_usb_data    = false;
     this->pluggedUsbPower     = false;
     this->controller_disabled = false;
