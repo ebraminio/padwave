@@ -19,9 +19,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifdef __linux__
+#include <bluetooth/bluetooth.h>
+#include <bluetooth/hci.h>
+#include <bluetooth/hci_lib.h>
+#endif
 
 #include "padwave_player.hh"
 #include "padwave_input.hh"
@@ -244,6 +251,8 @@ private:
   int link_quality         = -1;
   int tx_power             = -1;
   int afh_channels         = -1;
+  int afh_mode             = -1;
+  int supervision_ms       = -1;
   char afh_map[24]         = "";
   long rssi_at              = 0;
   char charging[16]        = "unknown";
@@ -408,57 +417,66 @@ public:
     micReset();
   }
 
-  // hcitool is a thin wrapper over the unprivileged AF_BLUETOOTH HCI socket
-  // used by libbluetooth. It runs as the service user here without root or
-  // capabilities; the CLI avoids adding a libbluetooth-dev build dependency.
-  void updateLinkStats() {
-    if (!this->controller || this->player.isUsb() || !this->controller_mac[0]) {
-      this->rssi_valid  = false;
-      this->link_quality = -1;
-      this->tx_power     = -1;
-      this->afh_channels = -1;
-      this->afh_map[0]   = 0;
-      return;
-    }
-    char cmd[320];
-    snprintf(cmd, sizeof(cmd),
-             "hcitool rssi %s 2>/dev/null; hcitool lq %s 2>/dev/null; "
-             "hcitool tpl %s 2>/dev/null; hcitool afh %s 2>/dev/null",
-             this->controller_mac, this->controller_mac, this->controller_mac,
-             this->controller_mac);
-    FILE *pipe = popen(cmd, "r");
-    if (!pipe) {
-      this->rssi_valid = false;
-      return;
-    }
-    char line[160];
-    this->rssi_valid  = false;
+  void resetLinkStats() {
+    this->rssi_valid   = false;
     this->link_quality = -1;
     this->tx_power     = -1;
     this->afh_channels = -1;
+    this->afh_mode     = -1;
+    this->supervision_ms = -1;
     this->afh_map[0]   = 0;
-    while (fgets(line, sizeof(line), pipe)) {
-      int value = 0;
-      if (sscanf(line, "RSSI return value: %d", &value) == 1) {
-        this->rssi       = value;
+  }
+
+  void updateLinkStats() {
+    resetLinkStats();
+    if (!this->controller || this->player.isUsb() || !this->controller_mac[0]) return;
+#ifdef __linux__
+    bdaddr_t addr;
+    if (str2ba(this->controller_mac, &addr) < 0) return;
+    int dev_id = hci_get_route(&addr);
+    if (dev_id < 0) return;
+    int dd = hci_open_dev(dev_id);
+    if (dd < 0) return;
+
+    alignas(hci_conn_info) unsigned char conn_buf[sizeof(hci_conn_info_req) +
+                                                 sizeof(hci_conn_info)] = {};
+    auto *req  = reinterpret_cast<hci_conn_info_req *>(conn_buf);
+    auto *info = reinterpret_cast<hci_conn_info *>(conn_buf + sizeof(hci_conn_info_req));
+    bacpy(&req->bdaddr, &addr);
+    req->type = ACL_LINK;
+    if (ioctl(dd, HCIGETCONNINFO, req) == 0) {
+      uint16_t handle = info->handle;
+      int8_t rssiValue;
+      uint8_t lqValue;
+      int8_t txValue;
+      uint16_t timeout = 0;
+      uint8_t mode = 0;
+      uint8_t map[10] = {};
+      if (hci_read_rssi(dd, handle, &rssiValue, 1000) == 0) {
+        this->rssi       = rssiValue;
         this->rssi_valid = true;
-      } else if (sscanf(line, "Link quality: %d", &value) == 1) {
-        this->link_quality = value;
-      } else if (sscanf(line, "Current transmit power level: %d", &value) == 1) {
-        this->tx_power = value;
-      } else if (sscanf(line, "AFH map: 0x%23s", this->afh_map) == 1) {
-        int channels = 0;
-        for (const char *p = this->afh_map; *p; ++p) {
-          int digit = *p >= '0' && *p <= '9' ? *p - '0'
-                      : *p >= 'a' && *p <= 'f' ? *p - 'a' + 10
-                      : *p >= 'A' && *p <= 'F' ? *p - 'A' + 10
-                                              : 0;
-          channels += __builtin_popcount(static_cast<unsigned>(digit));
+      }
+      if (hci_read_link_quality(dd, handle, &lqValue, 1000) == 0)
+        this->link_quality = lqValue;
+      if (hci_read_transmit_power_level(dd, handle, 0, &txValue, 1000) == 0)
+        this->tx_power = txValue;
+      if (hci_read_link_supervision_timeout(dd, handle, &timeout, 1000) == 0 &&
+          timeout != 0xFFFF)
+        this->supervision_ms = timeout * 625 / 1000;
+      if (hci_read_afh_map(dd, handle, &mode, map, 1000) == 0) {
+        this->afh_mode = mode;
+        int channels   = 0;
+        for (int i = 0; i < 10; ++i) {
+          int byte = map[i] & (i == 9 ? 0x7F : 0xFF);
+          channels += __builtin_popcount(static_cast<unsigned>(byte));
         }
         this->afh_channels = channels;
+        for (int i = 0; i < 10; ++i)
+          snprintf(this->afh_map + i * 2, 3, "%02x", map[9 - i]);
       }
     }
-    pclose(pipe);
+    close(dd);
+#endif
   }
 
   void tick() {
@@ -681,11 +699,17 @@ public:
       kvText(buf, cap, &o, "controller.tx_power", "null");
     if (this->afh_channels >= 0) {
       kvAdd(buf, cap, &o, "controller.afh_channels", "%d", this->afh_channels);
+      kvAdd(buf, cap, &o, "controller.afh_mode", "%d", this->afh_mode);
       kvText(buf, cap, &o, "controller.afh_map", this->afh_map);
     } else {
       kvText(buf, cap, &o, "controller.afh_channels", "null");
+      kvText(buf, cap, &o, "controller.afh_mode", "null");
       kvText(buf, cap, &o, "controller.afh_map", "");
     }
+    if (this->supervision_ms >= 0)
+      kvAdd(buf, cap, &o, "controller.supervision_ms", "%d", this->supervision_ms);
+    else
+      kvText(buf, cap, &o, "controller.supervision_ms", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
@@ -1289,11 +1313,7 @@ private:
     }
     this->input_node[0]       = 0;
     this->controller_mac[0]   = 0;
-    this->rssi_valid          = false;
-    this->link_quality        = -1;
-    this->tx_power            = -1;
-    this->afh_channels        = -1;
-    this->afh_map[0]          = 0;
+    resetLinkStats();
     this->plugged_usb_data    = false;
     this->pluggedUsbPower     = false;
     this->controller_disabled = false;

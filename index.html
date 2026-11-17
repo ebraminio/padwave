@@ -452,6 +452,7 @@
         <span><abbr title="Vendor link quality from hcitool lq, 0–255. It is not a percentage; watch the trend rather than the absolute number.">LQ</abbr> <b id="labLq">—</b></span>
         <span><abbr title="Current Bluetooth transmit power level from hcitool tpl. Higher values mean more transmit power.">TX</abbr> <b id="labTpl">—</b></span>
         <span><abbr title="Adaptive Frequency Hopping: usable channels out of 79. A low count means interference or Wi-Fi coexistence is forcing Bluetooth off many channels; hover for the raw map.">AFH</abbr> <b id="labAfh">—</b></span>
+        <span><abbr title="Link supervision timeout: how long the link waits without packets before dropping the connection.">SUP</abbr> <b id="labSup">—</b></span>
       </div>
 
       <div class="lab-row">
@@ -726,8 +727,11 @@ function render(s) {
   $("#labRssi").textContent = c.rssi != null ? `${c.rssi} dBm` : "—";
   $("#labLq").textContent = c.link_quality != null ? c.link_quality : "—";
   $("#labTpl").textContent = c.tx_power != null ? c.tx_power : "—";
-  $("#labAfh").textContent = c.afh_channels != null ? `${c.afh_channels}/79` : "—";
+  $("#labAfh").textContent = c.afh_channels != null
+    ? `${c.afh_channels}/79 ${c.afh_mode ? "on" : "off"}`
+    : "—";
   $("#labAfh").title = c.afh_map || "";
+  $("#labSup").textContent = c.supervision_ms != null ? `${c.supervision_ms} ms` : "—";
   const powerNames = {
     discharging: "discharging",
     charging: "charging",

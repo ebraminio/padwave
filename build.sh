@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 
 CXX="${CXX:-clang}"
 PKGS="libavformat libavcodec libswresample libavutil libavfilter"
+if pkg-config --exists bluez; then PKGS="$PKGS bluez"; fi
 CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 
