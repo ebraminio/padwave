@@ -252,6 +252,7 @@
     <div class="chips">
       <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
       <span class="chip">battery <b id="battText">—</b></span>
+      <span class="chip">rssi <b id="rssiText">—</b></span>
       <span class="chip">temp <b id="tempHead">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
       <span class="chip" id="usbHostChip" style="display:none"
@@ -703,6 +704,7 @@ function render(s) {
   const chargeMark = c.charging === "charging" ? " ⚡" : c.charging === "full" ? " ✓" : "";
   $("#battText").textContent =
     c.battery != null ? `${c.battery}%${chargeMark}` : "—";
+  $("#rssiText").textContent = c.rssi != null ? `${c.rssi} dBm` : "—";
   const powerNames = {
     discharging: "discharging",
     charging: "charging",

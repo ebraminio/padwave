@@ -239,6 +239,9 @@ private:
   // whenever the USB data link goes away.
   bool controller_disabled = false;
   int battery              = -1;
+  int rssi                 = 0;
+  bool rssi_valid           = false;
+  long rssi_at              = 0;
   char charging[16]        = "unknown";
   char powerState[32]      = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
@@ -401,6 +404,33 @@ public:
     micReset();
   }
 
+  void updateRssi() {
+    if (!this->controller || this->player.isUsb() || !this->controller_mac[0]) {
+      this->rssi_valid = false;
+      return;
+    }
+    char cmd[96];
+    snprintf(cmd, sizeof(cmd), "hcitool rssi %s 2>/dev/null", this->controller_mac);
+    FILE *pipe = popen(cmd, "r");
+    if (!pipe) {
+      this->rssi_valid = false;
+      return;
+    }
+    char line[128];
+    int value  = 0;
+    bool found = false;
+    while (fgets(line, sizeof(line), pipe)) {
+      if (sscanf(line, "RSSI return value: %d", &value) == 1) found = true;
+    }
+    pclose(pipe);
+    if (found) {
+      this->rssi       = value;
+      this->rssi_valid = true;
+    } else {
+      this->rssi_valid = false;
+    }
+  }
+
   void tick() {
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
@@ -448,6 +478,10 @@ public:
       this->volume_dirty    = false;
       this->volume_saved_at = now;
       configSave();
+    }
+    if (now - this->rssi_at >= 2000) {
+      this->rssi_at = now;
+      updateRssi();
     }
   }
 
@@ -597,6 +631,10 @@ public:
       kvAdd(buf, cap, &o, "controller.battery", "%d", this->battery);
     else
       kvText(buf, cap, &o, "controller.battery", "null");
+    if (this->rssi_valid)
+      kvAdd(buf, cap, &o, "controller.rssi", "%d", this->rssi);
+    else
+      kvText(buf, cap, &o, "controller.rssi", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
@@ -1200,6 +1238,7 @@ private:
     }
     this->input_node[0]       = 0;
     this->controller_mac[0]   = 0;
+    this->rssi_valid          = false;
     this->plugged_usb_data    = false;
     this->pluggedUsbPower     = false;
     this->controller_disabled = false;
