@@ -229,6 +229,7 @@
   }
   .lab-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
   .lab-row b { color: var(--text); font-weight: 600; }
+  abbr { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
 
   footer { margin-top: 20px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
   .toast {
@@ -252,7 +253,7 @@
     <div class="chips">
       <span class="chip"><i class="dot" id="connDot"></i><b id="connText">controller</b></span>
       <span class="chip">battery <b id="battText">—</b></span>
-      <span class="chip">rssi <b id="rssiText">—</b></span>
+      <span class="chip"><abbr title="Received signal strength in dBm. Values closer to 0 are stronger; below -80 dBm is weak.">RSSI</abbr> <b id="rssiText">—</b></span>
       <span class="chip">temp <b id="tempHead">—</b></span>
       <span class="chip" id="jackChip" style="display:none">🎧 headset</span>
       <span class="chip" id="usbHostChip" style="display:none"
@@ -447,10 +448,10 @@
 
       <div class="lab-row">
         <b>bluetooth link</b>
-        <span>rssi <b id="labRssi">—</b></span>
-        <span>lq <b id="labLq">—</b></span>
-        <span>tx <b id="labTpl">—</b></span>
-        <span>afh <b id="labAfh">—</b></span>
+        <span><abbr title="Received signal strength in dBm. Closer to 0 is stronger; below -80 dBm is weak.">RSSI</abbr> <b id="labRssi">—</b></span>
+        <span><abbr title="Vendor link quality from hcitool lq, 0–255. It is not a percentage; watch the trend rather than the absolute number.">LQ</abbr> <b id="labLq">—</b></span>
+        <span><abbr title="Current Bluetooth transmit power level from hcitool tpl. Higher values mean more transmit power.">TX</abbr> <b id="labTpl">—</b></span>
+        <span><abbr title="Adaptive Frequency Hopping: usable channels out of 79. A low count means interference or Wi-Fi coexistence is forcing Bluetooth off many channels; hover for the raw map.">AFH</abbr> <b id="labAfh">—</b></span>
       </div>
 
       <div class="lab-row">
