@@ -453,6 +453,7 @@
         <span><abbr title="Current Bluetooth transmit power level from hcitool tpl. Higher values mean more transmit power.">TX</abbr> <b id="labTpl">—</b></span>
         <span><abbr title="Adaptive Frequency Hopping: usable channels out of 79. A low count means interference or Wi-Fi coexistence is forcing Bluetooth off many channels; hover for the raw map.">AFH</abbr> <b id="labAfh">—</b></span>
         <span><abbr title="Link supervision timeout: how long the link waits without packets before dropping the connection.">SUP</abbr> <b id="labSup">—</b></span>
+        <span><abbr title="Link policy: role switch (1), hold (2), sniff (4), park (8).">LP</abbr> <b id="labPolicy">—</b></span>
       </div>
 
       <div class="lab-row">
@@ -732,6 +733,17 @@ function render(s) {
     : "—";
   $("#labAfh").title = c.afh_map || "";
   $("#labSup").textContent = c.supervision_ms != null ? `${c.supervision_ms} ms` : "—";
+  if (c.link_policy != null) {
+    const names = [];
+    if (c.link_policy & 1) names.push("rswitch");
+    if (c.link_policy & 2) names.push("hold");
+    if (c.link_policy & 4) names.push("sniff");
+    if (c.link_policy & 8) names.push("park");
+    $("#labPolicy").textContent =
+      `0x${c.link_policy.toString(16).padStart(4, "0")} ${names.join(",") || "none"}`;
+  } else {
+    $("#labPolicy").textContent = "—";
+  }
   const powerNames = {
     discharging: "discharging",
     charging: "charging",

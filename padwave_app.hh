@@ -253,6 +253,7 @@ private:
   int afh_channels         = -1;
   int afh_mode             = -1;
   int supervision_ms       = -1;
+  int link_policy          = -1;
   char afh_map[24]         = "";
   long rssi_at              = 0;
   char charging[16]        = "unknown";
@@ -422,8 +423,9 @@ public:
     this->link_quality = -1;
     this->tx_power     = -1;
     this->afh_channels = -1;
-    this->afh_mode     = -1;
+    this->afh_mode       = -1;
     this->supervision_ms = -1;
+    this->link_policy    = -1;
     this->afh_map[0]   = 0;
   }
 
@@ -450,6 +452,7 @@ public:
       uint8_t lqValue;
       int8_t txValue;
       uint16_t timeout = 0;
+      uint16_t policy  = 0;
       uint8_t mode = 0;
       uint8_t map[10] = {};
       if (hci_read_rssi(dd, handle, &rssiValue, 1000) == 0) {
@@ -463,6 +466,8 @@ public:
       if (hci_read_link_supervision_timeout(dd, handle, &timeout, 1000) == 0 &&
           timeout != 0xFFFF)
         this->supervision_ms = timeout * 625 / 1000;
+      if (hci_read_link_policy(dd, handle, &policy, 1000) == 0)
+        this->link_policy = policy;
       if (hci_read_afh_map(dd, handle, &mode, map, 1000) == 0) {
         this->afh_mode = mode;
         int channels   = 0;
@@ -710,6 +715,10 @@ public:
       kvAdd(buf, cap, &o, "controller.supervision_ms", "%d", this->supervision_ms);
     else
       kvText(buf, cap, &o, "controller.supervision_ms", "null");
+    if (this->link_policy >= 0)
+      kvAdd(buf, cap, &o, "controller.link_policy", "%d", this->link_policy);
+    else
+      kvText(buf, cap, &o, "controller.link_policy", "null");
     kvText(buf, cap, &o, "controller.charging", this->charging);
     kvText(buf, cap, &o, "controller.power_state", this->powerState);
     kvAdd(buf, cap, &o, "controller.jack", "%s", this->jack ? "true" : "false");
