@@ -660,6 +660,14 @@ async function send(action, args = {}) {
 
 function render(s) {
   last = s;
+  const version = s.server && s.server.version;
+  if (version) {
+    if (serverVersion && version !== serverVersion) {
+      location.reload();
+      return;
+    }
+    serverVersion = version;
+  }
   const r = s.radio || {};
   const c = s.controller || {};
   const sess = s.session || {};
@@ -1610,7 +1618,7 @@ function connectStream() {
 function pollFallback() {
   const loop = async () => {
     try {
-      render(parseKV(await fetch("/api/status").then(r => r.text())));
+      render(parseKV(await fetch("/api/status", { cache: "no-store" }).then(r => r.text())));
     } catch (e) { /* offline */ }
     setTimeout(loop, 1000);
   };

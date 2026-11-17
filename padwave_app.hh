@@ -538,9 +538,15 @@ public:
     }
   }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdate-time"
+  static constexpr const char *buildVersion = __DATE__ " " __TIME__;
+#pragma clang diagnostic pop
+
   int statusText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
+    kvText(buf, cap, &o, "server.version", buildVersion);
     const Track *s = this->current >= 0 ? &this->tracks[this->current] : nullptr;
 
     long now             = nowMs();
