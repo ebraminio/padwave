@@ -100,7 +100,7 @@ static constexpr int DS_EDGE_PID = 0x0df2;
 // Load system XInput
 // ---------------------------------------------------------------------------
 
-static bool LoadSystemXInput()
+static bool loadSystemXInput()
 {
     if (g_SystemXInput)
         return true;
@@ -155,7 +155,7 @@ static bool LoadSystemXInput()
 // DualSense output report (rumble + LED)
 // ---------------------------------------------------------------------------
 
-static uint8_t PlayerLedMask()
+static uint8_t playerLedMask()
 {
     if (g_LedNumber != 0)
         return g_LedNumber;
@@ -167,68 +167,64 @@ static uint8_t PlayerLedMask()
     return static_cast<uint8_t>((1u << ((g_BatteryLevel * 5) / 100)) - 1);
 }
 
-static void ApplyOutput(dualsense::OutputBody &body)
-{
-    const uint8_t leds = PlayerLedMask();
-    body.setCompatibleVibration(g_LargeMotor, g_SmallMotor);
-    body.setPlayerLedBrightness(dualsense::OutputBody::PlayerLedBrightness::Low);
-    body.setPlayerLeds((leds & 0x01) != 0, (leds & 0x02) != 0, (leds & 0x04) != 0,
-                       (leds & 0x08) != 0, (leds & 0x10) != 0, false);
-    body.setLightbar(static_cast<uint8_t>(g_Color & 0xFF),
-                     static_cast<uint8_t>((g_Color >> 8) & 0xFF),
-                     static_cast<uint8_t>((g_Color >> 16) & 0xFF));
-}
-
-static void SendDualSenseOutput()
+template <typename Fill>
+static bool sendOutput(Fill fill)
 {
     if (!g_DsDevice)
-        return;
+        return false;
 
     if (g_DsIsBluetooth) {
         dualsense::OutputReport report(g_Sequence);
-        ApplyOutput(report.getBody());
+        if (!fill(report.getBody()))
+            return false;
         report.sign();
-        hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report));
-    } else {
-        dualsense::UsbOutputReport report{};
-        ApplyOutput(report.getBody());
-        hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report));
+        return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report),
+                         sizeof(report)) > 0;
     }
+
+    dualsense::UsbOutputReport report{};
+    if (!fill(report.getBody()))
+        return false;
+    return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report),
+                     sizeof(report)) > 0;
 }
 
-static void CleanControllerState()
+static void sendDualSenseOutput()
 {
-    if (!g_DsDevice)
-        return;
-    if (g_DsIsBluetooth) {
-        dualsense::OutputReport report(g_Sequence);
-        auto &body = report.getBody();
+    sendOutput([](dualsense::OutputBody &body) {
+        const uint8_t leds = playerLedMask();
+        body.setCompatibleVibration(g_LargeMotor, g_SmallMotor);
+        body.setPlayerLedBrightness(dualsense::OutputBody::PlayerLedBrightness::Low);
+        body.setPlayerLeds((leds & 0x01) != 0, (leds & 0x02) != 0, (leds & 0x04) != 0,
+                           (leds & 0x08) != 0, (leds & 0x10) != 0, false);
+        body.setLightbar(static_cast<uint8_t>(g_Color & 0xFF),
+                         static_cast<uint8_t>((g_Color >> 8) & 0xFF),
+                         static_cast<uint8_t>((g_Color >> 16) & 0xFF));
+        return true;
+    });
+}
+
+static void cleanControllerState()
+{
+    sendOutput([](dualsense::OutputBody &body) {
         body.setCompatibleVibration(0, 0);
         body.setPlayerLeds(false, false, false, false, false, false);
         body.setLightbar(0, 0, 0);
-        report.sign();
-        hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report));
-    } else {
-        dualsense::UsbOutputReport report{};
-        auto &body = report.getBody();
-        body.setCompatibleVibration(0, 0);
-        body.setPlayerLeds(false, false, false, false, false, false);
-        body.setLightbar(0, 0, 0);
-        hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report));
-    }
+        return true;
+    });
 }
 
 // ---------------------------------------------------------------------------
 // DualSense enumeration
 // ---------------------------------------------------------------------------
 
-static bool IsDualSenseDevice(hid_device_info *info)
+static bool isDualSenseDevice(hid_device_info *info)
 {
     return info->vendor_id == SONY_VID &&
            (info->product_id == DS_PID || info->product_id == DS_EDGE_PID);
 }
 
-static void TryConnectDualSense()
+static void tryConnectDualSense()
 {
     if (g_DsConnected)
         return;
@@ -239,7 +235,7 @@ static void TryConnectDualSense()
 
     const hid_device_info *chosen = nullptr;
     for (hid_device_info *cur = devices; cur; cur = cur->next) {
-        if (!IsDualSenseDevice(cur))
+        if (!isDualSenseDevice(cur))
             continue;
         if (!chosen)
             chosen = cur;
@@ -265,7 +261,7 @@ static void TryConnectDualSense()
     g_BatteryLevel = 0;
 
     hid_set_nonblocking(dev, true);
-    SendDualSenseOutput();
+    sendDualSenseOutput();
     hid_free_enumeration(devices);
 }
 
@@ -273,7 +269,7 @@ static void TryConnectDualSense()
 // DualSense input -> XInput mapping (called directly from XInputGetState)
 // ---------------------------------------------------------------------------
 
-static bool DualSenseGetState(XINPUT_STATE &state)
+static bool readDualSenseState(XINPUT_STATE &state)
 {
     if (!g_DsDevice)
         return false;
@@ -301,7 +297,7 @@ static bool DualSenseGetState(XINPUT_STATE &state)
     const int battery = input->getBattery();
     if (battery != g_BatteryLevel) {
         g_BatteryLevel = static_cast<uint8_t>(battery);
-        SendDualSenseOutput();
+        sendDualSenseOutput();
     }
 
     SecureZeroMemory(&state, sizeof(state));
@@ -364,14 +360,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
     switch (reason)
     {
     case DLL_PROCESS_ATTACH:
-        LoadSystemXInput();
+        loadSystemXInput();
         hid_init();
         break;
 
     case DLL_PROCESS_DETACH:
         if (g_DsDevice)
         {
-            CleanControllerState();
+            cleanControllerState();
             hid_close(g_DsDevice);
             g_DsDevice = nullptr;
         }
@@ -404,9 +400,9 @@ DWORD WINAPI XInputGetState(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept
 
         // Try to connect if not already connected
         if (!g_DsConnected)
-            TryConnectDualSense();
+            tryConnectDualSense();
 
-        if (g_DsConnected && pState && DualSenseGetState(*pState))
+        if (g_DsConnected && pState && readDualSenseState(*pState))
             return ERROR_SUCCESS;
     }
 
@@ -424,7 +420,7 @@ DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noe
             return ERROR_INVALID_PARAMETER;
 
         if (!g_DsConnected)
-            TryConnectDualSense();
+            tryConnectDualSense();
 
         if (g_DsConnected)
         {
@@ -434,7 +430,7 @@ DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noe
             g_LargeMotor = pVibration->wLeftMotorSpeed  ? static_cast<uint8_t>(lm < 40 ? 40 : lm) : 0;
 
             g_LedNumber = 0;
-            SendDualSenseOutput();
+            sendDualSenseOutput();
             return ERROR_SUCCESS;
         }
     }
@@ -455,7 +451,7 @@ DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPA
             return ERROR_BAD_ARGUMENTS;
 
         if (!g_DsConnected)
-            TryConnectDualSense();
+            tryConnectDualSense();
 
         if (g_DsConnected)
         {
