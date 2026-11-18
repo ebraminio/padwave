@@ -88,6 +88,20 @@ clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
   $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
 ```
 
+Windows with LLVM clang and a HIDAPI source checkout (input/output only; no
+Opus, no 0x36 audio):
+
+```bat
+"C:\Program Files\LLVM\bin\clang.exe" -std=c++23 -fno-exceptions -fno-rtti ^
+  -DHIDAPI_STATIC -IC:\Users\Ebrahim\hidapi\hidapi -c dualsense-demo.cc -o demo.o
+"C:\Program Files\LLVM\bin\clang.exe" -std=c17 -DHIDAPI_STATIC ^
+  -IC:\Users\Ebrahim\hidapi\hidapi -c C:\Users\Ebrahim\hidapi\windows\hid.c -o hid.o
+"C:\Program Files\LLVM\bin\clang.exe" demo.o hid.o -lsetupapi -lhid -o a.exe
+```
+
+The Windows build deliberately leaves out Opus, so piped PCM is not available;
+lightbar, player LEDs, triggers, rumble, and input display still work over USB.
+
 With no pipe it displays controller input. Pipe raw `s16le`, 48 kHz, stereo PCM
 to stream it to the Bluetooth speaker:
 

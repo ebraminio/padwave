@@ -10,6 +10,15 @@
 // clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
 //   $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
 //
+// Windows (input/output reports only; no Opus and no 0x36 audio). Compile the
+// C and C++ parts separately; there is still no makefile:
+//
+// "C:\Program Files\LLVM\bin\clang.exe" -std=c++23 -fno-exceptions -fno-rtti ^
+//   -DHIDAPI_STATIC -IC:\Users\Ebrahim\hidapi\hidapi -c dualsense-demo.cc -o demo.o
+// "C:\Program Files\LLVM\bin\clang.exe" -std=c17 -DHIDAPI_STATIC ^
+//   -IC:\Users\Ebrahim\hidapi\hidapi -c C:\Users\Ebrahim\hidapi\windows\hid.c -o hid.o
+// "C:\Program Files\LLVM\bin\clang.exe" demo.o hid.o -lsetupapi -lhid -o a.exe
+//
 // Pipe raw s16le 48 kHz stereo PCM on stdin to stream it to the controller's
 // Bluetooth speaker:
 //
@@ -19,20 +28,31 @@
 //   l = cycle lightbar, r = rumble, p = cycle player LEDs,
 //   t = left trigger feedback, h = help, q = quit.
 
-#ifndef DS_HAVE_OPUS
+#if !defined(_WIN32) && !defined(DS_HAVE_OPUS)
 #define DS_HAVE_OPUS
+#endif
+#if defined(_WIN32) && defined(DS_HAVE_OPUS)
+#undef DS_HAVE_OPUS
 #endif
 
 #include <errno.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <io.h>
+#else
+#include <fcntl.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#endif
 
 #include <hidapi.h>
 
@@ -43,13 +63,26 @@ namespace {
 constexpr uint16_t kVendorSony = 0x054c;
 constexpr uint16_t kProductDualSense = 0x0ce6;
 constexpr uint16_t kProductDualSenseEdge = 0x0df2;
+#ifdef DS_HAVE_OPUS
 constexpr int kPcmFrames = 480;
 constexpr size_t kPcmBytes = static_cast<size_t>(kPcmFrames) * 2 * sizeof(int16_t);
 constexpr uint64_t kReportIntervalUs = 10667;
+#endif
+
+#if defined(_WIN32)
+constexpr int kStdout = 1;
+#define demo_isatty _isatty
+#else
+constexpr int kStdin = STDIN_FILENO;
+constexpr int kStdout = STDOUT_FILENO;
+#define demo_isatty isatty
+#endif
 
 volatile sig_atomic_t g_running = 1;
+#if !defined(_WIN32)
 termios g_saved_tty{};
 bool g_tty_changed = false;
+#endif
 
 struct Device {
   hid_device *handle = nullptr;
@@ -81,28 +114,41 @@ char g_last_status[400] = "";
 void stop(int) { g_running = 0; }
 
 uint64_t nowUs() {
+#if defined(_WIN32)
+  LARGE_INTEGER frequency{};
+  LARGE_INTEGER counter{};
+  QueryPerformanceFrequency(&frequency);
+  QueryPerformanceCounter(&counter);
+  return static_cast<uint64_t>(counter.QuadPart) * 1000000ULL /
+         static_cast<uint64_t>(frequency.QuadPart);
+#else
   timespec ts{};
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return static_cast<uint64_t>(ts.tv_sec) * 1000000ULL + static_cast<uint64_t>(ts.tv_nsec) / 1000ULL;
+#endif
 }
 
 uint64_t nowMs() { return nowUs() / 1000ULL; }
 
 void restoreTty() {
+#if !defined(_WIN32)
   if (g_tty_changed) {
-    tcsetattr(STDIN_FILENO, TCSANOW, &g_saved_tty);
+    tcsetattr(kStdin, TCSANOW, &g_saved_tty);
     g_tty_changed = false;
   }
+#endif
 }
 
 void setupTty() {
-  if (!isatty(STDIN_FILENO)) return;
-  if (tcgetattr(STDIN_FILENO, &g_saved_tty) < 0) return;
+#if !defined(_WIN32)
+  if (!demo_isatty(kStdin)) return;
+  if (tcgetattr(kStdin, &g_saved_tty) < 0) return;
   termios raw = g_saved_tty;
   raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
   raw.c_cc[VMIN] = 0;
   raw.c_cc[VTIME] = 0;
-  if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0) g_tty_changed = true;
+  if (tcsetattr(kStdin, TCSANOW, &raw) == 0) g_tty_changed = true;
+#endif
 }
 
 void printHelp(const char *argv0) {
@@ -297,7 +343,7 @@ void showInput(const dualsense::InputBody &input) {
            right.y, input.getBattery());
   if (strcmp(line, g_last_status) == 0) return;
   snprintf(g_last_status, sizeof(g_last_status), "%s", line);
-  if (isatty(STDOUT_FILENO))
+  if (demo_isatty(kStdout))
     printf("\r\033[K%s", line);
   else
     printf("%s\n", line);
@@ -376,7 +422,11 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  const bool piped = !options.input_only && !isatty(STDIN_FILENO);
+#if defined(_WIN32)
+  const bool piped = false;
+#else
+  const bool piped = !options.input_only && !isatty(kStdin);
+#endif
   if (piped && g_device.usb) {
     fprintf(stderr, "dualsense-demo: 0x36 audio streaming is Bluetooth-only\n");
     hid_close(g_device.handle);
@@ -386,14 +436,19 @@ int main(int argc, char **argv) {
   if (options.has_rumble) g_rumble_until_ms = nowMs() + static_cast<uint64_t>(options.rumble_ms);
 
   if (!piped) setupTty();
+#if !defined(_WIN32)
   if (piped) {
-    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    if (flags >= 0) fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+    int flags = fcntl(kStdin, F_GETFL, 0);
+    if (flags >= 0) fcntl(kStdin, F_SETFL, flags | O_NONBLOCK);
     printf("streaming s16le 48 kHz stereo from stdin; Ctrl-C to stop\n");
   } else {
     printf("waiting for controller input; h for keys, Ctrl-C to quit\n");
   }
+#else
+  printf("Windows build: input/output reports only; 0x36 audio is unavailable\n");
+#endif
 
+#ifdef DS_HAVE_OPUS
   dualsense::AudioReport audio;
   dualsense::AudioReport::Encoder encoder;
   bool have_audio = false;
@@ -420,6 +475,7 @@ int main(int argc, char **argv) {
   uint64_t next_audio_us = 0;
   unsigned long underruns = 0;
   dualsense::OutputReport::Sequence audio_sequence;
+#endif
 
   while (g_running) {
     uint8_t report[512];
@@ -432,12 +488,16 @@ int main(int argc, char **argv) {
       if (input) showInput(input->getBody());
     }
 
+#if !defined(_WIN32)
     if (!piped) {
       char key = 0;
-      if (read(STDIN_FILENO, &key, 1) == 1) handleKey(key);
-    } else {
+      if (read(kStdin, &key, 1) == 1) handleKey(key);
+    }
+#endif
+#ifdef DS_HAVE_OPUS
+    if (piped) {
       if (!audio_eof && pcm_have < sizeof(pcm_bytes)) {
-        ssize_t bytes = read(STDIN_FILENO, pcm_bytes + pcm_have, sizeof(pcm_bytes) - pcm_have);
+        ssize_t bytes = read(kStdin, pcm_bytes + pcm_have, sizeof(pcm_bytes) - pcm_have);
         if (bytes > 0)
           pcm_have += static_cast<size_t>(bytes);
         else if (bytes == 0)
@@ -480,6 +540,7 @@ int main(int argc, char **argv) {
         if (next_audio_us < now) next_audio_us = now + kReportIntervalUs;
       }
     }
+#endif
 
     if (g_rumble_until_ms && nowMs() >= g_rumble_until_ms) {
       g_rumble_until_ms = 0;
@@ -487,7 +548,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (isatty(STDOUT_FILENO)) printf("\n");
+  if (demo_isatty(kStdout)) printf("\n");
   restoreTty();
   hid_close(g_device.handle);
   hid_exit();
