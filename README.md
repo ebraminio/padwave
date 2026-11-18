@@ -121,6 +121,22 @@ padwave service first; two clients reading the same hidraw will split input.
 The 0x36 streaming path is Bluetooth-only. On USB the demo still provides input,
 lightbar, player LEDs, triggers, and rumble, but no speaker audio.
 
+## ds2xi
+
+`ds2xi/` is a Windows-only XInput wrapper built directly on `dualsense.hh`. It
+exports `XInput1_4.dll`, maps the first DualSense to player 0, and falls through
+to the system XInput for every other index.
+
+```bat
+cd ds2xi
+xmake f -c -y
+xmake -y
+```
+
+It uses HIDAPI from `../dualsense-demo/third_party/hidapi`, so initialize the
+demo submodules first. The build produces
+`build/windows/x64/release/XInput1_4.dll`.
+
 ## Install
 
 On the host, from the project root:
