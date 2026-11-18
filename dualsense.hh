@@ -8,11 +8,16 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <cstring>
 #include <cmath>
 
 #ifdef DS_HAVE_OPUS
+#if defined(__APPLE__)
+#include <opus.h>
+#else
 #include <opus/opus.h>
+#endif
 #endif
 
 namespace dualsense {

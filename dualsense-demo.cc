@@ -1,10 +1,14 @@
 // A standalone DualSense client built on dualsense.hh and hidapi.
 //
-// Build on Raspberry Pi OS / Debian (the hidapi pkg-config module is
-// hidapi-hidraw):
+// Linux (Raspberry Pi OS / Debian):
 //
-// clang++ -std=c++23 dualsense-demo.cc \
+// clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
 //   $(pkg-config --cflags --libs opus hidapi-hidraw) -Wall -o a.out && ./a.out
+//
+// macOS with Homebrew:
+//
+// clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
+//   $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
 //
 // Pipe raw s16le 48 kHz stereo PCM on stdin to stream it to the controller's
 // Bluetooth speaker:
@@ -30,7 +34,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <hidapi/hidapi.h>
+#include <hidapi.h>
 
 #include "dualsense.hh"
 

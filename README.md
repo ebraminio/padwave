@@ -74,9 +74,18 @@ compile's real/user/sys time.
 `dualsense.hh`. It has its own `main`, no makefile, and the build command is
 in its header.
 
+Linux:
+
 ```sh
-clang++ -std=c++23 dualsense-demo.cc \
+clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
   $(pkg-config --cflags --libs opus hidapi-hidraw) -Wall -o a.out && ./a.out
+```
+
+macOS with Homebrew (USB input works; 0x36 audio remains Bluetooth-only):
+
+```sh
+clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
+  $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
 ```
 
 With no pipe it displays controller input. Pipe raw `s16le`, 48 kHz, stereo PCM
