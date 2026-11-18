@@ -68,6 +68,34 @@ and test probes live in `dualsense::internal`.
 The build uses `-Weverything` with a short suppression list and reports the
 compile's real/user/sys time.
 
+## Standalone demo
+
+`dualsense-demo.cc` is an independent hidapi client that includes only
+`dualsense.hh`. It has its own `main`, no makefile, and the build command is
+in its header.
+
+```sh
+clang++ -std=c++23 dualsense-demo.cc \
+  $(pkg-config --cflags --libs opus hidapi-hidraw) -Wall -o a.out && ./a.out
+```
+
+With no pipe it displays controller input. Pipe raw `s16le`, 48 kHz, stereo PCM
+to stream it to the Bluetooth speaker:
+
+```sh
+ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./a.out
+```
+
+Useful output-report flags:
+
+```sh
+./a.out --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
+```
+
+With a terminal and no pipe, `l`, `r`, `p`, `t`, `h`, and `q` exercise the
+lightbar, rumble, player LEDs, trigger feedback, help, and quit. Stop the
+padwave service first; two clients reading the same hidraw will split input.
+
 ## Install
 
 On the host, from the project root:
