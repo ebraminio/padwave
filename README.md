@@ -72,8 +72,8 @@ compile's real/user/sys time.
 
 `dualsense-demo.cc` is an independent hidapi client that includes only
 `dualsense.hh`. Its Meson project lives in `dualsense-demo/` and fetches libopus
-and hidapi through wraps. This needs Meson, Ninja and CMake; on Linux the
-HIDAPI wrap also needs `libudev-dev` and `libusb-1.0-0-dev`.
+and hidapi through wraps. It needs Meson and Ninja; the Linux HIDAPI fallback
+needs `libudev-dev`. HIDAPI is built natively, without CMake or libusb.
 
 ```sh
 cd dualsense-demo
@@ -83,7 +83,7 @@ meson test -C build dualsense-demo-help --print-errorlogs
 ./build/dualsense-demo
 ```
 
-On Windows use Meson, Ninja, CMake and LLVM from a developer shell:
+On Windows use Meson, Ninja and LLVM from a developer shell:
 
 ```bat
 cd dualsense-demo
