@@ -57,3 +57,30 @@ jobs:
             ./fuzz/fuzz_$target "$dir" -timeout=5 -max_total_time=20 -rss_limit_mb=2048
             echo "::endgroup::"
           done
+
+  demo-linux:
+    name: dualsense demo (Linux xmake)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Check out shallow submodules
+        run: git submodule update --init --recursive --depth 1
+
+      - name: Install clang and libudev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libudev-dev
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Build and test
+        working-directory: dualsense-demo
+        run: |
+          xmake f -c -y
+          xmake -y
+          xmake test
