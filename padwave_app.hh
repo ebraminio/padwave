@@ -247,7 +247,7 @@ private:
   bool controller_disabled = false;
   int battery              = -1;
   int rssi                 = 0;
-  bool rssi_valid           = false;
+  bool rssi_valid          = false;
   int link_quality         = -1;
   int tx_power             = -1;
   int afh_channels         = -1;
@@ -255,7 +255,7 @@ private:
   int supervision_ms       = -1;
   int link_policy          = -1;
   char afh_map[24]         = "";
-  long rssi_at              = 0;
+  long rssi_at             = 0;
   char charging[16]        = "unknown";
   char powerState[32]      = "unknown";
   int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
@@ -419,14 +419,14 @@ public:
   }
 
   void resetLinkStats() {
-    this->rssi_valid   = false;
-    this->link_quality = -1;
-    this->tx_power     = -1;
-    this->afh_channels = -1;
+    this->rssi_valid     = false;
+    this->link_quality   = -1;
+    this->tx_power       = -1;
+    this->afh_channels   = -1;
     this->afh_mode       = -1;
     this->supervision_ms = -1;
     this->link_policy    = -1;
-    this->afh_map[0]   = 0;
+    this->afh_map[0]     = 0;
   }
 
   void updateLinkStats() {
@@ -440,8 +440,8 @@ public:
     int dd = hci_open_dev(dev_id);
     if (dd < 0) return;
 
-    alignas(hci_conn_info) unsigned char conn_buf[sizeof(hci_conn_info_req) +
-                                                 sizeof(hci_conn_info)] = {};
+    alignas(hci_conn_info) unsigned char
+        conn_buf[sizeof(hci_conn_info_req) + sizeof(hci_conn_info)] = {};
     auto *req  = reinterpret_cast<hci_conn_info_req *>(conn_buf);
     auto *info = reinterpret_cast<hci_conn_info *>(conn_buf + sizeof(hci_conn_info_req));
     bacpy(&req->bdaddr, &addr);
@@ -453,21 +453,18 @@ public:
       int8_t txValue;
       uint16_t timeout = 0;
       uint16_t policy  = 0;
-      uint8_t mode = 0;
-      uint8_t map[10] = {};
+      uint8_t mode     = 0;
+      uint8_t map[10]  = {};
       if (hci_read_rssi(dd, handle, &rssiValue, 1000) == 0) {
         this->rssi       = rssiValue;
         this->rssi_valid = true;
       }
-      if (hci_read_link_quality(dd, handle, &lqValue, 1000) == 0)
-        this->link_quality = lqValue;
+      if (hci_read_link_quality(dd, handle, &lqValue, 1000) == 0) this->link_quality = lqValue;
       if (hci_read_transmit_power_level(dd, handle, 0, &txValue, 1000) == 0)
         this->tx_power = txValue;
-      if (hci_read_link_supervision_timeout(dd, handle, &timeout, 1000) == 0 &&
-          timeout != 0xFFFF)
+      if (hci_read_link_supervision_timeout(dd, handle, &timeout, 1000) == 0 && timeout != 0xFFFF)
         this->supervision_ms = timeout * 625 / 1000;
-      if (hci_read_link_policy(dd, handle, &policy, 1000) == 0)
-        this->link_policy = policy;
+      if (hci_read_link_policy(dd, handle, &policy, 1000) == 0) this->link_policy = policy;
       if (hci_read_afh_map(dd, handle, &mode, map, 1000) == 0) {
         this->afh_mode = mode;
         int channels   = 0;
@@ -476,8 +473,7 @@ public:
           channels += __builtin_popcount(static_cast<unsigned>(byte));
         }
         this->afh_channels = channels;
-        for (int i = 0; i < 10; ++i)
-          snprintf(this->afh_map + i * 2, 3, "%02x", map[9 - i]);
+        for (int i = 0; i < 10; ++i) snprintf(this->afh_map + i * 2, 3, "%02x", map[9 - i]);
       }
     }
     close(dd);
@@ -968,8 +964,8 @@ public:
         return snprintf(out, out_cap, "ok=false\nerror=value must be 0..255\n");
       if (!this->player.setAudioControl(static_cast<uint8_t>(value)))
         return snprintf(out, out_cap, "ok=false\nerror=audio control write failed\n");
-      return snprintf(out, out_cap, "ok=true\nnote=0x%02x %s\n",
-                      static_cast<unsigned>(value), audioPathName(this->player.getAudioPath()));
+      return snprintf(out, out_cap, "ok=true\nnote=0x%02x %s\n", static_cast<unsigned>(value),
+                      audioPathName(this->player.getAudioPath()));
     }
 
     if (strcmp(kind, "audio_control_auto") == 0) {
@@ -1004,7 +1000,7 @@ public:
 
     if (strcmp(kind, "release") == 0) {
       if (!this->player) return snprintf(out, out_cap, "ok=false\nerror=no player\n");
-      bool ok        = this->player.setReleaseLEDs();
+      bool ok            = this->player.setReleaseLEDs();
       this->led_released = ok;
       return snprintf(out, out_cap, "ok=%s\nnote=LED control released\n", ok ? "true" : "false");
     }
@@ -1320,8 +1316,8 @@ private:
       playerSend("pause 1\n");
       this->playhead_dirty = true;
     }
-    this->input_node[0]       = 0;
-    this->controller_mac[0]   = 0;
+    this->input_node[0]     = 0;
+    this->controller_mac[0] = 0;
     resetLinkStats();
     this->plugged_usb_data    = false;
     this->pluggedUsbPower     = false;

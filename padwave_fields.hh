@@ -55,7 +55,7 @@ inline const bool_field kBoolFields[] = {
 inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
   char copy[4096];
   snprintf(copy, sizeof(copy), "%s", text);
-  char *save_pairs = nullptr;
+  char *save_pairs   = nullptr;
   uint8_t motor_left = 0, motor_right = 0;
   bool has_motors = false;
   for (char *pair = strtok_r(copy, ";", &save_pairs); pair;

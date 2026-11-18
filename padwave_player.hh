@@ -226,8 +226,8 @@ private:
   bool speaker            = false;
   dualsense::OutputBody::AudioOutputPath audio_path =
       dualsense::OutputBody::AudioOutputPath::HeadphonesStereo;
-  FILE *usb_audio         = nullptr;
-  App *app                = nullptr;
+  FILE *usb_audio = nullptr;
+  App *app        = nullptr;
 
   dualsense::AudioReport audio_report{};
   dualsense::AudioReport::Encoder enc;
@@ -265,27 +265,27 @@ private:
   int64_t npushed                 = 0;
 
   bool playing = false, paused = false, eof = false, primed = false;
-  int volume                                 = 80;
-  int speed_percent                          = 100;
-  bool haptic_subwoofer                      = false;
-  bool haptics_only                          = false;
-  int haptic_cutoff                          = 150;
-  int haptic_gain                            = 100;
-  float haptic_lp                            = 0;
-  uint8_t motor_left                         = 0;
-  uint8_t motor_right                        = 0;
-  uint8_t motor_power_level                  = 0;
-  uint8_t headphone_volume                   = 0x7F;
-  uint8_t speaker_volume                     = 0x64;
-  uint8_t mic_volume                         = 0;
-  uint8_t power_save_control                 = 0;
-  uint8_t audio_control                     = 0;
+  int volume                 = 80;
+  int speed_percent          = 100;
+  bool haptic_subwoofer      = false;
+  bool haptics_only          = false;
+  int haptic_cutoff          = 150;
+  int haptic_gain            = 100;
+  float haptic_lp            = 0;
+  uint8_t motor_left         = 0;
+  uint8_t motor_right        = 0;
+  uint8_t motor_power_level  = 0;
+  uint8_t headphone_volume   = 0x7F;
+  uint8_t speaker_volume     = 0x64;
+  uint8_t mic_volume         = 0;
+  uint8_t power_save_control = 0;
+  uint8_t audio_control      = 0;
   dualsense::OutputBody::SpeakerPreamp speaker_preamp_control =
       dualsense::OutputBody::SpeakerPreamp::Gain6dB;
-  bool haptic_lowpass                        = false;
-  SwrContext *haptic_swr                     = nullptr;
-  int16_t haptic_pending[256]                = {};
-  size_t haptic_pending_len                  = 0;
+  bool haptic_lowpass         = false;
+  SwrContext *haptic_swr      = nullptr;
+  int16_t haptic_pending[256] = {};
+  size_t haptic_pending_len   = 0;
   int64_t base_ms = 0, consumed = 0, sent = 0, underruns = 0, pushed = 0;
 
   void advanceConsumed() { consumed += IN_FRAMES * speed_percent / 100; }
@@ -585,7 +585,7 @@ private:
   void updateAudioPath() {
     audio_path = static_cast<dualsense::OutputBody::AudioOutputPath>((audio_control >> 4) & 0x03);
     speaker    = audio_path == dualsense::OutputBody::AudioOutputPath::SpeakerMono ||
-              audio_path == dualsense::OutputBody::AudioOutputPath::HeadphonesAndSpeaker;
+                 audio_path == dualsense::OutputBody::AudioOutputPath::HeadphonesAndSpeaker;
   }
 
   bool sendAudioControl() {
@@ -770,7 +770,8 @@ public:
     append(line);
     snprintf(line, sizeof(line), "firmware.type=%u\n", static_cast<unsigned>(info.getTypeValue()));
     append(line);
-    snprintf(line, sizeof(line), "firmware.series=%u\n", static_cast<unsigned>(info.getSeriesValue()));
+    snprintf(line, sizeof(line), "firmware.series=%u\n",
+             static_cast<unsigned>(info.getSeriesValue()));
     append(line);
     snprintf(line, sizeof(line), "firmware.hardware=0x%08X\n", info.getHardwareInfoValue());
     append(line);
@@ -1429,8 +1430,8 @@ public:
   void attach(App *owner) { app = owner; }
 
   bool setAudioPath(dualsense::OutputBody::AudioOutputPath route) {
-    audio_control = static_cast<uint8_t>((audio_control & ~0x30) |
-                                         (static_cast<uint8_t>(route) << 4));
+    audio_control =
+        static_cast<uint8_t>((audio_control & ~0x30) | (static_cast<uint8_t>(route) << 4));
     updateAudioPath();
     return sendAudioControl();
   }
@@ -1482,7 +1483,7 @@ public:
 
   bool create(const char *node = nullptr) {
     destroy();
-    is_usb             = false;
+    is_usb = false;
     if (node) {
       hidraw = open(node, O_RDWR | O_CLOEXEC);
       if (hidraw >= 0) snprintf(node_name, sizeof(node_name), "%s", node);

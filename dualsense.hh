@@ -673,14 +673,15 @@ private:
   constexpr void clear(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(f)); }
   constexpr void clear(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(f)); }
 
-  // This is only exposed for AudioReport to clear motor-related flags, 
+  // This is only exposed for AudioReport to clear motor-related flags,
   // this is specially crafted to support both supporting compatible
   // vibration and haptics outputs where body isn't changed.
   constexpr void clearMotorsClaims() {
     if (motorLeft == 0 && motorRight == 0) {
       clear(ValidFlag0::CompatibleVibration);
       clear(ValidFlag0::HapticsSelect);
-    } else setMotors(0, 0);
+    } else
+      setMotors(0, 0);
   }
 
 public:
@@ -1171,7 +1172,9 @@ public:
     return (status1 & static_cast<uint8_t>(Status1::MicDetect)) != 0;
   }
 
-  constexpr bool isMicMute() const { return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0; }
+  constexpr bool isMicMute() const {
+    return (status1 & static_cast<uint8_t>(Status1::MicMute)) != 0;
+  }
 
   constexpr bool isPluggedExternalMic() const {
     return (status2 & static_cast<uint8_t>(Status2::PluggedExternalMic)) != 0;
@@ -1471,17 +1474,14 @@ public:
 
   // Set the vibration motors' cancels haptic feedback if either motor is active
   constexpr void setMotors(uint8_t left, uint8_t right) {
-    if (left != 0 || right != 0) state.body.setMotors(left, right);
-    else state.body.clearMotorsClaims();
+    if (left != 0 || right != 0)
+      state.body.setMotors(left, right);
+    else
+      state.body.clearMotorsClaims();
   }
 
-  constexpr void setHeadphoneVolume(uint8_t v) {
-    state.body.setHeadphoneVolume(v);
-  }
-
-  constexpr void setSpeakerVolume(uint8_t v) {
-    state.body.setSpeakerVolume(v);
-  }
+  constexpr void setHeadphoneVolume(uint8_t v) { state.body.setHeadphoneVolume(v); }
+  constexpr void setSpeakerVolume(uint8_t v) { state.body.setSpeakerVolume(v); }
 
   constexpr explicit AudioReport() {
     reportIdValue = reportId;
@@ -1512,9 +1512,7 @@ public:
         packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
   }
 
-  constexpr void setConfig(ConfigMask mask) {
-    config.mask = mask;
-  }
+  constexpr void setConfig(ConfigMask mask) { config.mask = mask; }
 
   constexpr void setSequence(OutputReport::Sequence &sequence) {
     seqTag         = sequence.next();
@@ -2043,7 +2041,6 @@ public:
       return v;
     }();
     static_assert(kS32.bytes[0] == 0xFF && kS32.bytes[3] == 0xFF);
-
 
     static_assert(sizeof(DSUINT8) == 1, "DSUINT8 is one byte");
     static_assert(sizeof(DSUINT16) == 2, "DSUINT16 is two bytes");
