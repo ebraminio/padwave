@@ -290,7 +290,6 @@ private:
   long volume_saved_at       = 0;
 
   int reconnect_at                        = 0;
-  static constexpr long kNoPlaybackIdleMs = 60000;
   static constexpr int kPowerSaveModeMask = 0x17;
   long idle_since                         = 0;
   long last_activity_ms                   = 0;
@@ -574,8 +573,8 @@ public:
     long now             = nowMs();
     long idle_ms         = now > this->last_activity_ms ? now - this->last_activity_ms : 0;
     bool active_playback = this->playing && !this->paused;
-    long timeout         = active_playback ? this->idle_timeout_ms : kNoPlaybackIdleMs;
-    long grace           = active_playback ? this->idle_warn_grace_ms : 0;
+    long timeout         = this->idle_timeout_ms;
+    long grace           = this->idle_warn_grace_ms;
     const char *phase    = "active";
     long warning_in      = (timeout + 999) / 1000;
     long shutdown_in     = 0;
@@ -1909,7 +1908,7 @@ private:
     bool active_playback = this->playing && !this->paused;
 
     if (!active_playback) {
-      if (idle_ms < kNoPlaybackIdleMs) return;
+      if (idle_ms < this->idle_timeout_ms) return;
       this->idle_warning   = false;
       this->suspended      = true;
       this->paused_by_idle = true;
