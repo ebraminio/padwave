@@ -1,19 +1,18 @@
 // A standalone DualSense client built on dualsense.hh and hidapi.
 //
-// Build with the Meson project in dualsense-demo/:
+// Build with the xmake project in dualsense-demo/:
 //
 //   cd dualsense-demo
-//   meson setup build
-//   meson compile -C build
-//   ./build/dualsense-demo
+//   xmake f -c -y
+//   xmake -y
+//   xmake run dualsense-demo
 //
-// Meson uses system libopus/hidapi when available, otherwise the wraps in
-// subprojects/ supply them.
+// Opus and HIDAPI are pinned Git submodules, compiled directly by xmake.
 //
 // Pipe raw s16le 48 kHz stereo PCM on stdin to stream it to the controller's
 // Bluetooth speaker:
 //
-// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./build/dualsense-demo
+// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | xmake run dualsense-demo
 //
 // Without a pipe it just shows controller input. On a terminal:
 //   l = cycle lightbar, r = rumble, p = cycle player LEDs,

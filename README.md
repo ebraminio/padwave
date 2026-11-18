@@ -71,41 +71,47 @@ compile's real/user/sys time.
 ## Standalone demo
 
 `dualsense-demo.cc` is an independent hidapi client that includes only
-`dualsense.hh`. Its Meson project lives in `dualsense-demo/` and fetches libopus
-and hidapi through wraps. It needs Meson and Ninja; the Linux HIDAPI fallback
-needs `libudev-dev`. HIDAPI is built natively, without CMake or libusb.
+`dualsense.hh`. Opus and HIDAPI are Git submodules pinned to release tags;
+xmake compiles them directly, with no Meson, CMake, or package manager:
 
 ```sh
+git clone --depth 1 --recurse-submodules --shallow-submodules <repo>
+# or in an existing checkout:
+git submodule update --init --depth 1
+
 cd dualsense-demo
-meson setup build
-meson compile -C build
-meson test -C build dualsense-demo-help --print-errorlogs
-./build/dualsense-demo
+xmake f -c -y
+xmake -y
+xmake test
+xmake run dualsense-demo --help
 ```
 
-On Windows use Meson, Ninja and LLVM from a developer shell:
+On Windows use xmake with Visual Studio/MSVC installed; the project selects
+that toolchain itself:
 
 ```bat
 cd dualsense-demo
-meson setup build
-meson compile -C build
-meson test -C build dualsense-demo-help --print-errorlogs
-build\dualsense-demo.exe
+xmake f -c -y
+xmake -y
+xmake test
+xmake run dualsense-demo --help
 ```
 
-System libopus/hidapi are used when available; otherwise the wraps build them
-from source. Libraries are linked statically, including HIDAPI and Opus on
-Windows. With no pipe the demo displays controller input and accepts terminal
-keys. Pipe raw `s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
+Linux needs `libudev-dev` for HIDAPI’s hidraw backend. Opus is compiled from
+`third_party/opus` with source globs; HIDAPI is a native static target from
+`third_party/hidapi`. The result has no build-tree DLLs on Windows.
+
+With no pipe the demo displays controller input and accepts terminal keys. Pipe
+raw `s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
 
 ```sh
-ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./build/dualsense-demo
+ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | xmake run dualsense-demo
 ```
 
 Output-report flags:
 
 ```sh
-./build/dualsense-demo --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
+xmake run dualsense-demo --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
 ```
 
 With a terminal and no pipe, `l`, `r`, `p`, `t`, `h`, and `q` exercise the

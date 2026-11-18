@@ -1,0 +1,8 @@
+[submodule "dualsense-demo/third_party/opus"]
+	path = dualsense-demo/third_party/opus
+	url = https://github.com/xiph/opus.git
+	shallow = true
+[submodule "dualsense-demo/third_party/hidapi"]
+	path = dualsense-demo/third_party/hidapi
+	url = https://github.com/libusb/hidapi.git
+	shallow = true

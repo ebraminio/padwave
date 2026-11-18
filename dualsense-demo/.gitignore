@@ -1,5 +1,2 @@
 build/
-subprojects/hidapi/
-subprojects/opus-*/
-subprojects/packagecache/
-subprojects/.wraplock
+.xmake/
