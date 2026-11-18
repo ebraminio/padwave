@@ -86,8 +86,8 @@ xmake test
 xmake run dualsense-demo --help
 ```
 
-On Windows use xmake with Visual Studio/MSVC installed; the project selects
-that toolchain itself:
+On Windows use xmake with Visual Studio/MSVC installed; xmake detects it
+automatically:
 
 ```bat
 cd dualsense-demo
