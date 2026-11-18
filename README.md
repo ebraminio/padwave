@@ -80,7 +80,7 @@ cd dualsense-demo
 meson setup build
 meson compile -C build
 meson test -C build dualsense-demo-help --print-errorlogs
-meson devenv -C build ./dualsense-demo
+./build/dualsense-demo
 ```
 
 On Windows use Meson, Ninja, CMake and LLVM from a developer shell:
@@ -90,22 +90,22 @@ cd dualsense-demo
 meson setup build
 meson compile -C build
 meson test -C build dualsense-demo-help --print-errorlogs
-meson devenv -C build build\dualsense-demo.exe
+build\dualsense-demo.exe
 ```
 
-The wraps build both dependencies from source. `meson devenv` supplies the
-build-tree library paths (important for the Windows HIDAPI DLL). With no pipe
-the demo displays controller input and accepts terminal keys. Pipe raw
-`s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
+System libopus/hidapi are used when available; otherwise the wraps build them
+from source. Libraries are linked statically, including HIDAPI and Opus on
+Windows. With no pipe the demo displays controller input and accepts terminal
+keys. Pipe raw `s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
 
 ```sh
-ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | meson devenv -C build ./dualsense-demo
+ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./build/dualsense-demo
 ```
 
 Output-report flags:
 
 ```sh
-meson devenv -C build ./dualsense-demo --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
+./build/dualsense-demo --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
 ```
 
 With a terminal and no pipe, `l`, `r`, `p`, `t`, `h`, and `q` exercise the

@@ -5,14 +5,15 @@
 //   cd dualsense-demo
 //   meson setup build
 //   meson compile -C build
-//   meson devenv -C build ./dualsense-demo
+//   ./build/dualsense-demo
 //
-// Meson fetches libopus and hidapi through the wraps in subprojects/.
+// Meson uses system libopus/hidapi when available, otherwise the wraps in
+// subprojects/ supply them.
 //
 // Pipe raw s16le 48 kHz stereo PCM on stdin to stream it to the controller's
 // Bluetooth speaker:
 //
-// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | meson devenv -C build ./dualsense-demo
+// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./build/dualsense-demo
 //
 // Without a pipe it just shows controller input. On a terminal:
 //   l = cycle lightbar, r = rumble, p = cycle player LEDs,

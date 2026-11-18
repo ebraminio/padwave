@@ -3,6 +3,7 @@ directory=hidapi
 url=https://github.com/libusb/hidapi.git
 depth=1
 revision=378a53a8b6c098a32bea5dd659d647898030ccb0
+patch_directory=hidapi-static
 
 [provide]
 hidapi = hidapi_dep

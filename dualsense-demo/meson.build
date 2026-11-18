@@ -8,12 +8,18 @@ project(
     'cpp_eh=none',
     'cpp_rtti=false',
     'cpp_std=c++23',
-    'wrap_mode=forcefallback',
+    'default_library=static',
   ]
 )
 
-hidapi_dep = dependency('hidapi')
-opus_dep = dependency('opus')
+hidapi_dep = dependency('hidapi', required : false, allow_fallback : false)
+if not hidapi_dep.found()
+  hidapi_dep = dependency('hidapi-hidraw', required : false, allow_fallback : false)
+endif
+if not hidapi_dep.found()
+  hidapi_dep = dependency('hidapi', fallback : ['hidapi', 'hidapi_dep'])
+endif
+opus_dep = dependency('opus', fallback : ['opus', 'opus_dep'])
 
 demo_args = ['-DDS_HAVE_OPUS']
 if host_machine.system() == 'windows'
