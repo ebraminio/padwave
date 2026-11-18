@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CXX="${CXX:-clang}"
-PKGS="libavformat libavcodec libswresample libavutil libavfilter"
+PKGS="libavformat libavcodec libswresample libavutil libavfilter opus"
 MISSING=""
 for pkg in $PKGS; do pkg-config --exists "$pkg" || MISSING="$MISSING $pkg"; done
 if [ -n "$MISSING" ]; then
@@ -20,7 +20,7 @@ if [ "$(uname -s)" = "Linux" ] && [ ! -r /usr/include/bluetooth/hci_lib.h ]; the
   exit 1
 fi
 CFLAGS="$(pkg-config --cflags $PKGS)"
-LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
+LIBS="$(pkg-config --libs $PKGS) -lm"
 # libbluetooth-dev provides libbluetooth; BlueZ's pkg-config module is only
 # named "bluez" and emits this same -lbluetooth.
 if [ "$(uname -s)" = "Linux" ]; then LIBS="$LIBS -lbluetooth"; fi
