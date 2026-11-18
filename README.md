@@ -36,8 +36,21 @@ Analogue sticks are deliberately unbound: ours are worn and jitter.
 
 ## Build and run
 
-Needs a C++ compiler, `pkg-config`, FFmpeg (`libavformat`, `libavcodec`,
-`libswresample`, `libavutil`, `libavfilter`), `libopus` and `python3` for the embedded UI.
+Needs a C++23 compiler (`clang`), `pkg-config`, the FFmpeg development
+packages (`libavformat`, `libavcodec`, `libswresample`, `libavutil`,
+`libavfilter`), `libopus-dev`, and on Linux `libbluetooth-dev`.
+
+On Raspberry Pi OS or Debian:
+
+```sh
+sudo apt update
+sudo apt install clang pkg-config build-essential \
+  libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev \
+  libopus-dev libbluetooth-dev
+```
+
+`bluez` is needed at runtime to pair the controller, but is not a build
+dependency. `hcitool` is not needed.
 
 ```sh
 ./build.sh

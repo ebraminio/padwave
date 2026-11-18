@@ -7,6 +7,18 @@ cd "$(dirname "$0")"
 
 CXX="${CXX:-clang}"
 PKGS="libavformat libavcodec libswresample libavutil libavfilter"
+MISSING=""
+for pkg in $PKGS; do pkg-config --exists "$pkg" || MISSING="$MISSING $pkg"; done
+if [ -n "$MISSING" ]; then
+  echo "missing build dependencies:$MISSING" >&2
+  echo "Raspberry Pi OS/Debian:" >&2
+  echo "  sudo apt install clang pkg-config build-essential libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev libopus-dev libbluetooth-dev" >&2
+  exit 1
+fi
+if [ "$(uname -s)" = "Linux" ] && [ ! -r /usr/include/bluetooth/hci_lib.h ]; then
+  echo "missing libbluetooth-dev: sudo apt install libbluetooth-dev" >&2
+  exit 1
+fi
 CFLAGS="$(pkg-config --cflags $PKGS)"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
 # libbluetooth-dev provides libbluetooth; BlueZ's pkg-config module is only
