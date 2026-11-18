@@ -441,7 +441,6 @@
             <option value="3">3</option>
           </select>
         </label>
-        <button id="labAudioApply">apply</button>
         <button id="labAudioAuto" title="restore the output path for the current jack state">auto out</button>
         <span id="labAudioMsg" style="font-family:var(--mono);font-size:11px"></span>
       </div>
@@ -1242,10 +1241,14 @@ function audioControlValue() {
   return mic | flags | out | input;
 }
 
-$("#labAudioApply").onclick = async () => {
+async function sendAudioControl() {
   const data = await labSend({ kind: "audio_control", value: audioControlValue() });
   $("#labAudioMsg").textContent = data.ok === true ? (data.note || "sent") : "failed";
-};
+}
+
+for (const id of ["labAudioMic", "labAudioEcho", "labAudioNoise", "labAudioPath", "labAudioInput"]) {
+  $("#" + id).addEventListener("change", sendAudioControl);
+}
 
 $("#labAudioAuto").onclick = async () => {
   const data = await labSend({ kind: "audio_control_auto" });
