@@ -71,92 +71,49 @@ compile's real/user/sys time.
 ## Standalone demo
 
 `dualsense-demo.cc` is an independent hidapi client that includes only
-`dualsense.hh`. It has its own `main`, no makefile, and the build command is
-in its header.
-
-Linux:
-
-```sh
-clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
-  $(pkg-config --cflags --libs opus hidapi-hidraw) -Wall -o a.out && ./a.out
-```
-
-macOS with Homebrew (USB input works; 0x36 audio remains Bluetooth-only):
+`dualsense.hh`. Its Meson project lives in `dualsense-demo/` and fetches libopus
+and hidapi through wraps. This needs Meson, Ninja and CMake; on Linux the
+HIDAPI wrap also needs `libudev-dev` and `libusb-1.0-0-dev`.
 
 ```sh
-clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
-  $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
+cd dualsense-demo
+meson setup build
+meson compile -C build
+meson test -C build dualsense-demo-help --print-errorlogs
+meson devenv -C build ./dualsense-demo
 ```
 
-Windows with LLVM clang and a HIDAPI source checkout (input/output only; no
-Opus, no 0x36 audio):
+On Windows use Meson, Ninja, CMake and LLVM from a developer shell:
 
 ```bat
-"C:\Program Files\LLVM\bin\clang.exe" -std=c++23 -fno-exceptions -fno-rtti ^
-  -DHIDAPI_STATIC -IC:\Users\Ebrahim\hidapi\hidapi -c dualsense-demo.cc -o demo.o
-"C:\Program Files\LLVM\bin\clang.exe" -std=c17 -DHIDAPI_STATIC ^
-  -IC:\Users\Ebrahim\hidapi\hidapi -c C:\Users\Ebrahim\hidapi\windows\hid.c -o hid.o
-"C:\Program Files\LLVM\bin\clang.exe" demo.o hid.o -lsetupapi -lhid -o a.exe
+cd dualsense-demo
+meson setup build
+meson compile -C build
+meson test -C build dualsense-demo-help --print-errorlogs
+meson devenv -C build build\dualsense-demo.exe
 ```
 
-This default Windows build leaves out Opus, so piped PCM is unavailable;
-lightbar, player LEDs, triggers, rumble, and input display still work over USB.
-
-### Windows with Opus, no build system
-
-With the libopus source checkout at `C:\Users\Ebrahim\opus`, compile its C
-files directly and link them with the demo. This PowerShell block builds 138
-Opus sources, then the demo, without make/CMake:
-
-```powershell
-$root   = "C:\Users\Ebrahim\opus"
-$hidapi = "C:\Users\Ebrahim\hidapi"
-$clang  = "C:\Program Files\LLVM\bin\clang.exe"
-$incs   = @("-I$root\include", "-I$root", "-I$root\celt", "-I$root\silk", "-I$root\silk\float")
-
-$src  = @()
-$src += Get-ChildItem "$root\celt" -Filter *.c | Where-Object { $_.Name -notlike "*_demo.c" }
-$src += Get-ChildItem "$root\silk" -Filter *.c
-$src += Get-ChildItem "$root\silk\float" -Filter *.c
-$src += Get-ChildItem "$root\src" -Filter *.c |
-  Where-Object { $_.Name -notlike "*_demo.c" -and $_.Name -notlike "*_compare.c" }
-
-New-Item -ItemType Directory -Force obj | Out-Null
-Remove-Item obj\*.o -ErrorAction SilentlyContinue
-foreach ($f in $src) {
-  & $clang -std=c17 -O2 -DOPUS_BUILD -DVAR_ARRAYS -D_CRT_SECURE_NO_WARNINGS $incs `
-    -c $f.FullName -o ("obj\" + $f.BaseName + ".o")
-  if ($LASTEXITCODE -ne 0) { exit 1 }
-}
-
-& $clang -std=c++23 -O2 -fno-exceptions -fno-rtti -DDS_HAVE_OPUS -DHIDAPI_STATIC `
-  "-I$hidapi\hidapi" "-I$root\include" -c dualsense-demo.cc -o demo.o
-& $clang -std=c17 -O2 -DHIDAPI_STATIC "-I$hidapi\hidapi" `
-  -c "$hidapi\windows\hid.c" -o hid.o
-
-$objs = Get-ChildItem obj\*.o | ForEach-Object { $_.FullName }
-& $clang demo.o hid.o @objs -lsetupapi -lhid -o a.exe
-```
-
-`VAR_ARRAYS` is used because clang supports C variable-length arrays on
-Windows. If a toolchain rejects it, use `-DUSE_ALLOCA` instead.
-
-With no pipe it displays controller input. Pipe raw `s16le`, 48 kHz, stereo PCM
-to stream it to the Bluetooth speaker:
+The wraps build both dependencies from source. `meson devenv` supplies the
+build-tree library paths (important for the Windows HIDAPI DLL). With no pipe
+the demo displays controller input and accepts terminal keys. Pipe raw
+`s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
 
 ```sh
-ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./a.out
+ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | meson devenv -C build ./dualsense-demo
 ```
 
-Useful output-report flags:
+Output-report flags:
 
 ```sh
-./a.out --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
+meson devenv -C build ./dualsense-demo --lightbar 0,80,255 --leds 4 --trigger left,2,6 --rumble 120,120,300
 ```
 
 With a terminal and no pipe, `l`, `r`, `p`, `t`, `h`, and `q` exercise the
 lightbar, rumble, player LEDs, trigger feedback, help, and quit. Stop the
 padwave service first; two clients reading the same hidraw will split input.
+
+The 0x36 streaming path is Bluetooth-only. On USB the demo still provides input,
+lightbar, player LEDs, triggers, and rumble, but no speaker audio.
 
 ## Install
 

@@ -1,29 +1,18 @@
 // A standalone DualSense client built on dualsense.hh and hidapi.
 //
-// Linux (Raspberry Pi OS / Debian):
+// Build with the Meson project in dualsense-demo/:
 //
-// clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
-//   $(pkg-config --cflags --libs opus hidapi-hidraw) -Wall -o a.out && ./a.out
+//   cd dualsense-demo
+//   meson setup build
+//   meson compile -C build
+//   meson devenv -C build ./dualsense-demo
 //
-// macOS with Homebrew:
-//
-// clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
-//   $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
-//
-// Windows without Opus (input/output reports only). For 0x36 audio, build the
-// libopus C sources with clang as shown in README, then add -DDS_HAVE_OPUS and
-// link the Opus objects. Compile C and C++ separately:
-//
-// "C:\Program Files\LLVM\bin\clang.exe" -std=c++23 -fno-exceptions -fno-rtti ^
-//   -DHIDAPI_STATIC -IC:\Users\Ebrahim\hidapi\hidapi -c dualsense-demo.cc -o demo.o
-// "C:\Program Files\LLVM\bin\clang.exe" -std=c17 -DHIDAPI_STATIC ^
-//   -IC:\Users\Ebrahim\hidapi\hidapi -c C:\Users\Ebrahim\hidapi\windows\hid.c -o hid.o
-// "C:\Program Files\LLVM\bin\clang.exe" demo.o hid.o -lsetupapi -lhid -o a.exe
+// Meson fetches libopus and hidapi through the wraps in subprojects/.
 //
 // Pipe raw s16le 48 kHz stereo PCM on stdin to stream it to the controller's
 // Bluetooth speaker:
 //
-// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | ./a.out
+// ffmpeg -i track.mp3 -f s16le -ac 2 -ar 48000 - | meson devenv -C build ./dualsense-demo
 //
 // Without a pipe it just shows controller input. On a terminal:
 //   l = cycle lightbar, r = rumble, p = cycle player LEDs,
@@ -93,6 +82,7 @@ struct Device {
 
 struct Options {
   bool help = false;
+  bool list = false;
   bool input_only = false;
   int route = 3; // AudioOutputPath::SpeakerMono
   bool has_lightbar = false;
@@ -178,6 +168,7 @@ void printHelp(const char *argv0) {
   printf("  --leds MASK          player LED mask, bit 5 = instant\n");
   printf("  --trigger S,P,G      S=left|right, P=position, G=strength\n");
   printf("  --rumble L,R[,MS]    motors for MS milliseconds (default 300)\n");
+  printf("  --list               list Sony HID interfaces and exit\n");
   printf("  --input-only         never read PCM from stdin\n");
   printf("  --help               this text\n");
 #if !defined(_WIN32)
@@ -190,6 +181,8 @@ bool parseArgs(int argc, char **argv, Options &options) {
     const char *arg = argv[i];
     if (strcmp(arg, "--help") == 0) {
       options.help = true;
+    } else if (strcmp(arg, "--list") == 0) {
+      options.list = true;
     } else if (strcmp(arg, "--input-only") == 0) {
       options.input_only = true;
     } else if (strcmp(arg, "--route") == 0 && i + 1 < argc) {
@@ -222,6 +215,16 @@ bool parseArgs(int argc, char **argv, Options &options) {
   return true;
 }
 
+void listDevices() {
+  hid_device_info *list = hid_enumerate(kVendorSony, 0);
+  for (const hid_device_info *it = list; it; it = it->next) {
+    printf("%04x:%04x bus=%d if=%d usage=%04x:%04x path=%s\n", it->vendor_id, it->product_id,
+           static_cast<int>(it->bus_type), it->interface_number, it->usage_page, it->usage,
+           it->path ? it->path : "");
+  }
+  hid_free_enumeration(list);
+}
+
 bool openDevice() {
   hid_device_info *list = hid_enumerate(kVendorSony, 0);
   if (!list) {
@@ -232,9 +235,9 @@ bool openDevice() {
   for (const hid_device_info *it = list; it; it = it->next) {
     if (it->product_id != kProductDualSense && it->product_id != kProductDualSenseEdge) continue;
     if (!chosen) chosen = it;
-    if (it->bus_type == HID_API_BUS_BLUETOOTH) {
+    if (it->usage_page == 1 && it->usage == 5) {
       chosen = it;
-      break;
+      if (it->bus_type == HID_API_BUS_BLUETOOTH) break;
     }
   }
   if (!chosen) {
@@ -262,13 +265,13 @@ bool sendOutput(Fill fill) {
     dualsense::UsbOutputReport report{};
     if (!fill(report.getBody())) return false;
     return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
-                     sizeof(report)) == static_cast<int>(sizeof(report));
+                     sizeof(report)) > 0;
   }
   dualsense::OutputReport report(g_device.sequence);
   if (!fill(report.getBody())) return false;
   report.sign();
   return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
-                   sizeof(report)) == static_cast<int>(sizeof(report));
+                   sizeof(report)) > 0;
 }
 
 bool sendInitialOutput(const Options &options) {
@@ -427,11 +430,16 @@ int main(int argc, char **argv) {
     printHelp(argv[0]);
     return 0;
   }
-
   if (hid_init() != 0) {
     fprintf(stderr, "dualsense-demo: hid_init failed\n");
     return 1;
   }
+  if (options.list) {
+    listDevices();
+    hid_exit();
+    return 0;
+  }
+
   signal(SIGINT, stop);
   signal(SIGTERM, stop);
   if (!openDevice()) {
@@ -439,7 +447,8 @@ int main(int argc, char **argv) {
     return 1;
   }
   if (!sendInitialOutput(options)) {
-    fprintf(stderr, "dualsense-demo: initial output report failed\n");
+    fprintf(stderr, "dualsense-demo: initial output report failed: %ls\n",
+            hid_error(g_device.handle));
     hid_close(g_device.handle);
     hid_exit();
     return 1;
@@ -474,7 +483,10 @@ int main(int argc, char **argv) {
   } else {
 #if defined(_WIN32)
 #ifdef DS_HAVE_OPUS
-    printf("Windows build: input/output; pipe PCM for Bluetooth 0x36 audio\n");
+    if (g_device.usb)
+      printf("Windows USB: input/output reports only; 0x36 audio is Bluetooth-only\n");
+    else
+      printf("Windows build: pipe PCM for Bluetooth 0x36 audio\n");
 #else
     printf("Windows build: input/output only; 0x36 audio is unavailable\n");
 #endif
@@ -568,8 +580,9 @@ int main(int argc, char **argv) {
         audio.setPcm(pcm, kPcmFrames, encoder);
         audio.sign();
         if (hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&audio),
-                      sizeof(audio)) != static_cast<int>(sizeof(audio))) {
-          fprintf(stderr, "dualsense-demo: audio write failed\n");
+                      sizeof(audio)) <= 0) {
+          fprintf(stderr, "dualsense-demo: audio write failed: %ls\n",
+                  hid_error(g_device.handle));
           break;
         }
         if (tail) {
