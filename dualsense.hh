@@ -1405,9 +1405,9 @@ public:
         close();
         return false;
       }
-      opus_encoder_ctl(encoder, OPUS_SET_BITRATE(160000));
-      opus_encoder_ctl(encoder, OPUS_SET_VBR(0));
-      opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(0));
+      opus_encoder_ctl(encoder, OPUS_SET_BITRATE_REQUEST, 160000);
+      opus_encoder_ctl(encoder, OPUS_SET_VBR_REQUEST, 0);
+      opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY_REQUEST, 0);
       return true;
     }
 
