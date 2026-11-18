@@ -128,7 +128,7 @@ inline bool apply_fields(dualsense::OutputBody *body, const char *text) {
 
     return false;
   }
-  if (has_motors) body->setMotors(motor_left, motor_right);
+  if (has_motors) body->setCompatibleVibration(motor_left, motor_right);
   return true;
 }
 

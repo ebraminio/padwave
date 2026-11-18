@@ -229,7 +229,6 @@ private:
   FILE *usb_audio = nullptr;
   App *app        = nullptr;
 
-  dualsense::AudioReport audio_report{};
   dualsense::AudioReport::Encoder enc;
   dualsense::OutputReport::Sequence audio_sequence;
 
@@ -1092,12 +1091,13 @@ private:
   void sendReport(const float *pcm, int frames) {
     if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     const float hgain = static_cast<float>(haptic_gain) / 100.0f;
+    dualsense::AudioReport audio_report{};
     audio_report.setSpeakTag(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
                                      : dualsense::AudioReport::SpeakerTag::Jack);
     audio_report.setConfig(mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
                                : dualsense::AudioReport::ConfigMask::SpeakerOnly);
     audio_report.setSequence(audio_sequence);
-    audio_report.setMotors(motor_left, motor_right);
+    audio_report.setCompatibleVibration(motor_left, motor_right);
     audio_report.setHeadphoneVolume(headphone_volume);
     audio_report.setSpeakerVolume(speaker_volume);
     audio_report.setHaptics([&](size_t i) {
