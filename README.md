@@ -99,8 +99,47 @@ Opus, no 0x36 audio):
 "C:\Program Files\LLVM\bin\clang.exe" demo.o hid.o -lsetupapi -lhid -o a.exe
 ```
 
-The Windows build deliberately leaves out Opus, so piped PCM is not available;
+This default Windows build leaves out Opus, so piped PCM is unavailable;
 lightbar, player LEDs, triggers, rumble, and input display still work over USB.
+
+### Windows with Opus, no build system
+
+With the libopus source checkout at `C:\Users\Ebrahim\opus`, compile its C
+files directly and link them with the demo. This PowerShell block builds 138
+Opus sources, then the demo, without make/CMake:
+
+```powershell
+$root   = "C:\Users\Ebrahim\opus"
+$hidapi = "C:\Users\Ebrahim\hidapi"
+$clang  = "C:\Program Files\LLVM\bin\clang.exe"
+$incs   = @("-I$root\include", "-I$root", "-I$root\celt", "-I$root\silk", "-I$root\silk\float")
+
+$src  = @()
+$src += Get-ChildItem "$root\celt" -Filter *.c | Where-Object { $_.Name -notlike "*_demo.c" }
+$src += Get-ChildItem "$root\silk" -Filter *.c
+$src += Get-ChildItem "$root\silk\float" -Filter *.c
+$src += Get-ChildItem "$root\src" -Filter *.c |
+  Where-Object { $_.Name -notlike "*_demo.c" -and $_.Name -notlike "*_compare.c" }
+
+New-Item -ItemType Directory -Force obj | Out-Null
+Remove-Item obj\*.o -ErrorAction SilentlyContinue
+foreach ($f in $src) {
+  & $clang -std=c17 -O2 -DOPUS_BUILD -DVAR_ARRAYS -D_CRT_SECURE_NO_WARNINGS $incs `
+    -c $f.FullName -o ("obj\" + $f.BaseName + ".o")
+  if ($LASTEXITCODE -ne 0) { exit 1 }
+}
+
+& $clang -std=c++23 -O2 -fno-exceptions -fno-rtti -DDS_HAVE_OPUS -DHIDAPI_STATIC `
+  "-I$hidapi\hidapi" "-I$root\include" -c dualsense-demo.cc -o demo.o
+& $clang -std=c17 -O2 -DHIDAPI_STATIC "-I$hidapi\hidapi" `
+  -c "$hidapi\windows\hid.c" -o hid.o
+
+$objs = Get-ChildItem obj\*.o | ForEach-Object { $_.FullName }
+& $clang demo.o hid.o @objs -lsetupapi -lhid -o a.exe
+```
+
+`VAR_ARRAYS` is used because clang supports C variable-length arrays on
+Windows. If a toolchain rejects it, use `-DUSE_ALLOCA` instead.
 
 With no pipe it displays controller input. Pipe raw `s16le`, 48 kHz, stereo PCM
 to stream it to the Bluetooth speaker:

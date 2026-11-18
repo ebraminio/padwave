@@ -10,8 +10,9 @@
 // clang -std=c++23 -fno-exceptions -fno-rtti dualsense-demo.cc \
 //   $(pkg-config --cflags --libs opus hidapi) -Wall -o a.out && ./a.out
 //
-// Windows (input/output reports only; no Opus and no 0x36 audio). Compile the
-// C and C++ parts separately; there is still no makefile:
+// Windows without Opus (input/output reports only). For 0x36 audio, build the
+// libopus C sources with clang as shown in README, then add -DDS_HAVE_OPUS and
+// link the Opus objects. Compile C and C++ separately:
 //
 // "C:\Program Files\LLVM\bin\clang.exe" -std=c++23 -fno-exceptions -fno-rtti ^
 //   -DHIDAPI_STATIC -IC:\Users\Ebrahim\hidapi\hidapi -c dualsense-demo.cc -o demo.o
@@ -31,9 +32,6 @@
 #if !defined(_WIN32) && !defined(DS_HAVE_OPUS)
 #define DS_HAVE_OPUS
 #endif
-#if defined(_WIN32) && defined(DS_HAVE_OPUS)
-#undef DS_HAVE_OPUS
-#endif
 
 #include <errno.h>
 #include <signal.h>
@@ -46,6 +44,7 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <fcntl.h>
 #include <io.h>
 #else
 #include <fcntl.h>
@@ -70,6 +69,7 @@ constexpr uint64_t kReportIntervalUs = 10667;
 #endif
 
 #if defined(_WIN32)
+constexpr int kStdin = 0;
 constexpr int kStdout = 1;
 #define demo_isatty _isatty
 #else
@@ -130,6 +130,25 @@ uint64_t nowUs() {
 
 uint64_t nowMs() { return nowUs() / 1000ULL; }
 
+#ifdef DS_HAVE_OPUS
+int readPcm(uint8_t *dst, size_t capacity) {
+#if defined(_WIN32)
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  DWORD available = 0;
+  if (PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr)) {
+    if (available == 0) return -2;
+    if (available < capacity) capacity = available;
+    DWORD got = 0;
+    if (!ReadFile(input, dst, static_cast<DWORD>(capacity), &got, nullptr)) return -1;
+    return static_cast<int>(got);
+  }
+  return _read(kStdin, dst, static_cast<unsigned>(capacity));
+#else
+  return static_cast<int>(read(kStdin, dst, capacity));
+#endif
+}
+#endif
+
 void restoreTty() {
 #if !defined(_WIN32)
   if (g_tty_changed) {
@@ -161,7 +180,9 @@ void printHelp(const char *argv0) {
   printf("  --rumble L,R[,MS]    motors for MS milliseconds (default 300)\n");
   printf("  --input-only         never read PCM from stdin\n");
   printf("  --help               this text\n");
+#if !defined(_WIN32)
   printf("\nterminal keys: l lightbar, r rumble, p player LEDs, t trigger, q quit\n");
+#endif
 }
 
 bool parseArgs(int argc, char **argv, Options &options) {
@@ -350,6 +371,7 @@ void showInput(const dualsense::InputBody &input) {
   fflush(stdout);
 }
 
+#if !defined(_WIN32)
 void handleKey(char key) {
   static int color = 0;
   static int led_mask = 0;
@@ -391,6 +413,7 @@ void handleKey(char key) {
     });
   }
 }
+#endif
 
 } // namespace
 
@@ -423,7 +446,11 @@ int main(int argc, char **argv) {
   }
 
 #if defined(_WIN32)
+#ifdef DS_HAVE_OPUS
+  const bool piped = !options.input_only && !demo_isatty(kStdin);
+#else
   const bool piped = false;
+#endif
 #else
   const bool piped = !options.input_only && !isatty(kStdin);
 #endif
@@ -436,17 +463,25 @@ int main(int argc, char **argv) {
   if (options.has_rumble) g_rumble_until_ms = nowMs() + static_cast<uint64_t>(options.rumble_ms);
 
   if (!piped) setupTty();
-#if !defined(_WIN32)
   if (piped) {
+#if defined(_WIN32)
+    _setmode(kStdin, _O_BINARY);
+#else
     int flags = fcntl(kStdin, F_GETFL, 0);
     if (flags >= 0) fcntl(kStdin, F_SETFL, flags | O_NONBLOCK);
+#endif
     printf("streaming s16le 48 kHz stereo from stdin; Ctrl-C to stop\n");
   } else {
-    printf("waiting for controller input; h for keys, Ctrl-C to quit\n");
-  }
+#if defined(_WIN32)
+#ifdef DS_HAVE_OPUS
+    printf("Windows build: input/output; pipe PCM for Bluetooth 0x36 audio\n");
 #else
-  printf("Windows build: input/output reports only; 0x36 audio is unavailable\n");
+    printf("Windows build: input/output only; 0x36 audio is unavailable\n");
 #endif
+#else
+    printf("waiting for controller input; h for keys, Ctrl-C to quit\n");
+#endif
+  }
 
 #ifdef DS_HAVE_OPUS
   dualsense::AudioReport audio;
@@ -497,13 +532,18 @@ int main(int argc, char **argv) {
 #ifdef DS_HAVE_OPUS
     if (piped) {
       if (!audio_eof && pcm_have < sizeof(pcm_bytes)) {
-        ssize_t bytes = read(kStdin, pcm_bytes + pcm_have, sizeof(pcm_bytes) - pcm_have);
+        int bytes = readPcm(pcm_bytes + pcm_have, sizeof(pcm_bytes) - pcm_have);
         if (bytes > 0)
           pcm_have += static_cast<size_t>(bytes);
         else if (bytes == 0)
           audio_eof = true;
+#if !defined(_WIN32)
         else if (errno != EAGAIN && errno != EINTR)
           audio_eof = true;
+#else
+        else if (bytes != -2)
+          audio_eof = true;
+#endif
       }
       uint64_t now = nowUs();
       if (audio_eof && audio_started && pcm_have == 0) have_audio = false;

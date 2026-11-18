@@ -13,7 +13,7 @@
 #include <cmath>
 
 #ifdef DS_HAVE_OPUS
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
 #include <opus.h>
 #else
 #include <opus/opus.h>
