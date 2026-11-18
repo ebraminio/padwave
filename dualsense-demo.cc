@@ -18,7 +18,7 @@
 //   l = cycle lightbar, r = rumble, p = cycle player LEDs,
 //   t = left trigger feedback, h = help, q = quit.
 
-#if !defined(_WIN32) && !defined(DS_HAVE_OPUS)
+#ifndef DS_HAVE_OPUS
 #define DS_HAVE_OPUS
 #endif
 
@@ -51,11 +51,9 @@ namespace {
 constexpr uint16_t kVendorSony = 0x054c;
 constexpr uint16_t kProductDualSense = 0x0ce6;
 constexpr uint16_t kProductDualSenseEdge = 0x0df2;
-#ifdef DS_HAVE_OPUS
 constexpr int kPcmFrames = 480;
 constexpr size_t kPcmBytes = static_cast<size_t>(kPcmFrames) * 2 * sizeof(int16_t);
 constexpr uint64_t kReportIntervalUs = 10667;
-#endif
 
 #if defined(_WIN32)
 constexpr int kStdin = 0;
@@ -120,7 +118,6 @@ uint64_t nowUs() {
 
 uint64_t nowMs() { return nowUs() / 1000ULL; }
 
-#ifdef DS_HAVE_OPUS
 int readPcm(uint8_t *dst, size_t capacity) {
 #if defined(_WIN32)
   HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
@@ -137,7 +134,6 @@ int readPcm(uint8_t *dst, size_t capacity) {
   return static_cast<int>(read(kStdin, dst, capacity));
 #endif
 }
-#endif
 
 void restoreTty() {
 #if !defined(_WIN32)
@@ -454,15 +450,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-#if defined(_WIN32)
-#ifdef DS_HAVE_OPUS
   const bool piped = !options.input_only && !demo_isatty(kStdin);
-#else
-  const bool piped = false;
-#endif
-#else
-  const bool piped = !options.input_only && !isatty(kStdin);
-#endif
   if (piped && g_device.usb) {
     fprintf(stderr, "dualsense-demo: 0x36 audio streaming is Bluetooth-only\n");
     hid_close(g_device.handle);
@@ -482,20 +470,15 @@ int main(int argc, char **argv) {
     printf("streaming s16le 48 kHz stereo from stdin; Ctrl-C to stop\n");
   } else {
 #if defined(_WIN32)
-#ifdef DS_HAVE_OPUS
     if (g_device.usb)
       printf("Windows USB: input/output reports only; 0x36 audio is Bluetooth-only\n");
     else
       printf("Windows build: pipe PCM for Bluetooth 0x36 audio\n");
 #else
-    printf("Windows build: input/output only; 0x36 audio is unavailable\n");
-#endif
-#else
     printf("waiting for controller input; h for keys, Ctrl-C to quit\n");
 #endif
   }
 
-#ifdef DS_HAVE_OPUS
   dualsense::AudioReport audio;
   dualsense::AudioReport::Encoder encoder;
   bool have_audio = false;
@@ -522,7 +505,6 @@ int main(int argc, char **argv) {
   uint64_t next_audio_us = 0;
   unsigned long underruns = 0;
   dualsense::OutputReport::Sequence audio_sequence;
-#endif
 
   while (g_running) {
     uint8_t report[512];
@@ -541,7 +523,6 @@ int main(int argc, char **argv) {
       if (read(kStdin, &key, 1) == 1) handleKey(key);
     }
 #endif
-#ifdef DS_HAVE_OPUS
     if (piped) {
       if (!audio_eof && pcm_have < sizeof(pcm_bytes)) {
         int bytes = readPcm(pcm_bytes + pcm_have, sizeof(pcm_bytes) - pcm_have);
@@ -593,7 +574,6 @@ int main(int argc, char **argv) {
         if (next_audio_us < now) next_audio_us = now + kReportIntervalUs;
       }
     }
-#endif
 
     if (g_rumble_until_ms && nowMs() >= g_rumble_until_ms) {
       g_rumble_until_ms = 0;
