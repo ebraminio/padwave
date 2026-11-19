@@ -32,7 +32,7 @@ target("XInput1_4", function ()
     set_warnings("allextra")
     set_optimize("faster")
     if is_plat("mingw") then
-        add_cxxflags("-fno-stack-protector", "-fno-rtti", {force = true})
+        add_cxxflags("-fno-stack-protector", "-fno-rtti", "-mno-stack-arg-probe", {force = true})
         local entry = is_arch("i386", "x86") and "_DllMain@12" or "DllMain"
         add_shflags("-nostartfiles", "-nodefaultlibs", "-Wl,--kill-at", "-Wl,--entry=" .. entry,
                     {force = true})
