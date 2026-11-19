@@ -108,6 +108,15 @@ raw `s16le`, 48 kHz, stereo PCM to stream to the Bluetooth speaker:
 ffmpeg -re -i track.mp3 -f s16le -ac 2 -ar 48000 - | xmake run dualsense-demo
 ```
 
+On Windows, feed the binary pipe through `cmd.exe`; PowerShell's text pipeline
+corrupts raw PCM with line-ending and encoding changes:
+
+```cmd
+cmd /c "ffmpeg -re -i track.flac -f s16le -ac 2 -ar 48000 - | .\build\windows\x64\release\dualsense-demo.exe"
+```
+
+Writing the PCM to a file and using `< pcm.raw` works too.
+
 Output-report flags:
 
 ```sh
