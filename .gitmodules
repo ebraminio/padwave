@@ -6,3 +6,8 @@
 	path = dualsense-demo/third_party/hidapi
 	url = https://github.com/libusb/hidapi.git
 	shallow = true
+[submodule "ds2xi/hidapi"]
+	path = ds2xi/hidapi
+	url = https://github.com/ebraminio/hidapi.git
+	branch = crt-free
+	shallow = true
