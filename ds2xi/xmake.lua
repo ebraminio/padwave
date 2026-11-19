@@ -7,7 +7,8 @@ target("hidapi", function ()
     add_defines("HID_API_NO_EXPORT_DEFINE", {public = true})
     add_defines("HIDAPI_NO_CRT", "HIDAPI_CMAKE_V0_BUILD")
     add_files("hidapi/windows/hid.c",
-              "hidapi/windows/hidapi_descriptor_reconstruct.c")
+              "hidapi/windows/hidapi_descriptor_reconstruct.c",
+              "hidapi/windows/hidapi_winapi_crt.c")
     set_runtimes("none")
     set_exceptions("none")
     if is_plat("mingw") then
