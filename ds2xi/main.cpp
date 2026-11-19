@@ -357,6 +357,7 @@ static bool readDualSenseState(XINPUT_STATE &state)
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
 {
+    (void) hModule;
     switch (reason)
     {
     case DLL_PROCESS_ATTACH:

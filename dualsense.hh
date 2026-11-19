@@ -1459,8 +1459,7 @@ public:
 
   // Set the vibration motors' cancels haptic feedback if either motor is active
   constexpr void setCompatibleVibration(uint8_t left, uint8_t right) {
-    if (left != 0 || right != 0)
-      state.body.setCompatibleVibration(left, right);
+    if (left != 0 || right != 0) state.body.setCompatibleVibration(left, right);
   }
 
   constexpr void setHeadphoneVolume(uint8_t v) { state.body.setHeadphoneVolume(v); }
