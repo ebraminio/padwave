@@ -175,18 +175,16 @@ static bool sendOutput(Fill fill)
 
     if (g_DsIsBluetooth) {
         dualsense::OutputReport report(g_Sequence);
-        if (!fill(report.getBody()))
-            return false;
+        fill(report.getBody());
         report.sign();
         return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report),
                          sizeof(report)) > 0;
+    } else {
+        dualsense::UsbOutputReport report{};
+        fill(report.getBody());
+        return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report),
+                        sizeof(report)) > 0;
     }
-
-    dualsense::UsbOutputReport report{};
-    if (!fill(report.getBody()))
-        return false;
-    return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report),
-                     sizeof(report)) > 0;
 }
 
 static void sendDualSenseOutput()
@@ -200,7 +198,6 @@ static void sendDualSenseOutput()
         body.setLightbar(static_cast<uint8_t>(g_Color & 0xFF),
                          static_cast<uint8_t>((g_Color >> 8) & 0xFF),
                          static_cast<uint8_t>((g_Color >> 16) & 0xFF));
-        return true;
     });
 }
 
@@ -210,7 +207,6 @@ static void cleanControllerState()
         body.setCompatibleVibration(0, 0);
         body.setPlayerLeds(false, false, false, false, false, false);
         body.setLightbar(0, 0, 0);
-        return true;
     });
 }
 
