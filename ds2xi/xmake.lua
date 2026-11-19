@@ -3,9 +3,11 @@ set_languages("c++23")
 
 target("hidapi", function ()
     set_kind("static")
-    add_includedirs("hidapi/hidapi", {public = true})
+    add_includedirs("hidapi/hidapi", "hidapi/windows", {public = true})
     add_defines("HID_API_NO_EXPORT_DEFINE", {public = true})
-    add_files("hidapi/windows/hid.c")
+    add_defines("HIDAPI_NO_CRT", "HIDAPI_CMAKE_V0_BUILD")
+    add_files("hidapi/windows/hid.c",
+              "hidapi/windows/hidapi_descriptor_reconstruct.c")
     set_runtimes("none")
     set_exceptions("none")
     if is_plat("mingw") then
