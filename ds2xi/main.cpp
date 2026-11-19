@@ -270,25 +270,17 @@ static bool readDualSenseState(XINPUT_STATE &state)
     if (!g_DsDevice)
         return false;
 
-    uint8_t buffer[574];
+    uint8_t buffer[1024];
     int bytesRead = hid_read(g_DsDevice, buffer, sizeof(buffer));
     if (bytesRead <= 0)
         return false;
 
     const dualsense::InputBody *input = nullptr;
-    if (bytesRead >= static_cast<int>(sizeof(dualsense::InputReport)) && buffer[0] == 0x31) {
-        const auto *report = dualsense::InputReport::asFrame(buffer, static_cast<size_t>(bytesRead));
-        if (report)
-            input = &report->getBody();
-    } else if (bytesRead >= static_cast<int>(sizeof(dualsense::UsbInputReport)) &&
-               buffer[0] == 0x01) {
-        const auto *report =
-            dualsense::UsbInputReport::asFrame(buffer, static_cast<size_t>(bytesRead));
-        if (report)
-            input = &report->getBody();
-    }
-    if (!input)
-        return false;
+    if (const auto *report = dualsense::InputReport::asFrame(buffer, static_cast<size_t>(bytesRead))) {
+        input = &report->getBody();
+    } else if (const auto *report = dualsense::UsbInputReport::asFrame(buffer, static_cast<size_t>(bytesRead))) {
+        input = &report->getBody();
+    } else return false;
 
     const int battery = input->getBattery();
     if (battery != g_BatteryLevel) {
