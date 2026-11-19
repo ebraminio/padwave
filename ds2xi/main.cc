@@ -271,14 +271,14 @@ static bool readDualSenseState(XINPUT_STATE &state)
         return false;
 
     uint8_t buffer[512];
-    int bytesRead = hid_read(g_DsDevice, buffer, sizeof(buffer));
-    if (bytesRead <= 0)
-        return false;
+    int n = hid_read(g_DsDevice, buffer, sizeof(buffer));
+    if (n <= 0) return false;
+    size_t bytesRead = static_cast<size_t>(n);
 
     const dualsense::InputBody *input = nullptr;
-    if (const auto *report = dualsense::InputReport::asFrame(buffer, static_cast<size_t>(bytesRead))) {
+    if (auto *report = dualsense::InputReport::asFrame(buffer, bytesRead)) {
         input = &report->getBody();
-    } else if (const auto *report = dualsense::UsbInputReport::asFrame(buffer, static_cast<size_t>(bytesRead))) {
+    } else if (auto *report = dualsense::UsbInputReport::asFrame(buffer, bytesRead)) {
         input = &report->getBody();
     } else return false;
 
