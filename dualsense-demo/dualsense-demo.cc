@@ -259,15 +259,16 @@ bool sendOutput(Fill fill) {
   if (!g_device.handle) return false;
   if (g_device.usb) {
     dualsense::UsbOutputReport report{};
-    if (!fill(report.getBody())) return false;
+    fill(report.getBody());
+    return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
+                     sizeof(report)) > 0;
+  } else {
+    dualsense::OutputReport report(g_device.sequence);
+    fill(report.getBody());
+    report.sign();
     return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
                      sizeof(report)) > 0;
   }
-  dualsense::OutputReport report(g_device.sequence);
-  if (!fill(report.getBody())) return false;
-  report.sign();
-  return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
-                   sizeof(report)) > 0;
 }
 
 bool sendInitialOutput(const Options &options) {
@@ -296,14 +297,12 @@ bool sendInitialOutput(const Options &options) {
     if (options.has_rumble)
       body.setCompatibleVibration(static_cast<uint8_t>(options.rumble_left),
                                   static_cast<uint8_t>(options.rumble_right));
-    return true;
   });
 }
 
 bool sendRumble(int left, int right, int milliseconds) {
   if (!sendOutput([&](dualsense::OutputBody &body) {
         body.setCompatibleVibration(static_cast<uint8_t>(left), static_cast<uint8_t>(right));
-        return true;
       }))
     return false;
   g_rumble_until_ms = milliseconds > 0 ? nowMs() + static_cast<uint64_t>(milliseconds) : 0;
@@ -390,7 +389,6 @@ void handleKey(char key) {
     color = (color + 1) % 4;
     sendOutput([&](dualsense::OutputBody &body) {
       body.setLightbar(colors[color][0], colors[color][1], colors[color][2]);
-      return true;
     });
   } else if (key == 'r') {
     sendRumble(120, 120, 300);
@@ -400,7 +398,6 @@ void handleKey(char key) {
       const unsigned mask = 1U << led_mask;
       body.setPlayerLeds((mask & 0x01) != 0, (mask & 0x02) != 0, (mask & 0x04) != 0,
                          (mask & 0x08) != 0, (mask & 0x10) != 0, false);
-      return true;
     });
   } else if (key == 't') {
     trigger_on = !trigger_on;
@@ -408,7 +405,6 @@ void handleKey(char key) {
                              : dualsense::OutputBody::TriggerEffect::off();
     sendOutput([&](dualsense::OutputBody &body) {
       body.setLeftTriggerEffect(effect);
-      return true;
     });
   }
 }
@@ -508,13 +504,13 @@ int main(int argc, char **argv) {
 
   while (g_running) {
     uint8_t report[512];
-    int n = hid_read_timeout(g_device.handle, report, sizeof(report), 1);
-    if (n >= static_cast<int>(sizeof(dualsense::InputReport)) && report[0] == 0x31) {
-      const auto *input = dualsense::InputReport::asFrame(report, static_cast<size_t>(n));
-      if (input) showInput(input->getBody());
-    } else if (n >= static_cast<int>(sizeof(dualsense::UsbInputReport)) && report[0] == 0x01) {
-      const auto *input = dualsense::UsbInputReport::asFrame(report, static_cast<size_t>(n));
-      if (input) showInput(input->getBody());
+    int bytesRead = hid_read_timeout(g_device.handle, report, sizeof(report), 1);
+    if (bytesRead > 0) {
+      if (const auto *input = dualsense::InputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
+        showInput(input->getBody());
+      } else if (const auto *input = dualsense::UsbInputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
+        showInput(input->getBody());
+      }
     }
 
 #if !defined(_WIN32)

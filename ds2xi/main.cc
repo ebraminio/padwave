@@ -270,7 +270,7 @@ static bool readDualSenseState(XINPUT_STATE &state)
     if (!g_DsDevice)
         return false;
 
-    uint8_t buffer[1024];
+    uint8_t buffer[512];
     int bytesRead = hid_read(g_DsDevice, buffer, sizeof(buffer));
     if (bytesRead <= 0)
         return false;
