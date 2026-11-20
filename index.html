@@ -329,6 +329,20 @@
         <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div><div class="meta"><span>stop <b id="l2stop">—</b></span><span>status <b id="l2status">—</b></span><span>effect <b id="l2effect">—</b></span></div></div>
         <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div><div class="meta"><span>stop <b id="r2stop">—</b></span><span>status <b id="r2status">—</b></span><span>effect <b id="r2effect">—</b></span></div></div>
       </div>
+      <div class="bitwatch" id="bitwatch"></div>
+      <details>
+        <summary>live packet 0x31 · 78 bytes, every field</summary>
+        <pre class="hex" id="hex">waiting for the controller…</pre>
+        <div class="fields" id="fields"></div>
+      </details>
+      <div class="lab-row"><button id="labFirmware">get firmware info</button><span id="labFirmwareMsg"></span></div>
+      <pre id="labFirmwareOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
+      <div class="lab-row" id="usbExtrasRow" style="display:none"><button id="labExtras">get USB extras</button><span id="labExtrasMsg"></span></div>
+      <pre id="labExtrasOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>trigger effects</h2></div>
       <div class="lab-row" data-trigger="left">
         <b>L2 effect</b>
         <select class="trigMode" title="TriggerEffect method"></select>
@@ -351,16 +365,6 @@
         <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
         <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
       </div>
-      <div class="bitwatch" id="bitwatch"></div>
-      <details>
-        <summary>live packet 0x31 · 78 bytes, every field</summary>
-        <pre class="hex" id="hex">waiting for the controller…</pre>
-        <div class="fields" id="fields"></div>
-      </details>
-      <div class="lab-row"><button id="labFirmware">get firmware info</button><span id="labFirmwareMsg"></span></div>
-      <pre id="labFirmwareOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
-      <div class="lab-row" id="usbExtrasRow" style="display:none"><button id="labExtras">get USB extras</button><span id="labExtrasMsg"></span></div>
-      <pre id="labExtrasOut" style="display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;background:#0f1219;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px"></pre>
     </section>
 
     <section class="card">
