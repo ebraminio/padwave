@@ -196,6 +196,10 @@ public:
   public:
     constexpr bool isValid() const { return this->mode != Mode::Invalid; }
 
+    // Raw encoder type byte. Useful for relating an armed output effect to the
+    // coarse input feedback effect below.
+    constexpr uint8_t getMode() const { return static_cast<uint8_t>(this->mode); }
+
     static constexpr const TriggerEffect off() { return TriggerEffect(Mode::Off); }
 
     // Official: constant resistance from `position` to the end.
@@ -918,6 +922,43 @@ public:
   };
   static_assert(sizeof(TouchData) == 9, "touch data must stay 9 bytes");
 
+  // Coarse feedback category reported in triggerEffect's nibbles. This is
+  // deliberately not OutputBody::TriggerEffect::Mode: the input nibble groups
+  // the firmware's output modes into the feedback behavior it is currently
+  // exercising. Values above Machine are not defined and read as None.
+  enum class TriggerEffect : uint8_t {
+    None      = 0, // no feedback/status mode, or an unreported/simple/vendor mode
+    Feedback  = 1, // Feedback, MultiPositionFeedback, SlopeFeedback, reWASD Choppy
+    Weapon    = 2, // Weapon
+    Vibration = 3, // Vibration, MultiPositionVibration, reWASD Rifle/Vibration
+    Bow       = 4, // Bow (and Box)
+    Galloping = 5, // Galloping
+    Machine   = 6, // Machine
+  };
+
+  static constexpr TriggerEffect triggerEffectFromNibble(uint8_t raw) {
+    return raw <= static_cast<uint8_t>(TriggerEffect::Machine) ? static_cast<TriggerEffect>(raw)
+                                                               : TriggerEffect::None;
+  }
+
+  // Map an output encoder mode byte (OutputBody::TriggerEffect::getMode()) to
+  // the coarse input feedback category. Only the official modes move the input
+  // status nibble on real firmware; simple/limited/vendor encodings report None.
+  static constexpr TriggerEffect triggerEffectFromOutputMode(uint8_t mode) {
+    switch (mode) {
+    case 0x21: return TriggerEffect::Feedback;
+    case 0x25: return TriggerEffect::Weapon;
+    case 0x26: return TriggerEffect::Vibration;
+    case 0x22: return TriggerEffect::Bow;
+    case 0x23: return TriggerEffect::Galloping;
+    case 0x27: return TriggerEffect::Machine;
+    default: return TriggerEffect::None;
+    }
+  }
+
+  // +0x29/+0x2a: low nibble is the stop zone; high nibble is the trigger
+  // status. Status 1 means the trigger is in an active feedback zone, 2 means a
+  // Weapon effect has passed its stop zone, and 0 means idle/not reported.
   struct TriggerFeedback {
   protected:
     uint8_t value;
@@ -925,8 +966,34 @@ public:
   public:
     constexpr unsigned getStopLocation() const { return value & 0x0F; }
     constexpr unsigned getStatus() const { return value >> 4; }
+    constexpr bool isActive() const { return getStatus() != 0; }
+    constexpr bool hasFired() const { return getStatus() == 2; }
   };
   static_assert(sizeof(TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
+
+  // Combined analog position, feedback status and effect category for one
+  // trigger. Feedback's stop/status bytes are only meaningful while the
+  // controller reports a supported trigger effect.
+  struct TriggerState {
+  protected:
+    uint8_t position;
+    TriggerFeedback feedback;
+    uint8_t effect;
+
+  public:
+    constexpr TriggerState(uint8_t position_value, TriggerFeedback feedback_value,
+                           uint8_t effect_value)
+        : position(position_value), feedback(feedback_value), effect(effect_value) {}
+
+    constexpr unsigned getPosition() const { return position; }
+    constexpr const TriggerFeedback &getFeedback() const { return feedback; }
+    constexpr unsigned getStopLocation() const { return feedback.getStopLocation(); }
+    constexpr unsigned getStatus() const { return feedback.getStatus(); }
+    constexpr bool isActive() const { return feedback.isActive(); }
+    constexpr bool hasFired() const { return feedback.hasFired(); }
+    constexpr TriggerEffect getEffect() const { return triggerEffectFromNibble(effect); }
+  };
+  static_assert(sizeof(TriggerState) == 3, "trigger state must stay 3 bytes");
 
 protected:
   DSUINT8 lx;                   // +0x00  left stick X, 0..255 (128 = centre)
@@ -1139,14 +1206,28 @@ public:
   }
 
   TouchPoint getTouch(unsigned index) const { return touchData.getFinger(index); }
+
+  constexpr TriggerState getLeftTriggerState() const {
+    return {static_cast<uint8_t>(l2), triggerLeft, static_cast<uint8_t>(triggerEffect >> 4)};
+  }
+
+  constexpr TriggerState getRightTriggerState() const {
+    return {static_cast<uint8_t>(r2), triggerRight, static_cast<uint8_t>(triggerEffect & 0x0F)};
+  }
+
+  // Analog values remain available without constructing a TriggerState.
   unsigned getLeftTrigger() const { return l2; }
-  unsigned getLeftTriggerStopLocation() const { return triggerLeft.getStopLocation(); }
-  unsigned getLeftTriggerStatus() const { return triggerLeft.getStatus(); }
-  unsigned getLeftTriggerEffect() const { return triggerEffect >> 4; }
   unsigned getRightTrigger() const { return r2; }
+
+  unsigned getLeftTriggerStopLocation() const { return triggerLeft.getStopLocation(); }
   unsigned getRightTriggerStopLocation() const { return triggerRight.getStopLocation(); }
+
+  unsigned getLeftTriggerStatus() const { return triggerLeft.getStatus(); }
   unsigned getRightTriggerStatus() const { return triggerRight.getStatus(); }
-  unsigned getRightTriggerEffect() const { return triggerEffect & 0x0F; }
+
+  TriggerEffect getLeftTriggerEffect() const { return getLeftTriggerState().getEffect(); }
+  TriggerEffect getRightTriggerEffect() const { return getRightTriggerState().getEffect(); }
+
   uint32_t getHostTime() const { return hostTimestamp; }
   uint32_t getDeviceTime() const { return deviceTimestamp; }
 };
@@ -1940,6 +2021,19 @@ public:
     constexpr auto machine = OutputBody::TriggerEffect::machine(2, 8, 6, 4, 25, 10);
     static_assert(triggerByte(machine, 0) == 0x27);
     static_assert(triggerByte(machine, 4) == 25 && triggerByte(machine, 5) == 10);
+
+    // Input trigger feedback categories. These are the coarse nibble values the
+    // controller reports, not the output encoder's mode bytes.
+    static_assert(machine.getMode() == 0x27);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x21) == InputBody::TriggerEffect::Feedback);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x25) == InputBody::TriggerEffect::Weapon);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x26) == InputBody::TriggerEffect::Vibration);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x22) == InputBody::TriggerEffect::Bow);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x23) == InputBody::TriggerEffect::Galloping);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x27) == InputBody::TriggerEffect::Machine);
+    static_assert(InputBody::triggerEffectFromOutputMode(0x01) == InputBody::TriggerEffect::None);
+    static_assert(InputBody::triggerEffectFromNibble(6) == InputBody::TriggerEffect::Machine);
+    static_assert(InputBody::triggerEffectFromNibble(7) == InputBody::TriggerEffect::None);
 
     constexpr AudioReport report = [] {
       OutputReport::Sequence sequence;
