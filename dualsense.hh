@@ -1143,7 +1143,7 @@ public:
   unsigned getLeftTriggerStopLocation() const { return triggerLeft.getStopLocation(); }
   unsigned getLeftTriggerStatus() const { return triggerLeft.getStatus(); }
   unsigned getLeftTriggerEffect() const { return triggerEffect >> 4; }
-  unsigned getRightTrigger() const { return l2; }
+  unsigned getRightTrigger() const { return r2; }
   unsigned getRightTriggerStopLocation() const { return triggerRight.getStopLocation(); }
   unsigned getRightTriggerStatus() const { return triggerRight.getStatus(); }
   unsigned getRightTriggerEffect() const { return triggerEffect & 0x0F; }

@@ -269,6 +269,10 @@ private:
   unsigned device_timestamp = 0;
   unsigned trigger_effect_r = 0;
   unsigned trigger_effect_l = 0;
+  unsigned trigger_stop_r   = 0;
+  unsigned trigger_stop_l   = 0;
+  unsigned trigger_status_r = 0;
+  unsigned trigger_status_l = 0;
   unsigned touch_active[2]  = {};
   unsigned touch_id[2]      = {};
   unsigned touch_x[2]       = {};
@@ -744,6 +748,12 @@ public:
     }
     kvAdd(buf, cap, &o, "controller.l2", "%d", this->l2);
     kvAdd(buf, cap, &o, "controller.r2", "%d", this->r2);
+    kvAdd(buf, cap, &o, "controller.l2_stop", "%u", this->trigger_stop_l);
+    kvAdd(buf, cap, &o, "controller.r2_stop", "%u", this->trigger_stop_r);
+    kvAdd(buf, cap, &o, "controller.l2_status", "%u", this->trigger_status_l);
+    kvAdd(buf, cap, &o, "controller.r2_status", "%u", this->trigger_status_r);
+    kvAdd(buf, cap, &o, "controller.l2_effect", "%u", this->trigger_effect_l);
+    kvAdd(buf, cap, &o, "controller.r2_effect", "%u", this->trigger_effect_r);
     kvAdd(buf, cap, &o, "controller.lx", "%d", this->lx);
     kvAdd(buf, cap, &o, "controller.ly", "%d", this->ly);
     kvAdd(buf, cap, &o, "controller.rx", "%d", this->rx);
@@ -1669,6 +1679,10 @@ private:
     this->device_timestamp                          = b.getDeviceTime();
     this->trigger_effect_r                          = b.getRightTriggerEffect();
     this->trigger_effect_l                          = b.getLeftTriggerEffect();
+    this->trigger_stop_r                            = b.getRightTriggerStopLocation();
+    this->trigger_stop_l                            = b.getLeftTriggerStopLocation();
+    this->trigger_status_r                          = b.getRightTriggerStatus();
+    this->trigger_status_l                          = b.getLeftTriggerStatus();
     for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.getTouch(t);
       this->touch_active[t]                        = touch.isActive() ? 1 : 0;

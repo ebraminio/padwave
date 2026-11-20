@@ -123,6 +123,8 @@
   .trig .lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
   .trig .track { height: 6px; background: #1b2130; border-radius: 999px; margin-top: 6px; overflow: hidden; }
   .trig .val { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .12s linear; }
+  .trig .meta { display: flex; justify-content: space-between; gap: 6px; margin-top: 7px; font-size: 10px; color: var(--muted); }
+  .trig .meta b { color: var(--text); font-family: var(--mono); font-weight: 500; }
 
   .sensors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
   @media (max-width: 560px) { .sensors { grid-template-columns: 1fr; } }
@@ -324,8 +326,8 @@
       </div>
       <div class="pad-grid" id="padGrid"></div>
       <div class="triggers">
-        <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div></div>
-        <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div></div>
+        <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div><div class="meta"><span>stop <b id="l2stop">—</b></span><span>status <b id="l2status">—</b></span><span>effect <b id="l2effect">—</b></span></div></div>
+        <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div><div class="meta"><span>stop <b id="r2stop">—</b></span><span>status <b id="r2status">—</b></span><span>effect <b id="r2effect">—</b></span></div></div>
       </div>
       <div class="bitwatch" id="bitwatch"></div>
       <details>
@@ -803,6 +805,12 @@ function render(s) {
   $("#r2v").textContent = c.r2 ?? 0;
   $("#l2bar").style.width = `${((c.l2 ?? 0) / 255) * 100}%`;
   $("#r2bar").style.width = `${((c.r2 ?? 0) / 255) * 100}%`;
+  $("#l2stop").textContent = c.l2_stop ?? "—";
+  $("#r2stop").textContent = c.r2_stop ?? "—";
+  $("#l2status").textContent = c.l2_status ?? "—";
+  $("#r2status").textContent = c.r2_status ?? "—";
+  $("#l2effect").textContent = c.l2_effect == null ? "—" : `0x${Number(c.l2_effect).toString(16).toUpperCase()}`;
+  $("#r2effect").textContent = c.r2_effect == null ? "—" : `0x${Number(c.r2_effect).toString(16).toUpperCase()}`;
 
   const cfg = s.config || {};
 
