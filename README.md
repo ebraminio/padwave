@@ -44,10 +44,13 @@ the sink node remains available. PipeWire and WirePlumber must be running.
 The **Live** tab is optional. Paste an M3U/M3U8 playlist URL into the tab, save
 it, and select a channel; padwave saves the URL in its config. libcurl resolves
 the master playlist to its lowest-bitrate variant and proxies the upstream
-playlists/segments through `/hls-src/`, including HTTP and SOCKS proxy support.
+playlists/segments through `/hls-src/`.
 padwave serves the trimmed source HLS directly at `/hls/index.m3u8` for
 VLC/Safari, and decodes the cached source TS segments itself into its Player
-sink ring for controller audio. Playlist and segment transfers use `curl_multi`
+sink ring for controller audio. Raw Icecast/ICY streams (MP3 and AAC/ADTS) are
+also supported: bytes are fetched with curl_multi, parsed and decoded
+incrementally, then fed through the same PCM queue. Playlist and segment
+transfers use `curl_multi`
 from the Player timer, so network waits do not block the audio clock. Video
 playlists are served from an asynchronously refreshed cache, and the Player
 catches up timer expirations after short decode/HTTP stalls. Only libcurl reads

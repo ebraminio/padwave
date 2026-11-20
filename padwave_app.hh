@@ -59,6 +59,10 @@ private:
   static constexpr int kMaxLiveUrl = 2048;
   static constexpr int kMaxLiveChannels = 400;
 
+  static constexpr size_t kLivePcmSeconds = 20;
+  static constexpr size_t kPlaylistBytes  = 4 * 1024 * 1024;
+  static constexpr size_t kSegmentBytes   = 32 * 1024 * 1024;
+
   struct CurlBuffer {
     char *data;
     size_t cap;
@@ -276,11 +280,29 @@ private:
   long live_next_seq         = 0;
   double live_next_dur       = 0;
   char live_next_url[kMaxPath * 2] = "";
-  static inline float live_pcm[12UL * RATE * CHANNELS];
+  static inline float live_pcm[kLivePcmSeconds * RATE * CHANNELS];
   size_t live_pcm_frames = 0;
   size_t live_pcm_pos    = 0;
   long live_decode_ok    = 0;
   long live_decode_fail  = 0;
+  bool live_raw          = false;
+  CURL *live_raw_curl    = nullptr;
+  bool live_raw_inflight = false;
+  bool live_pl_proxied   = false;
+  bool live_seg_proxied  = false;
+  bool live_raw_proxied  = false;
+  struct curl_slist *live_raw_headers = nullptr;
+  static inline uint8_t live_raw_ring[4 * 1024 * 1024];
+  size_t live_raw_head   = 0;
+  size_t live_raw_tail   = 0;
+  int live_raw_codec     = -1;
+  AVCodecParserContext *live_raw_parser = nullptr;
+  AVCodecContext *live_raw_dec          = nullptr;
+  SwrContext *live_raw_swr              = nullptr;
+  AVFrame *live_raw_frame               = nullptr;
+  int live_ogg_serial                   = -1;
+  size_t live_ogg_packet_len            = 0;
+  uint8_t live_ogg_packet[131072];
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -432,8 +454,8 @@ public:
     signal(SIGPIPE, SIG_IGN);
     curl_global_init(CURL_GLOBAL_DEFAULT);
     this->live_multi = curl_multi_init();
-    this->live_pl_buf = {static_cast<char *>(malloc(1024 * 1024)), 1024 * 1024, 0, false};
-    this->live_seg_buf = {static_cast<char *>(malloc(1024 * 1024)), 1024 * 1024, 0, false};
+    this->live_pl_buf = {static_cast<char *>(malloc(kPlaylistBytes)), kPlaylistBytes, 0, false};
+    this->live_seg_buf = {static_cast<char *>(malloc(kSegmentBytes)), kSegmentBytes, 0, false};
 
     const char *roots = getenv("PADWAVE_ROOTS");
     if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
@@ -805,6 +827,11 @@ public:
     kvAdd(buf, cap, &o, "live.decode_ok", "%ld", this->live_decode_ok);
     kvAdd(buf, cap, &o, "live.decode_fail", "%ld", this->live_decode_fail);
     kvAdd(buf, cap, &o, "live.sink_mode", "%s", this->player.sinkMode() ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.raw", "%s", this->live_raw ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.raw_codec", "%d", this->live_raw_codec);
+    kvAdd(buf, cap, &o, "live.ogg_serial", "%d", this->live_ogg_serial);
+    kvAdd(buf, cap, &o, "live.ogg_packet", "%zu", this->live_ogg_packet_len);
+    kvAdd(buf, cap, &o, "live.raw_bytes", "%zu", this->live_raw_head - this->live_raw_tail);
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
@@ -1569,7 +1596,7 @@ private:
     if (!liveCachePath(path, sizeof(path))) return false;
     FILE *f = fopen(path, "r");
     if (!f) return false;
-    constexpr size_t kMaxBody = 2 * 1024 * 1024;
+    constexpr size_t kMaxBody = 8 * 1024 * 1024;
     char *body = static_cast<char *>(malloc(kMaxBody));
     if (!body) {
       fclose(f);
@@ -1606,13 +1633,25 @@ private:
     return fwrite(ptr, size, nmemb, static_cast<FILE *>(userdata));
   }
 
-  void applyCurlProxy(CURL *h) const {
+  void applyCurlProxy(CURL *h, bool use_proxy = true) const {
     if (this->live_insecure) {
       curl_easy_setopt(h, CURLOPT_SSL_VERIFYPEER, 0L);
       curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 0L);
     }
-    if (!this->live_proxy[0]) return;
-    curl_easy_setopt(h, CURLOPT_PROXY, this->live_proxy);
+    if (!use_proxy || !this->live_proxy[0]) return;
+    // socks5:// makes libcurl resolve DNS locally; socks5h:// sends the
+    // hostname to the proxy. Prefer remote resolution so DNS-blocked names
+    // work through the proxy. Same for SOCKS4a.
+    const char *proxy = this->live_proxy;
+    char normalized[600];
+    if (strncasecmp(proxy, "socks5://", 9) == 0) {
+      snprintf(normalized, sizeof(normalized), "socks5h://%s", proxy + 9);
+      proxy = normalized;
+    } else if (strncasecmp(proxy, "socks4://", 9) == 0) {
+      snprintf(normalized, sizeof(normalized), "socks4a://%s", proxy + 9);
+      proxy = normalized;
+    }
+    curl_easy_setopt(h, CURLOPT_PROXY, proxy);
     if (this->live_proxy_user[0]) {
       char cred[300];
       snprintf(cred, sizeof(cred), "%s:%s", this->live_proxy_user, this->live_proxy_pass);
@@ -1622,63 +1661,71 @@ private:
 
   int fetchUrl(const char *url, char *body, size_t cap) const {
     if (!body || cap == 0) return -1;
-    body[0] = 0;
-    CURL *h = curl_easy_init();
-    if (!h) return -1;
-    CurlWrite write{body, cap, 0, false};
-    curl_easy_setopt(h, CURLOPT_URL, url);
-    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
-    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
-    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
-    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlWrite);
-    curl_easy_setopt(h, CURLOPT_WRITEDATA, &write);
-    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(2 * 1024 * 1024));
-    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
-    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
-    this->applyCurlProxy(h);
-    CURLcode rc = curl_easy_perform(h);
-    long code   = 0;
-    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
-    curl_easy_cleanup(h);
-    body[write.len] = 0;
-    if (rc != CURLE_OK || write.overflow || code < 200 || code >= 300) return -1;
-    return static_cast<int>(write.len);
+    bool has_proxy = this->live_proxy[0];
+    for (int attempt = 0; attempt < 2; attempt++) {
+      if (attempt == 1 && !has_proxy) break;
+      body[0] = 0;
+      CURL *h = curl_easy_init();
+      if (!h) return -1;
+      CurlWrite write{body, cap, 0, false};
+      curl_easy_setopt(h, CURLOPT_URL, url);
+      curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+      curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+      curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+      curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
+      curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+      curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+      curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlWrite);
+      curl_easy_setopt(h, CURLOPT_WRITEDATA, &write);
+      curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(16 * 1024 * 1024));
+      curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+      curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+      this->applyCurlProxy(h, attempt == 1);
+      CURLcode rc = curl_easy_perform(h);
+      long code   = 0;
+      curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
+      curl_easy_cleanup(h);
+      body[write.len] = 0;
+      if (rc == CURLE_OK && !write.overflow && code >= 200 && code < 300)
+        return static_cast<int>(write.len);
+    }
+    return -1;
   }
 
   bool fetchUrlToFile(const char *url, const char *path) const {
-    FILE *f = fopen(path, "wb");
-    if (!f) return false;
-    CURL *h = curl_easy_init();
-    if (!h) {
+    bool has_proxy = this->live_proxy[0];
+    for (int attempt = 0; attempt < 2; attempt++) {
+      if (attempt == 1 && !has_proxy) break;
+      FILE *f = fopen(path, "wb");
+      if (!f) return false;
+      CURL *h = curl_easy_init();
+      if (!h) {
+        fclose(f);
+        unlink(path);
+        return false;
+      }
+      curl_easy_setopt(h, CURLOPT_URL, url);
+      curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+      curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+      curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+      curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L);
+      curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+      curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+      curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlFileWrite);
+      curl_easy_setopt(h, CURLOPT_WRITEDATA, f);
+      curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(64 * 1024 * 1024));
+      curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+      curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+      this->applyCurlProxy(h, attempt == 1);
+      CURLcode rc = curl_easy_perform(h);
+      long code   = 0;
+      curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
+      curl_easy_cleanup(h);
       fclose(f);
-      return false;
-    }
-    curl_easy_setopt(h, CURLOPT_URL, url);
-    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
-    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L);
-    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
-    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlFileWrite);
-    curl_easy_setopt(h, CURLOPT_WRITEDATA, f);
-    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(16 * 1024 * 1024));
-    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
-    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
-    this->applyCurlProxy(h);
-    CURLcode rc = curl_easy_perform(h);
-    long code   = 0;
-    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
-    curl_easy_cleanup(h);
-    fclose(f);
-    if (rc != CURLE_OK || code < 200 || code >= 300) {
+      if (rc == CURLE_OK && code >= 200 && code < 300) return true;
       unlink(path);
-      return false;
     }
-    return true;
+    return false;
   }
 
   bool refreshLive() {
@@ -1687,7 +1734,7 @@ private:
       snprintf(this->live_error, sizeof(this->live_error), "set an http(s) M3U/M3U8 URL first");
       return false;
     }
-    constexpr size_t kMaxBody = 2 * 1024 * 1024;
+    constexpr size_t kMaxBody = 8 * 1024 * 1024;
     char *body                = static_cast<char *>(malloc(kMaxBody));
     if (!body) {
       snprintf(this->live_error, sizeof(this->live_error), "out of memory");
@@ -1826,7 +1873,7 @@ private:
     resolveLiveStream(this->live_upstream_url, resolved, sizeof(resolved));
     if (resolved[0] && strcmp(resolved, this->live_upstream_url) != 0)
       snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", resolved);
-    constexpr size_t kMaxBody = 512 * 1024;
+    constexpr size_t kMaxBody = kPlaylistBytes;
     char *body = static_cast<char *>(malloc(kMaxBody));
     if (!body) return 0;
     int n = fetchUrl(this->live_upstream_url, body, kMaxBody);
@@ -1842,7 +1889,7 @@ private:
 
   void writeLivePlaylistFile() {
     if (!this->live_pl_buf.data || this->live_pl_buf.len == 0) return;
-    constexpr size_t kOutCap = 1024 * 1024;
+    constexpr size_t kOutCap = 4 * 1024 * 1024;
     char *copy = static_cast<char *>(malloc(this->live_pl_buf.len + 1));
     char *out  = static_cast<char *>(malloc(kOutCap));
     if (!copy || !out) {
@@ -1922,16 +1969,7 @@ private:
           if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
           for (int i = 0; i < channels; i++) src[i] = frame->extended_data[i];
           int got = swr_convert(swr, dst, cap, src, frame->nb_samples);
-          if (got > 0) {
-            size_t frames = static_cast<size_t>(got);
-            size_t room   = (12UL * RATE) - this->live_pcm_frames;
-            if (frames > room) frames = room;
-            if (frames > 0) {
-              memcpy(this->live_pcm + this->live_pcm_frames * CHANNELS, out,
-                     frames * CHANNELS * sizeof(float));
-              this->live_pcm_frames += frames;
-            }
-          }
+          if (got > 0) this->appendPcm(out, static_cast<size_t>(got));
           av_frame_unref(frame);
         }
       };
@@ -1997,7 +2035,7 @@ done:
 
   void resolveLiveStream(const char *channel_url, char *out, size_t cap) {
     snprintf(out, cap, "%s", channel_url);
-    constexpr size_t kPlaylistMax = 512 * 1024;
+    constexpr size_t kPlaylistMax = 2 * 1024 * 1024;
     char *body                   = static_cast<char *>(malloc(kPlaylistMax));
     if (!body) return;
     int n = fetchUrl(channel_url, body, kPlaylistMax);
@@ -2031,6 +2069,8 @@ done:
 
   void stopLive(bool preserve_mode = false) {
     this->resetLiveCurl();
+    this->resetLiveRaw();
+    this->live_raw         = false;
     this->live_active      = false;
     this->live_current     = -1;
     this->live_audio_synced = false;
@@ -2049,20 +2089,33 @@ done:
     if (!preserve_mode) configSave();
   }
 
+  static bool isHlsUrl(const char *url) {
+    const char *q = strchr(url, '?');
+    size_t len = q ? static_cast<size_t>(q - url) : strlen(url);
+    return (len >= 5 && strncasecmp(url + len - 5, ".m3u8", 5) == 0) ||
+           (len >= 4 && strncasecmp(url + len - 4, ".m3u", 4) == 0);
+  }
+
   bool startLiveSource(const char *channel_url) {
     if (!channel_url || !validLiveUrl(channel_url)) return false;
     system("rm -rf /tmp/padwave-src");
     mkdir("/tmp/padwave-src", 0755);
     snprintf(this->live_source_url, sizeof(this->live_source_url), "%s", channel_url);
-    char upstream[kMaxPath];
-    resolveLiveStream(channel_url, upstream, sizeof(upstream));
-    snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", upstream);
+    this->live_raw = !isHlsUrl(channel_url);
+    if (this->live_raw) {
+      snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", channel_url);
+    } else {
+      char upstream[kMaxPath];
+      resolveLiveStream(channel_url, upstream, sizeof(upstream));
+      snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", upstream);
+    }
     this->live_decoded[0]   = 0;
     this->live_audio_synced = false;
     this->live_audio_seq    = 0;
     this->live_audio_at     = 0;
     this->live_next_ready   = false;
     this->live_next_url[0]  = 0;
+    this->resetLiveRaw();
     this->live_has_video    = false;
     this->live_pcm_frames   = 0;
     this->live_pcm_pos      = 0;
@@ -2087,7 +2140,7 @@ done:
     return n;
   }
 
-  void configureLiveCurl(CURL *h, const char *url, CurlBuffer *buffer) const {
+  void configureLiveCurl(CURL *h, const char *url, CurlBuffer *buffer, long max_bytes, bool use_proxy) const {
     buffer->len      = 0;
     buffer->overflow = false;
     if (buffer->cap) buffer->data[0] = 0;
@@ -2100,10 +2153,10 @@ done:
     curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlBufferWrite);
     curl_easy_setopt(h, CURLOPT_WRITEDATA, buffer);
-    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(1024 * 1024));
+    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(max_bytes));
     curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
     curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
-    this->applyCurlProxy(h);
+    this->applyCurlProxy(h, use_proxy);
   }
 
   void resetLiveCurl() {
@@ -2120,35 +2173,374 @@ done:
     }
     this->live_pl_inflight  = false;
     this->live_seg_inflight = false;
+    this->live_pl_proxied   = false;
+    this->live_seg_proxied  = false;
     this->live_next_ready   = false;
   }
 
-  bool startLivePlaylistFetch() {
+  static size_t curlRawWrite(char *ptr, size_t size, size_t nmemb, void *userdata) {
+    App *app = static_cast<App *>(userdata);
+    size_t n  = size * nmemb;
+    constexpr size_t cap = sizeof(app->live_raw_ring);
+    if (app->live_raw_head + n > cap && app->live_raw_tail > 0) {
+      size_t used = app->live_raw_head - app->live_raw_tail;
+      memmove(app->live_raw_ring, app->live_raw_ring + app->live_raw_tail, used);
+      app->live_raw_head = used;
+      app->live_raw_tail = 0;
+    }
+    size_t room = cap - app->live_raw_head;
+    size_t copy = n < room ? n : room;
+    if (copy > 0) {
+      memcpy(app->live_raw_ring + app->live_raw_head, ptr, copy);
+      app->live_raw_head += copy;
+    }
+    return n;
+  }
+
+  void configureRawCurl(CURL *h, bool use_proxy) {
+    curl_easy_setopt(h, CURLOPT_URL, this->live_upstream_url);
+    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT, 0L);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+    curl_easy_setopt(h, CURLOPT_BUFFERSIZE, 32768L);
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlRawWrite);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, this);
+    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+    this->applyCurlProxy(h, use_proxy);
+  }
+
+  bool startRawFetch(bool use_proxy = false) {
+    if (!this->live_multi || !this->live_active || !this->live_raw || this->live_raw_inflight)
+      return false;
+    CURL *h = curl_easy_init();
+    if (!h) return false;
+    this->configureRawCurl(h, use_proxy);
+    this->live_raw_headers = curl_slist_append(this->live_raw_headers, "Icy-MetaData: 0");
+    this->live_raw_headers = curl_slist_append(this->live_raw_headers, "Accept: audio/*");
+    curl_easy_setopt(h, CURLOPT_HTTPHEADER, this->live_raw_headers);
+    if (curl_multi_add_handle(this->live_multi, h) != CURLM_OK) {
+      curl_easy_cleanup(h);
+      return false;
+    }
+    this->live_raw_curl     = h;
+    this->live_raw_inflight = true;
+    this->live_raw_proxied  = use_proxy;
+    return true;
+  }
+
+  bool initRawDecoder(int codec_id) {
+    const AVCodec *codec = avcodec_find_decoder(static_cast<AVCodecID>(codec_id));
+    if (!codec) return false;
+    this->live_raw_parser = av_parser_init(codec_id);
+    this->live_raw_dec    = avcodec_alloc_context3(codec);
+    this->live_raw_frame  = av_frame_alloc();
+    if (!this->live_raw_parser || !this->live_raw_dec || !this->live_raw_frame) return false;
+    if (avcodec_open2(this->live_raw_dec, codec, nullptr) < 0) return false;
+    this->live_raw_codec = codec_id;
+    return true;
+  }
+
+  void decodeRawAudio() {
+    if (!this->live_raw || !this->live_active || !this->sink_playback) return;
+    size_t avail = this->live_raw_head - this->live_raw_tail;
+    if (avail == 0) return;
+    if (this->live_raw_codec == -3) {
+      this->decodeOggAudio();
+      return;
+    }
+    if (this->live_raw_codec < 0) {
+      size_t scan = avail < 4096 ? avail : 4096;
+      const uint8_t *p = this->live_raw_ring + this->live_raw_tail;
+      if (scan >= 4 && p[0] == 'O' && p[1] == 'g' && p[2] == 'g' && p[3] == 'S') {
+        this->live_raw_codec = -3;
+        this->decodeOggAudio();
+        return;
+      }
+      int codec_id = -1;
+      for (size_t i = 0; i + 1 < scan; i++) {
+        if (p[i] == 'I' && i + 2 < scan && p[i + 1] == 'D' && p[i + 2] == '3') {
+          codec_id = AV_CODEC_ID_MP3;
+          break;
+        }
+        if (p[i] == 0xFF && (p[i + 1] & 0xE0) == 0xE0) {
+          codec_id = (p[i + 1] & 0xF6) == 0xF0 ? AV_CODEC_ID_AAC : AV_CODEC_ID_MP3;
+          break;
+        }
+      }
+      if (codec_id < 0) {
+        if (scan >= 4096) this->live_decode_fail++;
+        return;
+      }
+      if (!this->initRawDecoder(codec_id)) {
+        this->live_decode_fail++;
+        this->live_raw_codec = -2;
+        return;
+      }
+    }
+    if (this->live_raw_codec < 0) return;
+
+    AVPacket *pkt = nullptr;
+    for (int guard = 0; guard < 64; guard++) {
+      avail = this->live_raw_head - this->live_raw_tail;
+      if (avail == 0) break;
+      uint8_t *out = nullptr;
+      int out_size = 0;
+      int used = av_parser_parse2(this->live_raw_parser, this->live_raw_dec, &out, &out_size,
+                                  this->live_raw_ring + this->live_raw_tail,
+                                  static_cast<int>(avail), AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+      if (used < 0) {
+        this->live_raw_tail++;
+        continue;
+      }
+      if (used == 0) break;
+      this->live_raw_tail += static_cast<size_t>(used);
+      if (out_size <= 0) continue;
+      pkt = av_packet_alloc();
+      if (!pkt) break;
+      if (av_new_packet(pkt, out_size) < 0) {
+        av_packet_free(&pkt);
+        break;
+      }
+      memcpy(pkt->data, out, static_cast<size_t>(out_size));
+      int send_rc = avcodec_send_packet(this->live_raw_dec, pkt);
+      av_packet_free(&pkt);
+      pkt = nullptr;
+      if (send_rc < 0 && send_rc != AVERROR(EAGAIN)) continue;
+      while (avcodec_receive_frame(this->live_raw_dec, this->live_raw_frame) == 0) {
+        if (!this->live_raw_swr) {
+          AVChannelLayout in_layout;
+          AVChannelLayout out_layout;
+          av_channel_layout_copy(&in_layout, &this->live_raw_frame->ch_layout);
+          av_channel_layout_default(&out_layout, CHANNELS);
+          int rc = swr_alloc_set_opts2(&this->live_raw_swr, &out_layout, AV_SAMPLE_FMT_FLT, RATE,
+                                       &in_layout, this->live_raw_dec->sample_fmt,
+                                       this->live_raw_dec->sample_rate, 0, nullptr);
+          av_channel_layout_uninit(&in_layout);
+          av_channel_layout_uninit(&out_layout);
+          if (rc < 0 || !this->live_raw_swr || swr_init(this->live_raw_swr) < 0) break;
+        }
+        float out_pcm[8192 * CHANNELS];
+        int cap = swr_get_out_samples(this->live_raw_swr, this->live_raw_frame->nb_samples);
+        if (cap > 8192) cap = 8192;
+        uint8_t *dst[1] = {reinterpret_cast<uint8_t *>(out_pcm)};
+        const uint8_t *src[AV_NUM_DATA_POINTERS] = {};
+        int channels = this->live_raw_dec->ch_layout.nb_channels;
+        if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
+        for (int i = 0; i < channels; i++) src[i] = this->live_raw_frame->extended_data[i];
+        int got = swr_convert(this->live_raw_swr, dst, cap, src,
+                              this->live_raw_frame->nb_samples);
+        if (got > 0) this->appendPcm(out_pcm, static_cast<size_t>(got));
+        av_frame_unref(this->live_raw_frame);
+      }
+      if (this->live_pcm_frames + RATE / 10 >= kLivePcmSeconds * RATE) break;
+    }
+  }
+
+  void decodeOpusFrames() {
+    if (!this->live_raw_dec || !this->live_raw_frame) return;
+    while (avcodec_receive_frame(this->live_raw_dec, this->live_raw_frame) == 0) {
+      if (!this->live_raw_swr) {
+        AVChannelLayout in_layout;
+        AVChannelLayout out_layout;
+        av_channel_layout_copy(&in_layout, &this->live_raw_frame->ch_layout);
+        av_channel_layout_default(&out_layout, CHANNELS);
+        int rc = swr_alloc_set_opts2(&this->live_raw_swr, &out_layout, AV_SAMPLE_FMT_FLT, RATE,
+                                     &in_layout, this->live_raw_dec->sample_fmt,
+                                     this->live_raw_dec->sample_rate, 0, nullptr);
+        av_channel_layout_uninit(&in_layout);
+        av_channel_layout_uninit(&out_layout);
+        if (rc < 0 || !this->live_raw_swr || swr_init(this->live_raw_swr) < 0) break;
+      }
+      float out_pcm[8192 * CHANNELS];
+      int cap = swr_get_out_samples(this->live_raw_swr, this->live_raw_frame->nb_samples);
+      if (cap > 8192) cap = 8192;
+      uint8_t *dst[1] = {reinterpret_cast<uint8_t *>(out_pcm)};
+      const uint8_t *src[AV_NUM_DATA_POINTERS] = {};
+      int channels = this->live_raw_dec->ch_layout.nb_channels;
+      if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
+      for (int i = 0; i < channels; i++) src[i] = this->live_raw_frame->extended_data[i];
+      int got = swr_convert(this->live_raw_swr, dst, cap, src,
+                            this->live_raw_frame->nb_samples);
+      if (got > 0) this->appendPcm(out_pcm, static_cast<size_t>(got));
+      av_frame_unref(this->live_raw_frame);
+    }
+  }
+
+  bool initOggOpus(const uint8_t *head, size_t len) {
+    if (len < 19 || memcmp(head, "OpusHead", 8) != 0) return false;
+    int channels = head[9];
+    if (channels < 1) channels = 2;
+    const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_OPUS);
+    if (!codec) return false;
+    if (this->live_raw_frame) av_frame_free(&this->live_raw_frame);
+    if (this->live_raw_swr) swr_free(&this->live_raw_swr);
+    if (this->live_raw_dec) avcodec_free_context(&this->live_raw_dec);
+    this->live_raw_swr = nullptr;
+    this->live_raw_dec = avcodec_alloc_context3(codec);
+    this->live_raw_frame = av_frame_alloc();
+    if (!this->live_raw_dec || !this->live_raw_frame) return false;
+    this->live_raw_dec->sample_rate = 48000;
+    av_channel_layout_default(&this->live_raw_dec->ch_layout, channels);
+    this->live_raw_dec->extradata =
+        static_cast<uint8_t *>(av_mallocz(len + AV_INPUT_BUFFER_PADDING_SIZE));
+    if (!this->live_raw_dec->extradata) return false;
+    memcpy(this->live_raw_dec->extradata, head, len);
+    this->live_raw_dec->extradata_size = static_cast<int>(len);
+    if (avcodec_open2(this->live_raw_dec, codec, nullptr) < 0) return false;
+    this->live_raw_codec = -3;
+    return true;
+  }
+
+  void decodeOggPacket(const uint8_t *data, size_t len) {
+    if (!this->live_raw_dec || len == 0) return;
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) return;
+    if (av_new_packet(pkt, static_cast<int>(len)) < 0) {
+      av_packet_free(&pkt);
+      return;
+    }
+    memcpy(pkt->data, data, len);
+    int rc = avcodec_send_packet(this->live_raw_dec, pkt);
+    av_packet_free(&pkt);
+    if (rc >= 0 || rc == AVERROR(EAGAIN)) this->decodeOpusFrames();
+  }
+
+  void handleOggPacket(uint32_t serial) {
+    const uint8_t *data = this->live_ogg_packet;
+    size_t len = this->live_ogg_packet_len;
+    if (len == 0) return;
+    if (this->live_ogg_serial < 0) {
+      if (len >= 8 && memcmp(data, "OpusHead", 8) == 0) {
+        if (this->initOggOpus(data, len))
+          this->live_ogg_serial = static_cast<int>(serial);
+      }
+      return;
+    }
+    if (static_cast<int>(serial) != this->live_ogg_serial) return;
+    if (len >= 8 && memcmp(data, "OpusHead", 8) == 0) {
+      this->initOggOpus(data, len);
+      return;
+    }
+    if (len >= 8 && memcmp(data, "OpusTags", 8) == 0) return;
+    this->decodeOggPacket(data, len);
+  }
+
+  void decodeOggAudio() {
+    for (;;) {
+      size_t avail = this->live_raw_head - this->live_raw_tail;
+      if (avail < 27) return;
+      uint8_t *p = this->live_raw_ring + this->live_raw_tail;
+      if (memcmp(p, "OggS", 4) != 0) {
+        this->live_raw_tail++;
+        continue;
+      }
+      size_t nseg = p[26];
+      size_t hdr  = 27 + nseg;
+      if (avail < hdr) return;
+      size_t body = 0;
+      for (size_t i = 0; i < nseg; i++) body += p[27 + i];
+      if (avail < hdr + body) return;
+      uint8_t flags = p[5];
+      uint32_t serial = static_cast<uint32_t>(p[14]) |
+                        (static_cast<uint32_t>(p[15]) << 8) |
+                        (static_cast<uint32_t>(p[16]) << 16) |
+                        (static_cast<uint32_t>(p[17]) << 24);
+      bool use = this->live_ogg_serial < 0 ||
+                 static_cast<int>(serial) == this->live_ogg_serial;
+      if (use) {
+        if (!(flags & 0x01)) this->live_ogg_packet_len = 0;
+        const uint8_t *b = p + hdr;
+        for (size_t i = 0; i < nseg; i++) {
+          size_t n = p[27 + i];
+          if (this->live_ogg_packet_len + n <= sizeof(this->live_ogg_packet)) {
+            memcpy(this->live_ogg_packet + this->live_ogg_packet_len, b, n);
+            this->live_ogg_packet_len += n;
+          } else {
+            this->live_ogg_packet_len = 0;
+          }
+          b += n;
+          if (n < 255) {
+            this->handleOggPacket(serial);
+            this->live_ogg_packet_len = 0;
+          }
+        }
+      }
+      this->live_raw_tail += hdr + body;
+    }
+  }
+
+  void resetRawDecoder() {
+    if (this->live_raw_frame) av_frame_free(&this->live_raw_frame);
+    if (this->live_raw_swr) swr_free(&this->live_raw_swr);
+    if (this->live_raw_dec) avcodec_free_context(&this->live_raw_dec);
+    if (this->live_raw_parser) av_parser_close(this->live_raw_parser);
+    this->live_raw_frame  = nullptr;
+    this->live_raw_swr    = nullptr;
+    this->live_raw_dec    = nullptr;
+    this->live_raw_parser = nullptr;
+    this->live_raw_codec  = -1;
+    this->live_ogg_serial = -1;
+    this->live_ogg_packet_len = 0;
+    this->live_raw_head   = 0;
+    this->live_raw_tail   = 0;
+  }
+
+  void resetLiveRaw() {
+    if (this->live_multi && this->live_raw_curl) {
+      curl_multi_remove_handle(this->live_multi, this->live_raw_curl);
+      curl_easy_cleanup(this->live_raw_curl);
+    }
+    this->live_raw_curl     = nullptr;
+    this->live_raw_inflight = false;
+    this->live_raw_proxied  = false;
+    if (this->live_raw_headers) {
+      curl_slist_free_all(this->live_raw_headers);
+      this->live_raw_headers = nullptr;
+    }
+    this->resetRawDecoder();
+  }
+
+  void appendPcm(const float *data, size_t frames) {
+    size_t room = (kLivePcmSeconds * RATE) - this->live_pcm_frames;
+    if (frames > room) frames = room;
+    if (frames == 0) return;
+    memcpy(this->live_pcm + this->live_pcm_frames * CHANNELS, data,
+           frames * CHANNELS * sizeof(float));
+    this->live_pcm_frames += frames;
+  }
+
+  bool startLivePlaylistFetch(bool use_proxy = false) {
     if (!this->live_multi || !this->live_active || this->live_pl_inflight) return false;
     CURL *h = curl_easy_init();
     if (!h) return false;
-    this->configureLiveCurl(h, this->live_upstream_url, &this->live_pl_buf);
+    this->configureLiveCurl(h, this->live_upstream_url, &this->live_pl_buf, kPlaylistBytes, use_proxy);
     if (curl_multi_add_handle(this->live_multi, h) != CURLM_OK) {
       curl_easy_cleanup(h);
       return false;
     }
     this->live_pl_curl     = h;
     this->live_pl_inflight = true;
+    this->live_pl_proxied  = use_proxy;
     return true;
   }
 
-  bool startLiveSegmentFetch() {
+  bool startLiveSegmentFetch(bool use_proxy = false) {
     if (!this->live_multi || !this->live_active || this->live_seg_inflight || !this->live_next_url[0])
       return false;
     CURL *h = curl_easy_init();
     if (!h) return false;
-    this->configureLiveCurl(h, this->live_next_url, &this->live_seg_buf);
+    this->configureLiveCurl(h, this->live_next_url, &this->live_seg_buf, kSegmentBytes, use_proxy);
     if (curl_multi_add_handle(this->live_multi, h) != CURLM_OK) {
       curl_easy_cleanup(h);
       return false;
     }
     this->live_seg_curl     = h;
     this->live_seg_inflight = true;
+    this->live_seg_proxied  = use_proxy;
     return true;
   }
 
@@ -2252,9 +2644,27 @@ done:
         if (ok && !this->live_pl_buf.overflow) {
           this->writeLivePlaylistFile();
           this->parseLivePlaylist();
-        }
-        else
+        } else if (!this->live_pl_proxied && this->live_proxy[0]) {
+          this->startLivePlaylistFetch(true);
+        } else {
           this->live_audio_at = nowMs() + 1000;
+        }
+      } else if (h == this->live_raw_curl) {
+        curl_multi_remove_handle(this->live_multi, h);
+        curl_easy_cleanup(h);
+        this->live_raw_curl     = nullptr;
+        this->live_raw_inflight = false;
+        if (this->live_raw_headers) {
+          curl_slist_free_all(this->live_raw_headers);
+          this->live_raw_headers = nullptr;
+        }
+        this->decodeRawAudio();
+        this->resetRawDecoder();
+        if (!ok && !this->live_raw_proxied && this->live_proxy[0]) {
+          this->startRawFetch(true);
+        } else {
+          this->live_audio_at = nowMs() + 2000;
+        }
       } else if (h == this->live_seg_curl) {
         curl_multi_remove_handle(this->live_multi, h);
         curl_easy_cleanup(h);
@@ -2282,8 +2692,19 @@ done:
           } else {
             this->live_audio_at = nowMs() + 1000;
           }
+        } else if (!this->live_seg_proxied && this->live_proxy[0]) {
+          this->startLiveSegmentFetch(true);
+        } else {
+          this->live_audio_at = nowMs() + 1000;
         }
       }
+    }
+
+    if (this->live_raw) {
+      this->decodeRawAudio();
+      if (!this->live_raw_inflight && nowMs() >= this->live_audio_at)
+        this->startRawFetch();
+      return;
     }
 
     if (this->live_pl_inflight || this->live_seg_inflight) return;
@@ -2291,7 +2712,7 @@ done:
       this->compactLivePcm();
       size_t needed = static_cast<size_t>(this->live_next_dur * RATE);
       if (needed == 0) needed = 1;
-      if (this->live_pcm_frames + needed <= 12UL * RATE) this->startLiveSegmentFetch();
+      if (this->live_pcm_frames + needed <= kLivePcmSeconds * RATE) this->startLiveSegmentFetch();
       return;
     }
     if (nowMs() >= this->live_audio_at) this->startLivePlaylistFetch();
