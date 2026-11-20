@@ -670,8 +670,23 @@ private:
   constexpr void claim(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 | bit(f)); }
   constexpr void claim(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 | bit(f)); }
 
+  constexpr void clear(ValidFlag0 f) { validFlag0 = static_cast<uint8_t>(validFlag0 & ~bit(f)); }
+  constexpr void clear(ValidFlag1 f) { validFlag1 = static_cast<uint8_t>(validFlag1 & ~bit(f)); }
+  constexpr void clear(ValidFlag2 f) { validFlag2 = static_cast<uint8_t>(validFlag2 & ~bit(f)); }
+
+  // This is only exposed for AudioReport to clear motor-related flags,
+  // this is specially crafted to support both supporting compatible
+  // vibration and haptics outputs where body isn't changed.
+  constexpr void clearCompatibleVibrationClaim() {
+    if (motorLeft == 0 && motorRight == 0) {
+      clear(ValidFlag0::CompatibleVibration);
+      clear(ValidFlag0::HapticsSelect);
+    } else
+      setMotors(0, 0);
+  }
+
 public:
-  constexpr void setCompatibleVibration(uint8_t left, uint8_t right) {
+  constexpr void setMotors(uint8_t left, uint8_t right) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
     motorLeft  = left;
@@ -1359,7 +1374,6 @@ public:
 private:
   struct State {
     friend struct AudioReport;
-    friend struct internal::WireProbe;
 
   protected:
     OutputBody body;     // +0x00..0x2e
@@ -1451,6 +1465,8 @@ private:
     return reportIdValue == reportId && crc == internal::crc_of(*this, crcSeed);
   }
 
+  constexpr const OutputBody &getStateBody() const { return state.body; }
+
 public:
   static constexpr uint8_t hapticSize = 64;
   // The Opus side of the speaker block: 480 samples per frame at 48 kHz (10 ms,
@@ -1459,7 +1475,10 @@ public:
 
   // Set the vibration motors' cancels haptic feedback if either motor is active
   constexpr void setCompatibleVibration(uint8_t left, uint8_t right) {
-    if (left != 0 || right != 0) state.body.setCompatibleVibration(left, right);
+    if (left != 0 || right != 0)
+      state.body.setCompatibleVibration(left, right);
+    else
+      state.body.clearCompatibleVibrationClaim();
   }
 
   constexpr void setHeadphoneVolume(uint8_t v) { state.body.setHeadphoneVolume(v); }
@@ -1985,8 +2004,8 @@ public:
     static_assert(report.config.counter == 0);
     static_assert(report.stateTag == 0x90);
     static_assert(report.stateLength == 63);
-    static_assert(report.state.body.validFlag0 == 0);
-    static_assert(report.state.body.validFlag1 == 0);
+    static_assert(report.getStateBody().validFlag0 == 0);
+    static_assert(report.getStateBody().validFlag1 == 0);
     static_assert(report.getSpeakerTag() == AudioReport::SpeakerTag::Jack);
     static_assert(report.speakerLength == 200);
     static_assert(report.opus[0] == 0);
