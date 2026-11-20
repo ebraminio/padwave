@@ -99,6 +99,8 @@
   .volume .val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
   .speed { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; }
   .speed select { background: #111520; color: var(--text); border: 1px solid #2a3245; border-radius: 7px; padding: 4px 8px; font: inherit; }
+  .sink-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+  .sink-row button.on { border-color: var(--accent-2); color: var(--accent-2); background: rgba(34, 211, 238, .12); }
 
   .list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   input[type=search], input[type=number] {
@@ -306,6 +308,11 @@
           <option value="175">1.75×</option>
           <option value="200">2×</option>
         </select>
+      </div>
+
+      <div class="sink-row">
+        <button id="sinkToggle" disabled>system audio: unavailable</button>
+        <span id="sinkHint">PipeWire output</span>
       </div>
 
       <audio id="webAudio" controls preload="none" style="width:100%;margin-top:12px;display:none"></audio>
@@ -784,6 +791,15 @@ function render(s) {
     : "available only while a USB data link is connected";
 
   const audio = s.audio || {};
+  const sinkOn = audio.system_sink === true;
+  const sinkAvailable = audio.sink_available === true;
+  $("#sinkToggle").disabled = !sinkAvailable;
+  $("#sinkToggle").textContent = !sinkAvailable ? "system audio: unavailable"
+    : (sinkOn ? "system audio: on" : "system audio: off");
+  $("#sinkToggle").classList.toggle("on", sinkOn);
+  $("#sinkHint").textContent = sinkAvailable
+    ? (sinkOn ? "PipeWire sink active — select padwave as the system output" : "PipeWire sink off")
+    : "rebuild with libpipewire-0.3 to enable";
   $("#audioDot").className = "dot " + (audio.present ? (audio.state === "RUNNING" ? "on" : "warn") : "off");
 
   const idle = sess.warning_in ?? 0;
@@ -1087,6 +1103,11 @@ function frameLoop() {
 document.querySelectorAll("[data-action]").forEach(btn => {
   btn.onclick = () => send(btn.dataset.action);
 });
+
+$("#sinkToggle").onclick = () => {
+  const on = last && last.audio && last.audio.system_sink === true;
+  send("sink", { value: on ? 0 : 1 });
+};
 
 $("#progress").onclick = (ev) => {
   if (!clock.duration) return;

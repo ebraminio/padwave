@@ -253,6 +253,7 @@ private:
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
   bool mic = false;
+  bool sink_mode_ = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
   int head = 0, tail = 0;
@@ -1318,7 +1319,51 @@ private:
     }
   }
 
+  void sendBlock(float (&block)[IN_FRAMES][CHANNELS]) {
+    if (haptics_only && !is_usb) {
+      sendHapticsOnly(block);
+      return;
+    }
+
+    float gain = static_cast<float>((volume / 100.0));
+    gain       = gain * gain * gain;
+
+    if (is_usb) {
+      // USB speaker path: 512 frames at 48 kHz every 10.667 ms, no 512→480
+      // conversion. That conversion remains Bluetooth-only.
+      writeUsbPcm(block, gain);
+      return;
+    }
+
+    float pcm[dualsense::AudioReport::pcmFrames * CHANNELS];
+    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::pcmFrames - 1));
+
+    for (int i = 0; i < dualsense::AudioReport::pcmFrames; i++) {
+      double src      = i * step;
+      int idx         = static_cast<int>(src);
+      int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
+      float frac      = static_cast<float>((src - idx));
+      for (int ch = 0; ch < CHANNELS; ch++) {
+        float a                = block[idx][ch];
+        float b                = block[next_sample][ch];
+        pcm[i * CHANNELS + ch] = (a + (b - a) * frac) * gain;
+      }
+    }
+
+    sendReport(pcm, dualsense::AudioReport::pcmFrames);
+  }
+
   void tick() {
+    if (sink_mode_) {
+      float block[IN_FRAMES][CHANNELS];
+      if (!takeBlock(block)) {
+        underruns++;
+        memset(block, 0, sizeof(block));
+      }
+      sendBlock(block);
+      return;
+    }
+
     // The decode ring is intentionally built from 512-sample blocks, while
     // the controller's speaker frame is 480 samples (10 ms). The 10.667 ms
     // tick (512 / 48 kHz) and the 512→480 interpolation below are coupled to
@@ -1373,37 +1418,7 @@ private:
       }
     }
 
-    if (haptics_only && !is_usb) {
-      sendHapticsOnly(block);
-      return;
-    }
-
-    float gain = static_cast<float>((volume / 100.0));
-    gain       = gain * gain * gain;
-
-    if (is_usb) {
-      // USB speaker path: 512 frames at 48 kHz every 10.667 ms, no 512→480
-      // conversion. That conversion remains Bluetooth-only.
-      writeUsbPcm(block, gain);
-      return;
-    }
-
-    float pcm[dualsense::AudioReport::pcmFrames * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::pcmFrames - 1));
-
-    for (int i = 0; i < dualsense::AudioReport::pcmFrames; i++) {
-      double src      = i * step;
-      int idx         = static_cast<int>(src);
-      int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
-      float frac      = static_cast<float>((src - idx));
-      for (int ch = 0; ch < CHANNELS; ch++) {
-        float a                = block[idx][ch];
-        float b                = block[next_sample][ch];
-        pcm[i * CHANNELS + ch] = (a + (b - a) * frac) * gain;
-      }
-    }
-
-    sendReport(pcm, dualsense::AudioReport::pcmFrames);
+    sendBlock(block);
   }
 
 public:
@@ -1448,6 +1463,37 @@ public:
   }
 
   int speedPercent() const { return speed_percent; }
+
+  bool sinkMode() const { return sink_mode_; }
+
+  void setSinkMode(bool on) {
+    closeFile();
+    closeNext();
+    head = tail = 0;
+    acc_frames  = 0;
+    underruns   = 0;
+    sink_mode_  = on;
+    playing     = on;
+    paused      = false;
+    primed      = on;
+    setTick(on ? kPlayTickNs : kPauseTickNs);
+  }
+
+  void pushSink(const float *samples, size_t frames) {
+    if (!sink_mode_ || !samples) return;
+    for (size_t i = 0; i < frames; ++i) {
+      acc[acc_frames][0] = samples[i * CHANNELS + 0];
+      acc[acc_frames][1] = samples[i * CHANNELS + 1];
+      if (++acc_frames == IN_FRAMES) {
+        int next = (head + 1) % RING_BLOCKS;
+        if (next != tail) {
+          memcpy(ring[head], acc, sizeof(ring[0]));
+          head = next;
+        }
+        acc_frames = 0;
+      }
+    }
+  }
 
   int fd() const { return hidraw; }
 
