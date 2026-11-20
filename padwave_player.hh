@@ -253,7 +253,8 @@ private:
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
   bool mic = false;
-  bool sink_mode_ = false;
+  bool sink_mode_       = false;
+  bool sink_input_seen_ = false;
 
   float ring[RING_BLOCKS][IN_FRAMES][CHANNELS] = {};
   int head = 0, tail = 0;
@@ -1466,6 +1467,10 @@ public:
 
   bool sinkMode() const { return sink_mode_; }
 
+  bool sinkInputSeen() const { return sink_input_seen_; }
+
+  void clearSinkInput() { sink_input_seen_ = false; }
+
   void setSinkMode(bool on) {
     closeFile();
     closeNext();
@@ -1473,6 +1478,7 @@ public:
     acc_frames  = 0;
     underruns   = 0;
     sink_mode_  = on;
+    if (on) sink_input_seen_ = false;
     playing     = on;
     paused      = false;
     primed      = on;
@@ -1480,7 +1486,11 @@ public:
   }
 
   void pushSink(const float *samples, size_t frames) {
-    if (!sink_mode_ || !samples) return;
+    if (!samples || frames == 0) return;
+    if (!sink_mode_) {
+      sink_input_seen_ = true;
+      return;
+    }
     for (size_t i = 0; i < frames; ++i) {
       acc[acc_frames][0] = samples[i * CHANNELS + 0];
       acc[acc_frames][1] = samples[i * CHANNELS + 1];

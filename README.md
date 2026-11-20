@@ -34,11 +34,12 @@ decoder, panel and HTTP API from the same epoll loop.
 
 Analogue sticks are deliberately unbound: ours are worn and jitter.
 
-The web UI also has a **system audio** toggle. When on, padwave registers a
-PipeWire sink called `padwave`; other PipeWire clients can play into it, and
-the existing timer/Opus/HID path sends the audio to the controller. The sink is
-removed when toggled off. PipeWire and WirePlumber must be running, and selecting
-`padwave` as the default sink is left to the desktop/session policy.
+padwave registers a PipeWire sink called `padwave` at startup. It is visible to
+other PipeWire clients and becomes the default sink under the normal single-sink
+WirePlumber policy. When something starts playing into it, the local file player
+stops and the existing timer/Opus/HID path forwards the system audio to the
+controller. Pressing a local playback control switches back to the file player;
+the sink node remains available. PipeWire and WirePlumber must be running.
 
 ## Build and run
 

@@ -22,7 +22,7 @@ if [ "$(uname -s)" = "Linux" ] && [ ! -r /usr/include/bluetooth/hci_lib.h ]; the
 fi
 CFLAGS="$(pkg-config --cflags $PKGS) $(pkg-config --cflags opus | sed 's/-I/-isystem /g')"
 LIBS="$(pkg-config --libs $PKGS) -lopus -lm"
-PIPEWIRE_FLAGS="-DPADWAVE_HAVE_PIPEWIRE $(pkg-config --cflags libpipewire-0.3 | sed 's/-I/-isystem /g')"
+PIPEWIRE_FLAGS="$(pkg-config --cflags libpipewire-0.3 | sed 's/-I/-isystem /g')"
 LIBS="$LIBS $(pkg-config --libs libpipewire-0.3) -pthread"
 # libbluetooth-dev provides libbluetooth; BlueZ's pkg-config module is only
 # named "bluez" and emits this same -lbluetooth.

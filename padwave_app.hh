@@ -32,9 +32,7 @@
 
 #include "padwave_player.hh"
 #include "padwave_input.hh"
-#if defined(PADWAVE_HAVE_PIPEWIRE)
 #include "padwave_sink.hh"
-#endif
 #include "dualsense-extra.hh"
 
 // The Bluetooth address from the hidraw uevent's HID_UNIQ. bluetoothctl and
@@ -225,11 +223,10 @@ private:
 
   Player player;
   Input input;
-  int player_timer_fd = -1;
-  bool sink_enabled   = false;
-#if defined(PADWAVE_HAVE_PIPEWIRE)
+  int player_timer_fd   = -1;
+  bool sink_node_active = false;
+  bool sink_playback    = false;
   PipeWireSink sink;
-#endif
 
   static constexpr int kDefaultVolume = 15;
 
@@ -410,51 +407,38 @@ public:
     else if (this->last_nonzero_volume <= 0)
       this->last_nonzero_volume = kDefaultVolume;
     this->volume_dirty = false;
+    this->sink_node_active = this->sink.start(&App::sinkPush, &this->player);
+    if (!this->sink_node_active) fprintf(stderr, "padwave: PipeWire sink unavailable\n");
     return true;
   }
 
-  bool sinkAvailable() const {
-#if defined(PADWAVE_HAVE_PIPEWIRE)
-    return true;
-#else
-    return false;
-#endif
-  }
+  bool sinkAvailable() const { return this->sink_node_active; }
 
   static void sinkPush(void *owner, const float *samples, size_t frames) {
     static_cast<Player *>(owner)->pushSink(samples, frames);
   }
 
-  bool sinkStart() {
-#if defined(PADWAVE_HAVE_PIPEWIRE)
-    if (this->sink_enabled) return true;
+  bool sinkPlaybackStart() {
+    if (!this->sink_node_active || this->sink_playback) return this->sink_playback;
     if (!this->player) playerStart();
     if (!this->player || this->player.fd() < 0) return false;
     this->player.setSinkMode(true);
-    if (!this->sink.start(&App::sinkPush, &this->player)) {
-      this->player.setSinkMode(false);
-      return false;
-    }
-    this->sink_enabled = true;
-    this->playing      = false;
-    this->paused       = true;
+    this->sink_playback = true;
+    this->playing       = false;
+    this->paused        = true;
     return true;
-#else
-    return false;
-#endif
   }
 
-  void sinkStop() {
-#if defined(PADWAVE_HAVE_PIPEWIRE)
-    if (!this->sink_enabled) return;
-    this->sink.stop();
-    this->sink_enabled = false;
+  void sinkPlaybackStop() {
+    if (!this->sink_playback) return;
+    this->sink_playback = false;
     this->player.setSinkMode(false);
-#endif
   }
 
   void shutdown() {
-    sinkStop();
+    sinkPlaybackStop();
+    this->sink.stop();
+    this->sink_node_active = false;
     this->playing    = false;
     this->controller = false;
     this->led_force  = true;
@@ -542,7 +526,9 @@ public:
       next();
     }
     if (!this->player) playerStart();
-    if (!this->sink_enabled && this->player) {
+    if (!this->sink_playback && this->player.sinkInputSeen() && this->sinkPlaybackStart())
+      this->player.clearSinkInput();
+    if (!this->sink_playback && this->player) {
       if (this->resume_pending && this->current >= 0) {
         this->resume_pending = false;
         play(this->current, this->pos_ms);
@@ -587,19 +573,17 @@ public:
     int n = 0;
     if (this->player_timer_fd >= 0 && n < max) fds[n++] = this->player_timer_fd;
     if (this->input.fd() >= 0 && n < max) fds[n++] = this->input.fd();
-#if defined(PADWAVE_HAVE_PIPEWIRE)
     if (this->sink.fd() >= 0 && n < max) fds[n++] = this->sink.fd();
-#endif
     return n;
   }
 
   void handleFd(int fd) {
-#if defined(PADWAVE_HAVE_PIPEWIRE)
-    if (this->sink_enabled && fd == this->sink.fd()) {
+    if (fd == this->sink.fd()) {
       this->sink.dispatch();
+      if (!this->sink_playback && this->player.sinkInputSeen() && this->sinkPlaybackStart())
+        this->player.clearSinkInput();
       return;
     }
-#endif
     if (this->player && fd == this->player_timer_fd) {
       this->player.step();
       serviceOutput();
@@ -705,7 +689,7 @@ public:
     kvText(buf, cap, &o, "audio.state",
            this->player.audioActive() ? "running" : (this->player.isValid() ? "ready" : "null"));
     kvAdd(buf, cap, &o, "audio.sink_available", "%s", sinkAvailable() ? "true" : "false");
-    kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_enabled ? "true" : "false");
+    kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
 
     kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
     kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");
@@ -1270,11 +1254,8 @@ public:
   }
 
   bool ownsFd(int fd) {
-    bool owned = fd >= 0 && (fd == this->player_timer_fd || fd == this->input.fd());
-#if defined(PADWAVE_HAVE_PIPEWIRE)
-    owned = owned || (fd >= 0 && fd == this->sink.fd());
-#endif
-    return owned;
+    return fd >= 0 &&
+           (fd == this->player_timer_fd || fd == this->input.fd() || fd == this->sink.fd());
   }
 
 private:
@@ -1378,7 +1359,7 @@ private:
   }
 
   void inputStop(bool pause_playback = false) {
-    sinkStop();
+    sinkPlaybackStop();
     this->input.close();
     if (this->player) this->player.dropDevice();
     this->controller = false;
@@ -2319,24 +2300,12 @@ private:
 
     bool was_suspended = this->suspended;
     noteActivity();
-    if (strcmp(action, "sink") == 0) {
-      if (!sinkAvailable())
-        return snprintf(out, out_cap, "ok=false\nerror=PipeWire support is not compiled in\n");
-      bool on = kvNumber(body, "value", this->sink_enabled ? 0 : 1) != 0;
-      if (on) {
-        if (!sinkStart()) return snprintf(out, out_cap, "ok=false\nerror=could not start PipeWire sink\n");
-      } else {
-        sinkStop();
-      }
-      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
-      return snprintf(out, out_cap, "ok=true\nsink=%s\n", this->sink_enabled ? "on" : "off");
-    }
-    if (this->sink_enabled && (strcmp(action, "next") == 0 || strcmp(action, "previous") == 0 ||
-                               strcmp(action, "shuffle_folder") == 0 ||
-                               strcmp(action, "pause") == 0 || strcmp(action, "seek") == 0 ||
-                               strcmp(action, "seek_to") == 0 ||
-                               strcmp(action, "play_track") == 0))
-      return snprintf(out, out_cap, "ok=false\nerror=system audio sink is active\n");
+    if (this->sink_playback &&
+        (strcmp(action, "next") == 0 || strcmp(action, "previous") == 0 ||
+         strcmp(action, "shuffle_folder") == 0 || strcmp(action, "pause") == 0 ||
+         strcmp(action, "seek") == 0 || strcmp(action, "seek_to") == 0 ||
+         strcmp(action, "play_track") == 0))
+      sinkPlaybackStop();
     if (was_suspended && strcmp(action, "pause") == 0) {
       snprintf(this->last_action, sizeof(this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
@@ -2353,7 +2322,7 @@ private:
     else if (strcmp(action, "mute") == 0)
       toggleMute();
     else if (strcmp(action, "disconnect") == 0) {
-      sinkStop();
+      sinkPlaybackStop();
       this->playing = false;
       this->paused  = true;
       playerSend("pause 1\n");
