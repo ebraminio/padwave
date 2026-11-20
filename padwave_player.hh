@@ -1661,7 +1661,7 @@ public:
     uint64_t expirations = 0;
     if (tfd >= 0 && read(tfd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
       if (primed && playing && !paused) {
-        for (uint64_t i = 0; i < expirations && i < 4; i++) tick();
+        for (uint64_t i = 0; i < expirations && i < 32; i++) tick();
       }
     }
 

@@ -1743,23 +1743,7 @@ private:
     return true;
   }
 
-  int liveSourcePlaylist(char *out, size_t cap) {
-    if (!out || cap == 0) return 0;
-    out[0] = 0;
-    if (!this->live_upstream_url[0]) return 0;
-    char resolved[kMaxPath];
-    resolveLiveStream(this->live_upstream_url, resolved, sizeof(resolved));
-    if (resolved[0] && strcmp(resolved, this->live_upstream_url) != 0)
-      snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", resolved);
-    constexpr size_t kMaxBody = 512 * 1024;
-    char *body = static_cast<char *>(malloc(kMaxBody));
-    if (!body) return 0;
-    int n = fetchUrl(this->live_upstream_url, body, kMaxBody);
-    if (n <= 0) {
-      free(body);
-      return 0;
-    }
-
+  int rewritePlaylistBody(char *body, char *out, size_t cap) {
     size_t segments = 0;
     for (const char *p = body; *p;) {
       const char *e = strchr(p, '\n');
@@ -1812,8 +1796,54 @@ private:
       }
       segment_index++;
     }
-    free(body);
     return static_cast<int>(o);
+  }
+
+  int liveSourcePlaylist(char *out, size_t cap) {
+    if (!out || cap == 0) return 0;
+    out[0] = 0;
+    if (!this->live_upstream_url[0]) return 0;
+    char resolved[kMaxPath];
+    resolveLiveStream(this->live_upstream_url, resolved, sizeof(resolved));
+    if (resolved[0] && strcmp(resolved, this->live_upstream_url) != 0)
+      snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", resolved);
+    constexpr size_t kMaxBody = 512 * 1024;
+    char *body = static_cast<char *>(malloc(kMaxBody));
+    if (!body) return 0;
+    int n = fetchUrl(this->live_upstream_url, body, kMaxBody);
+    if (n <= 0) {
+      free(body);
+      return 0;
+    }
+
+    int result = this->rewritePlaylistBody(body, out, cap);
+    free(body);
+    return result;
+  }
+
+  void writeLivePlaylistFile() {
+    if (!this->live_pl_buf.data || this->live_pl_buf.len == 0) return;
+    constexpr size_t kOutCap = 1024 * 1024;
+    char *copy = static_cast<char *>(malloc(this->live_pl_buf.len + 1));
+    char *out  = static_cast<char *>(malloc(kOutCap));
+    if (!copy || !out) {
+      free(copy);
+      free(out);
+      return;
+    }
+    memcpy(copy, this->live_pl_buf.data, this->live_pl_buf.len);
+    copy[this->live_pl_buf.len] = 0;
+    int n = this->rewritePlaylistBody(copy, out, kOutCap);
+    free(copy);
+    if (n > 0) {
+      mkdir("/tmp/padwave-src", 0755);
+      FILE *f = fopen("/tmp/padwave-src/index.m3u8", "w");
+      if (f) {
+        fwrite(out, 1, static_cast<size_t>(n), f);
+        fclose(f);
+      }
+    }
+    free(out);
   }
 
   bool decodeLiveSegment(const char *file_path) {
@@ -2147,8 +2177,10 @@ done:
         curl_easy_cleanup(h);
         this->live_pl_curl     = nullptr;
         this->live_pl_inflight = false;
-        if (ok && !this->live_pl_buf.overflow)
+        if (ok && !this->live_pl_buf.overflow) {
+          this->writeLivePlaylistFile();
           this->parseLivePlaylist();
+        }
         else
           this->live_audio_at = nowMs() + 1000;
       } else if (h == this->live_seg_curl) {

@@ -263,19 +263,7 @@ private:
   }
 
   void serveSourcePlaylist(Conn *c) {
-    constexpr size_t kSourcePlaylistMax = 1024 * 1024;
-    char *body = reinterpret_cast<char *>(malloc(kSourcePlaylistMax));
-    int len    = body ? app->liveSourcePlaylist(body, kSourcePlaylistMax) : 0;
     const char *source_path = "/tmp/padwave-src/index.m3u8";
-    if (len > 0) {
-      mkdir("/tmp/padwave-src", 0755);
-      FILE *f = fopen(source_path, "w");
-      if (f) {
-        fwrite(body, 1, static_cast<size_t>(len), f);
-        fclose(f);
-      }
-    }
-    free(body);
     if (access(source_path, R_OK) != 0) {
       notFound(c);
       return;

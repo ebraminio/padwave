@@ -48,8 +48,10 @@ playlists/segments through `/hls-src/`, including HTTP and SOCKS proxy support.
 padwave serves the trimmed source HLS directly at `/hls/index.m3u8` for
 VLC/Safari, and decodes the cached source TS segments itself into its Player
 sink ring for controller audio. Playlist and segment transfers use `curl_multi`
-from the Player timer, so network waits do not block the audio clock. Only
-libcurl reads the upstream stream, so bandwidth is not doubled. No playlist URL
+from the Player timer, so network waits do not block the audio clock. Video
+playlists are served from an asynchronously refreshed cache, and the Player
+catches up timer expirations after short decode/HTTP stalls. Only libcurl reads
+the upstream stream, so bandwidth is not doubled. No playlist URL
 is compiled into the binary. Open
 `http://<pi>:8787/hls/index.m3u8` in VLC or ffplay; mute VLC if you are
 listening through the controller.
