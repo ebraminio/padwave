@@ -1375,11 +1375,18 @@ private:
 
   static bool m3uAttr(const char *line, const char *key, char *out, size_t cap) {
     char needle[64];
-    snprintf(needle, sizeof(needle), "%s=\"", key);
+    snprintf(needle, sizeof(needle), "%s=", key);
     const char *p = strstr(line, needle);
     if (!p) return false;
     p += strlen(needle);
-    const char *e = strchr(p, '"');
+    const char *e;
+    if (*p == '"') {
+      p++;
+      e = strchr(p, '"');
+    } else {
+      e = p;
+      while (*e && *e != ' ' && *e != '\t') e++;
+    }
     if (!e) return false;
     size_t n = static_cast<size_t>(e - p);
     if (n >= cap) n = cap - 1;

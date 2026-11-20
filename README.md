@@ -52,7 +52,9 @@ bandwidth is not doubled. No playlist URL is compiled into the binary. Open
 through the controller. Install `mpv` at runtime with `sudo apt install mpv`.
 The tab also shows channel logos, radio markers, provider/country metadata, a
 direct-URL field, and an embedded muted HLS player using native HLS (Safari).
-The VLC link remains available for other browsers.
+Clicking a channel fills the direct-URL field with its stream URL; the field
+remains editable for arbitrary links. All/TV/Radio filters separate the radio
+entries. The VLC link remains available for other browsers.
 
 ## Build and run
 

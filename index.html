@@ -270,6 +270,9 @@
   .live-player-foot { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; background: #0f1219; font-size: 11.5px; color: var(--muted); }
   .live-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
   .live-toolbar input[type=search] { flex: 1; font-family: inherit; }
+  .live-kinds { display: flex; gap: 4px; }
+  .live-kinds button { padding: 5px 9px; border-radius: 7px; font-size: 11px; color: var(--muted); }
+  .live-kinds button.on { color: var(--text); border-color: rgba(34, 211, 238, .6); background: rgba(34, 211, 238, .12); }
   .live-count { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
   .live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 8px; list-style: none; margin: 12px 0 0; padding: 0; max-height: 560px; overflow: auto; }
   .live-channel { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: #0f1219; cursor: pointer; }
@@ -644,6 +647,11 @@
       </div>
     </div>
     <div class="live-toolbar">
+      <div class="live-kinds" id="liveKinds">
+        <button data-kind="all" class="on">all</button>
+        <button data-kind="tv">TV</button>
+        <button data-kind="radio">radio</button>
+      </div>
       <input type="search" id="liveFilter" placeholder="filter channels…" autocomplete="off">
       <span class="live-count" id="liveFilterCount">—</span>
     </div>
@@ -713,6 +721,8 @@ let liveChannels = [];
 let liveLoaded = false;
 let lastLiveCurrent = null;
 let liveFilterText = "";
+let liveKind = "all";
+let liveDirectPreview = null;
 let liveVideoSrc = null;
 let filterText = "";
 let lastSensorsAt = 0;
@@ -768,6 +778,8 @@ function buildLive() {
   ul.innerHTML = "";
   const filter = liveFilterText.trim().toLowerCase();
   const visible = liveChannels.filter((channel) => {
+    if (liveKind === "radio" && !channel.radio) return false;
+    if (liveKind === "tv" && channel.radio) return false;
     if (!filter) return true;
     return [channel.number, channel.name, channel.group, channel.provider, channel.country, channel.language]
       .join(" ").toLowerCase().includes(filter);
@@ -816,7 +828,11 @@ function buildLive() {
       .filter(Boolean).join(" · ");
     info.append(line1, line2);
     li.append(info);
-    li.onclick = () => send("live_play", { id: channel.id });
+    li.onclick = () => {
+      liveDirectPreview = channel.url;
+      $("#liveDirectUrl").value = channel.url;
+      send("live_play", { id: channel.id });
+    };
     ul.append(li);
   }
 }
@@ -869,7 +885,8 @@ function syncLiveVideo(live) {
 function renderLiveStatus(s) {
   const live = s.live || {};
   if (document.activeElement !== $("#liveUrl")) $("#liveUrl").value = live.url || "";
-  if (document.activeElement !== $("#liveDirectUrl")) $("#liveDirectUrl").value = live.direct_url || "";
+  if (document.activeElement !== $("#liveDirectUrl") && liveDirectPreview === null)
+    $("#liveDirectUrl").value = live.direct_url || "";
   $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
@@ -1827,6 +1844,16 @@ $("#liveDirectPlay").onclick = async () => {
 $("#liveFilter").addEventListener("input", (event) => {
   liveFilterText = event.target.value;
   buildLive();
+});
+$("#liveDirectUrl").addEventListener("input", () => {
+  liveDirectPreview = null;
+});
+document.querySelectorAll("#liveKinds button").forEach((button) => {
+  button.onclick = () => {
+    liveKind = button.dataset.kind;
+    document.querySelectorAll("#liveKinds button").forEach((b) => b.classList.toggle("on", b === button));
+    buildLive();
+  };
 });
 
 document.addEventListener("keydown", (e) => {
