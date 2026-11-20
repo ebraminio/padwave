@@ -34,11 +34,18 @@ decoder, panel and HTTP API from the same epoll loop.
 
 Analogue sticks are deliberately unbound: ours are worn and jitter.
 
+The web UI also has a **system audio** toggle. When on, padwave registers a
+PipeWire sink called `padwave`; other PipeWire clients can play into it, and
+the existing timer/Opus/HID path sends the audio to the controller. The sink is
+removed when toggled off. PipeWire and WirePlumber must be running, and selecting
+`padwave` as the default sink is left to the desktop/session policy.
+
 ## Build and run
 
 Needs a C++23 compiler (`clang`), `pkg-config`, the FFmpeg development
 packages (`libavformat`, `libavcodec`, `libswresample`, `libavutil`,
-`libavfilter`), `libopus-dev`, and on Linux `libbluetooth-dev`.
+`libavfilter`), `libopus-dev`, `libpipewire-0.3-dev`, and on Linux
+`libbluetooth-dev`.
 
 On Raspberry Pi OS or Debian:
 
@@ -46,7 +53,7 @@ On Raspberry Pi OS or Debian:
 sudo apt update
 sudo apt install clang pkg-config build-essential \
   libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev \
-  libopus-dev libbluetooth-dev
+  libopus-dev libbluetooth-dev libpipewire-0.3-dev
 ```
 
 `bluez` is needed at runtime to pair the controller, but is not a build
