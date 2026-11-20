@@ -46,10 +46,11 @@ it, and select a channel; padwave saves the URL in its config and starts one
 `ffmpeg` process. That process resolves the master playlist to its first
 (lowest-bitrate) HLS variant and writes local HLS segments; `mpv` plays those
 local segments for the controller audio, while a small static HTTP server exposes
-the same HLS on port 8090 for VLC. Only ffmpeg reads the upstream stream, so
-bandwidth is not doubled. No playlist URL is compiled into the binary. Open
-`http://<pi>:8090/index.m3u8` in VLC or ffplay; mute VLC if you are listening
-through the controller. Install `mpv` at runtime with `sudo apt install mpv`.
+the same HLS at `/hls/index.m3u8` on padwave's own port for VLC. Only ffmpeg
+reads the upstream stream, so bandwidth is not doubled. No playlist URL is
+compiled into the binary. Open `http://<pi>:8787/hls/index.m3u8` in VLC or
+ffplay; mute VLC if you are listening through the controller. Install `mpv` at
+runtime with `sudo apt install mpv`.
 The tab also shows channel logos, radio markers, provider/country metadata, a
 direct-URL field, and an embedded muted HLS player using native HLS (Safari).
 Clicking a channel fills the direct-URL field with its stream URL; the field

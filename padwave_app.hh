@@ -241,7 +241,6 @@ private:
   char live_error[160]              = "";
   pid_t live_pid             = -1;
   pid_t live_audio_pid       = -1;
-  pid_t live_http_pid        = -1;
   int live_current           = -1;
   bool live_active           = false;
   bool live_audio_pending    = false;
@@ -744,7 +743,6 @@ public:
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
-    kvAdd(buf, cap, &o, "live.video_port", "%d", 8090);
     kvAdd(buf, cap, &o, "live.current", "%d", this->live_current >= 0 ? this->live_current + 1 : 0);
     kvText(buf, cap, &o, "live.error", this->live_error);
 
@@ -1649,11 +1647,6 @@ private:
   static constexpr const char *kLivePlaylist = "/tmp/padwave-live/index.m3u8";
 
   void reapLive() {
-    if (this->live_http_pid > 0) {
-      int hs = 0;
-      if (waitpid(this->live_http_pid, &hs, WNOHANG) == this->live_http_pid)
-        this->live_http_pid = -1;
-    }
     if (this->live_audio_pid > 0) {
       int as = 0;
       if (waitpid(this->live_audio_pid, &as, WNOHANG) == this->live_audio_pid) {
@@ -1675,7 +1668,6 @@ private:
     if (r != this->live_pid) return;
     this->live_pid = -1;
     terminateProcess(&this->live_audio_pid);
-    terminateProcess(&this->live_http_pid);
     this->live_audio_pending = false;
     if (!this->live_active) return;
     long now = nowMs();
@@ -1695,7 +1687,6 @@ private:
   void stopLive() {
     terminateProcess(&this->live_pid);
     terminateProcess(&this->live_audio_pid);
-    terminateProcess(&this->live_http_pid);
     this->live_active      = false;
     this->live_current     = -1;
     this->live_audio_pending = false;
@@ -1720,7 +1711,6 @@ private:
   bool startLiveProcess(const char *channel_url) {
     if (!channel_url || !validLiveUrl(channel_url)) return false;
     terminateProcess(&this->live_audio_pid);
-    terminateProcess(&this->live_http_pid);
     this->live_audio_pending = false;
     char cmd[128];
     snprintf(cmd, sizeof(cmd), "rm -rf %s", kLiveDir);
@@ -1744,12 +1734,6 @@ private:
       return false;
     }
     this->live_pid = pid;
-    char hls_server[512];
-    const char *home = getenv("HOME");
-    snprintf(hls_server, sizeof(hls_server), "%s/.local/share/padwave/hls_server.py",
-             home ? home : "");
-    const char *http[] = {"python3", hls_server, nullptr};
-    this->live_http_pid = spawnProcess(http);
     this->live_active     = true;
     this->live_started_at = nowMs();
     this->live_audio_pending = true;

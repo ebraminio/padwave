@@ -870,7 +870,7 @@ function syncLiveVideo(live) {
     return;
   }
   wrap.hidden = false;
-  const url = `http://${location.hostname}:8090/index.m3u8`;
+  const url = `${location.origin}/hls/index.m3u8`;
   if (liveVideoSrc === url) return;
   destroyLiveVideo();
   liveVideoSrc = url;
@@ -891,9 +891,8 @@ function renderLiveStatus(s) {
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
     : (live.playing ? `live audio → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
-  const port = live.video_port || 8090;
   const videoLink = $("#liveVideoLink");
-  videoLink.href = `http://${location.hostname}:${port}/index.m3u8`;
+  videoLink.href = `${location.origin}/hls/index.m3u8`;
   videoLink.hidden = live.video !== true;
   syncLiveVideo(live);
   if (live.current !== lastLiveCurrent) {

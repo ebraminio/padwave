@@ -261,6 +261,94 @@ private:
     return n + static_cast<int>(body_len);
   }
 
+  void notFound(Conn *c) {
+    static const char body[] = "not found\n";
+    c->static_reply          = true;
+    c->out_len               = static_cast<size_t>(snprintf(
+        c->out, sizeof(c->out),
+        "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n"
+        "Connection: close\r\n\r\n%s",
+        sizeof(body) - 1, body));
+    modFd(c->fd, EPOLLOUT);
+  }
+
+  void serveFile(Conn *c, const char *file_path, const char *mime, bool cors) {
+    int fd = open(file_path, O_RDONLY | O_CLOEXEC);
+    struct stat stbuf;
+    if (fd < 0 || fstat(fd, &stbuf) != 0 || !S_ISREG(stbuf.st_mode) || stbuf.st_size <= 0) {
+      if (fd >= 0) close(fd);
+      notFound(c);
+      return;
+    }
+    off_t size        = stbuf.st_size;
+    off_t start       = 0;
+    off_t end         = size - 1;
+    bool partial      = false;
+    const char *range = strcasestr(c->in, "Range:");
+    if (range) {
+      const char *eq  = strchr(range, '=');
+      long long first = -1;
+      long long last  = -1;
+      int parsed      = eq ? sscanf(eq + 1, "%lld-%lld", &first, &last) : 0;
+      if (eq && eq[1] == '-') {
+        long long suffix = 0;
+        if (sscanf(eq + 2, "%lld", &suffix) == 1 && suffix > 0) {
+          first  = suffix >= size ? 0 : size - suffix;
+          parsed = 1;
+        }
+      }
+      if (parsed < 1 || first < 0 || first >= size || (parsed >= 2 && last < first)) {
+        close(fd);
+        static const char body[] = "range not satisfiable\n";
+        c->static_reply          = true;
+        c->out_len               = static_cast<size_t>(snprintf(
+            c->out, sizeof(c->out),
+            "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: text/plain\r\n"
+            "Content-Range: bytes */%lld\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+            static_cast<long long>(size), sizeof(body) - 1, body));
+        modFd(c->fd, EPOLLOUT);
+        return;
+      }
+      start   = first;
+      end     = parsed >= 2 && last >= first && last < size ? last : size - 1;
+      partial = true;
+    }
+    if (lseek(fd, start, SEEK_SET) < 0) {
+      close(fd);
+      closeConn(c);
+      return;
+    }
+    long long length = static_cast<long long>(end - start + 1);
+    char header[640];
+    const char *cors_header = cors ? "Access-Control-Allow-Origin: *\r\n" : "";
+    int hn =
+        partial
+            ? snprintf(header, sizeof(header),
+                       "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
+                       "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
+                       "Content-Length: %lld\r\n%sConnection: close\r\n"
+                       "Cache-Control: no-cache\r\n\r\n",
+                       mime, static_cast<long long>(start), static_cast<long long>(end),
+                       static_cast<long long>(size), length, cors_header)
+            : snprintf(header, sizeof(header),
+                       "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
+                       "Content-Length: %lld\r\n%sConnection: close\r\n"
+                       "Cache-Control: no-cache\r\n\r\n",
+                       mime, length, cors_header);
+    if (hn <= 0 || static_cast<size_t>(hn) >= sizeof(c->out)) {
+      close(fd);
+      closeConn(c);
+      return;
+    }
+    memcpy(c->out, header, static_cast<size_t>(hn));
+    c->out_len    = static_cast<size_t>(hn);
+    c->file_fd    = fd;
+    c->file_off   = start;
+    c->file_end   = end;
+    c->file_reply = true;
+    modFd(c->fd, EPOLLOUT);
+  }
+
   void closeConn(Conn *c) {
     if (c->file_fd >= 0) close(c->file_fd);
     if (c->fd >= 0) {
@@ -337,83 +425,31 @@ private:
         modFd(c->fd, EPOLLOUT);
         return;
       }
-      int fd = open(file_path, O_RDONLY | O_CLOEXEC);
-      struct stat stbuf;
-      if (fd < 0 || fstat(fd, &stbuf) != 0 || !S_ISREG(stbuf.st_mode) || stbuf.st_size <= 0) {
-        if (fd >= 0) close(fd);
-        static const char body[] = "cannot open track\n";
-        c->static_reply          = true;
-        c->out_len               = static_cast<size_t>(makeStatic(
-            c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
-        modFd(c->fd, EPOLLOUT);
+      serveFile(c, file_path, mime, false);
+      return;
+    }
+
+    if (strncmp(path, "/hls/", 5) == 0) {
+      const char *name = path + 5;
+      size_t name_len   = strcspn(name, "?");
+      if (name_len == 0 || name_len >= 256 || memchr(name, '/', name_len) ||
+          memchr(name, '\\', name_len) ||
+          (name_len >= 2 && memcmp(name, "..", 2) == 0)) {
+        notFound(c);
         return;
       }
-      off_t size        = stbuf.st_size;
-      off_t start       = 0;
-      off_t end         = size - 1;
-      bool partial      = false;
-      const char *range = strcasestr(c->in, "Range:");
-      if (range) {
-        const char *eq  = strchr(range, '=');
-        long long first = -1;
-        long long last  = -1;
-        int parsed      = eq ? sscanf(eq + 1, "%lld-%lld", &first, &last) : 0;
-        if (eq && eq[1] == '-') {
-          long long suffix = 0;
-          if (sscanf(eq + 2, "%lld", &suffix) == 1 && suffix > 0) {
-            first  = suffix >= size ? 0 : size - suffix;
-            parsed = 1;
-          }
-        }
-        if (parsed < 1 || first < 0 || first >= size || (parsed >= 2 && last < first)) {
-          close(fd);
-          static const char body[] = "range not satisfiable\n";
-          c->static_reply          = true;
-          c->out_len               = static_cast<size_t>(snprintf(
-              c->out, sizeof(c->out),
-              "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: text/plain\r\n"
-              "Content-Range: bytes */%lld\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
-              static_cast<long long>(size), sizeof(body) - 1, body));
-          modFd(c->fd, EPOLLOUT);
-          return;
-        }
-        start   = first;
-        end     = parsed >= 2 && last >= first && last < size ? last : size - 1;
-        partial = true;
-      }
-      if (lseek(fd, start, SEEK_SET) < 0) {
-        close(fd);
-        closeConn(c);
-        return;
-      }
-      long long length = static_cast<long long>(end - start + 1);
-      char header[512];
-      int hn =
-          partial
-              ? snprintf(
-                    header, sizeof(header),
-                    "HTTP/1.1 206 Partial Content\r\nContent-Type: %s\r\n"
-                    "Accept-Ranges: bytes\r\nContent-Range: bytes %lld-%lld/%lld\r\n"
-                    "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-                    mime, static_cast<long long>(start), static_cast<long long>(end),
-                    static_cast<long long>(size), length)
-              : snprintf(
-                    header, sizeof(header),
-                    "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
-                    "Content-Length: %lld\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n",
-                    mime, length);
-      if (hn <= 0 || static_cast<size_t>(hn) >= sizeof(c->out)) {
-        close(fd);
-        closeConn(c);
-        return;
-      }
-      memcpy(c->out, header, static_cast<size_t>(hn));
-      c->out_len    = static_cast<size_t>(hn);
-      c->file_fd    = fd;
-      c->file_off   = start;
-      c->file_end   = end;
-      c->file_reply = true;
-      modFd(c->fd, EPOLLOUT);
+      char file_name[256];
+      memcpy(file_name, name, name_len);
+      file_name[name_len] = 0;
+      const char *dot = strrchr(file_name, '.');
+      const char *mime = "application/octet-stream";
+      if (dot && strcasecmp(dot, ".m3u8") == 0)
+        mime = "application/vnd.apple.mpegurl";
+      else if (dot && strcasecmp(dot, ".ts") == 0)
+        mime = "video/mp2t";
+      char file_path[512];
+      snprintf(file_path, sizeof(file_path), "/tmp/padwave-live/%s", file_name);
+      serveFile(c, file_path, mime, true);
       return;
     }
 

@@ -11,7 +11,6 @@ echo "==> build"
 
 echo "==> install"
 install -Dm755 "$ROOT/padwave" "$HOME/.local/bin/padwave"
-install -Dm755 "$ROOT/hls_server.py" "$HOME/.local/share/padwave/hls_server.py"
 
 echo "==> audio folders"
 mkdir -p "$HOME/.config/padwave"
