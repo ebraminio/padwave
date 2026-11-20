@@ -258,12 +258,12 @@ private:
   long rssi_at             = 0;
   char charging[16]        = "unknown";
   char powerState[32]      = "unknown";
-  int lx = 128, ly = 128, rx = 128, ry = 128, l2 = 0, r2 = 0;
+  int lx = 128, ly = 128, rx = 128, ry = 128;
+  unsigned l2 = 0, r2 = 0;
   char dpad[16]     = "none";
   char buttons[256] = "";
   int temp          = 0;
   float ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-  unsigned seq              = 0;
   int rate                  = 0;
   unsigned host_timestamp   = 0;
   unsigned device_timestamp = 0;
@@ -727,7 +727,6 @@ public:
     kvText(buf, cap, &o, "controller.buttons", this->buttons);
     kvText(buf, cap, &o, "controller.dpad", this->dpad);
     kvAdd(buf, cap, &o, "controller.rate", "%d", this->rate);
-    kvAdd(buf, cap, &o, "controller.fields.seq", "%u", this->seq);
     kvAdd(buf, cap, &o, "controller.fields.host_timestamp", "%u", this->host_timestamp);
     kvAdd(buf, cap, &o, "controller.fields.device_timestamp", "%u", this->device_timestamp);
     kvAdd(buf, cap, &o, "controller.fields.trigger_effect_right", "%u", this->trigger_effect_r);
@@ -1575,7 +1574,7 @@ private:
     size_t o = 0;
     out[0]   = 0;
     for (auto &n : names) {
-      if (!buttons.isOn(n.button)) continue;
+      if (!buttons.isPressed(n.button)) continue;
       int w = snprintf(out + o, cap - o, "%s%s", o ? "," : "", n.name);
       if (w <= 0 || static_cast<size_t>(w) >= cap - o) break;
       o += static_cast<size_t>(w);
@@ -1595,20 +1594,19 @@ private:
       this->led_force = true;
       this->serviceLeds();
     }
-    const dualsense::InputBody::Stick left        = b.getLeftStick();
-    const dualsense::InputBody::Stick right       = b.getRightStick();
-    this->lx                                      = left.x;
-    this->ly                                      = left.y;
-    this->rx                                      = right.x;
-    this->ry                                      = right.y;
-    const dualsense::InputBody::Triggers triggers = b.getTriggers();
-    this->l2                                      = triggers.left;
-    this->r2                                      = triggers.right;
-    this->battery                                 = b.getBattery();
-    bool had_jack                                 = this->jack;
-    bool had_link                                 = this->plugged_usb_data;
-    this->jack                                    = b.isHeadset();
-    this->plugged_usb_data                        = b.isPluggedUsbData();
+    const dualsense::InputBody::Stick left  = b.getLeftStick();
+    const dualsense::InputBody::Stick right = b.getRightStick();
+    this->lx                                = left.x;
+    this->ly                                = left.y;
+    this->rx                                = right.x;
+    this->ry                                = right.y;
+    this->l2                                = b.getLeftTrigger();
+    this->r2                                = b.getRightTrigger();
+    this->battery                           = static_cast<int>(b.getBatteryPercentage());
+    bool had_jack                           = this->jack;
+    bool had_link                           = this->plugged_usb_data;
+    this->jack                              = b.isHeadset();
+    this->plugged_usb_data                  = b.isPluggedUsbData();
     if (!this->plugged_usb_data) this->controller_disabled = false;
     if (this->plugged_usb_data != had_link) {
       this->led_force = true;
@@ -1635,7 +1633,7 @@ private:
         }
       }
     }
-    this->temp = b.getTemperature();
+    this->temp = b.getTemperatureCentigrade();
     snprintf(this->dpad, sizeof(this->dpad), "%s", dpadName(b.getDpad()));
     buttonsToString(b.getButtons(), this->buttons, sizeof(this->buttons));
     this->raw[0] = 0;
@@ -1667,11 +1665,10 @@ private:
     this->ax                                        = accel.x;
     this->ay                                        = accel.y;
     this->az                                        = accel.z;
-    this->seq                                       = static_cast<unsigned>(b.getSequence());
     this->host_timestamp                            = b.getHostTime();
     this->device_timestamp                          = b.getDeviceTime();
-    this->trigger_effect_r                          = b.getTriggerEffectRight();
-    this->trigger_effect_l                          = b.getTriggerEffectLeft();
+    this->trigger_effect_r                          = b.getRightTriggerEffect();
+    this->trigger_effect_l                          = b.getLeftTriggerEffect();
     for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.getTouch(t);
       this->touch_active[t]                        = touch.isActive() ? 1 : 0;

@@ -12,7 +12,7 @@ target("hidapi", function ()
     set_runtimes("none")
     set_exceptions("none")
     if is_plat("mingw") then
-        add_cflags("-fno-stack-protector", {force = true})
+        add_cflags("-fno-stack-protector", "-mno-stack-arg-probe", {force = true})
     else
         add_cxflags("/GS-", {force = true})
         add_cxflags("/Gs9999999", {force = true})

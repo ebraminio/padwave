@@ -356,7 +356,7 @@ void showInput(const dualsense::InputBody &input) {
   size_t used        = 0;
   const auto pressed = input.getButtons();
   for (const auto &entry : names) {
-    if (!pressed.isOn(entry.button)) continue;
+    if (!pressed.isPressed(entry.button)) continue;
     int written =
         snprintf(buttons + used, sizeof(buttons) - used, "%s%s", used ? "," : "", entry.name);
     if (written <= 0 || static_cast<size_t>(written) >= sizeof(buttons) - used) break;
@@ -364,11 +364,11 @@ void showInput(const dualsense::InputBody &input) {
   }
   const auto left     = input.getLeftStick();
   const auto right    = input.getRightStick();
-  const auto triggers = input.getTriggers();
   char line[400];
   snprintf(line, sizeof(line), "[in] %s dpad=%s l2=%d r2=%d L=(%d,%d) R=(%d,%d) batt=%d%%",
-           buttons[0] ? buttons : "-", dpadName(input.getDpad()), triggers.left, triggers.right,
-           left.x, left.y, right.x, right.y, input.getBattery());
+           buttons[0] ? buttons : "-", dpadName(input.getDpad()),
+           input.getLeftTrigger(), input.getRightTrigger(),
+           left.x, left.y, right.x, right.y, input.getBatteryPercentage());
   if (strcmp(line, g_last_status) == 0) return;
   snprintf(g_last_status, sizeof(g_last_status), "%s", line);
   if (demo_isatty(kStdout))

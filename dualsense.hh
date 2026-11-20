@@ -686,6 +686,7 @@ private:
   }
 
 public:
+  // left/right are 0-255
   constexpr void setCompatibleVibration(uint8_t left, uint8_t right) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
@@ -693,21 +694,25 @@ public:
     motorRight = right;
   }
 
+  // volume is 0-255
   constexpr void setHeadphoneVolume(uint8_t v) {
     claim(ValidFlag0::HeadphoneVolumeEnable);
     volumeHeadphones = v;
   }
 
+  // volume is 0-255
   constexpr void setSpeakerVolume(uint8_t v) {
     claim(ValidFlag0::SpeakerVolumeEnable);
     volumeSpeaker = v;
   }
 
+  // volume is 0-0x40 (micMaxVolume)
   constexpr void setMicVolume(uint8_t v) {
     claim(ValidFlag0::MicVolumeEnable);
     micVolume = v;
   }
 
+  // v is constructed from AudioControl enum bits
   constexpr void setAudioControl(uint8_t v) {
     claim(ValidFlag0::AudioControlEnable);
     audioControl = v;
@@ -784,57 +789,11 @@ public:
     leftTrigger = effect;
   }
 
-  constexpr void setMicMuted(bool muted) {
-    claim(ValidFlag1::PowerSaveControlEnable);
-    constexpr uint8_t mask = static_cast<uint8_t>(PowerSave::MicMute);
-    powerSaveControl       = muted ? static_cast<uint8_t>(powerSaveControl | mask)
-                                   : static_cast<uint8_t>(powerSaveControl & ~mask);
-  }
-
-  // 0 mutes capture; 1..micMaxVolume enables it at that volume.
-  constexpr void setMic(uint8_t volume) {
-    setMicVolume(volume > micMaxVolume ? micMaxVolume : volume);
-    setMicMuted(volume == 0);
-  }
-
   constexpr OutputBody() {}
   OutputBody(const OutputBody &)            = delete;
   OutputBody &operator=(const OutputBody &) = delete;
 };
 static_assert(sizeof(OutputBody) == 47, "output body must stay 47 bytes");
-
-// Saturating conversions used by the Swift schema when mapping normalized
-// [0, 1] values onto the byte/zone/level wire fields.
-struct DSScale {
-  static constexpr float clamp01(float value) {
-    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-    return value < 0 ? 0 : (value > 1 ? 1 : value);
-  }
-
-  static constexpr uint8_t byte(float value) {
-    float v    = clamp01(value);
-    int scaled = static_cast<int>(v * 255.0f + 0.5f);
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
-  }
-
-  static constexpr uint8_t rawByte(float value) {
-    if (!(value > -1.0e30f && value < 1.0e30f)) return 0;
-    int scaled = static_cast<int>(value + (value >= 0 ? 0.5f : -0.5f));
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled));
-  }
-
-  static constexpr int zone(float value) {
-    float v    = clamp01(value) * 9.0f;
-    int scaled = static_cast<int>(v + 0.5f);
-    return scaled < 0 ? 0 : (scaled > 9 ? 9 : scaled);
-  }
-
-  static constexpr uint8_t level(float value) {
-    float v    = clamp01(value) * 8.0f;
-    int scaled = static_cast<int>(v + 0.5f);
-    return static_cast<uint8_t>(scaled < 0 ? 0 : (scaled > 8 ? 8 : scaled));
-  }
-};
 
 // ===========================================================================
 // Output 0x31 (Bluetooth, 78 bytes, CRC at the end)
@@ -1011,18 +970,11 @@ public:
     int y;
   };
 
-  struct Triggers {
-    int left;
-    int right;
-  };
-
   static constexpr int touchpadWidth  = 1920;
   static constexpr int touchpadHeight = 1080;
 
   Stick getLeftStick() const { return {lx, ly}; }
   Stick getRightStick() const { return {rx, ry}; }
-  Triggers getTriggers() const { return {l2, r2}; }
-  int getSequence() const { return seq; }
 
   // Normalized full-scale angular rate: -1..1.
   struct Gyro {
@@ -1053,7 +1005,7 @@ public:
   };
 
   Accelerometer getAccelerometer() const { return {accelX, accelY, accelZ}; }
-  uint8_t getTemperature() const { return temperature; }
+  uint8_t getTemperatureCentigrade() const { return temperature; }
 
   // The d-pad is a 4-bit *hat value*, not four bits. The enum turns it into a
   // name; diagonals are the odd values.
@@ -1110,9 +1062,10 @@ public:
 
     constexpr Buttons() : buttons(0) {}
     constexpr bool operator!=(const Buttons &o) const { return buttons != o.buttons; }
-    constexpr bool isOn(Button b) const { return (buttons & static_cast<uint32_t>(b)) != 0; }
-
-    const Buttons getPressed(const Buttons &prev) const { return Buttons(buttons & ~prev.buttons); }
+    constexpr bool isPressed(Button b) const { return buttons & static_cast<uint32_t>(b); }
+    const Buttons isJustPressed(const Buttons &prev) const {
+      return Buttons(buttons & ~prev.buttons);
+    }
 
   private:
     constexpr Buttons(uint32_t v) : buttons(v) {}
@@ -1125,8 +1078,8 @@ public:
   // status0's low nibble is a coarse 0..10 battery level (8 -> 80%); its
   // high nibble is PowerState. The controller can report Complete before the
   // level reaches 10, especially on an aged pack.
-  constexpr int getBattery() const {
-    int percent = (status0 & 0x0F) * 10;
+  constexpr unsigned getBatteryPercentage() const {
+    unsigned percent = (status0 & 0x0F) * 10;
     return percent > 100 ? 100 : percent;
   }
 
@@ -1186,12 +1139,14 @@ public:
   }
 
   TouchPoint getTouch(unsigned index) const { return touchData.getFinger(index); }
-  unsigned getTriggerStopLocationLeft() const { return triggerLeft.getStopLocation(); }
-  unsigned getTriggerStatusLeft() const { return triggerLeft.getStatus(); }
-  unsigned getTriggerStopLocationRight() const { return triggerRight.getStopLocation(); }
-  unsigned getTriggerStatusRight() const { return triggerRight.getStatus(); }
-  unsigned getTriggerEffectLeft() const { return triggerEffect >> 4; }
-  unsigned getTriggerEffectRight() const { return triggerEffect & 0x0F; }
+  unsigned getLeftTrigger() const { return l2; }
+  unsigned getLeftTriggerStopLocation() const { return triggerLeft.getStopLocation(); }
+  unsigned getLeftTriggerStatus() const { return triggerLeft.getStatus(); }
+  unsigned getLeftTriggerEffect() const { return triggerEffect >> 4; }
+  unsigned getRightTrigger() const { return l2; }
+  unsigned getRightTriggerStopLocation() const { return triggerRight.getStopLocation(); }
+  unsigned getRightTriggerStatus() const { return triggerRight.getStatus(); }
+  unsigned getRightTriggerEffect() const { return triggerEffect & 0x0F; }
   uint32_t getHostTime() const { return hostTimestamp; }
   uint32_t getDeviceTime() const { return deviceTimestamp; }
 };

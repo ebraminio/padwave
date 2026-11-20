@@ -261,38 +261,37 @@ static bool readDualSenseState(XINPUT_STATE &state) {
   } else
     return false;
 
-  const int battery = input->getBattery();
+  const unsigned battery = input->getBatteryPercentage();
   if (battery != g_BatteryLevel) {
-    g_BatteryLevel = static_cast<uint8_t>(battery);
+    g_BatteryLevel = battery;
     sendDualSenseOutput();
   }
 
   SecureZeroMemory(&state, sizeof(state));
   state.dwPacketNumber = ++g_PacketNumber;
 
+  state.Gamepad.bLeftTrigger  = static_cast<BYTE>(input->getLeftTrigger());
+  state.Gamepad.bRightTrigger = static_cast<BYTE>(input->getRightTrigger());
   const auto leftStick        = input->getLeftStick();
   const auto rightStick       = input->getRightStick();
-  const auto triggers         = input->getTriggers();
   state.Gamepad.sThumbLX      = static_cast<SHORT>((leftStick.x * 257) - 32768);
   state.Gamepad.sThumbLY      = static_cast<SHORT>(32767 - (leftStick.y * 257));
   state.Gamepad.sThumbRX      = static_cast<SHORT>((rightStick.x * 257) - 32768);
   state.Gamepad.sThumbRY      = static_cast<SHORT>(32767 - (rightStick.y * 257));
-  state.Gamepad.bLeftTrigger  = static_cast<BYTE>(triggers.left);
-  state.Gamepad.bRightTrigger = static_cast<BYTE>(triggers.right);
 
   using Button       = dualsense::InputBody::Button;
   const auto buttons = input->getButtons();
-  if (buttons.isOn(Button::ButtonSquare)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_X;
-  if (buttons.isOn(Button::ButtonCross)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_A;
-  if (buttons.isOn(Button::ButtonCircle)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_B;
-  if (buttons.isOn(Button::ButtonTriangle)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_Y;
-  if (buttons.isOn(Button::L1)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
-  if (buttons.isOn(Button::R1)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-  if (buttons.isOn(Button::Create)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
-  if (buttons.isOn(Button::Options)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_START;
-  if (buttons.isOn(Button::L3)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-  if (buttons.isOn(Button::R3)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
-  if (buttons.isOn(Button::PsHome)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_GUIDE;
+  if (buttons.isPressed(Button::ButtonSquare)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_X;
+  if (buttons.isPressed(Button::ButtonCross)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_A;
+  if (buttons.isPressed(Button::ButtonCircle)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_B;
+  if (buttons.isPressed(Button::ButtonTriangle)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_Y;
+  if (buttons.isPressed(Button::L1)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+  if (buttons.isPressed(Button::R1)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+  if (buttons.isPressed(Button::Create)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
+  if (buttons.isPressed(Button::Options)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_START;
+  if (buttons.isPressed(Button::L3)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
+  if (buttons.isPressed(Button::R3)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+  if (buttons.isPressed(Button::PsHome)) state.Gamepad.wButtons |= XINPUT_GAMEPAD_GUIDE;
 
   using Dpad = dualsense::InputBody::Dpad;
   switch (input->getDpad()) {

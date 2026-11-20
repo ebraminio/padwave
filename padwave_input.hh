@@ -43,7 +43,8 @@ private:
     bool has_prev                             = false;
     dualsense::InputBody::Buttons prevButtons = dualsense::InputBody::Buttons();
     dualsense::InputBody::Dpad prevDpad       = dualsense::InputBody::Dpad::None;
-    int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0, prev_l2 = 0, prev_r2 = 0;
+    int prev_lx = 0, prev_ly = 0, prev_rx = 0, prev_ry = 0;
+    unsigned prev_l2 = 0, prev_r2 = 0;
     bool prev_jack        = false;
     int64_t last_activity = 0;
     int analog_resets     = 0;
@@ -97,18 +98,18 @@ private:
   };
 
   void trackButtons(dualsense::InputBody::Buttons buttons) {
-    dualsense::InputBody::Buttons pressed = buttons.getPressed(actions.prevButtons);
+    dualsense::InputBody::Buttons pressed = buttons.isJustPressed(actions.prevButtons);
     actions.prevButtons                   = buttons;
 
     for (auto &b : kBindings)
-      if (pressed.isOn(b.button)) emitAction(b.action, 0);
+      if (pressed.isPressed(b.button)) emitAction(b.action, 0);
 
-    if (pressed.isOn(dualsense::InputBody::Button::PsHome)) {
+    if (pressed.isPressed(dualsense::InputBody::Button::PsHome)) {
       actions.ps_armed = true;
       actions.ps_at    = nowMs();
     }
 
-    if (!buttons.isOn(dualsense::InputBody::Button::PsHome)) {
+    if (!buttons.isPressed(dualsense::InputBody::Button::PsHome)) {
       actions.ps_armed = false;
     } else if (actions.ps_armed && nowMs() - actions.ps_at >= PsHoldMs) {
       emitAction("suspend", 0);
@@ -116,7 +117,7 @@ private:
     }
   }
 
-  void trackTriggers(int l2, int r2) {
+  void trackTriggers(unsigned l2, unsigned r2) {
     int64_t now = nowMs();
     if (l2 >= 30 && now - actions.last_l2 >= 110) {
       int step = l2 >= 220 ? 4 : (l2 >= 150 ? 2 : 1);
@@ -131,12 +132,11 @@ private:
   }
 
   void trackSensors(const dualsense::InputBody &b) {
-    int64_t now                                   = nowMs();
-    bool jack                                     = b.isHeadset();
-    const dualsense::InputBody::Stick left        = b.getLeftStick();
-    const dualsense::InputBody::Stick right       = b.getRightStick();
-    const dualsense::InputBody::Triggers triggers = b.getTriggers();
-    int l2 = triggers.left, r2 = triggers.right;
+    int64_t now = nowMs();
+    bool jack   = b.isHeadset();
+    unsigned l2 = b.getLeftTrigger(), r2 = b.getRightTrigger();
+    const dualsense::InputBody::Stick left  = b.getLeftStick();
+    const dualsense::InputBody::Stick right = b.getRightStick();
     int lx = left.x, ly = left.y, rx = right.x, ry = right.y;
     const dualsense::InputBody::Buttons buttons = b.getButtons();
     dualsense::InputBody::Dpad dpad             = b.getDpad();
@@ -145,8 +145,9 @@ private:
     bool real = false, analog = false;
     if (!first) {
       real   = buttons != sensors.prevButtons || dpad != sensors.prevDpad ||
-               jack != sensors.prev_jack || abs(l2 - sensors.prev_l2) > 10 ||
-               abs(r2 - sensors.prev_r2) > 10;
+               jack != sensors.prev_jack ||
+               abs(static_cast<int>(l2) - static_cast<int>(sensors.prev_l2)) > 10 ||
+               abs(static_cast<int>(r2) - static_cast<int>(sensors.prev_r2)) > 10;
       analog = abs(lx - sensors.prev_lx) > 24 || abs(ly - sensors.prev_ly) > 24 ||
                abs(rx - sensors.prev_rx) > 24 || abs(ry - sensors.prev_ry) > 24;
     }
@@ -265,8 +266,7 @@ private:
     emitFrameToApp(b, raw, len);
     trackDpad(b.getDpad());
     trackButtons(b.getButtons());
-    const dualsense::InputBody::Triggers triggers = b.getTriggers();
-    trackTriggers(triggers.left, triggers.right);
+    trackTriggers(b.getLeftTrigger(), b.getRightTrigger());
     trackSensors(b);
   }
 

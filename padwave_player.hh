@@ -1243,7 +1243,7 @@ private:
         power_save_control = static_cast<uint8_t>(power_save_control & ~0x10);
       else
         power_save_control = static_cast<uint8_t>(power_save_control | 0x10);
-      state.setMic(mic ? dualsense::OutputBody::micMaxVolume : 0);
+      state.setMicVolume(mic ? dualsense::OutputBody::micMaxVolume : 0);
       sendAudioState();
       // The controller only starts/stops microphone capture when it sees a
       // 0x36 report with the enable-mask bit changed. Send the state packet
