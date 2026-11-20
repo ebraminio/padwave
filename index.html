@@ -779,8 +779,8 @@ function renderLiveStatus(s) {
   video.hidden = live.video !== true;
   if (live.video === true) {
     const port = live.video_port || 8090;
-    video.href = `http://${location.hostname}:${port}`;
-    video.textContent = `open video stream :${port} (VLC)`;
+    video.href = `http://${location.hostname}:${port}/index.m3u8`;
+    video.textContent = `open HLS video :${port} (VLC)`;
   }
   if (live.current !== lastLiveCurrent) {
     lastLiveCurrent = live.current;

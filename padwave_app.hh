@@ -233,11 +233,16 @@ private:
   char live_url[kMaxLiveUrl] = "";
   char live_error[160]       = "";
   pid_t live_pid             = -1;
+  pid_t live_audio_pid       = -1;
+  pid_t live_http_pid        = -1;
   int live_current           = -1;
   bool live_active           = false;
+  bool live_audio_pending    = false;
+  long live_audio_retry_at   = 0;
   long live_started_at       = 0;
-  long live_restart_at        = 0;
+  long live_restart_at       = 0;
   int live_restarts          = 0;
+  int live_audio_retries     = 0;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -547,6 +552,11 @@ public:
         this->live_current = -1;
         this->sinkPlaybackStop();
       }
+    }
+    if (this->live_active && this->live_audio_pending && this->live_pid > 0 &&
+        now >= this->live_audio_retry_at) {
+      this->live_audio_retry_at = now + 1000;
+      if (this->startLiveAudio()) this->live_audio_pending = false;
     }
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
@@ -1550,19 +1560,45 @@ private:
     free(body);
   }
 
+  static constexpr const char *kLiveDir = "/tmp/padwave-live";
+  static constexpr const char *kLivePlaylist = "/tmp/padwave-live/index.m3u8";
+
   void reapLive() {
+    if (this->live_http_pid > 0) {
+      int hs = 0;
+      if (waitpid(this->live_http_pid, &hs, WNOHANG) == this->live_http_pid)
+        this->live_http_pid = -1;
+    }
+    if (this->live_audio_pid > 0) {
+      int as = 0;
+      if (waitpid(this->live_audio_pid, &as, WNOHANG) == this->live_audio_pid) {
+        this->live_audio_pid = -1;
+        if (this->live_active) {
+          this->live_audio_pending  = true;
+          this->live_audio_retry_at = nowMs() + 1000;
+          this->live_audio_retries++;
+          if (this->live_audio_retries >= 5) {
+            snprintf(this->live_error, sizeof(this->live_error), "live audio stopped");
+            this->live_audio_pending = false;
+          }
+        }
+      }
+    }
     if (this->live_pid <= 0) return;
     int status = 0;
     pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
     if (r != this->live_pid) return;
     this->live_pid = -1;
+    terminateProcess(&this->live_audio_pid);
+    terminateProcess(&this->live_http_pid);
+    this->live_audio_pending = false;
     if (!this->live_active) return;
     long now = nowMs();
     if (now - this->live_started_at >= 30000) this->live_restarts = 0;
     if (this->live_restarts >= 3) {
-      snprintf(this->live_error, sizeof(this->live_error), "live player stopped");
-      this->live_active  = false;
-      this->live_current = -1;
+      snprintf(this->live_error, sizeof(this->live_error), "live stream stopped");
+      this->live_active     = false;
+      this->live_current    = -1;
       this->live_restart_at = 0;
       this->sinkPlaybackStop();
       return;
@@ -1573,35 +1609,64 @@ private:
 
   void stopLive() {
     terminateProcess(&this->live_pid);
-    this->live_active    = false;
-    this->live_current   = -1;
-    this->live_restart_at = 0;
-    this->live_restarts   = 0;
-    this->live_error[0]   = 0;
+    terminateProcess(&this->live_audio_pid);
+    terminateProcess(&this->live_http_pid);
+    this->live_active      = false;
+    this->live_current     = -1;
+    this->live_audio_pending = false;
+    this->live_restart_at  = 0;
+    this->live_restarts    = 0;
+    this->live_audio_retries = 0;
+    this->live_error[0]    = 0;
     this->sinkPlaybackStop();
+  }
+
+  bool startLiveAudio() {
+    if (access(kLivePlaylist, R_OK) != 0) return false;
+    const char *args[] = {"mpv", "--no-video", "--no-terminal", "--really-quiet",
+                          "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
+                          "--", kLivePlaylist, nullptr};
+    pid_t pid = spawnProcess(args);
+    if (pid < 0) return false;
+    this->live_audio_pid = pid;
+    return true;
   }
 
   bool startLiveProcess(int index) {
     if (index < 0 || index >= this->live_count) return false;
+    terminateProcess(&this->live_audio_pid);
+    terminateProcess(&this->live_http_pid);
+    this->live_audio_pending = false;
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "rm -rf %s", kLiveDir);
+    int rc = system(cmd);
+    (void)rc;
+    mkdir(kLiveDir, 0755);
+
     char stream[kMaxPath];
     resolveLiveStream(this->live_channels[index].url, stream, sizeof(stream));
     this->live_error[0] = 0;
     const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                          "-allowed_extensions", "ALL", "-i", stream,
-                          "-map", "0:a:0", "-f", "pulse", "-device", "padwave",
-                          "-ar", "48000", "-ac", "2",
-                          "-map", "0", "-c", "copy", "-f", "mpegts",
-                          "-flush_packets", "1", "-listen", "1",
-                          "http://0.0.0.0:8090", nullptr};
+                          "-allowed_extensions", "ALL", "-i", stream, "-c", "copy",
+                          "-f", "hls", "-hls_time", "1", "-hls_list_size", "5",
+                          "-hls_flags", "delete_segments+omit_endlist",
+                          "-hls_segment_filename", "/tmp/padwave-live/seg%05d.ts",
+                          "/tmp/padwave-live/index.m3u8", nullptr};
     pid_t pid = spawnProcess(args);
     if (pid < 0) {
       snprintf(this->live_error, sizeof(this->live_error), "could not start ffmpeg");
       return false;
     }
-    this->live_pid        = pid;
+    this->live_pid = pid;
+    const char *http[] = {"python3", "-m", "http.server", "8090", "--bind", "0.0.0.0",
+                          "--directory", "/tmp/padwave-live", nullptr};
+    this->live_http_pid = spawnProcess(http);
     this->live_active     = true;
     this->live_current    = index;
     this->live_started_at = nowMs();
+    this->live_audio_pending = true;
+    this->live_audio_retry_at = 0;
+    this->live_audio_retries  = 0;
     return true;
   }
 
