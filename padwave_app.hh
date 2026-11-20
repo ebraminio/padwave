@@ -1722,12 +1722,12 @@ private:
     this->az                                        = accel.z;
     this->host_timestamp                            = b.getHostTime();
     this->device_timestamp                          = b.getDeviceTime();
-    this->trigger_effect_r = static_cast<unsigned>(b.getRightTriggerEffect());
-    this->trigger_effect_l = static_cast<unsigned>(b.getLeftTriggerEffect());
+    this->trigger_effect_r                          = static_cast<unsigned>(b.getRightTriggerEffect());
+    this->trigger_effect_l                          = static_cast<unsigned>(b.getLeftTriggerEffect());
     this->trigger_stop_r                            = b.getRightTriggerStopLocation();
     this->trigger_stop_l                            = b.getLeftTriggerStopLocation();
-    this->trigger_status_r                          = b.getRightTriggerStatus();
-    this->trigger_status_l                          = b.getLeftTriggerStatus();
+    this->trigger_status_r                          = static_cast<unsigned>(b.getRightTriggerStatus());
+    this->trigger_status_l                          = static_cast<unsigned>(b.getLeftTriggerStatus());
     for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.getTouch(t);
       this->touch_active[t]                        = touch.isActive() ? 1 : 0;
