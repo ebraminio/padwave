@@ -257,6 +257,8 @@ private:
   char live_proxy_user[128]         = "";
   char live_proxy_pass[128]         = "";
   int http_port                     = 8787;
+  bool live_insecure                = false;
+  bool live_has_video               = false;
   char live_error[160]              = "";
   int live_current           = -1;
   bool live_active           = false;
@@ -274,6 +276,11 @@ private:
   long live_next_seq         = 0;
   double live_next_dur       = 0;
   char live_next_url[kMaxPath * 2] = "";
+  static inline float live_pcm[12UL * RATE * CHANNELS];
+  size_t live_pcm_frames = 0;
+  size_t live_pcm_pos    = 0;
+  long live_decode_ok    = 0;
+  long live_decode_fail  = 0;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -598,6 +605,7 @@ public:
   }
 
   void tick() {
+    serviceLiveFeed();
     serviceLiveMulti();
     long now = nowMs();
     if (this->stream_resume_pending && !this->live_active && now >= this->stream_resume_at) {
@@ -680,6 +688,7 @@ public:
       return;
     }
     if (this->player && fd == this->player_timer_fd) {
+      this->serviceLiveFeed();
       this->player.step();
       serviceLiveMulti();
       serviceOutput();
@@ -790,6 +799,12 @@ public:
     kvText(buf, cap, &o, "live.direct_url", this->live_direct_url);
     kvText(buf, cap, &o, "live.proxy", this->live_proxy);
     kvText(buf, cap, &o, "live.proxy_user", this->live_proxy_user);
+    kvAdd(buf, cap, &o, "live.insecure", "%s", this->live_insecure ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.has_video", "%s", this->live_has_video ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.pcm_frames", "%zu", this->live_pcm_frames);
+    kvAdd(buf, cap, &o, "live.decode_ok", "%ld", this->live_decode_ok);
+    kvAdd(buf, cap, &o, "live.decode_fail", "%ld", this->live_decode_fail);
+    kvAdd(buf, cap, &o, "live.sink_mode", "%s", this->player.sinkMode() ? "true" : "false");
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
@@ -1592,6 +1607,10 @@ private:
   }
 
   void applyCurlProxy(CURL *h) const {
+    if (this->live_insecure) {
+      curl_easy_setopt(h, CURLOPT_SSL_VERIFYPEER, 0L);
+      curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
     if (!this->live_proxy[0]) return;
     curl_easy_setopt(h, CURLOPT_PROXY, this->live_proxy);
     if (this->live_proxy_user[0]) {
@@ -1860,6 +1879,8 @@ private:
 
     if (avformat_open_input(&fmt, file_path, nullptr, nullptr) < 0) goto done;
     if (avformat_find_stream_info(fmt, nullptr) < 0) goto done;
+    this->live_has_video =
+        av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0) >= 0;
     audio_index = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audio_index < 0) goto done;
     {
@@ -1901,7 +1922,16 @@ private:
           if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
           for (int i = 0; i < channels; i++) src[i] = frame->extended_data[i];
           int got = swr_convert(swr, dst, cap, src, frame->nb_samples);
-          if (got > 0) this->player.pushSink(out, static_cast<size_t>(got));
+          if (got > 0) {
+            size_t frames = static_cast<size_t>(got);
+            size_t room   = (12UL * RATE) - this->live_pcm_frames;
+            if (frames > room) frames = room;
+            if (frames > 0) {
+              memcpy(this->live_pcm + this->live_pcm_frames * CHANNELS, out,
+                     frames * CHANNELS * sizeof(float));
+              this->live_pcm_frames += frames;
+            }
+          }
           av_frame_unref(frame);
         }
       };
@@ -1922,7 +1952,12 @@ done:
     if (swr) swr_free(&swr);
     if (dec) avcodec_free_context(&dec);
     if (fmt) avformat_close_input(&fmt);
-    if (ok) snprintf(this->live_decoded, sizeof(this->live_decoded), "%s", file_path);
+    if (ok) {
+      this->live_decode_ok++;
+      snprintf(this->live_decoded, sizeof(this->live_decoded), "%s", file_path);
+    } else {
+      this->live_decode_fail++;
+    }
     return ok;
   }
 
@@ -2002,6 +2037,9 @@ done:
     this->live_audio_seq   = 0;
     this->live_audio_at    = 0;
     this->live_decoded[0]  = 0;
+    this->live_has_video   = false;
+    this->live_pcm_frames  = 0;
+    this->live_pcm_pos     = 0;
     this->live_error[0]    = 0;
     if (!preserve_mode) {
       snprintf(this->playback_mode, sizeof(this->playback_mode), "idle");
@@ -2025,6 +2063,9 @@ done:
     this->live_audio_at     = 0;
     this->live_next_ready   = false;
     this->live_next_url[0]  = 0;
+    this->live_has_video    = false;
+    this->live_pcm_frames   = 0;
+    this->live_pcm_pos      = 0;
     this->live_error[0]     = 0;
     this->live_active       = true;
     snprintf(this->playback_mode, sizeof(this->playback_mode), "stream");
@@ -2158,6 +2199,37 @@ done:
     this->live_next_ready = true;
   }
 
+  void compactLivePcm() {
+    if (this->live_pcm_pos == 0) return;
+    size_t remaining = this->live_pcm_frames - this->live_pcm_pos;
+    if (remaining > 0)
+      memmove(this->live_pcm, this->live_pcm + this->live_pcm_pos * CHANNELS,
+              remaining * CHANNELS * sizeof(float));
+    this->live_pcm_frames = remaining;
+    this->live_pcm_pos    = 0;
+  }
+
+  void serviceLiveFeed() {
+    if (!this->live_active || !this->sink_playback || !this->player.sinkMode()) return;
+    if (this->live_pcm_pos > 0) this->compactLivePcm();
+    while (this->live_pcm_frames > 0) {
+      int free_blocks = this->player.sinkFreeBlocks();
+      if (free_blocks <= 0) break;
+      size_t available = static_cast<size_t>(free_blocks) * IN_FRAMES;
+      size_t frames    = this->live_pcm_frames < available ? this->live_pcm_frames : available;
+      this->player.pushSink(this->live_pcm, frames);
+      this->live_pcm_pos    += frames;
+      this->live_pcm_frames -= frames;
+      if (this->live_pcm_frames > 0) {
+        memmove(this->live_pcm, this->live_pcm + this->live_pcm_pos * CHANNELS,
+                this->live_pcm_frames * CHANNELS * sizeof(float));
+        this->live_pcm_pos = 0;
+      } else {
+        this->live_pcm_pos = 0;
+      }
+    }
+  }
+
   void serviceLiveMulti() {
     if (!this->live_multi || !this->live_active || !this->sink_playback ||
         !this->player.sinkMode())
@@ -2216,8 +2288,10 @@ done:
 
     if (this->live_pl_inflight || this->live_seg_inflight) return;
     if (this->live_next_ready) {
-      int blocks = static_cast<int>(this->live_next_dur * RATE / IN_FRAMES) + 2;
-      if (this->player.sinkFreeBlocks() >= blocks) this->startLiveSegmentFetch();
+      this->compactLivePcm();
+      size_t needed = static_cast<size_t>(this->live_next_dur * RATE);
+      if (needed == 0) needed = 1;
+      if (this->live_pcm_frames + needed <= 12UL * RATE) this->startLiveSegmentFetch();
       return;
     }
     if (nowMs() >= this->live_audio_at) this->startLivePlaylistFetch();
@@ -2876,6 +2950,8 @@ done:
         snprintf(this->live_proxy_user, sizeof(this->live_proxy_user), "%s", value);
       } else if (strcmp(line, "live_proxy_pass") == 0) {
         snprintf(this->live_proxy_pass, sizeof(this->live_proxy_pass), "%s", value);
+      } else if (strcmp(line, "live_insecure") == 0) {
+        this->live_insecure = strcmp(value, "true") == 0 || atoi(value) != 0;
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -2924,6 +3000,7 @@ done:
     fprintf(f, "live_proxy=%s\n", this->live_proxy);
     fprintf(f, "live_proxy_user=%s\n", this->live_proxy_user);
     fprintf(f, "live_proxy_pass=%s\n", this->live_proxy_pass);
+    fprintf(f, "live_insecure=%s\n", this->live_insecure ? "true" : "false");
     fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
@@ -3351,6 +3428,12 @@ done:
       configSave();
       if (!startLiveDirect(url))
         return snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+    if (strcmp(action, "live_tls") == 0) {
+      this->live_insecure = kvNumber(body, "value", 0) != 0;
+      configSave();
       snprintf(this->last_action, sizeof(this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
     }

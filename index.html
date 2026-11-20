@@ -267,6 +267,7 @@
   .live-direct { margin-top: 8px; }
   .live-meta { margin-top: 12px; color: var(--muted); font-size: 12px; }
   .live-video-link { color: var(--accent-2); font-size: 12px; }
+  .live-insecure { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; padding: 0 4px; }
   .live-player { margin-top: 14px; background: #000; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .live-player video { display: block; width: 100%; max-height: 520px; background: #000; }
   .live-player-foot { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; background: #0f1219; font-size: 11.5px; color: var(--muted); }
@@ -645,6 +646,9 @@
       <input type="text" id="liveProxyUser" placeholder="proxy user" autocomplete="off">
       <input type="password" id="liveProxyPass" placeholder="proxy password" autocomplete="off">
       <button id="liveProxySave">save proxy</button>
+      <label class="live-insecure" title="accept bad/self-signed server certificates">
+        <input type="checkbox" id="liveInsecure"> allow invalid TLS
+      </label>
     </div>
     <div class="live-meta" id="liveMeta">No playlist configured.</div>
     <div class="live-player" id="livePlayerWrap" hidden>
@@ -870,7 +874,7 @@ function destroyLiveVideo() {
 function syncLiveVideo(live) {
   const wrap = $("#livePlayerWrap");
   const video = $("#liveVideo");
-  if (live.video !== true) {
+  if (live.video !== true || live.has_video !== true) {
     if (!wrap.hidden) {
       wrap.hidden = true;
       destroyLiveVideo();
@@ -898,13 +902,14 @@ function renderLiveStatus(s) {
   if (document.activeElement !== $("#liveProxy")) $("#liveProxy").value = live.proxy || "";
   if (document.activeElement !== $("#liveProxyUser"))
     $("#liveProxyUser").value = live.proxy_user || "";
+  $("#liveInsecure").checked = live.insecure === true;
   $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
     : (live.playing ? `live audio → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
   const videoLink = $("#liveVideoLink");
   videoLink.href = `${location.origin}/hls/index.m3u8`;
-  videoLink.hidden = live.video !== true;
+  videoLink.hidden = live.video !== true || live.has_video !== true;
   syncLiveVideo(live);
   if (live.current !== lastLiveCurrent) {
     lastLiveCurrent = live.current;
@@ -1851,6 +1856,9 @@ $("#liveDirectPlay").onclick = async () => {
   const result = await send("live_direct", { value: url });
   if (result && result.ok === true) toast("direct stream started");
 };
+$("#liveInsecure").addEventListener("change", (event) => {
+  send("live_tls", { value: event.target.checked ? 1 : 0 });
+});
 $("#liveProxySave").onclick = async () => {
   const args = { url: $("#liveProxy").value.trim(), user: $("#liveProxyUser").value };
   const pass = $("#liveProxyPass").value;

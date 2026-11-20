@@ -57,6 +57,8 @@ is compiled into the binary. Open
 listening through the controller.
 The tab also shows channel logos, radio markers, provider/country metadata, a
 direct-URL field, and an embedded muted HLS player using native HLS (Safari).
+Audio-only HLS streams are supported and leave the video player hidden. An
+"allow invalid TLS" option is available for servers with broken certificates.
 Clicking a channel fills the direct-URL field with its stream URL; the field
 remains editable for arbitrary links. All/TV/Radio filters separate the radio
 entries. The VLC link remains available for other browsers.
