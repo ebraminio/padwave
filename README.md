@@ -50,6 +50,9 @@ the same HLS on port 8090 for VLC. Only ffmpeg reads the upstream stream, so
 bandwidth is not doubled. No playlist URL is compiled into the binary. Open
 `http://<pi>:8090/index.m3u8` in VLC or ffplay; mute VLC if you are listening
 through the controller. Install `mpv` at runtime with `sudo apt install mpv`.
+The tab also shows channel logos, radio markers, provider/country metadata, a
+direct-URL field, and an embedded muted HLS player (hls.js for browsers without
+native HLS; the VLC link remains available).
 
 ## Build and run
 
@@ -202,9 +205,10 @@ literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `seek_to` and `play_track` with the corresponding value/delta/position/id.
 `GET /api/library` and `/api/live` are TSV; `/api/config` persists settings;
 `/api/schema` describes the lab fields; `POST /api/output` is the controller lab.
-The live commands are `live_url` (value), `live_refresh`, `live_play` (id) and
-`live_stop`; ffmpeg fetches/remuxes the channel once to local HLS, and mpv plays
-that local HLS for the controller.
+The live commands are `live_url` (value), `live_refresh`, `live_play` (id),
+`live_direct` (value) and `live_stop`; ffmpeg fetches/remuxes the channel once to
+local HLS, and mpv plays that local HLS for the controller. The parsed playlist
+is cached at `~/.cache/padwave/live.m3u`, so opening the tab does not refetch it.
 
 ## Behavior
 

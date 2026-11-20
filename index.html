@@ -256,16 +256,34 @@
   .view-tabs { display: flex; gap: 8px; margin: -4px 0 18px; }
   .view-tabs button { padding: 8px 16px; border-radius: 999px; font-size: 13px; }
   .view-tabs button.on { background: rgba(124, 92, 255, .16); border-color: rgba(124, 92, 255, .55); color: var(--text); }
-  .live-config { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .live-config input[type=url] {
-    flex: 1; min-width: 260px; background: #0e1118; border: 1px solid var(--line); color: var(--text);
+  .live-config, .live-direct { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .live-config input[type=url], .live-direct input[type=url], .live-toolbar input[type=search] {
+    flex: 1; min-width: 220px; background: #0e1118; border: 1px solid var(--line); color: var(--text);
     border-radius: 10px; padding: 9px 11px; font: 13px var(--mono); outline: none;
   }
-  .live-config input[type=url]:focus { border-color: var(--accent); }
+  .live-config input[type=url]:focus, .live-direct input[type=url]:focus { border-color: var(--accent); }
+  .live-direct { margin-top: 8px; }
   .live-meta { margin-top: 12px; color: var(--muted); font-size: 12px; }
-  .live-video-link { display: inline-block; margin-top: 8px; color: var(--accent-2); font-size: 12px; }
-  #liveChannels { max-height: 520px; }
-  #liveChannels .g { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+  .live-video-link { color: var(--accent-2); font-size: 12px; }
+  .live-player { margin-top: 14px; background: #000; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .live-player video { display: block; width: 100%; max-height: 520px; background: #000; }
+  .live-player-foot { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; background: #0f1219; font-size: 11.5px; color: var(--muted); }
+  .live-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .live-toolbar input[type=search] { flex: 1; font-family: inherit; }
+  .live-count { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  .live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 8px; list-style: none; margin: 12px 0 0; padding: 0; max-height: 560px; overflow: auto; }
+  .live-channel { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: #0f1219; cursor: pointer; }
+  .live-channel:hover { background: #171c28; border-color: #2f3650; }
+  .live-channel.active { background: rgba(124, 92, 255, .13); border-color: rgba(124, 92, 255, .55); }
+  .live-logo { width: 40px; height: 40px; flex: 0 0 40px; object-fit: contain; border-radius: 7px; background: #080a0f; }
+  .live-logo.missing { visibility: hidden; }
+  .live-channel .info { min-width: 0; flex: 1; }
+  .live-channel .line1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .live-channel .num { color: var(--muted); font: 10px var(--mono); }
+  .live-channel .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .live-channel .line2 { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--muted); }
+  .live-badge { display: inline-block; padding: 1px 5px; border-radius: 999px; font-size: 9px; letter-spacing: .04em; border: 1px solid #2b3245; color: var(--muted); }
+  .live-badge.radio { color: var(--warn); border-color: rgba(251,191,36,.35); }
 </style>
 </head>
 <body>
@@ -613,9 +631,23 @@
       <button id="liveRefresh">refresh</button>
       <button id="liveStop">stop</button>
     </div>
+    <div class="live-direct">
+      <input type="url" id="liveDirectUrl" placeholder="direct .m3u8 / stream URL" autocomplete="off" spellcheck="false">
+      <button id="liveDirectPlay">play direct</button>
+    </div>
     <div class="live-meta" id="liveMeta">No playlist configured.</div>
-    <a id="liveVideoLink" class="live-video-link" target="_blank" rel="noreferrer" hidden>open video stream</a>
-    <ul class="tracks" id="liveChannels"></ul>
+    <div class="live-player" id="livePlayerWrap" hidden>
+      <video id="liveVideo" controls playsinline muted></video>
+      <div class="live-player-foot">
+        <span>video muted · controller audio</span>
+        <a id="liveVideoLink" class="live-video-link" target="_blank" rel="noreferrer">open in VLC</a>
+      </div>
+    </div>
+    <div class="live-toolbar">
+      <input type="search" id="liveFilter" placeholder="filter channels…" autocomplete="off">
+      <span class="live-count" id="liveFilterCount">—</span>
+    </div>
+    <ul class="live-grid" id="liveChannels"></ul>
   </section>
 
   <footer>
@@ -627,6 +659,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 <script>
 const $ = (s) => document.querySelector(s);
 
@@ -680,6 +713,9 @@ let tracks = [];
 let liveChannels = [];
 let liveLoaded = false;
 let lastLiveCurrent = null;
+let liveFilterText = "";
+let liveHls = null;
+let liveVideoSrc = null;
 let filterText = "";
 let lastSensorsAt = 0;
 let lastTrackId = null;
@@ -726,29 +762,62 @@ async function setView(showLive) {
   $("#liveView").hidden = !showLive;
   $("#tabLibrary").classList.toggle("on", !showLive);
   $("#tabLive").classList.toggle("on", showLive);
-  if (showLive && !liveLoaded) {
-    const url = ($("#liveUrl").value || (last && last.live && last.live.url) || "").trim();
-    if (url) {
-      $("#liveUrl").value = url;
-      await send("live_refresh");
-    }
-    await loadLive();
-  }
+  if (showLive && !liveLoaded) await loadLive();
 }
 
 function buildLive() {
   const ul = $("#liveChannels");
   ul.innerHTML = "";
-  for (const channel of liveChannels) {
+  const filter = liveFilterText.trim().toLowerCase();
+  const visible = liveChannels.filter((channel) => {
+    if (!filter) return true;
+    return [channel.number, channel.name, channel.group, channel.provider, channel.country, channel.language]
+      .join(" ").toLowerCase().includes(filter);
+  });
+  $("#liveFilterCount").textContent = `${visible.length} / ${liveChannels.length}`;
+  for (const channel of visible) {
     const li = document.createElement("li");
+    li.className = "live-channel";
     if (last && last.live && Number(last.live.current) === Number(channel.id)) li.classList.add("active");
+
+    if (channel.logo) {
+      const logo = document.createElement("img");
+      logo.className = "live-logo";
+      logo.loading = "lazy";
+      logo.decoding = "async";
+      logo.referrerPolicy = "no-referrer";
+      logo.src = channel.logo;
+      logo.alt = "";
+      logo.onerror = () => logo.classList.add("missing");
+      li.append(logo);
+    }
+
+    const info = document.createElement("div");
+    info.className = "info";
+    const line1 = document.createElement("div");
+    line1.className = "line1";
+    if (channel.number) {
+      const num = document.createElement("span");
+      num.className = "num";
+      num.textContent = channel.number;
+      line1.append(num);
+    }
     const title = document.createElement("span");
-    title.className = "t";
+    title.className = "title";
     title.textContent = channel.name;
-    const group = document.createElement("span");
-    group.className = "g";
-    group.textContent = channel.group || "";
-    li.append(title, group);
+    line1.append(title);
+    if (channel.radio) {
+      const badge = document.createElement("span");
+      badge.className = "live-badge radio";
+      badge.textContent = "radio";
+      line1.append(badge);
+    }
+    const line2 = document.createElement("div");
+    line2.className = "line2";
+    line2.textContent = [channel.group, channel.provider, channel.country, channel.language]
+      .filter(Boolean).join(" · ");
+    info.append(line1, line2);
+    li.append(info);
     li.onclick = () => send("live_play", { id: channel.id });
     ul.append(li);
   }
@@ -758,8 +827,8 @@ async function loadLive() {
   try {
     const text = await fetch("/api/live", { cache: "no-store" }).then(r => r.text());
     liveChannels = text.split("\n").filter(Boolean).map((line) => {
-      const [id, name, group, logo, url] = line.split("\t");
-      return { id, name, group, logo, url };
+      const [id, number, name, group, logo, country, provider, language, radio, url] = line.split("\t");
+      return { id, number, name, group, logo, country, provider, language, radio: radio === "true", url };
     });
     liveLoaded = true;
     buildLive();
@@ -768,20 +837,62 @@ async function loadLive() {
   }
 }
 
+function destroyLiveVideo() {
+  if (liveHls) {
+    liveHls.destroy();
+    liveHls = null;
+  }
+  const video = $("#liveVideo");
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  liveVideoSrc = null;
+}
+
+function syncLiveVideo(live) {
+  const wrap = $("#livePlayerWrap");
+  const video = $("#liveVideo");
+  if (live.video !== true) {
+    if (!wrap.hidden) {
+      wrap.hidden = true;
+      destroyLiveVideo();
+    }
+    return;
+  }
+  wrap.hidden = false;
+  const url = `http://${location.hostname}:8090/index.m3u8`;
+  if (liveVideoSrc === url) return;
+  destroyLiveVideo();
+  liveVideoSrc = url;
+  if (window.Hls && window.Hls.isSupported()) {
+    liveHls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    liveHls.loadSource(url);
+    liveHls.attachMedia(video);
+    liveHls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    liveHls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) toast("video: " + data.details);
+    });
+  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    video.src = url;
+    video.play().catch(() => {});
+  } else {
+    toast("HLS playback unsupported; use VLC");
+  }
+}
+
 function renderLiveStatus(s) {
   const live = s.live || {};
   if (document.activeElement !== $("#liveUrl")) $("#liveUrl").value = live.url || "";
+  if (document.activeElement !== $("#liveDirectUrl")) $("#liveDirectUrl").value = live.direct_url || "";
   $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
-    : (live.playing ? `ffmpeg → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
-  const video = $("#liveVideoLink");
-  video.hidden = live.video !== true;
-  if (live.video === true) {
-    const port = live.video_port || 8090;
-    video.href = `http://${location.hostname}:${port}/index.m3u8`;
-    video.textContent = `open HLS video :${port} (VLC)`;
-  }
+    : (live.playing ? `live audio → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
+  const port = live.video_port || 8090;
+  const videoLink = $("#liveVideoLink");
+  videoLink.href = `http://${location.hostname}:${port}/index.m3u8`;
+  videoLink.hidden = live.video !== true;
+  syncLiveVideo(live);
   if (live.current !== lastLiveCurrent) {
     lastLiveCurrent = live.current;
     if (liveLoaded) buildLive();
@@ -1721,6 +1832,16 @@ $("#liveRefresh").onclick = async () => {
   }
 };
 $("#liveStop").onclick = () => send("live_stop");
+$("#liveDirectPlay").onclick = async () => {
+  const url = $("#liveDirectUrl").value.trim();
+  if (!url) { toast("enter a direct URL"); return; }
+  const result = await send("live_direct", { value: url });
+  if (result && result.ok === true) toast("direct stream started");
+};
+$("#liveFilter").addEventListener("input", (event) => {
+  liveFilterText = event.target.value;
+  buildLive();
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;

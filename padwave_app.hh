@@ -69,7 +69,12 @@ private:
     char name[kMaxTitle];
     char group[kMaxFolder];
     char logo[256];
+    char number[16];
+    char country[32];
+    char provider[64];
+    char language[32];
     char url[kMaxPath];
+    bool radio;
   };
 
   static long nowMs() {
@@ -230,8 +235,10 @@ private:
   int current = -1;
   static inline LiveChannel live_channels[kMaxLiveChannels];
   int live_count             = 0;
-  char live_url[kMaxLiveUrl] = "";
-  char live_error[160]       = "";
+  char live_url[kMaxLiveUrl]        = "";
+  char live_direct_url[kMaxLiveUrl] = "";
+  char live_source_url[kMaxLiveUrl] = "";
+  char live_error[160]              = "";
   pid_t live_pid             = -1;
   pid_t live_audio_pid       = -1;
   pid_t live_http_pid        = -1;
@@ -414,6 +421,7 @@ public:
     srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
     this->player_timer_fd = -1;
     configLoad();
+    loadLiveCache();
     if (this->resume_path[0]) {
       int idx = findTrack(this->resume_path);
       if (idx >= 0) {
@@ -545,9 +553,9 @@ public:
     reapLive();
     long now = nowMs();
     if (this->live_active && this->live_pid < 0 && this->live_restart_at > 0 &&
-        now >= this->live_restart_at && this->live_current >= 0) {
+        now >= this->live_restart_at && this->live_source_url[0]) {
       this->live_restart_at = 0;
-      if (!this->startLiveProcess(this->live_current)) {
+      if (!this->startLiveProcess(this->live_source_url)) {
         this->live_active  = false;
         this->live_current = -1;
         this->sinkPlaybackStop();
@@ -732,6 +740,7 @@ public:
     kvAdd(buf, cap, &o, "audio.sink_available", "%s", sinkAvailable() ? "true" : "false");
     kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
     kvText(buf, cap, &o, "live.url", this->live_url);
+    kvText(buf, cap, &o, "live.direct_url", this->live_direct_url);
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
@@ -983,9 +992,14 @@ public:
       snprintf(id, sizeof(id), "%d", i + 1);
       const LiveChannel *c = &this->live_channels[i];
       tsvField(buf, cap, &o, id, '\t');
+      tsvField(buf, cap, &o, c->number, '\t');
       tsvField(buf, cap, &o, c->name, '\t');
       tsvField(buf, cap, &o, c->group, '\t');
       tsvField(buf, cap, &o, c->logo, '\t');
+      tsvField(buf, cap, &o, c->country, '\t');
+      tsvField(buf, cap, &o, c->provider, '\t');
+      tsvField(buf, cap, &o, c->language, '\t');
+      tsvField(buf, cap, &o, c->radio ? "true" : "false", '\t');
       tsvField(buf, cap, &o, c->url, '\n');
     }
     return static_cast<int>(o);
@@ -1374,13 +1388,20 @@ private:
     return true;
   }
 
-  void addLiveChannel(const char *name, const char *group, const char *logo, const char *url) {
+  void addLiveChannel(const char *name, const char *group, const char *logo, const char *number,
+                      const char *country, const char *provider, const char *language, bool radio,
+                      const char *url) {
     if (this->live_count >= kMaxLiveChannels || !url || !*url) return;
     LiveChannel *c = &this->live_channels[this->live_count];
     snprintf(c->name, sizeof(c->name), "%s", name && *name ? name : url);
     snprintf(c->group, sizeof(c->group), "%s", group ? group : "");
     snprintf(c->logo, sizeof(c->logo), "%s", logo ? logo : "");
+    snprintf(c->number, sizeof(c->number), "%s", number ? number : "");
+    snprintf(c->country, sizeof(c->country), "%s", country ? country : "");
+    snprintf(c->provider, sizeof(c->provider), "%s", provider ? provider : "");
+    snprintf(c->language, sizeof(c->language), "%s", language ? language : "");
     snprintf(c->url, sizeof(c->url), "%s", url);
+    c->radio = radio;
     this->live_count++;
   }
 
@@ -1389,6 +1410,11 @@ private:
     char group[kMaxFolder] = "";
     char name[kMaxTitle]   = "";
     char logo[256]         = "";
+    char number[16]        = "";
+    char country[32]       = "";
+    char provider[64]      = "";
+    char language[32]      = "";
+    bool radio             = false;
     bool haveInfo          = false;
     char *save             = nullptr;
 
@@ -1402,6 +1428,14 @@ private:
       if (strncmp(line, "#EXTINF:", 8) == 0) {
         m3uAttr(line, "group-title", group, sizeof(group));
         m3uAttr(line, "tvg-logo", logo, sizeof(logo));
+        m3uAttr(line, "tvg-chno", number, sizeof(number));
+        if (!m3uAttr(line, "provider-countries", country, sizeof(country)))
+          m3uAttr(line, "tvg-country", country, sizeof(country));
+        m3uAttr(line, "provider", provider, sizeof(provider));
+        m3uAttr(line, "provider-languages", language, sizeof(language));
+        char radio_text[16];
+        radio = m3uAttr(line, "radio", radio_text, sizeof(radio_text)) &&
+                (strcasecmp(radio_text, "true") == 0 || strcmp(radio_text, "1") == 0);
         const char *comma = strrchr(line, ',');
         name[0]           = 0;
         if (comma && comma[1]) snprintf(name, sizeof(name), "%s", trimLine(const_cast<char *>(comma + 1)));
@@ -1410,14 +1444,57 @@ private:
       }
       if (*line == '#') continue;
       if (haveInfo) {
-        if (validLiveUrl(line)) this->addLiveChannel(name, group, logo, line);
+        if (validLiveUrl(line))
+          this->addLiveChannel(name, group, logo, number, country, provider, language, radio, line);
         haveInfo = false;
       }
     }
 
     // A direct HLS playlist has no #EXTINF entries; treat it as one stream.
     if (this->live_count == 0 && strstr(this->live_url, ".m3u8"))
-      this->addLiveChannel("Stream", "", "", this->live_url);
+      this->addLiveChannel("Stream", "", "", "", "", "", "", false, this->live_url);
+  }
+
+  static bool liveCachePath(char *buf, size_t cap) {
+    const char *home = getenv("HOME");
+    if (!home || !*home) return false;
+    snprintf(buf, cap, "%s/.cache/padwave/live.m3u", home);
+    return true;
+  }
+
+  void saveLiveCache(const char *body, size_t len) {
+    char path[512];
+    if (!liveCachePath(path, sizeof(path))) return;
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) {
+      *slash = 0;
+      mkdir(dir, 0755);
+    }
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fwrite(body, 1, len, f);
+    fclose(f);
+  }
+
+  bool loadLiveCache() {
+    char path[512];
+    if (!liveCachePath(path, sizeof(path))) return false;
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    constexpr size_t kMaxBody = 2 * 1024 * 1024;
+    char *body = static_cast<char *>(malloc(kMaxBody));
+    if (!body) {
+      fclose(f);
+      return false;
+    }
+    size_t n = fread(body, 1, kMaxBody - 1, f);
+    fclose(f);
+    body[n] = 0;
+    if (n > 0) this->parsePlaylist(body);
+    free(body);
+    return this->live_count > 0;
   }
 
   static int fetchUrl(const char *url, char *body, size_t cap) {
@@ -1465,6 +1542,7 @@ private:
       return false;
     }
     int n = fetchUrl(this->live_url, body, kMaxBody);
+    if (n > 0) saveLiveCache(body, static_cast<size_t>(n));
     if (n <= 0) {
       snprintf(this->live_error, sizeof(this->live_error), "could not fetch playlist");
       free(body);
@@ -1632,8 +1710,8 @@ private:
     return true;
   }
 
-  bool startLiveProcess(int index) {
-    if (index < 0 || index >= this->live_count) return false;
+  bool startLiveProcess(const char *channel_url) {
+    if (!channel_url || !validLiveUrl(channel_url)) return false;
     terminateProcess(&this->live_audio_pid);
     terminateProcess(&this->live_http_pid);
     this->live_audio_pending = false;
@@ -1643,8 +1721,9 @@ private:
     (void)rc;
     mkdir(kLiveDir, 0755);
 
+    snprintf(this->live_source_url, sizeof(this->live_source_url), "%s", channel_url);
     char stream[kMaxPath];
-    resolveLiveStream(this->live_channels[index].url, stream, sizeof(stream));
+    resolveLiveStream(channel_url, stream, sizeof(stream));
     this->live_error[0] = 0;
     const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
                           "-allowed_extensions", "ALL", "-i", stream, "-c", "copy",
@@ -1658,11 +1737,13 @@ private:
       return false;
     }
     this->live_pid = pid;
-    const char *http[] = {"python3", "-m", "http.server", "8090", "--bind", "0.0.0.0",
-                          "--directory", "/tmp/padwave-live", nullptr};
+    char hls_server[512];
+    const char *home = getenv("HOME");
+    snprintf(hls_server, sizeof(hls_server), "%s/.local/share/padwave/hls_server.py",
+             home ? home : "");
+    const char *http[] = {"python3", hls_server, nullptr};
     this->live_http_pid = spawnProcess(http);
     this->live_active     = true;
-    this->live_current    = index;
     this->live_started_at = nowMs();
     this->live_audio_pending = true;
     this->live_audio_retry_at = 0;
@@ -1680,10 +1761,28 @@ private:
     }
     this->live_restarts   = 0;
     this->live_restart_at = 0;
-    if (!this->startLiveProcess(index)) {
+    if (!this->startLiveProcess(this->live_channels[index].url)) {
       this->sinkPlaybackStop();
       return false;
     }
+    this->live_current = index;
+    return true;
+  }
+
+  bool startLiveDirect(const char *url) {
+    if (!validLiveUrl(url)) return false;
+    stopLive();
+    if (!this->sinkPlaybackStart()) {
+      snprintf(this->live_error, sizeof(this->live_error), "controller/player is not ready");
+      return false;
+    }
+    this->live_restarts   = 0;
+    this->live_restart_at = 0;
+    if (!this->startLiveProcess(url)) {
+      this->sinkPlaybackStop();
+      return false;
+    }
+    this->live_current = -1;
     return true;
   }
 
@@ -2289,6 +2388,8 @@ private:
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
       } else if (strcmp(line, "live_url") == 0) {
         snprintf(this->live_url, sizeof(this->live_url), "%s", value);
+      } else if (strcmp(line, "live_direct_url") == 0) {
+        snprintf(this->live_direct_url, sizeof(this->live_direct_url), "%s", value);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -2331,6 +2432,7 @@ private:
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
     fprintf(f, "live_url=%s\n", this->live_url);
+    fprintf(f, "live_direct_url=%s\n", this->live_direct_url);
     fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
@@ -2728,6 +2830,8 @@ private:
       if (url[0] && !validLiveUrl(url))
         return snprintf(out, out_cap, "ok=false\nerror=http(s) URL required\n");
       stopLive();
+      char cache[512];
+      if (liveCachePath(cache, sizeof(cache))) unlink(cache);
       snprintf(this->live_url, sizeof(this->live_url), "%s", url);
       this->live_count    = 0;
       this->live_error[0] = 0;
@@ -2744,6 +2848,17 @@ private:
     if (strcmp(action, "live_play") == 0) {
       int id = static_cast<int>(kvNumber(body, "id", -1));
       if (!startLive(id - 1))
+        return snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+    if (strcmp(action, "live_direct") == 0) {
+      char url[kMaxLiveUrl];
+      if (!kvGet(body, "value", url, sizeof(url)) || !validLiveUrl(url))
+        return snprintf(out, out_cap, "ok=false\nerror=http(s) URL required\n");
+      snprintf(this->live_direct_url, sizeof(this->live_direct_url), "%s", url);
+      configSave();
+      if (!startLiveDirect(url))
         return snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
       snprintf(this->last_action, sizeof(this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
