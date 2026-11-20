@@ -1143,6 +1143,7 @@ public:
   unsigned getLeftTrigger() const { return l2; }
   unsigned getRightTrigger() const { return r2; }
 
+  // On 1-9 range
   unsigned getLeftTriggerStopLocation() const { return triggerLeft.getStopLocation(); }
   unsigned getRightTriggerStopLocation() const { return triggerRight.getStopLocation(); }
 
