@@ -888,16 +888,6 @@ private:
   using DSUINT32 = internal::DSUINT32;
   using DSINT16  = internal::DSINT16;
 
-  struct TriggerFeedback {
-  protected:
-    uint8_t value;
-
-  public:
-    unsigned getStopLocation() const { return value & 0x0F; }
-    unsigned getStatus() const { return value >> 4; }
-  };
-  static_assert(sizeof(TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
-
 public:
   // One 4-byte touch contact on the wire. The high nibble of `xyHigh` is
   // y-low; the low nibble is x-high. Bit 7 of `contact` means "not touching".
@@ -911,13 +901,12 @@ public:
   public:
     constexpr bool isActive() const { return (contact & 0x80) == 0; }
     constexpr unsigned getId() const { return contact & 0x7F; }
-
     constexpr unsigned getX() const { return static_cast<unsigned>(xLow | ((xyHigh & 0x0F) << 8)); }
-
     constexpr unsigned getY() const { return static_cast<unsigned>((xyHigh >> 4) | (yHigh << 4)); }
   };
   static_assert(sizeof(TouchPoint) == 4, "touch point must stay 4 bytes");
 
+private:
   struct TouchData {
   protected:
     TouchPoint fingers[2];
@@ -927,6 +916,16 @@ public:
     constexpr const TouchPoint &getFinger(unsigned i) const { return fingers[i == 0 ? 0 : 1]; }
   };
   static_assert(sizeof(TouchData) == 9, "touch data must stay 9 bytes");
+
+  struct TriggerFeedback {
+  protected:
+    uint8_t value;
+
+  public:
+    unsigned getStopLocation() const { return value & 0x0F; }
+    unsigned getStatus() const { return value >> 4; }
+  };
+  static_assert(sizeof(TriggerFeedback) == 1, "trigger feedback must stay 1 byte");
 
 protected:
   DSUINT8 lx;                   // +0x00  left stick X, 0..255 (128 = centre)
