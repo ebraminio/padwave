@@ -241,21 +241,18 @@ private:
   char live_direct_url[kMaxLiveUrl] = "";
   char live_source_url[kMaxLiveUrl] = "";
   char live_upstream_url[kMaxPath]  = "";
+  char live_decoded[kMaxPath]       = "";
   char live_proxy[512]              = "";
   char live_proxy_user[128]         = "";
   char live_proxy_pass[128]         = "";
   int http_port                     = 8787;
   char live_error[160]              = "";
   pid_t live_pid             = -1;
-  pid_t live_audio_pid       = -1;
   int live_current           = -1;
   bool live_active           = false;
-  bool live_audio_pending    = false;
-  long live_audio_retry_at   = 0;
   long live_started_at       = 0;
   long live_restart_at       = 0;
   int live_restarts          = 0;
-  int live_audio_retries     = 0;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -569,11 +566,6 @@ public:
         this->live_current = -1;
         this->sinkPlaybackStop();
       }
-    }
-    if (this->live_active && this->live_audio_pending && this->live_pid > 0 &&
-        now >= this->live_audio_retry_at) {
-      this->live_audio_retry_at = now + 1000;
-      if (this->startLiveAudio()) this->live_audio_pending = false;
     }
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
@@ -1776,6 +1768,86 @@ private:
     return static_cast<int>(o);
   }
 
+  bool decodeLiveSegment(const char *file_path) {
+    if (!file_path || !this->sink_playback || !this->player.sinkMode()) return false;
+    if (strcmp(file_path, this->live_decoded) == 0) return true;
+
+    AVFormatContext *fmt = nullptr;
+    AVCodecContext *dec  = nullptr;
+    SwrContext *swr      = nullptr;
+    AVPacket *pkt        = nullptr;
+    AVFrame *frame       = nullptr;
+    int audio_index      = -1;
+    bool ok              = false;
+
+    if (avformat_open_input(&fmt, file_path, nullptr, nullptr) < 0) goto done;
+    if (avformat_find_stream_info(fmt, nullptr) < 0) goto done;
+    audio_index = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audio_index < 0) goto done;
+    {
+      const AVCodec *codec = avcodec_find_decoder(fmt->streams[audio_index]->codecpar->codec_id);
+      if (!codec) goto done;
+      dec = avcodec_alloc_context3(codec);
+      if (!dec ||
+          avcodec_parameters_to_context(dec, fmt->streams[audio_index]->codecpar) < 0 ||
+          avcodec_open2(dec, codec, nullptr) < 0)
+        goto done;
+    }
+    {
+      AVChannelLayout in_layout;
+      AVChannelLayout out_layout;
+      av_channel_layout_copy(&in_layout, &dec->ch_layout);
+      av_channel_layout_default(&out_layout, CHANNELS);
+      int rc = swr_alloc_set_opts2(&swr, &out_layout, AV_SAMPLE_FMT_FLT, RATE, &in_layout,
+                                   dec->sample_fmt, dec->sample_rate, 0, nullptr);
+      av_channel_layout_uninit(&in_layout);
+      av_channel_layout_uninit(&out_layout);
+      if (rc < 0 || !swr || swr_init(swr) < 0) goto done;
+    }
+    pkt   = av_packet_alloc();
+    frame = av_frame_alloc();
+    if (!pkt || !frame) goto done;
+
+    {
+      float out[8192 * CHANNELS];
+      auto drain = [&]() {
+        for (;;) {
+          int ret = avcodec_receive_frame(dec, frame);
+          if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+          if (ret < 0) break;
+          int cap = swr_get_out_samples(swr, frame->nb_samples);
+          if (cap > 8192) cap = 8192;
+          uint8_t *dst[1] = {reinterpret_cast<uint8_t *>(out)};
+          const uint8_t *src[AV_NUM_DATA_POINTERS] = {};
+          int channels = dec->ch_layout.nb_channels;
+          if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
+          for (int i = 0; i < channels; i++) src[i] = frame->extended_data[i];
+          int got = swr_convert(swr, dst, cap, src, frame->nb_samples);
+          if (got > 0) this->player.pushSink(out, static_cast<size_t>(got));
+          av_frame_unref(frame);
+        }
+      };
+
+      while (av_read_frame(fmt, pkt) >= 0) {
+        if (pkt->stream_index == audio_index) avcodec_send_packet(dec, pkt);
+        av_packet_unref(pkt);
+        drain();
+      }
+      avcodec_send_packet(dec, nullptr);
+      drain();
+    }
+    ok = true;
+
+done:
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
+    if (swr) swr_free(&swr);
+    if (dec) avcodec_free_context(&dec);
+    if (fmt) avformat_close_input(&fmt);
+    if (ok) snprintf(this->live_decoded, sizeof(this->live_decoded), "%s", file_path);
+    return ok;
+  }
+
   bool liveSourceSegment(const char *encoded, char *file_path, size_t cap) {
     if (!encoded || !*encoded || !this->live_active) return false;
     char url[kMaxPath * 2];
@@ -1785,8 +1857,9 @@ private:
     char hash[17];
     makeId(url, hash);
     snprintf(file_path, cap, "%s/%s.ts", dir, hash);
-    if (access(file_path, R_OK) == 0) return true;
-    return fetchUrlToFile(url, file_path);
+    if (access(file_path, R_OK) != 0 && !fetchUrlToFile(url, file_path)) return false;
+    this->decodeLiveSegment(file_path);
+    return true;
   }
 
   static pid_t spawnProcess(const char *const argv[]) {
@@ -1874,28 +1947,12 @@ private:
   static constexpr const char *kLivePlaylist = "/tmp/padwave-live/index.m3u8";
 
   void reapLive() {
-    if (this->live_audio_pid > 0) {
-      int as = 0;
-      if (waitpid(this->live_audio_pid, &as, WNOHANG) == this->live_audio_pid) {
-        this->live_audio_pid = -1;
-        if (this->live_active) {
-          this->live_audio_pending  = true;
-          this->live_audio_retry_at = nowMs() + 1000;
-          this->live_audio_retries++;
-          if (this->live_audio_retries >= 5) {
-            snprintf(this->live_error, sizeof(this->live_error), "live audio stopped");
-            this->live_audio_pending = false;
-          }
-        }
-      }
-    }
     if (this->live_pid <= 0) return;
     int status = 0;
     pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
     if (r != this->live_pid) return;
     this->live_pid = -1;
-    terminateProcess(&this->live_audio_pid);
-    this->live_audio_pending = false;
+    this->live_decoded[0] = 0;
     if (!this->live_active) return;
     long now = nowMs();
     if (now - this->live_started_at >= 30000) this->live_restarts = 0;
@@ -1913,32 +1970,18 @@ private:
 
   void stopLive() {
     terminateProcess(&this->live_pid);
-    terminateProcess(&this->live_audio_pid);
     this->live_active      = false;
     this->live_current     = -1;
-    this->live_audio_pending = false;
     this->live_restart_at  = 0;
     this->live_restarts    = 0;
-    this->live_audio_retries = 0;
+    this->live_decoded[0]  = 0;
     this->live_error[0]    = 0;
     this->sinkPlaybackStop();
   }
 
-  bool startLiveAudio() {
-    if (access(kLivePlaylist, R_OK) != 0) return false;
-    const char *args[] = {"mpv", "--no-video", "--no-terminal", "--really-quiet",
-                          "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
-                          "--", kLivePlaylist, nullptr};
-    pid_t pid = spawnProcess(args);
-    if (pid < 0) return false;
-    this->live_audio_pid = pid;
-    return true;
-  }
-
   bool startLiveProcess(const char *channel_url) {
     if (!channel_url || !validLiveUrl(channel_url)) return false;
-    terminateProcess(&this->live_audio_pid);
-    this->live_audio_pending = false;
+    this->live_decoded[0] = 0;
     char cmd[128];
     snprintf(cmd, sizeof(cmd), "rm -rf %s", kLiveDir);
     int rc = system(cmd);
@@ -1968,9 +2011,6 @@ private:
     this->live_pid = pid;
     this->live_active     = true;
     this->live_started_at = nowMs();
-    this->live_audio_pending = true;
-    this->live_audio_retry_at = 0;
-    this->live_audio_retries  = 0;
     return true;
   }
 
