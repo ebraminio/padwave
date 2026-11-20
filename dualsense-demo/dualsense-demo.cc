@@ -48,19 +48,19 @@
 
 namespace {
 
-constexpr uint16_t kVendorSony = 0x054c;
-constexpr uint16_t kProductDualSense = 0x0ce6;
+constexpr uint16_t kVendorSony           = 0x054c;
+constexpr uint16_t kProductDualSense     = 0x0ce6;
 constexpr uint16_t kProductDualSenseEdge = 0x0df2;
-constexpr int kPcmFrames = 480;
-constexpr size_t kPcmBytes = static_cast<size_t>(kPcmFrames) * 2 * sizeof(int16_t);
-constexpr uint64_t kReportIntervalUs = 10667;
+constexpr int kPcmFrames                 = 480;
+constexpr size_t kPcmBytes               = static_cast<size_t>(kPcmFrames) * 2 * sizeof(int16_t);
+constexpr uint64_t kReportIntervalUs     = 10667;
 
 #if defined(_WIN32)
-constexpr int kStdin = 0;
+constexpr int kStdin  = 0;
 constexpr int kStdout = 1;
 #define demo_isatty _isatty
 #else
-constexpr int kStdin = STDIN_FILENO;
+constexpr int kStdin  = STDIN_FILENO;
 constexpr int kStdout = STDOUT_FILENO;
 #define demo_isatty isatty
 #endif
@@ -73,31 +73,31 @@ bool g_tty_changed = false;
 
 struct Device {
   hid_device *handle = nullptr;
-  bool usb = false;
-  char path[512] = "";
+  bool usb           = false;
+  char path[512]     = "";
   dualsense::OutputReport::Sequence sequence;
 };
 
 struct Options {
-  bool help = false;
-  bool list = false;
-  bool input_only = false;
-  int route = 3; // AudioOutputPath::SpeakerMono
+  bool help         = false;
+  bool list         = false;
+  bool input_only   = false;
+  int route         = 3; // AudioOutputPath::SpeakerMono
   bool has_lightbar = false;
   int red = 0, green = 0, blue = 0;
-  bool has_leds = false;
-  unsigned led_mask = 0;
-  bool has_trigger = false;
-  bool trigger_left = true;
+  bool has_leds        = false;
+  unsigned led_mask    = 0;
+  bool has_trigger     = false;
+  bool trigger_left    = true;
   int trigger_position = 2;
   int trigger_strength = 6;
-  bool has_rumble = false;
+  bool has_rumble      = false;
   int rumble_left = 0, rumble_right = 0, rumble_ms = 300;
 };
 
 Device g_device;
 uint64_t g_rumble_until_ms = 0;
-char g_last_status[400] = "";
+char g_last_status[400]    = "";
 
 void stop(int) { g_running = 0; }
 
@@ -112,7 +112,8 @@ uint64_t nowUs() {
 #else
   timespec ts{};
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return static_cast<uint64_t>(ts.tv_sec) * 1000000ULL + static_cast<uint64_t>(ts.tv_nsec) / 1000ULL;
+  return static_cast<uint64_t>(ts.tv_sec) * 1000000ULL +
+         static_cast<uint64_t>(ts.tv_nsec) / 1000ULL;
 #endif
 }
 
@@ -120,7 +121,7 @@ uint64_t nowMs() { return nowUs() / 1000ULL; }
 
 int readPcm(uint8_t *dst, size_t capacity) {
 #if defined(_WIN32)
-  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  HANDLE input    = GetStdHandle(STD_INPUT_HANDLE);
   DWORD available = 0;
   if (PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr)) {
     if (available == 0) return -2;
@@ -150,7 +151,7 @@ void setupTty() {
   if (tcgetattr(kStdin, &g_saved_tty) < 0) return;
   termios raw = g_saved_tty;
   raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
-  raw.c_cc[VMIN] = 0;
+  raw.c_cc[VMIN]  = 0;
   raw.c_cc[VTIME] = 0;
   if (tcsetattr(kStdin, TCSANOW, &raw) == 0) g_tty_changed = true;
 #endif
@@ -197,7 +198,7 @@ bool parseArgs(int argc, char **argv, Options &options) {
                  &options.trigger_strength) != 3)
         return false;
       options.trigger_left = strcmp(side, "right") != 0;
-      options.has_trigger = true;
+      options.has_trigger  = true;
     } else if (strcmp(arg, "--rumble") == 0 && i + 1 < argc) {
       int count = sscanf(argv[++i], "%d,%d,%d", &options.rumble_left, &options.rumble_right,
                          &options.rumble_ms);
@@ -242,7 +243,7 @@ bool openDevice() {
     return false;
   }
   snprintf(g_device.path, sizeof(g_device.path), "%s", chosen->path ? chosen->path : "");
-  g_device.usb = chosen->bus_type == HID_API_BUS_USB;
+  g_device.usb    = chosen->bus_type == HID_API_BUS_USB;
   g_device.handle = hid_open_path(g_device.path);
   if (!g_device.handle) {
     fprintf(stderr, "dualsense-demo: hid_open_path(%s): %ls\n", g_device.path, hid_error(nullptr));
@@ -260,14 +261,14 @@ bool sendOutput(Fill fill) {
   if (g_device.usb) {
     dualsense::UsbOutputReport report{};
     fill(report.getBody());
-    return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
-                     sizeof(report)) > 0;
+    return hid_write(g_device.handle, reinterpret_cast<const uint8_t *>(&report), sizeof report) >
+           0;
   } else {
     dualsense::OutputReport report(g_device.sequence);
     fill(report.getBody());
     report.sign();
-    return hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&report),
-                     sizeof(report)) > 0;
+    return hid_write(g_device.handle, reinterpret_cast<const uint8_t *>(&report), sizeof report) >
+           0;
   }
 }
 
@@ -331,35 +332,43 @@ void showInput(const dualsense::InputBody &input) {
     Button button;
     const char *name;
   } names[] = {
-      {Button::ButtonSquare, "square"}, {Button::ButtonCross, "cross"},
-      {Button::ButtonCircle, "circle"}, {Button::ButtonTriangle, "triangle"},
-      {Button::L1, "l1"},               {Button::R1, "r1"},
-      {Button::L2, "l2"},               {Button::R2, "r2"},
-      {Button::Create, "create"},       {Button::Options, "options"},
-      {Button::L3, "l3"},               {Button::R3, "r3"},
-      {Button::PsHome, "ps"},           {Button::Touchpad, "touchpad"},
-      {Button::MicMute, "mute"},        {Button::EdgeFn1, "fn1"},
-      {Button::EdgeFn2, "fn2"},         {Button::EdgeLeftPaddle, "paddle-l"},
+      {Button::ButtonSquare, "square"},
+      {Button::ButtonCross, "cross"},
+      {Button::ButtonCircle, "circle"},
+      {Button::ButtonTriangle, "triangle"},
+      {Button::L1, "l1"},
+      {Button::R1, "r1"},
+      {Button::L2, "l2"},
+      {Button::R2, "r2"},
+      {Button::Create, "create"},
+      {Button::Options, "options"},
+      {Button::L3, "l3"},
+      {Button::R3, "r3"},
+      {Button::PsHome, "ps"},
+      {Button::Touchpad, "touchpad"},
+      {Button::MicMute, "mute"},
+      {Button::EdgeFn1, "fn1"},
+      {Button::EdgeFn2, "fn2"},
+      {Button::EdgeLeftPaddle, "paddle-l"},
       {Button::EdgeRightPaddle, "paddle-r"},
   };
-  char buttons[192] = "";
-  size_t used = 0;
+  char buttons[192]  = "";
+  size_t used        = 0;
   const auto pressed = input.getButtons();
   for (const auto &entry : names) {
     if (!pressed.isOn(entry.button)) continue;
-    int written = snprintf(buttons + used, sizeof(buttons) - used, "%s%s", used ? "," : "",
-                           entry.name);
+    int written =
+        snprintf(buttons + used, sizeof(buttons) - used, "%s%s", used ? "," : "", entry.name);
     if (written <= 0 || static_cast<size_t>(written) >= sizeof(buttons) - used) break;
     used += static_cast<size_t>(written);
   }
-  const auto left = input.getLeftStick();
-  const auto right = input.getRightStick();
+  const auto left     = input.getLeftStick();
+  const auto right    = input.getRightStick();
   const auto triggers = input.getTriggers();
   char line[400];
-  snprintf(line, sizeof(line),
-           "[in] %s dpad=%s l2=%d r2=%d L=(%d,%d) R=(%d,%d) batt=%d%%", buttons[0] ? buttons : "-",
-           dpadName(input.getDpad()), triggers.left, triggers.right, left.x, left.y, right.x,
-           right.y, input.getBattery());
+  snprintf(line, sizeof(line), "[in] %s dpad=%s l2=%d r2=%d L=(%d,%d) R=(%d,%d) batt=%d%%",
+           buttons[0] ? buttons : "-", dpadName(input.getDpad()), triggers.left, triggers.right,
+           left.x, left.y, right.x, right.y, input.getBattery());
   if (strcmp(line, g_last_status) == 0) return;
   snprintf(g_last_status, sizeof(g_last_status), "%s", line);
   if (demo_isatty(kStdout))
@@ -371,9 +380,9 @@ void showInput(const dualsense::InputBody &input) {
 
 #if !defined(_WIN32)
 void handleKey(char key) {
-  static int color = 0;
-  static int led_mask = 0;
-  static bool trigger_on = false;
+  static int color                 = 0;
+  static int led_mask              = 0;
+  static bool trigger_on           = false;
   static const uint8_t colors[][3] = {
       {0x00, 0x40, 0xFF}, {0x00, 0xFF, 0x40}, {0xFF, 0x40, 0x00}, {0xFF, 0x00, 0x40}};
   if (key == 'q') {
@@ -400,12 +409,10 @@ void handleKey(char key) {
                          (mask & 0x08) != 0, (mask & 0x10) != 0, false);
     });
   } else if (key == 't') {
-    trigger_on = !trigger_on;
+    trigger_on  = !trigger_on;
     auto effect = trigger_on ? dualsense::OutputBody::TriggerEffect::feedback(2, 6)
                              : dualsense::OutputBody::TriggerEffect::off();
-    sendOutput([&](dualsense::OutputBody &body) {
-      body.setLeftTriggerEffect(effect);
-    });
+    sendOutput([&](dualsense::OutputBody &body) { body.setLeftTriggerEffect(effect); });
   }
 }
 #endif
@@ -495,20 +502,22 @@ int main(int argc, char **argv) {
   }
 
   uint8_t pcm_bytes[kPcmBytes];
-  size_t pcm_have = 0;
-  bool audio_started = false;
-  bool audio_eof = false;
-  uint64_t next_audio_us = 0;
+  size_t pcm_have         = 0;
+  bool audio_started      = false;
+  bool audio_eof          = false;
+  uint64_t next_audio_us  = 0;
   unsigned long underruns = 0;
   dualsense::OutputReport::Sequence audio_sequence;
 
   while (g_running) {
     uint8_t report[512];
-    int bytesRead = hid_read_timeout(g_device.handle, report, sizeof(report), 1);
+    int bytesRead = hid_read_timeout(g_device.handle, report, sizeof report, 1);
     if (bytesRead > 0) {
-      if (const auto *input = dualsense::InputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
+      if (const auto *input =
+              dualsense::InputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
         showInput(input->getBody());
-      } else if (const auto *input = dualsense::UsbInputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
+      } else if (const auto *input =
+                     dualsense::UsbInputReport::asFrame(report, static_cast<size_t>(bytesRead))) {
         showInput(input->getBody());
       }
     }
@@ -558,8 +567,7 @@ int main(int argc, char **argv) {
         audio.sign();
         if (hid_write(g_device.handle, reinterpret_cast<const unsigned char *>(&audio),
                       sizeof(audio)) <= 0) {
-          fprintf(stderr, "dualsense-demo: audio write failed: %ls\n",
-                  hid_error(g_device.handle));
+          fprintf(stderr, "dualsense-demo: audio write failed: %ls\n", hid_error(g_device.handle));
           break;
         }
         if (tail) {

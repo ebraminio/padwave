@@ -682,11 +682,11 @@ private:
       clear(ValidFlag0::CompatibleVibration);
       clear(ValidFlag0::HapticsSelect);
     } else
-      setMotors(0, 0);
+      setCompatibleVibration(0, 0);
   }
 
 public:
-  constexpr void setMotors(uint8_t left, uint8_t right) {
+  constexpr void setCompatibleVibration(uint8_t left, uint8_t right) {
     claim(ValidFlag0::CompatibleVibration);
     claim(ValidFlag0::HapticsSelect);
     motorLeft  = left;
@@ -849,19 +849,19 @@ private:
   using ReportId = internal::ReportId;
 
 protected:
-  ReportId reportIdValue; // 0x00  ReportId::StateBluetooth
-  DSUINT8 seqTag;         // 0x01  high nibble = counter 0..15, low nibble = 0
-  DSUINT8 tagValue;       // 0x02  must be 0x10
-  OutputBody bodyData;    // 0x03..0x31
-  DSUINT8 reserved4[24];  // 0x32..0x49
-  DSUINT32 crc;           // 0x4a  CRC-32, seed 0xA2, little-endian
+  ReportId reportId;     // 0x00  ReportId::StateBluetooth
+  DSUINT8 seqTag;        // 0x01  high nibble = counter 0..15, low nibble = 0
+  DSUINT8 tag;           // 0x02  must be 0x10
+  OutputBody bodyData;   // 0x03..0x31
+  DSUINT8 reserved4[24]; // 0x32..0x49
+  DSUINT32 crc;          // 0x4a  CRC-32, seed 0xA2, little-endian
 
 private:
-  static constexpr ReportId reportId = ReportId::StateBluetooth;
-  static constexpr uint8_t tag       = 0x10;
+  static constexpr ReportId ID = ReportId::StateBluetooth;
+  static constexpr uint8_t TAG = 0x10;
 
 public:
-  // 0x31 sequence tagValue: high nibble counts 0..15, low nibble stays zero.
+  // 0x31 sequence tag: high nibble counts 0..15, low nibble stays zero.
   struct Sequence {
     constexpr Sequence() : value(0), counter(0) {}
     constexpr uint8_t next() {
@@ -879,7 +879,7 @@ public:
     static constexpr uint8_t shift = 4;
   };
 
-  constexpr OutputReport() : reportIdValue(reportId), tagValue(tag) {}
+  constexpr OutputReport() : reportId(ID), tag(TAG) {}
   constexpr explicit OutputReport(OutputReport::Sequence &sequence) : OutputReport() {
     seqTag = sequence.next();
   }
@@ -902,15 +902,15 @@ private:
   using ReportId = internal::ReportId;
 
 protected:
-  ReportId reportIdValue; // 0x00  ReportId::OutputUsb
-  OutputBody bodyData;    // 0x01..0x2f
-  DSUINT8 reserved[15];   // 0x30..0x3e
+  ReportId reportId;    // 0x00  ReportId::OutputUsb
+  OutputBody bodyData;  // 0x01..0x2f
+  DSUINT8 reserved[15]; // 0x30..0x3e
 
 private:
-  static constexpr ReportId reportId = ReportId::OutputUsb;
+  static constexpr ReportId ID = ReportId::OutputUsb;
 
 public:
-  constexpr UsbOutputReport() : reportIdValue(reportId) {}
+  constexpr UsbOutputReport() : reportId(ID) {}
 
   constexpr const OutputBody &getBody() const { return bodyData; }
   constexpr OutputBody &getBody() { return bodyData; }
@@ -1200,7 +1200,7 @@ static_assert(sizeof(InputBody) == 63, "input body must stay 63 bytes");
 // ===========================================================================
 // Input 0x31 (Bluetooth, 78 bytes) and 0x01 (USB, 64 bytes)
 //
-// The Bluetooth report is the USB one plus a sequence tagValue in front and a
+// The Bluetooth report is the USB one plus a sequence tag in front and a
 // nine-byte tail plus a CRC behind, so every shared field's USB offset is its
 // Bluetooth offset minus one. The tail's first byte is not constant (30
 // distinct values in a 150 s capture), the other eight were; what it carries is
@@ -1215,28 +1215,27 @@ private:
   using ReportId = internal::ReportId;
 
 protected:
-  ReportId reportIdValue; // 0x00  ReportId::StateBluetooth
-  DSUINT8 seqTag;         // 0x01  high nibble = sequence tagValue, low nibble = 0
-  InputBody bodyData;     // 0x02..0x40
-  DSUINT8 btReserved[9];  // 0x41..0x49  the first byte is not constant (30
-                          //             distinct values in a 150 s capture), the
-                          //             other eight were; unknown
-  DSUINT32 crc;           // 0x4a  CRC-32 over the report, seed 0xA1
+  ReportId reportId;     // 0x00  ReportId::StateBluetooth
+  DSUINT8 seqTag;        // 0x01  high nibble = sequence tagValue, low nibble = 0
+  InputBody bodyData;    // 0x02..0x40
+  DSUINT8 btReserved[9]; // 0x41..0x49  the first byte is not constant (30
+                         //             distinct values in a 150 s capture), the
+                         //             other eight were; unknown
+  DSUINT32 crc;          // 0x4a  CRC-32 over the report, seed 0xA1
 
 private:
-  static constexpr ReportId reportId = ReportId::StateBluetooth;
-  static constexpr uint8_t crcSeed   = 0xA1;
+  static constexpr ReportId ID     = ReportId::StateBluetooth;
+  static constexpr uint8_t crcSeed = 0xA1;
   constexpr bool isValid() const { return crc == internal::crc_of(*this, crcSeed); }
 
 public:
-  constexpr InputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
+  constexpr InputReport() : reportId(ID) { bodyData = InputBody{}; }
 
   constexpr const InputBody &getBody() const { return bodyData; }
   constexpr void sign() { crc = internal::crc_of(*this, crcSeed); }
 
   static const InputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < sizeof(InputReport) || buf[0] != static_cast<uint8_t>(reportId))
-      return nullptr;
+    if (!buf || len < sizeof(InputReport) || buf[0] != static_cast<uint8_t>(ID)) return nullptr;
     const auto *r = reinterpret_cast<const InputReport *>(buf);
     return r->isValid() ? r : nullptr;
   }
@@ -1246,22 +1245,21 @@ static_assert(sizeof(InputReport) == 78, "input 0x31 must stay 78 bytes");
 // USB 0x01 input report: one report-id byte followed by the same 63-byte body.
 struct UsbInputReport {
 private:
-  using DSUINT8                      = internal::DSUINT8;
-  using ReportId                     = internal::ReportId;
-  static constexpr ReportId reportId = ReportId::InputUsb;
+  using DSUINT8                = internal::DSUINT8;
+  using ReportId               = internal::ReportId;
+  static constexpr ReportId ID = ReportId::InputUsb;
 
 protected:
-  ReportId reportIdValue; // 0x00  ReportId::InputUsb
-  InputBody bodyData;     // 0x01..0x3f
+  ReportId reportId;  // 0x00  ReportId::InputUsb
+  InputBody bodyData; // 0x01..0x3f
 
 public:
-  constexpr UsbInputReport() : reportIdValue(reportId) { bodyData = InputBody{}; }
+  constexpr UsbInputReport() : reportId(ID) { bodyData = InputBody{}; }
 
   constexpr const InputBody &getBody() const { return bodyData; }
 
   static const UsbInputReport *asFrame(const uint8_t *buf, size_t len) {
-    if (!buf || len < sizeof(UsbInputReport) || buf[0] != static_cast<uint8_t>(reportId))
-      return nullptr;
+    if (!buf || len < sizeof(UsbInputReport) || buf[0] != static_cast<uint8_t>(ID)) return nullptr;
     return reinterpret_cast<const UsbInputReport *>(buf);
   }
 };
@@ -1302,29 +1300,29 @@ public:
   };
 
   struct PacketHeader {
-  private:
-    DSUINT8 pidValue;
-    DSUINT8 lengthValue;
+    friend struct internal::WireProbe;
+
+  protected:
+    DSUINT8 id;
+    DSUINT8 length;
 
   public:
-    constexpr PacketHeader() : pidValue(0), lengthValue(0) {}
-    constexpr explicit PacketHeader(SubPacketId id, uint8_t length)
-        : pidValue(static_cast<uint8_t>(id) | packetSizedBit), lengthValue(length) {}
+    constexpr PacketHeader() : id(0), length(0) {}
+    constexpr explicit PacketHeader(SubPacketId packetId, uint8_t packetLength)
+        : id(static_cast<uint8_t>(packetId) | packetSizedBit), length(packetLength) {}
     PacketHeader(const PacketHeader &)            = delete;
     PacketHeader &operator=(const PacketHeader &) = delete;
 
-    constexpr uint8_t pid() const { return pidValue; }
-    constexpr uint8_t length() const { return lengthValue; }
-    constexpr void set(SubPacketId id, uint8_t length) {
-      pidValue    = static_cast<uint8_t>(id) | packetSizedBit;
-      lengthValue = length;
+    constexpr void setLength(uint8_t value) { length = value; }
+    constexpr void setPacketId(SubPacketId value) {
+      id = static_cast<uint8_t>(value) | packetSizedBit;
     }
   };
   static_assert(sizeof(PacketHeader) == 2, "packet header must stay 2 bytes");
 
   struct PcmPacket {
   private:
-    PacketHeader headerValue;
+    PacketHeader packetHeader;
     DSINT8 samplesValue[64];
 
   public:
@@ -1334,8 +1332,11 @@ public:
     PcmPacket(const PcmPacket &)            = delete;
     PcmPacket &operator=(const PcmPacket &) = delete;
 
-    constexpr const PacketHeader &header() const { return headerValue; }
-    constexpr void setHeader(SubPacketId id, uint8_t length) { headerValue.set(id, length); }
+    constexpr const PacketHeader &header() const { return packetHeader; }
+    constexpr void setHeader(SubPacketId id, uint8_t length) {
+      packetHeader.setPacketId(id);
+      packetHeader.setLength(length);
+    }
 
     template <typename Fill>
     constexpr void fillSamples(Fill fill) {
@@ -1382,7 +1383,7 @@ private:
   static_assert(sizeof(State) == 63, "State must stay 63 bytes");
 
 protected:
-  ReportId reportIdValue;    // 0x000  ReportId::Audio
+  ReportId reportId;         // 0x000  ReportId::Audio
   DSUINT8 seqTag;            // 0x001  high nibble = counter, low nibble = 0
   PacketHeader configHeader; // 0x002  0x11 | 0x80, sizeof(Config)
   AudioConfig config;        // 0x004..0x00a  mask, lengths, counter
@@ -1390,7 +1391,7 @@ protected:
   DSUINT8 stateLength;       // 0x00c  63
   State state;               // 0x00d..0x04b
   PcmPacket hapticsPacket;   // 0x04c..0x08d  0x12, length 64, 6 kHz PCM
-  DSUINT8 speakerTagValue;   // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
+  DSUINT8 speakerTag;        // 0x08e  0x13 = membrane, 0x16 = jack (+0x80)
   DSUINT8 speakerLength;     // 0x08f  200
   DSUINT8 opus[200];         // 0x090..0x157  Opus 48 kHz stereo CBR 160 kbps
   DSUINT8 padding[50];       // 0x158..0x189
@@ -1444,7 +1445,7 @@ public:
   };
 
 private:
-  static constexpr ReportId reportId      = ReportId::Audio;
+  static constexpr ReportId ID            = ReportId::Audio;
   static constexpr uint8_t crcSeed        = 0xA2;
   static constexpr uint8_t stateSize      = 63;
   static constexpr uint8_t opusSize       = 200;
@@ -1454,15 +1455,14 @@ private:
   }
   constexpr void setSeqTag(uint8_t value) { seqTag = value; }
   constexpr void setCounter(uint8_t value) { config.counter = value; }
-
   constexpr ConfigMask getEnableMask() const { return config.mask; }
 
   constexpr SpeakerTag getSpeakerTag() const {
-    return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTagValue) & 0x7F);
+    return static_cast<SpeakerTag>(static_cast<uint8_t>(speakerTag) & 0x7F);
   }
 
   constexpr bool isValid() const {
-    return reportIdValue == reportId && crc == internal::crc_of(*this, crcSeed);
+    return reportId == ID && crc == internal::crc_of(*this, crcSeed);
   }
 
   constexpr const OutputBody &getStateBody() const { return state.body; }
@@ -1485,8 +1485,9 @@ public:
   constexpr void setSpeakerVolume(uint8_t v) { state.body.setSpeakerVolume(v); }
 
   constexpr explicit AudioReport() {
-    reportIdValue = reportId;
-    configHeader.set(SubPacketId::Config, sizeof(AudioConfig));
+    reportId = ID;
+    configHeader.setPacketId(SubPacketId::Config);
+    configHeader.setLength(sizeof(AudioConfig));
     for (unsigned i = 0; i < 5; ++i) config.hapticLengths[i] = hapticSize;
     stateTag    = packetPid(SubPacketId::State);
     stateLength = stateSize;
@@ -1500,17 +1501,16 @@ public:
 private:
   // Only exposed for WireProbe, otherwise the simpler constructor+init()
   // method calls should be used.
-  constexpr AudioReport(SpeakerTag tagValue, ConfigMask mask, OutputReport::Sequence &sequence)
+  constexpr AudioReport(SpeakerTag speakTag, ConfigMask mask, OutputReport::Sequence &sequence)
       : AudioReport() {
-    setSpeakTag(tagValue);
+    setSpeakTag(speakTag);
     setConfig(mask);
     setSequence(sequence);
   }
 
 public:
-  constexpr void setSpeakTag(SpeakerTag tagValue) {
-    speakerTagValue =
-        packetPid(tagValue == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
+  constexpr void setSpeakTag(SpeakerTag tag) {
+    speakerTag = packetPid(tag == SpeakerTag::Speaker ? SubPacketId::Speaker : SubPacketId::Jack);
   }
 
   constexpr void setConfig(ConfigMask mask) { config.mask = mask; }
@@ -1593,7 +1593,7 @@ public:
   static_assert(sizeof(ImuCalibration) == 72, "IMU calibration must stay 72 bytes");
 
 protected:
-  ReportId reportIdValue; // 0x00  ReportId::FeatureCalibration
+  ReportId reportId; // 0x00  ReportId::FeatureCalibration
   // 0x01..0x22: seventeen little-endian int16: three gyro biases, then
   // plus/minus at 2x speed for each axis, then gyro speed limits, then accel
   // plus/minus at 1 g per axis.
@@ -1617,7 +1617,7 @@ protected:
   DSUINT8 unknown35[6]; // 0x23..0x28  not used by the kernel
 
 public:
-  static constexpr ReportId reportId = ReportId::FeatureCalibration;
+  static constexpr ReportId ID = ReportId::FeatureCalibration;
 
   constexpr ImuCalibration getImu() const {
     ImuCalibration result{};
@@ -1651,19 +1651,17 @@ static_assert(sizeof(Calibration) == 41, "0x05 must stay 41 bytes");
 
 struct Pairing {
 private:
-  using DSUINT8  = internal::DSUINT8;
-  using DSUINT32 = internal::DSUINT32;
-  using ReportId = internal::ReportId;
+  using DSUINT8                = internal::DSUINT8;
+  using DSUINT32               = internal::DSUINT32;
+  using ReportId               = internal::ReportId;
+  static constexpr ReportId ID = ReportId::FeaturePairing;
 
 protected:
-  ReportId reportIdValue; // 0x00       ReportId::FeaturePairing
-  DSUINT8 mac[6];         // 0x01..0x06 controller address, reversed
-  DSUINT8 unknown07[3];   // 0x07..0x09
-  DSUINT8 hostMac[6];     // 0x0a..0x0f host address, reversed
-  DSUINT32 crc;           // 0x10..0x13 CRC-32 seed 0xA3 on BT, zero on USB
-
-public:
-  static constexpr ReportId reportId = ReportId::FeaturePairing;
+  ReportId reportId;    // 0x00       ReportId::FeaturePairing
+  DSUINT8 mac[6];       // 0x01..0x06 controller address, reversed
+  DSUINT8 unknown07[3]; // 0x07..0x09
+  DSUINT8 hostMac[6];   // 0x0a..0x0f host address, reversed
+  DSUINT32 crc;         // 0x10..0x13 CRC-32 seed 0xA3 on BT, zero on USB
 };
 static_assert(sizeof(Pairing) == 20, "0x09 must stay 20 bytes");
 
@@ -1677,7 +1675,7 @@ private:
   using ReportId = internal::ReportId;
 
 protected:
-  ReportId reportIdValue;   // 0x00  ReportId::FeatureFirmware
+  ReportId reportId;        // 0x00  ReportId::FeatureFirmware
   DSUINT8 buildDate[11];    // 0x01..0x0b
   DSUINT8 buildTime[8];     // 0x0c..0x13
   DSUINT16 fwType;          // 0x14..0x15
@@ -1704,11 +1702,11 @@ public:
     size_t length;
   };
 
-  static constexpr ReportId reportId                  = ReportId::FeatureFirmware;
+  static constexpr ReportId ID                        = ReportId::FeatureFirmware;
   static constexpr uint8_t crcSeed                    = 0xA3;
   static constexpr uint16_t vibrationV2MinimumVersion = (2 << 8) | 21;
 
-  constexpr Firmware() : reportIdValue(reportId) {}
+  constexpr Firmware() : reportId(ID) {}
 
   constexpr const String getBuildDateText() const { return String(buildDate); }
   constexpr const String getBuildTimeText() const { return String(buildTime); }
@@ -1762,7 +1760,7 @@ public:
 
   // Bluetooth feature reports carry the CRC; the USB feature transfer does not.
   constexpr bool isValid(bool isUsb) const {
-    return reportIdValue == reportId && (isUsb || crc == internal::crc_of(*this, crcSeed));
+    return reportId == ID && (isUsb || crc == internal::crc_of(*this, crcSeed));
   }
 };
 static_assert(sizeof(Firmware) == 64, "0x20 must stay 64 bytes");
@@ -1803,13 +1801,12 @@ public:
     static_assert(sizeof(HapticsConfig) == 7, "0x32 haptics config must stay 7 bytes");
 
   private:
-    PacketHeader headerValue;
-    HapticsConfig configValue;
+    PacketHeader packetHeader;
+    HapticsConfig config;
 
   public:
     constexpr explicit HapticsConfigPacket(uint8_t sequence)
-        : headerValue(AudioReport::SubPacketId::Config, sizeof(HapticsConfig)),
-          configValue(sequence) {}
+        : packetHeader(AudioReport::SubPacketId::Config, sizeof(HapticsConfig)), config(sequence) {}
     HapticsConfigPacket(const HapticsConfigPacket &)            = delete;
     HapticsConfigPacket &operator=(const HapticsConfigPacket &) = delete;
   };
@@ -1817,7 +1814,7 @@ public:
 
 protected:
   ReportId reportId;                // 0x000
-  DSUINT8 tagValue;                 // 0x001  low nibble tag, high nibble sequence
+  DSUINT8 tag;                      // 0x001  low nibble tag, high nibble sequence
   HapticsConfigPacket configPacket; // 0x002..0x00a
   PcmPacket hapticsPacket;          // 0x00b..0x04c
   DSUINT8 padding[61];              // 0x04d..0x089  container padding
@@ -1833,7 +1830,7 @@ public:
   constexpr explicit HapticsReport(OutputReport::Sequence &sequence)
       : configPacket(sequence.nextCounter()) {
     reportId = ReportId::Haptics;
-    tagValue = 0;
+    tag      = 0;
     for (auto &byte : padding) byte = 0;
   }
   HapticsReport(const HapticsReport &)            = delete;
@@ -1856,7 +1853,7 @@ static_assert(sizeof(HapticsReport) == 142, "0x32 must stay 142 bytes");
 // The controller has no audio class over Bluetooth: the microphone is
 // multiplexed into the same HID reports as the gamepad, and its audio is Opus,
 // not PCM. Byte 3 is the constant Opus TOC 0xD4; a state report has the
-// sequence/tagValue nibbles there instead.
+// sequence/tag nibbles there instead.
 //
 //   0x31 seq .. 0xD4 | one Opus frame | CRC-32 (4 bytes, seed 0xA1)
 //
@@ -1994,11 +1991,11 @@ public:
       return AudioReport(AudioReport::SpeakerTag::Jack, AudioReport::ConfigMask::SpeakerOnly,
                          sequence);
     }();
-    static_assert(sizeof(report) == sizeof(AudioReport));
-    static_assert(report.reportIdValue == ReportId::Audio);
+    static_assert(sizeof report == sizeof(AudioReport));
+    static_assert(report.reportId == ReportId::Audio);
     static_assert(report.seqTag == 0x00);
-    static_assert(report.configHeader.pid() == 0x91);
-    static_assert(report.configHeader.length() == sizeof(AudioReport::AudioConfig));
+    static_assert(report.configHeader.id == 0x91);
+    static_assert(report.configHeader.length == sizeof(AudioReport::AudioConfig));
     static_assert(report.getEnableMask() == AudioReport::ConfigMask::SpeakerOnly);
     static_assert(report.config.hapticLengths[0] == 64 && report.config.hapticLengths[4] == 64);
     static_assert(report.config.counter == 0);

@@ -562,13 +562,14 @@ private:
   bool sendOutput(Fill fill) {
     if (is_usb) {
       dualsense::UsbOutputReport report{};
-      if (!fill(report.getBody())) return false;
-      return writeDevice(&report, sizeof(report));
+      fill(report.getBody());
+      return writeDevice(&report, sizeof report);
+    } else {
+      dualsense::OutputReport report(output_sequence);
+      fill(report.getBody());
+      report.sign();
+      return writeDevice(&report, sizeof report);
     }
-    dualsense::OutputReport report(output_sequence);
-    if (!fill(report.getBody())) return false;
-    report.sign();
-    return writeDevice(&report, sizeof(report));
   }
 
   bool sendAudioState() {
@@ -578,7 +579,6 @@ private:
       body.setHapticLowPassFilter(haptic_lowpass);
       body.setMotorPowerLevel(motor_power_level);
       body.setSpeakerPreampControl(speaker_preamp_control);
-      return true;
     });
   }
 
@@ -589,10 +589,7 @@ private:
   }
 
   bool sendAudioControl() {
-    return sendOutput([&](dualsense::OutputBody &body) {
-      body.setAudioControl(audio_control);
-      return true;
-    });
+    return sendOutput([&](dualsense::OutputBody &body) { body.setAudioControl(audio_control); });
   }
 
   bool readExtraCommand(dualsense::internal::CommandDevice device, uint8_t action,
@@ -721,10 +718,7 @@ private:
 
 public:
   bool setReleaseLEDs() {
-    return sendOutput([](dualsense::OutputBody &body) {
-      body.setReleaseLEDs();
-      return true;
-    });
+    return sendOutput([](dualsense::OutputBody &body) { body.setReleaseLEDs(); });
   }
 
   void setTriggerEffect(bool left, const dualsense::OutputBody::TriggerEffect &effect) {
@@ -740,7 +734,6 @@ public:
         body.setLeftTriggerEffect(effect);
       else
         body.setRightTriggerEffect(effect);
-      return true;
     });
   }
 
@@ -1038,8 +1031,7 @@ private:
   void sendMuteLed(bool on) {
     char fields[64];
     snprintf(fields, sizeof(fields), "mute_button_led=%d", on ? 1 : 0);
-    sendOutput(
-        [&](dualsense::OutputBody &body) { return padwave_fields::apply_fields(&body, fields); });
+    sendOutput([&](dualsense::OutputBody &body) { padwave_fields::apply_fields(&body, fields); });
   }
 
   bool openHapticResampler() {
@@ -1085,7 +1077,7 @@ private:
       memmove(haptic_pending, reinterpret_cast<uint8_t *>(haptic_pending) + bytesPerReport,
               haptic_pending_len - bytesPerReport);
       haptic_pending_len -= bytesPerReport;
-      if (writeDevice(&report, sizeof(report))) sent++;
+      if (writeDevice(&report, sizeof report)) sent++;
     }
   }
 
@@ -1097,7 +1089,7 @@ private:
     audio_report.setConfig(mic ? dualsense::AudioReport::ConfigMask::SpeakerAndMic
                                : dualsense::AudioReport::ConfigMask::SpeakerOnly);
     audio_report.setSequence(audio_sequence);
-    audio_report.setMotors(motor_left, motor_right);
+    audio_report.setCompatibleVibration(motor_left, motor_right);
     audio_report.setHeadphoneVolume(headphone_volume);
     audio_report.setSpeakerVolume(speaker_volume);
     audio_report.setHaptics([&](size_t i) {
@@ -1217,15 +1209,13 @@ private:
       sendOutput([](dualsense::OutputBody &body) {
         body.setLightbarSetup(dualsense::OutputBody::LightbarSetup::LightOut);
         body.setLightbar(0, 0, 0);
-        return true;
       });
       return;
     }
 
     if (strncmp(line, "fields ", 7) == 0) {
-      if (!sendOutput([&](dualsense::OutputBody &body) {
-            return padwave_fields::apply_fields(&body, line + 7);
-          }))
+      if (!sendOutput(
+              [&](dualsense::OutputBody &body) { padwave_fields::apply_fields(&body, line + 7); }))
         return;
       padwave_fields::apply_fields(&state, line + 7);
       cacheFields(line + 7);

@@ -20,8 +20,8 @@ static bool write_file(const char *dir, const char *name, const void *data, size
 
 static dualsense::InputReport report(uint32_t buttons) {
   dualsense::InputReport r{};
-  auto *raw = reinterpret_cast<uint8_t *>(&r);
-  raw[1] = 0x10;
+  auto *raw     = reinterpret_cast<uint8_t *>(&r);
+  raw[1]        = 0x10;
   raw[2 + 0x00] = 128;
   raw[2 + 0x01] = 128;
   raw[2 + 0x02] = 128;
@@ -40,7 +40,8 @@ int main(int argc, char **argv) {
   if (argc < 2) return 1;
 
   dualsense::InputReport neutral = report(0);
-  dualsense::InputReport pressed = report(static_cast<uint32_t>(dualsense::InputBody::Button::ButtonCross));
+  dualsense::InputReport pressed =
+      report(static_cast<uint32_t>(dualsense::InputBody::Button::ButtonCross));
   dualsense::InputReport released = report(0);
 
   dualsense::UsbInputReport usbReport{};
