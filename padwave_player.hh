@@ -75,7 +75,7 @@ struct App;
 #define CHANNELS 2
 #define IN_FRAMES 512
 #define REPORT_SIZE 398
-#define RING_BLOCKS 192
+#define RING_BLOCKS 384
 #define RING_HIGH 160
 #define RING_PRIME 24
 #define DECODE_BUDGET_MS 3

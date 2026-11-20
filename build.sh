@@ -32,5 +32,5 @@ echo "==> padwave"
 "$CXX" -std=c++23 -Wno-c23-extensions -O3 -fno-exceptions -fno-rtti -fno-threadsafe-statics \
   $PIPEWIRE_FLAGS \
   -Weverything -Werror -Wno-unsafe-buffer-usage -Wno-c++98-compat-pedantic -Wno-padded -Wno-format-nonliteral \
-  -Wno-disabled-macro-expansion \
+  -Wno-disabled-macro-expansion -Wno-exit-time-destructors -Wno-global-constructors \
   -I. $CFLAGS -o padwave padwave.cc $LIBS

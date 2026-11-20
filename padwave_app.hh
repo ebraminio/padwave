@@ -59,6 +59,13 @@ private:
   static constexpr int kMaxLiveUrl = 2048;
   static constexpr int kMaxLiveChannels = 400;
 
+  struct CurlBuffer {
+    char *data;
+    size_t cap;
+    size_t len;
+    bool overflow;
+  };
+
   struct Track {
     char path[kMaxPath];
     char title[kMaxTitle];
@@ -256,10 +263,21 @@ private:
   bool live_audio_synced     = false;
   long live_audio_seq        = 0;
   long live_audio_at         = 0;
+  CURLM *live_multi          = nullptr;
+  CURL *live_pl_curl         = nullptr;
+  CURL *live_seg_curl        = nullptr;
+  bool live_pl_inflight      = false;
+  bool live_seg_inflight     = false;
+  CurlBuffer live_pl_buf{};
+  CurlBuffer live_seg_buf{};
+  bool live_next_ready       = false;
+  long live_next_seq         = 0;
+  double live_next_dur       = 0;
+  char live_next_url[kMaxPath * 2] = "";
   int history[kMaxHistory];
   int history_len = 0;
 
-  Player player;
+  static inline Player player;
   Input input;
   int player_timer_fd   = -1;
   bool sink_node_active = false;
@@ -406,6 +424,9 @@ public:
   bool init() {
     signal(SIGPIPE, SIG_IGN);
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    this->live_multi = curl_multi_init();
+    this->live_pl_buf = {static_cast<char *>(malloc(1024 * 1024)), 1024 * 1024, 0, false};
+    this->live_seg_buf = {static_cast<char *>(malloc(1024 * 1024)), 1024 * 1024, 0, false};
 
     const char *roots = getenv("PADWAVE_ROOTS");
     if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
@@ -503,6 +524,15 @@ public:
     snprintf(this->stream_url, sizeof(this->stream_url), "%s", saved_stream);
     configSave();
     micReset();
+    if (this->live_multi) {
+      curl_multi_cleanup(this->live_multi);
+      this->live_multi = nullptr;
+    }
+    free(this->live_pl_buf.data);
+    free(this->live_seg_buf.data);
+    this->live_pl_buf.data  = nullptr;
+    this->live_seg_buf.data = nullptr;
+    curl_global_cleanup();
   }
 
   void resetLinkStats() {
@@ -568,7 +598,7 @@ public:
   }
 
   void tick() {
-    serviceLiveAudio();
+    serviceLiveMulti();
     long now = nowMs();
     if (this->stream_resume_pending && !this->live_active && now >= this->stream_resume_at) {
       if (!this->player) playerStart();
@@ -651,6 +681,7 @@ public:
     }
     if (this->player && fd == this->player_timer_fd) {
       this->player.step();
+      serviceLiveMulti();
       serviceOutput();
       serviceLeds();
       return;
@@ -1934,6 +1965,7 @@ done:
   }
 
   void stopLive(bool preserve_mode = false) {
+    this->resetLiveCurl();
     this->live_active      = false;
     this->live_current     = -1;
     this->live_audio_synced = false;
@@ -1961,6 +1993,8 @@ done:
     this->live_audio_synced = false;
     this->live_audio_seq    = 0;
     this->live_audio_at     = 0;
+    this->live_next_ready   = false;
+    this->live_next_url[0]  = 0;
     this->live_error[0]     = 0;
     this->live_active       = true;
     snprintf(this->playback_mode, sizeof(this->playback_mode), "stream");
@@ -1969,30 +2003,95 @@ done:
     return true;
   }
 
-  void serviceLiveAudio() {
-    if (!this->live_active || !this->sink_playback || !this->player.sinkMode()) return;
-    long now = nowMs();
-    if (now < this->live_audio_at) return;
-
-    constexpr size_t kPlaylistMax = 1024 * 1024;
-    char *body = static_cast<char *>(malloc(kPlaylistMax));
-    if (!body) {
-      this->live_audio_at = now + 1000;
-      return;
+  static size_t curlBufferWrite(char *ptr, size_t size, size_t nmemb, void *userdata) {
+    CurlBuffer *b = static_cast<CurlBuffer *>(userdata);
+    size_t n      = size * nmemb;
+    if (b->len + n >= b->cap) {
+      b->overflow = true;
+      return 0;
     }
-    int n = this->liveSourcePlaylist(body, kPlaylistMax);
-    if (n <= 0) {
-      free(body);
-      this->live_audio_at = now + 1000;
-      return;
-    }
+    memcpy(b->data + b->len, ptr, n);
+    b->len += n;
+    b->data[b->len] = 0;
+    return n;
+  }
 
+  void configureLiveCurl(CURL *h, const char *url, CurlBuffer *buffer) const {
+    buffer->len      = 0;
+    buffer->overflow = false;
+    if (buffer->cap) buffer->data[0] = 0;
+    curl_easy_setopt(h, CURLOPT_URL, url);
+    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlBufferWrite);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, buffer);
+    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(1024 * 1024));
+    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+    this->applyCurlProxy(h);
+  }
+
+  void resetLiveCurl() {
+    if (!this->live_multi) return;
+    if (this->live_pl_curl) {
+      curl_multi_remove_handle(this->live_multi, this->live_pl_curl);
+      curl_easy_cleanup(this->live_pl_curl);
+      this->live_pl_curl = nullptr;
+    }
+    if (this->live_seg_curl) {
+      curl_multi_remove_handle(this->live_multi, this->live_seg_curl);
+      curl_easy_cleanup(this->live_seg_curl);
+      this->live_seg_curl = nullptr;
+    }
+    this->live_pl_inflight  = false;
+    this->live_seg_inflight = false;
+    this->live_next_ready   = false;
+  }
+
+  bool startLivePlaylistFetch() {
+    if (!this->live_multi || !this->live_active || this->live_pl_inflight) return false;
+    CURL *h = curl_easy_init();
+    if (!h) return false;
+    this->configureLiveCurl(h, this->live_upstream_url, &this->live_pl_buf);
+    if (curl_multi_add_handle(this->live_multi, h) != CURLM_OK) {
+      curl_easy_cleanup(h);
+      return false;
+    }
+    this->live_pl_curl     = h;
+    this->live_pl_inflight = true;
+    return true;
+  }
+
+  bool startLiveSegmentFetch() {
+    if (!this->live_multi || !this->live_active || this->live_seg_inflight || !this->live_next_url[0])
+      return false;
+    CURL *h = curl_easy_init();
+    if (!h) return false;
+    this->configureLiveCurl(h, this->live_next_url, &this->live_seg_buf);
+    if (curl_multi_add_handle(this->live_multi, h) != CURLM_OK) {
+      curl_easy_cleanup(h);
+      return false;
+    }
+    this->live_seg_curl     = h;
+    this->live_seg_inflight = true;
+    return true;
+  }
+
+  void parseLivePlaylist() {
+    this->live_next_ready = false;
+    this->live_next_url[0] = 0;
+    char *body = this->live_pl_buf.data;
+    if (!body) return;
     long base = 0;
     long index = 0;
-    long chosen_seq = -1;
     double duration = 0.0;
+    long chosen_seq = -1;
     double chosen_duration = 0.0;
-    char chosen[4096] = "";
+    char chosen[kMaxPath] = "";
     char *save = nullptr;
     for (char *line = strtok_r(body, "\n", &save); line; line = strtok_r(nullptr, "\n", &save)) {
       line = trimLine(line);
@@ -2005,47 +2104,91 @@ done:
         duration = atof(line + 8);
         continue;
       }
-      if (strncmp(line, "/hls-src/seg?u=", 15) != 0) continue;
+      if (*line == '#') continue;
+      char absolute[kMaxPath * 2];
+      resolveRelative(this->live_upstream_url, line, absolute, sizeof(absolute));
       long seq = base + index++;
       if (!this->live_audio_synced) {
         chosen_seq = seq;
         chosen_duration = duration;
-        snprintf(chosen, sizeof(chosen), "%s", line);
+        snprintf(chosen, sizeof(chosen), "%s", absolute);
       } else if (seq > this->live_audio_seq && chosen_seq < 0) {
         chosen_seq = seq;
         chosen_duration = duration;
-        snprintf(chosen, sizeof(chosen), "%s", line);
+        snprintf(chosen, sizeof(chosen), "%s", absolute);
       }
     }
-    free(body);
-
     if (chosen_seq < 0) {
-      this->live_audio_at = now + 1000;
+      this->live_audio_at = nowMs() + 1000;
       return;
     }
-    int blocks = static_cast<int>(chosen_duration * RATE / IN_FRAMES) + 2;
-    if (this->player.sinkFreeBlocks() < blocks) {
-      this->live_audio_at = now + 250;
+    this->live_next_seq  = chosen_seq;
+    this->live_next_dur  = chosen_duration;
+    snprintf(this->live_next_url, sizeof(this->live_next_url), "%s", chosen);
+    this->live_next_ready = true;
+  }
+
+  void serviceLiveMulti() {
+    if (!this->live_multi || !this->live_active || !this->sink_playback ||
+        !this->player.sinkMode())
       return;
+    int running = 0;
+    curl_multi_perform(this->live_multi, &running);
+    CURLMsg *msg = nullptr;
+    int left     = 0;
+    while ((msg = curl_multi_info_read(this->live_multi, &left)) != nullptr) {
+      if (msg->msg != CURLMSG_DONE) continue;
+      CURL *h = msg->easy_handle;
+      long code = 0;
+      curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
+      bool ok = msg->data.result == CURLE_OK && code >= 200 && code < 300;
+      if (h == this->live_pl_curl) {
+        curl_multi_remove_handle(this->live_multi, h);
+        curl_easy_cleanup(h);
+        this->live_pl_curl     = nullptr;
+        this->live_pl_inflight = false;
+        if (ok && !this->live_pl_buf.overflow)
+          this->parseLivePlaylist();
+        else
+          this->live_audio_at = nowMs() + 1000;
+      } else if (h == this->live_seg_curl) {
+        curl_multi_remove_handle(this->live_multi, h);
+        curl_easy_cleanup(h);
+        this->live_seg_curl     = nullptr;
+        this->live_seg_inflight = false;
+        if (ok && !this->live_seg_buf.overflow && this->live_next_url[0]) {
+          const char *dir = "/tmp/padwave-src";
+          mkdir(dir, 0755);
+          char hash[17];
+          makeId(this->live_next_url, hash);
+          char file_path[512];
+          snprintf(file_path, sizeof(file_path), "%s/%s.ts", dir, hash);
+          FILE *f = fopen(file_path, "wb");
+          bool wrote = false;
+          if (f) {
+            wrote = fwrite(this->live_seg_buf.data, 1, this->live_seg_buf.len, f) ==
+                    this->live_seg_buf.len;
+            fclose(f);
+          }
+          if (wrote && this->decodeLiveSegment(file_path)) {
+            this->live_audio_synced = true;
+            this->live_audio_seq    = this->live_next_seq;
+            this->live_next_ready   = false;
+            this->live_audio_at     = nowMs() + 500;
+          } else {
+            this->live_audio_at = nowMs() + 1000;
+          }
+        }
+      }
     }
 
-    char url[kMaxPath * 2];
-    if (!urlDecode(chosen + 15, url, sizeof(url)) || !validLiveUrl(url)) {
-      this->live_audio_at = now + 1000;
+    if (this->live_pl_inflight || this->live_seg_inflight) return;
+    if (this->live_next_ready) {
+      int blocks = static_cast<int>(this->live_next_dur * RATE / IN_FRAMES) + 2;
+      if (this->player.sinkFreeBlocks() >= blocks) this->startLiveSegmentFetch();
       return;
     }
-    char file_path[512];
-    if (!this->fetchLiveSegment(url, file_path, sizeof(file_path))) {
-      this->live_audio_at = now + 1000;
-      return;
-    }
-    if (this->decodeLiveSegment(file_path)) {
-      this->live_audio_synced = true;
-      this->live_audio_seq    = chosen_seq;
-      this->live_audio_at     = now + 1900;
-    } else {
-      this->live_audio_at = now + 500;
-    }
+    if (nowMs() >= this->live_audio_at) this->startLivePlaylistFetch();
   }
 
   int findLiveUrl(const char *url) const {
