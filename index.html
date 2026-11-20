@@ -659,7 +659,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 <script>
 const $ = (s) => document.querySelector(s);
 
@@ -714,7 +713,6 @@ let liveChannels = [];
 let liveLoaded = false;
 let lastLiveCurrent = null;
 let liveFilterText = "";
-let liveHls = null;
 let liveVideoSrc = null;
 let filterText = "";
 let lastSensorsAt = 0;
@@ -838,10 +836,6 @@ async function loadLive() {
 }
 
 function destroyLiveVideo() {
-  if (liveHls) {
-    liveHls.destroy();
-    liveHls = null;
-  }
   const video = $("#liveVideo");
   video.pause();
   video.removeAttribute("src");
@@ -864,19 +858,11 @@ function syncLiveVideo(live) {
   if (liveVideoSrc === url) return;
   destroyLiveVideo();
   liveVideoSrc = url;
-  if (window.Hls && window.Hls.isSupported()) {
-    liveHls = new Hls({ enableWorker: true, lowLatencyMode: true });
-    liveHls.loadSource(url);
-    liveHls.attachMedia(video);
-    liveHls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-    liveHls.on(Hls.Events.ERROR, (_event, data) => {
-      if (data.fatal) toast("video: " + data.details);
-    });
-  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = url;
     video.play().catch(() => {});
   } else {
-    toast("HLS playback unsupported; use VLC");
+    toast("native HLS unsupported; use VLC");
   }
 }
 

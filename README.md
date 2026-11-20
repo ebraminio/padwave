@@ -51,8 +51,8 @@ bandwidth is not doubled. No playlist URL is compiled into the binary. Open
 `http://<pi>:8090/index.m3u8` in VLC or ffplay; mute VLC if you are listening
 through the controller. Install `mpv` at runtime with `sudo apt install mpv`.
 The tab also shows channel logos, radio markers, provider/country metadata, a
-direct-URL field, and an embedded muted HLS player (hls.js for browsers without
-native HLS; the VLC link remains available).
+direct-URL field, and an embedded muted HLS player using native HLS (Safari).
+The VLC link remains available for other browsers.
 
 ## Build and run
 
