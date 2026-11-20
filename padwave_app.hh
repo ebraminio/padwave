@@ -1707,6 +1707,10 @@ private:
     if (!out || cap == 0) return 0;
     out[0] = 0;
     if (!this->live_upstream_url[0]) return 0;
+    char resolved[kMaxPath];
+    resolveLiveStream(this->live_upstream_url, resolved, sizeof(resolved));
+    if (resolved[0] && strcmp(resolved, this->live_upstream_url) != 0)
+      snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", resolved);
     constexpr size_t kMaxBody = 512 * 1024;
     char *body = static_cast<char *>(malloc(kMaxBody));
     if (!body) return 0;
