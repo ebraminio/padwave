@@ -247,12 +247,11 @@ private:
   char live_proxy_pass[128]         = "";
   int http_port                     = 8787;
   char live_error[160]              = "";
-  pid_t live_pid             = -1;
   int live_current           = -1;
   bool live_active           = false;
-  long live_started_at       = 0;
-  long live_restart_at       = 0;
-  int live_restarts          = 0;
+  bool live_audio_synced     = false;
+  long live_audio_seq        = 0;
+  long live_audio_at         = 0;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -556,17 +555,8 @@ public:
   }
 
   void tick() {
-    reapLive();
+    serviceLiveAudio();
     long now = nowMs();
-    if (this->live_active && this->live_pid < 0 && this->live_restart_at > 0 &&
-        now >= this->live_restart_at && this->live_source_url[0]) {
-      this->live_restart_at = 0;
-      if (!this->startLiveProcess(this->live_source_url)) {
-        this->live_active  = false;
-        this->live_current = -1;
-        this->sinkPlaybackStop();
-      }
-    }
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
     serviceOutput();
@@ -1848,48 +1838,21 @@ done:
     return ok;
   }
 
-  bool liveSourceSegment(const char *encoded, char *file_path, size_t cap) {
-    if (!encoded || !*encoded || !this->live_active) return false;
-    char url[kMaxPath * 2];
-    if (!urlDecode(encoded, url, sizeof(url)) || !validLiveUrl(url)) return false;
+  bool fetchLiveSegment(const char *url, char *file_path, size_t cap) {
     const char *dir = "/tmp/padwave-src";
     mkdir(dir, 0755);
     char hash[17];
     makeId(url, hash);
     snprintf(file_path, cap, "%s/%s.ts", dir, hash);
-    if (access(file_path, R_OK) != 0 && !fetchUrlToFile(url, file_path)) return false;
-    this->decodeLiveSegment(file_path);
-    return true;
+    if (access(file_path, R_OK) == 0) return true;
+    return fetchUrlToFile(url, file_path);
   }
 
-  static pid_t spawnProcess(const char *const argv[]) {
-    pid_t pid = fork();
-    if (pid != 0) return pid;
-    for (int fd = 3; fd < 1024; fd++) close(fd);
-    int nullfd = open("/dev/null", O_WRONLY);
-    if (nullfd >= 0) {
-      dup2(nullfd, STDOUT_FILENO);
-      dup2(nullfd, STDERR_FILENO);
-      if (nullfd > STDERR_FILENO) close(nullfd);
-    }
-    execvp(argv[0], const_cast<char *const *>(argv));
-    _exit(127);
-  }
-
-  static void terminateProcess(pid_t *pid) {
-    if (!pid || *pid <= 0) return;
-    kill(*pid, SIGTERM);
-    int status = 0;
-    for (int i = 0; i < 20; i++) {
-      if (waitpid(*pid, &status, WNOHANG) == *pid) {
-        *pid = -1;
-        return;
-      }
-      usleep(10000);
-    }
-    kill(*pid, SIGKILL);
-    waitpid(*pid, &status, 0);
-    *pid = -1;
+  bool liveSourceSegment(const char *encoded, char *file_path, size_t cap) {
+    if (!encoded || !*encoded || !this->live_active) return false;
+    char url[kMaxPath * 2];
+    if (!urlDecode(encoded, url, sizeof(url)) || !validLiveUrl(url)) return false;
+    return fetchLiveSegment(url, file_path, cap);
   }
 
   static void resolveRelative(const char *base, const char *ref, char *out, size_t cap) {
@@ -1943,75 +1906,111 @@ done:
     free(body);
   }
 
-  static constexpr const char *kLiveDir = "/tmp/padwave-live";
-  static constexpr const char *kLivePlaylist = "/tmp/padwave-live/index.m3u8";
-
-  void reapLive() {
-    if (this->live_pid <= 0) return;
-    int status = 0;
-    pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
-    if (r != this->live_pid) return;
-    this->live_pid = -1;
-    this->live_decoded[0] = 0;
-    if (!this->live_active) return;
-    long now = nowMs();
-    if (now - this->live_started_at >= 30000) this->live_restarts = 0;
-    if (this->live_restarts >= 3) {
-      snprintf(this->live_error, sizeof(this->live_error), "live stream stopped");
-      this->live_active     = false;
-      this->live_current    = -1;
-      this->live_restart_at = 0;
-      this->sinkPlaybackStop();
-      return;
-    }
-    this->live_restarts++;
-    this->live_restart_at = now + 1500;
-  }
-
   void stopLive() {
-    terminateProcess(&this->live_pid);
     this->live_active      = false;
     this->live_current     = -1;
-    this->live_restart_at  = 0;
-    this->live_restarts    = 0;
+    this->live_audio_synced = false;
+    this->live_audio_seq   = 0;
+    this->live_audio_at    = 0;
     this->live_decoded[0]  = 0;
     this->live_error[0]    = 0;
     this->sinkPlaybackStop();
   }
 
-  bool startLiveProcess(const char *channel_url) {
+  bool startLiveSource(const char *channel_url) {
     if (!channel_url || !validLiveUrl(channel_url)) return false;
-    this->live_decoded[0] = 0;
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "rm -rf %s", kLiveDir);
-    int rc = system(cmd);
-    (void)rc;
-    mkdir(kLiveDir, 0755);
     system("rm -rf /tmp/padwave-src");
-
+    mkdir("/tmp/padwave-src", 0755);
     snprintf(this->live_source_url, sizeof(this->live_source_url), "%s", channel_url);
     char upstream[kMaxPath];
     resolveLiveStream(channel_url, upstream, sizeof(upstream));
     snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", upstream);
-    char stream[128];
-    snprintf(stream, sizeof(stream), "http://127.0.0.1:%d/hls-src/index.m3u8", this->http_port);
-    this->live_error[0] = 0;
-    const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                          "-allowed_extensions", "ALL", "-live_start_index", "-1",
-                          "-i", stream, "-c", "copy",
-                          "-f", "hls", "-hls_time", "1", "-hls_list_size", "5",
-                          "-hls_flags", "delete_segments+omit_endlist",
-                          "-hls_segment_filename", "/tmp/padwave-live/seg%05d.ts",
-                          "/tmp/padwave-live/index.m3u8", nullptr};
-    pid_t pid = spawnProcess(args);
-    if (pid < 0) {
-      snprintf(this->live_error, sizeof(this->live_error), "could not start ffmpeg");
-      return false;
-    }
-    this->live_pid = pid;
-    this->live_active     = true;
-    this->live_started_at = nowMs();
+    this->live_decoded[0]   = 0;
+    this->live_audio_synced = false;
+    this->live_audio_seq    = 0;
+    this->live_audio_at     = 0;
+    this->live_error[0]     = 0;
+    this->live_active       = true;
     return true;
+  }
+
+  void serviceLiveAudio() {
+    if (!this->live_active || !this->sink_playback || !this->player.sinkMode()) return;
+    long now = nowMs();
+    if (now < this->live_audio_at) return;
+
+    constexpr size_t kPlaylistMax = 1024 * 1024;
+    char *body = static_cast<char *>(malloc(kPlaylistMax));
+    if (!body) {
+      this->live_audio_at = now + 1000;
+      return;
+    }
+    int n = this->liveSourcePlaylist(body, kPlaylistMax);
+    if (n <= 0) {
+      free(body);
+      this->live_audio_at = now + 1000;
+      return;
+    }
+
+    long base = 0;
+    long index = 0;
+    long chosen_seq = -1;
+    double duration = 0.0;
+    double chosen_duration = 0.0;
+    char chosen[4096] = "";
+    char *save = nullptr;
+    for (char *line = strtok_r(body, "\n", &save); line; line = strtok_r(nullptr, "\n", &save)) {
+      line = trimLine(line);
+      if (!*line) continue;
+      if (strncmp(line, "#EXT-X-MEDIA-SEQUENCE:", 22) == 0) {
+        base = strtol(line + 22, nullptr, 10);
+        continue;
+      }
+      if (strncmp(line, "#EXTINF:", 8) == 0) {
+        duration = atof(line + 8);
+        continue;
+      }
+      if (strncmp(line, "/hls-src/seg?u=", 15) != 0) continue;
+      long seq = base + index++;
+      if (!this->live_audio_synced) {
+        chosen_seq = seq;
+        chosen_duration = duration;
+        snprintf(chosen, sizeof(chosen), "%s", line);
+      } else if (seq > this->live_audio_seq && chosen_seq < 0) {
+        chosen_seq = seq;
+        chosen_duration = duration;
+        snprintf(chosen, sizeof(chosen), "%s", line);
+      }
+    }
+    free(body);
+
+    if (chosen_seq < 0) {
+      this->live_audio_at = now + 1000;
+      return;
+    }
+    int blocks = static_cast<int>(chosen_duration * RATE / IN_FRAMES) + 2;
+    if (this->player.sinkFreeBlocks() < blocks) {
+      this->live_audio_at = now + 250;
+      return;
+    }
+
+    char url[kMaxPath * 2];
+    if (!urlDecode(chosen + 15, url, sizeof(url)) || !validLiveUrl(url)) {
+      this->live_audio_at = now + 1000;
+      return;
+    }
+    char file_path[512];
+    if (!this->fetchLiveSegment(url, file_path, sizeof(file_path))) {
+      this->live_audio_at = now + 1000;
+      return;
+    }
+    if (this->decodeLiveSegment(file_path)) {
+      this->live_audio_synced = true;
+      this->live_audio_seq    = chosen_seq;
+      this->live_audio_at     = now + 1900;
+    } else {
+      this->live_audio_at = now + 500;
+    }
   }
 
   bool startLive(int index) {
@@ -2022,9 +2021,7 @@ done:
       snprintf(this->live_error, sizeof(this->live_error), "controller/player is not ready");
       return false;
     }
-    this->live_restarts   = 0;
-    this->live_restart_at = 0;
-    if (!this->startLiveProcess(this->live_channels[index].url)) {
+    if (!this->startLiveSource(this->live_channels[index].url)) {
       this->sinkPlaybackStop();
       return false;
     }
@@ -2039,9 +2036,7 @@ done:
       snprintf(this->live_error, sizeof(this->live_error), "controller/player is not ready");
       return false;
     }
-    this->live_restarts   = 0;
-    this->live_restart_at = 0;
-    if (!this->startLiveProcess(url)) {
+    if (!this->startLiveSource(url)) {
       this->sinkPlaybackStop();
       return false;
     }

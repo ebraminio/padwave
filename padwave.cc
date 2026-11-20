@@ -262,6 +262,27 @@ private:
     return n + static_cast<int>(body_len);
   }
 
+  void serveSourcePlaylist(Conn *c) {
+    constexpr size_t kSourcePlaylistMax = 1024 * 1024;
+    char *body = reinterpret_cast<char *>(malloc(kSourcePlaylistMax));
+    int len    = body ? app->liveSourcePlaylist(body, kSourcePlaylistMax) : 0;
+    const char *source_path = "/tmp/padwave-src/index.m3u8";
+    if (len > 0) {
+      mkdir("/tmp/padwave-src", 0755);
+      FILE *f = fopen(source_path, "w");
+      if (f) {
+        fwrite(body, 1, static_cast<size_t>(len), f);
+        fclose(f);
+      }
+    }
+    free(body);
+    if (access(source_path, R_OK) != 0) {
+      notFound(c);
+      return;
+    }
+    serveFile(c, source_path, "application/vnd.apple.mpegurl", true);
+  }
+
   void notFound(Conn *c) {
     static const char body[] = "not found\n";
     c->static_reply          = true;
@@ -433,24 +454,7 @@ private:
     if (strncmp(path, "/hls-src/", 9) == 0) {
       const char *rest = path + 9;
       if (strcmp(rest, "index.m3u8") == 0) {
-        constexpr size_t kSourcePlaylistMax = 1024 * 1024;
-        char *body = reinterpret_cast<char *>(malloc(kSourcePlaylistMax));
-        int len    = body ? app->liveSourcePlaylist(body, kSourcePlaylistMax) : 0;
-        const char *source_path = "/tmp/padwave-src/index.m3u8";
-        if (len > 0) {
-          mkdir("/tmp/padwave-src", 0755);
-          FILE *f = fopen(source_path, "w");
-          if (f) {
-            fwrite(body, 1, static_cast<size_t>(len), f);
-            fclose(f);
-          }
-        }
-        free(body);
-        if (access(source_path, R_OK) != 0) {
-          notFound(c);
-          return;
-        }
-        serveFile(c, source_path, "application/vnd.apple.mpegurl", true);
+        serveSourcePlaylist(c);
         return;
       }
       if (strncmp(rest, "seg?u=", 6) == 0) {
@@ -468,26 +472,11 @@ private:
     }
 
     if (strncmp(path, "/hls/", 5) == 0) {
-      const char *name = path + 5;
-      size_t name_len   = strcspn(name, "?");
-      if (name_len == 0 || name_len >= 256 || memchr(name, '/', name_len) ||
-          memchr(name, '\\', name_len) ||
-          (name_len >= 2 && memcmp(name, "..", 2) == 0)) {
-        notFound(c);
+      if (strcmp(path + 5, "index.m3u8") == 0) {
+        serveSourcePlaylist(c);
         return;
       }
-      char file_name[256];
-      memcpy(file_name, name, name_len);
-      file_name[name_len] = 0;
-      const char *dot = strrchr(file_name, '.');
-      const char *mime = "application/octet-stream";
-      if (dot && strcasecmp(dot, ".m3u8") == 0)
-        mime = "application/vnd.apple.mpegurl";
-      else if (dot && strcasecmp(dot, ".ts") == 0)
-        mime = "video/mp2t";
-      char file_path[512];
-      snprintf(file_path, sizeof(file_path), "/tmp/padwave-live/%s", file_name);
-      serveFile(c, file_path, mime, true);
+      notFound(c);
       return;
     }
 

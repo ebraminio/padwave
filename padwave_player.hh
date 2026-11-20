@@ -1467,6 +1467,11 @@ public:
 
   bool sinkMode() const { return sink_mode_; }
 
+  int sinkFreeBlocks() const {
+    if (!sink_mode_) return 0;
+    return RING_BLOCKS - 1 - ringLen();
+  }
+
   bool sinkInputSeen() const { return sink_input_seen_; }
 
   void clearSinkInput() { sink_input_seen_ = false; }

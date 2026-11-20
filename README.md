@@ -45,11 +45,10 @@ The **Live** tab is optional. Paste an M3U/M3U8 playlist URL into the tab, save
 it, and select a channel; padwave saves the URL in its config. libcurl resolves
 the master playlist to its lowest-bitrate variant and proxies the upstream
 playlists/segments through `/hls-src/`, including HTTP and SOCKS proxy support.
-ffmpeg reads only that local source and writes local HLS segments for video,
-while padwave decodes the cached source TS segments directly into its Player
-sink ring for controller audio. padwave serves the HLS at `/hls/index.m3u8`
-for VLC/Safari. Only libcurl reads the upstream stream, so bandwidth is not
-doubled. No playlist URL is compiled into the binary. Open
+padwave serves the trimmed source HLS directly at `/hls/index.m3u8` for
+VLC/Safari, and decodes the cached source TS segments itself into its Player
+sink ring for controller audio. Only libcurl reads the upstream stream, so
+bandwidth is not doubled. No playlist URL is compiled into the binary. Open
 `http://<pi>:8787/hls/index.m3u8` in VLC or ffplay; mute VLC if you are
 listening through the controller.
 The tab also shows channel logos, radio markers, provider/country metadata, a
@@ -211,9 +210,9 @@ literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `/api/schema` describes the lab fields; `POST /api/output` is the controller lab.
 The live commands are `live_url` (value), `live_refresh`, `live_play` (id),
 `live_direct` (value), `live_proxy` (`url`, optional `user`/`pass`) and
-`live_stop`. libcurl proxies the upstream HLS through padwave, ffmpeg remuxes it
-to local HLS for video, and padwave decodes the source TS segments in-process
-for the controller. The parsed playlist is cached at
+`live_stop`. libcurl proxies the upstream HLS through padwave, padwave serves
+the trimmed source HLS directly for video, and decodes cached source TS
+segments in-process for the controller. The parsed playlist is cached at
 `~/.cache/padwave/live.m3u`, so opening the tab does not refetch it.
 
 ## Behavior
