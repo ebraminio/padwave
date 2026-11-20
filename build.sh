@@ -6,14 +6,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CXX="${CXX:-clang}"
-PKGS="libavformat libavcodec libswresample libavutil libavfilter"
+PKGS="libavformat libavcodec libswresample libavutil libavfilter libcurl"
 MISSING=""
 for pkg in $PKGS; do pkg-config --exists "$pkg" || MISSING="$MISSING $pkg"; done
 pkg-config --exists libpipewire-0.3 || MISSING="$MISSING libpipewire-0.3"
 if [ -n "$MISSING" ]; then
   echo "missing build dependencies:$MISSING" >&2
   echo "Raspberry Pi OS/Debian:" >&2
-  echo "  sudo apt install clang pkg-config build-essential libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev libopus-dev libbluetooth-dev libpipewire-0.3-dev" >&2
+  echo "  sudo apt install clang pkg-config build-essential libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev libopus-dev libbluetooth-dev libpipewire-0.3-dev libcurl4-openssl-dev" >&2
   exit 1
 fi
 if [ "$(uname -s)" = "Linux" ] && [ ! -r /usr/include/bluetooth/hci_lib.h ]; then
@@ -32,4 +32,5 @@ echo "==> padwave"
 "$CXX" -std=c++23 -Wno-c23-extensions -O3 -fno-exceptions -fno-rtti -fno-threadsafe-statics \
   $PIPEWIRE_FLAGS \
   -Weverything -Werror -Wno-unsafe-buffer-usage -Wno-c++98-compat-pedantic -Wno-padded -Wno-format-nonliteral \
+  -Wno-disabled-macro-expansion \
   -I. $CFLAGS -o padwave padwave.cc $LIBS

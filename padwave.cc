@@ -118,6 +118,7 @@ public:
     int signal_fd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
 
     if (!a.init()) return 1;
+    a.setHttpPort(port);
     app      = &a;
     start_ms = monotonicMs();
 
@@ -426,6 +427,43 @@ private:
         return;
       }
       serveFile(c, file_path, mime, false);
+      return;
+    }
+
+    if (strncmp(path, "/hls-src/", 9) == 0) {
+      const char *rest = path + 9;
+      if (strcmp(rest, "index.m3u8") == 0) {
+        constexpr size_t kSourcePlaylistMax = 1024 * 1024;
+        char *body = reinterpret_cast<char *>(malloc(kSourcePlaylistMax));
+        int len    = body ? app->liveSourcePlaylist(body, kSourcePlaylistMax) : 0;
+        const char *source_path = "/tmp/padwave-src/index.m3u8";
+        if (len > 0) {
+          mkdir("/tmp/padwave-src", 0755);
+          FILE *f = fopen(source_path, "w");
+          if (f) {
+            fwrite(body, 1, static_cast<size_t>(len), f);
+            fclose(f);
+          }
+        }
+        free(body);
+        if (access(source_path, R_OK) != 0) {
+          notFound(c);
+          return;
+        }
+        serveFile(c, source_path, "application/vnd.apple.mpegurl", true);
+        return;
+      }
+      if (strncmp(rest, "seg?u=", 6) == 0) {
+        char file_path[512];
+        const char *mime = "video/mp2t";
+        if (!app->liveSourceSegment(rest + 6, file_path, sizeof(file_path))) {
+          notFound(c);
+          return;
+        }
+        serveFile(c, file_path, mime, true);
+        return;
+      }
+      notFound(c);
       return;
     }
 

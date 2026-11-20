@@ -42,15 +42,16 @@ controller. Pressing a local playback control switches back to the file player;
 the sink node remains available. PipeWire and WirePlumber must be running.
 
 The **Live** tab is optional. Paste an M3U/M3U8 playlist URL into the tab, save
-it, and select a channel; padwave saves the URL in its config and starts one
-`ffmpeg` process. That process resolves the master playlist to its first
-(lowest-bitrate) HLS variant and writes local HLS segments; `mpv` plays those
-local segments for the controller audio, while a small static HTTP server exposes
-the same HLS at `/hls/index.m3u8` on padwave's own port for VLC. Only ffmpeg
-reads the upstream stream, so bandwidth is not doubled. No playlist URL is
-compiled into the binary. Open `http://<pi>:8787/hls/index.m3u8` in VLC or
-ffplay; mute VLC if you are listening through the controller. Install `mpv` at
-runtime with `sudo apt install mpv`.
+it, and select a channel; padwave saves the URL in its config. libcurl resolves
+the master playlist to its lowest-bitrate variant and proxies the upstream
+playlists/segments through `/hls-src/`, including HTTP and SOCKS proxy support.
+ffmpeg reads only that local source and writes local HLS segments; `mpv` plays
+those local segments for the controller audio, while padwave serves the same
+HLS at `/hls/index.m3u8` for VLC/Safari. Only libcurl reads the upstream
+stream, so bandwidth is not doubled. No playlist URL is compiled into the
+binary. Open `http://<pi>:8787/hls/index.m3u8` in VLC or ffplay; mute VLC if you
+are listening through the controller. Install `mpv` at runtime with
+`sudo apt install mpv`.
 The tab also shows channel logos, radio markers, provider/country metadata, a
 direct-URL field, and an embedded muted HLS player using native HLS (Safari).
 Clicking a channel fills the direct-URL field with its stream URL; the field
@@ -61,8 +62,8 @@ entries. The VLC link remains available for other browsers.
 
 Needs a C++23 compiler (`clang`), `pkg-config`, the FFmpeg development
 packages (`libavformat`, `libavcodec`, `libswresample`, `libavutil`,
-`libavfilter`), `libopus-dev`, `libpipewire-0.3-dev`, and on Linux
-`libbluetooth-dev`.
+`libavfilter`), `libopus-dev`, `libpipewire-0.3-dev`,
+`libcurl4-openssl-dev`, and on Linux `libbluetooth-dev`.
 
 On Raspberry Pi OS or Debian:
 
@@ -70,7 +71,7 @@ On Raspberry Pi OS or Debian:
 sudo apt update
 sudo apt install clang pkg-config build-essential \
   libavformat-dev libavcodec-dev libswresample-dev libavutil-dev libavfilter-dev \
-  libopus-dev libbluetooth-dev libpipewire-0.3-dev
+  libopus-dev libbluetooth-dev libpipewire-0.3-dev libcurl4-openssl-dev
 ```
 
 `bluez` is needed at runtime to pair the controller, but is not a build
@@ -209,9 +210,11 @@ literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `GET /api/library` and `/api/live` are TSV; `/api/config` persists settings;
 `/api/schema` describes the lab fields; `POST /api/output` is the controller lab.
 The live commands are `live_url` (value), `live_refresh`, `live_play` (id),
-`live_direct` (value) and `live_stop`; ffmpeg fetches/remuxes the channel once to
-local HLS, and mpv plays that local HLS for the controller. The parsed playlist
-is cached at `~/.cache/padwave/live.m3u`, so opening the tab does not refetch it.
+`live_direct` (value), `live_proxy` (`url`, optional `user`/`pass`) and
+`live_stop`. libcurl proxies the upstream HLS through padwave, ffmpeg remuxes it
+to local HLS, and mpv plays that local HLS for the controller. The parsed
+playlist is cached at `~/.cache/padwave/live.m3u`, so opening the tab does not
+refetch it.
 
 ## Behavior
 

@@ -24,6 +24,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <curl/curl.h>
 
 #ifdef __linux__
 #include <bluetooth/bluetooth.h>
@@ -47,6 +48,7 @@
 struct App {
   friend struct Player;
   friend struct Input;
+  friend struct Server;
 
 private:
   static constexpr int kMaxTracks  = 4096;
@@ -238,6 +240,11 @@ private:
   char live_url[kMaxLiveUrl]        = "";
   char live_direct_url[kMaxLiveUrl] = "";
   char live_source_url[kMaxLiveUrl] = "";
+  char live_upstream_url[kMaxPath]  = "";
+  char live_proxy[512]              = "";
+  char live_proxy_user[128]         = "";
+  char live_proxy_pass[128]         = "";
+  int http_port                     = 8787;
   char live_error[160]              = "";
   pid_t live_pid             = -1;
   pid_t live_audio_pid       = -1;
@@ -398,6 +405,7 @@ private:
 public:
   bool init() {
     signal(SIGPIPE, SIG_IGN);
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     const char *roots = getenv("PADWAVE_ROOTS");
     if (!roots || !*roots) roots = getenv("HOME") ? "$HOME/Music" : "/music";
@@ -445,6 +453,8 @@ public:
   }
 
   bool sinkAvailable() const { return this->sink_node_active; }
+
+  void setHttpPort(int port) { this->http_port = port; }
 
   static void sinkPush(void *owner, const float *samples, size_t frames) {
     static_cast<Player *>(owner)->pushSink(samples, frames);
@@ -740,6 +750,8 @@ public:
     kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
     kvText(buf, cap, &o, "live.url", this->live_url);
     kvText(buf, cap, &o, "live.direct_url", this->live_direct_url);
+    kvText(buf, cap, &o, "live.proxy", this->live_proxy);
+    kvText(buf, cap, &o, "live.proxy_user", this->live_proxy_user);
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
@@ -1364,6 +1376,20 @@ private:
     return true;
   }
 
+  static bool validProxyUrl(const char *url) {
+    if (!url || !*url) return true;
+    if (strlen(url) >= 512) return false;
+    const char *schemes[] = {"http://", "https://", "socks4://", "socks4a://",
+                             "socks5://", "socks5h://"};
+    bool ok = false;
+    for (const char *scheme : schemes)
+      if (strncasecmp(url, scheme, strlen(scheme)) == 0) ok = true;
+    if (!ok) return false;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(url); *p; p++)
+      if (*p <= 0x20 || *p == 0x7f) return false;
+    return true;
+  }
+
   static char *trimLine(char *s) {
     while (*s == ' ' || *s == '\t' || *s == '\r') s++;
     char *e = s + strlen(s);
@@ -1502,36 +1528,98 @@ private:
     return this->live_count > 0;
   }
 
-  static int fetchUrl(const char *url, char *body, size_t cap) {
-    if (cap == 0) return -1;
+  struct CurlWrite {
+    char *body;
+    size_t cap;
+    size_t len;
+    bool overflow;
+  };
+
+  static size_t curlWrite(char *ptr, size_t size, size_t nmemb, void *userdata) {
+    CurlWrite *w = static_cast<CurlWrite *>(userdata);
+    size_t n     = size * nmemb;
+    if (w->len + n >= w->cap) {
+      w->overflow = true;
+      return 0;
+    }
+    memcpy(w->body + w->len, ptr, n);
+    w->len += n;
+    return n;
+  }
+
+  static size_t curlFileWrite(char *ptr, size_t size, size_t nmemb, void *userdata) {
+    return fwrite(ptr, size, nmemb, static_cast<FILE *>(userdata));
+  }
+
+  void applyCurlProxy(CURL *h) const {
+    if (!this->live_proxy[0]) return;
+    curl_easy_setopt(h, CURLOPT_PROXY, this->live_proxy);
+    if (this->live_proxy_user[0]) {
+      char cred[300];
+      snprintf(cred, sizeof(cred), "%s:%s", this->live_proxy_user, this->live_proxy_pass);
+      curl_easy_setopt(h, CURLOPT_PROXYUSERPWD, cred);
+    }
+  }
+
+  int fetchUrl(const char *url, char *body, size_t cap) const {
+    if (!body || cap == 0) return -1;
     body[0] = 0;
-    int fds[2];
-    if (pipe(fds) < 0) return -1;
-    pid_t pid = fork();
-    if (pid == 0) {
-      close(fds[0]);
-      dup2(fds[1], STDOUT_FILENO);
-      for (int fd = 3; fd < 1024; fd++) close(fd);
-      execlp("curl", "curl", "-fsSL", "--max-time", "20", "--max-filesize", "2097152", "--",
-             url, static_cast<char *>(nullptr));
-      _exit(127);
+    CURL *h = curl_easy_init();
+    if (!h) return -1;
+    CurlWrite write{body, cap, 0, false};
+    curl_easy_setopt(h, CURLOPT_URL, url);
+    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlWrite);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, &write);
+    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(2 * 1024 * 1024));
+    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+    this->applyCurlProxy(h);
+    CURLcode rc = curl_easy_perform(h);
+    long code   = 0;
+    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
+    curl_easy_cleanup(h);
+    body[write.len] = 0;
+    if (rc != CURLE_OK || write.overflow || code < 200 || code >= 300) return -1;
+    return static_cast<int>(write.len);
+  }
+
+  bool fetchUrlToFile(const char *url, const char *path) const {
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+    CURL *h = curl_easy_init();
+    if (!h) {
+      fclose(f);
+      return false;
     }
-    close(fds[1]);
-    if (pid < 0) {
-      close(fds[0]);
-      return -1;
+    curl_easy_setopt(h, CURLOPT_URL, url);
+    curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(h, CURLOPT_USERAGENT, "padwave/1");
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curlFileWrite);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, f);
+    curl_easy_setopt(h, CURLOPT_MAXFILESIZE_LARGE, static_cast<curl_off_t>(16 * 1024 * 1024));
+    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+    this->applyCurlProxy(h);
+    CURLcode rc = curl_easy_perform(h);
+    long code   = 0;
+    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &code);
+    curl_easy_cleanup(h);
+    fclose(f);
+    if (rc != CURLE_OK || code < 200 || code >= 300) {
+      unlink(path);
+      return false;
     }
-    size_t n = 0;
-    while (n + 1 < cap) {
-      ssize_t r = read(fds[0], body + n, cap - n - 1);
-      if (r <= 0) break;
-      n += static_cast<size_t>(r);
-    }
-    close(fds[0]);
-    int status = 0;
-    if (waitpid(pid, &status, 0) != pid) return -1;
-    body[n] = 0;
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? static_cast<int>(n) : -1;
+    return true;
   }
 
   bool refreshLive() {
@@ -1560,6 +1648,141 @@ private:
       return false;
     }
     return true;
+  }
+
+  static bool urlEncode(const char *in, char *out, size_t cap) {
+    static const char hex[] = "0123456789ABCDEF";
+    size_t o = 0;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(in); *p; p++) {
+      if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+          (*p >= '0' && *p <= '9') || *p == '-' || *p == '_' || *p == '.' || *p == '~') {
+        if (o + 1 >= cap) return false;
+        out[o++] = static_cast<char>(*p);
+      } else {
+        if (o + 3 >= cap) return false;
+        out[o++] = '%';
+        out[o++] = hex[*p >> 4];
+        out[o++] = hex[*p & 15];
+      }
+    }
+    out[o] = 0;
+    return true;
+  }
+
+  static bool urlDecode(const char *in, char *out, size_t cap) {
+    size_t o = 0;
+    for (const char *p = in; *p; p++) {
+      unsigned char c;
+      if (*p == '%' && p[1] && p[2]) {
+        auto digit = [](char ch) -> int {
+          if (ch >= '0' && ch <= '9') return ch - '0';
+          if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+          if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+          return -1;
+        };
+        int hi = digit(p[1]), lo = digit(p[2]);
+        if (hi < 0 || lo < 0) return false;
+        c = static_cast<unsigned char>((hi << 4) | lo);
+        p += 2;
+      } else {
+        c = static_cast<unsigned char>(*p == '+' ? ' ' : *p);
+      }
+      if (o + 1 >= cap) return false;
+      out[o++] = static_cast<char>(c);
+    }
+    out[o] = 0;
+    return true;
+  }
+
+  static bool appendText(char *out, size_t cap, size_t *o, const char *text) {
+    size_t n = strlen(text);
+    if (*o + n >= cap) return false;
+    memcpy(out + *o, text, n);
+    *o += n;
+    out[*o] = 0;
+    return true;
+  }
+
+  int liveSourcePlaylist(char *out, size_t cap) {
+    if (!out || cap == 0) return 0;
+    out[0] = 0;
+    if (!this->live_upstream_url[0]) return 0;
+    constexpr size_t kMaxBody = 512 * 1024;
+    char *body = static_cast<char *>(malloc(kMaxBody));
+    if (!body) return 0;
+    int n = fetchUrl(this->live_upstream_url, body, kMaxBody);
+    if (n <= 0) {
+      free(body);
+      return 0;
+    }
+
+    size_t segments = 0;
+    for (const char *p = body; *p;) {
+      const char *e = strchr(p, '\n');
+      size_t len    = e ? static_cast<size_t>(e - p) : strlen(p);
+      size_t start  = 0;
+      while (start < len && (p[start] == ' ' || p[start] == '\t' || p[start] == '\r')) start++;
+      if (start < len && p[start] != '#') segments++;
+      if (!e) break;
+      p = e + 1;
+    }
+    constexpr size_t kKeep = 8;
+    size_t keep_from       = segments > kKeep ? segments - kKeep : 0;
+
+    size_t o = 0;
+    char pending[512] = "";
+    size_t segment_index = 0;
+    char *save = nullptr;
+    for (char *line = strtok_r(body, "\n", &save); line; line = strtok_r(nullptr, "\n", &save)) {
+      line = trimLine(line);
+      if (!*line) continue;
+      if (strncmp(line, "#EXT-X-MEDIA-SEQUENCE:", 22) == 0) {
+        long seq = strtol(line + 22, nullptr, 10);
+        char adjusted[64];
+        snprintf(adjusted, sizeof(adjusted), "#EXT-X-MEDIA-SEQUENCE:%ld", seq + static_cast<long>(keep_from));
+        if (!appendText(out, cap, &o, adjusted) || !appendText(out, cap, &o, "\n")) break;
+        continue;
+      }
+      if (strncmp(line, "#EXTINF:", 8) == 0) {
+        snprintf(pending, sizeof(pending), "%s", line);
+        continue;
+      }
+      if (*line == '#') {
+        if (!appendText(out, cap, &o, line) || !appendText(out, cap, &o, "\n")) break;
+        continue;
+      }
+      if (segment_index >= keep_from) {
+        if (pending[0]) {
+          if (!appendText(out, cap, &o, pending) || !appendText(out, cap, &o, "\n")) break;
+          pending[0] = 0;
+        }
+        char absolute[kMaxPath];
+        resolveRelative(this->live_upstream_url, line, absolute, sizeof(absolute));
+        char encoded[kMaxPath * 3];
+        if (!urlEncode(absolute, encoded, sizeof(encoded))) break;
+        char rewritten[kMaxPath * 3 + 32];
+        snprintf(rewritten, sizeof(rewritten), "/hls-src/seg?u=%s\n", encoded);
+        if (!appendText(out, cap, &o, rewritten)) break;
+      } else {
+        pending[0] = 0;
+      }
+      segment_index++;
+    }
+    free(body);
+    return static_cast<int>(o);
+  }
+
+  bool liveSourceSegment(const char *encoded, char *file_path, size_t cap) {
+    if (!encoded || !*encoded || !this->live_active) return false;
+    char url[kMaxPath * 2];
+    if (!urlDecode(encoded, url, sizeof(url)) || !validLiveUrl(url)) return false;
+    const char *dir = "/tmp/padwave-src";
+    mkdir(dir, 0755);
+    char hash[17];
+    makeId(url, hash);
+    snprintf(file_path, cap, "%s/%s.ts", dir, hash);
+    if (access(file_path, R_OK) == 0) return true;
+    return fetchUrlToFile(url, file_path);
   }
 
   static pid_t spawnProcess(const char *const argv[]) {
@@ -1609,7 +1832,7 @@ private:
     snprintf(out + dir_len, cap - dir_len, "%s", ref);
   }
 
-  static void resolveLiveStream(const char *channel_url, char *out, size_t cap) {
+  void resolveLiveStream(const char *channel_url, char *out, size_t cap) {
     snprintf(out, cap, "%s", channel_url);
     constexpr size_t kPlaylistMax = 512 * 1024;
     char *body                   = static_cast<char *>(malloc(kPlaylistMax));
@@ -1717,13 +1940,18 @@ private:
     int rc = system(cmd);
     (void)rc;
     mkdir(kLiveDir, 0755);
+    system("rm -rf /tmp/padwave-src");
 
     snprintf(this->live_source_url, sizeof(this->live_source_url), "%s", channel_url);
-    char stream[kMaxPath];
-    resolveLiveStream(channel_url, stream, sizeof(stream));
+    char upstream[kMaxPath];
+    resolveLiveStream(channel_url, upstream, sizeof(upstream));
+    snprintf(this->live_upstream_url, sizeof(this->live_upstream_url), "%s", upstream);
+    char stream[128];
+    snprintf(stream, sizeof(stream), "http://127.0.0.1:%d/hls-src/index.m3u8", this->http_port);
     this->live_error[0] = 0;
     const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                          "-allowed_extensions", "ALL", "-i", stream, "-c", "copy",
+                          "-allowed_extensions", "ALL", "-live_start_index", "-1",
+                          "-i", stream, "-c", "copy",
                           "-f", "hls", "-hls_time", "1", "-hls_list_size", "5",
                           "-hls_flags", "delete_segments+omit_endlist",
                           "-hls_segment_filename", "/tmp/padwave-live/seg%05d.ts",
@@ -2381,6 +2609,12 @@ private:
         snprintf(this->live_url, sizeof(this->live_url), "%s", value);
       } else if (strcmp(line, "live_direct_url") == 0) {
         snprintf(this->live_direct_url, sizeof(this->live_direct_url), "%s", value);
+      } else if (strcmp(line, "live_proxy") == 0) {
+        snprintf(this->live_proxy, sizeof(this->live_proxy), "%s", value);
+      } else if (strcmp(line, "live_proxy_user") == 0) {
+        snprintf(this->live_proxy_user, sizeof(this->live_proxy_user), "%s", value);
+      } else if (strcmp(line, "live_proxy_pass") == 0) {
+        snprintf(this->live_proxy_pass, sizeof(this->live_proxy_pass), "%s", value);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -2424,6 +2658,9 @@ private:
     fprintf(f, "speed=%d\n", this->speed);
     fprintf(f, "live_url=%s\n", this->live_url);
     fprintf(f, "live_direct_url=%s\n", this->live_direct_url);
+    fprintf(f, "live_proxy=%s\n", this->live_proxy);
+    fprintf(f, "live_proxy_user=%s\n", this->live_proxy_user);
+    fprintf(f, "live_proxy_pass=%s\n", this->live_proxy_pass);
     fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
@@ -2851,6 +3088,26 @@ private:
       configSave();
       if (!startLiveDirect(url))
         return snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+    if (strcmp(action, "live_proxy") == 0) {
+      char url[512], user[128], pass[128];
+      if (!kvGet(body, "url", url, sizeof(url)))
+        return snprintf(out, out_cap, "ok=false\nerror=missing url\n");
+      if (!validProxyUrl(url))
+        return snprintf(out, out_cap, "ok=false\nerror=unsupported proxy URL\n");
+      snprintf(this->live_proxy, sizeof(this->live_proxy), "%s", url);
+      if (!url[0]) {
+        this->live_proxy_user[0] = 0;
+        this->live_proxy_pass[0] = 0;
+      } else {
+        if (kvGet(body, "user", user, sizeof(user)))
+          snprintf(this->live_proxy_user, sizeof(this->live_proxy_user), "%s", user);
+        if (kvGet(body, "pass", pass, sizeof(pass)))
+          snprintf(this->live_proxy_pass, sizeof(this->live_proxy_pass), "%s", pass);
+      }
+      configSave();
       snprintf(this->last_action, sizeof(this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
     }

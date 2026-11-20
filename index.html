@@ -257,11 +257,13 @@
   .view-tabs button { padding: 8px 16px; border-radius: 999px; font-size: 13px; }
   .view-tabs button.on { background: rgba(124, 92, 255, .16); border-color: rgba(124, 92, 255, .55); color: var(--text); }
   .live-config, .live-direct { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-  .live-config input[type=url], .live-direct input[type=url], .live-toolbar input[type=search] {
+  .live-config input[type=url], .live-direct input[type=url], .live-direct input[type=text],
+  .live-direct input[type=password], .live-toolbar input[type=search] {
     flex: 1; min-width: 220px; background: #0e1118; border: 1px solid var(--line); color: var(--text);
     border-radius: 10px; padding: 9px 11px; font: 13px var(--mono); outline: none;
   }
-  .live-config input[type=url]:focus, .live-direct input[type=url]:focus { border-color: var(--accent); }
+  .live-config input[type=url]:focus, .live-direct input[type=url]:focus,
+  .live-direct input[type=text]:focus, .live-direct input[type=password]:focus { border-color: var(--accent); }
   .live-direct { margin-top: 8px; }
   .live-meta { margin-top: 12px; color: var(--muted); font-size: 12px; }
   .live-video-link { color: var(--accent-2); font-size: 12px; }
@@ -638,6 +640,12 @@
       <input type="url" id="liveDirectUrl" placeholder="direct .m3u8 / stream URL" autocomplete="off" spellcheck="false">
       <button id="liveDirectPlay">play direct</button>
     </div>
+    <div class="live-direct">
+      <input type="url" id="liveProxy" placeholder="proxy: http://… or socks5h://…" autocomplete="off" spellcheck="false">
+      <input type="text" id="liveProxyUser" placeholder="proxy user" autocomplete="off">
+      <input type="password" id="liveProxyPass" placeholder="proxy password" autocomplete="off">
+      <button id="liveProxySave">save proxy</button>
+    </div>
     <div class="live-meta" id="liveMeta">No playlist configured.</div>
     <div class="live-player" id="livePlayerWrap" hidden>
       <video id="liveVideo" controls playsinline muted></video>
@@ -887,6 +895,9 @@ function renderLiveStatus(s) {
   if (document.activeElement !== $("#liveUrl")) $("#liveUrl").value = live.url || "";
   if (document.activeElement !== $("#liveDirectUrl") && liveDirectPreview === null)
     $("#liveDirectUrl").value = live.direct_url || "";
+  if (document.activeElement !== $("#liveProxy")) $("#liveProxy").value = live.proxy || "";
+  if (document.activeElement !== $("#liveProxyUser"))
+    $("#liveProxyUser").value = live.proxy_user || "";
   $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
@@ -1839,6 +1850,16 @@ $("#liveDirectPlay").onclick = async () => {
   if (!url) { toast("enter a direct URL"); return; }
   const result = await send("live_direct", { value: url });
   if (result && result.ok === true) toast("direct stream started");
+};
+$("#liveProxySave").onclick = async () => {
+  const args = { url: $("#liveProxy").value.trim(), user: $("#liveProxyUser").value };
+  const pass = $("#liveProxyPass").value;
+  if (pass) args.pass = pass;
+  const result = await send("live_proxy", args);
+  if (result && result.ok === true) {
+    $("#liveProxyPass").value = "";
+    toast("proxy saved");
+  }
 };
 $("#liveFilter").addEventListener("input", (event) => {
   liveFilterText = event.target.value;
