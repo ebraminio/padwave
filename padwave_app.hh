@@ -237,6 +237,10 @@ private:
   int current = -1;
   static inline LiveChannel live_channels[kMaxLiveChannels];
   int live_count             = 0;
+  char playback_mode[8]             = "idle";
+  char stream_url[kMaxLiveUrl]      = "";
+  bool stream_resume_pending        = false;
+  long stream_resume_at             = 0;
   char live_url[kMaxLiveUrl]        = "";
   char live_direct_url[kMaxLiveUrl] = "";
   char live_source_url[kMaxLiveUrl] = "";
@@ -425,7 +429,9 @@ public:
     this->player_timer_fd = -1;
     configLoad();
     loadLiveCache();
-    if (this->resume_path[0]) {
+    if (strcmp(this->playback_mode, "stream") == 0 && validLiveUrl(this->stream_url)) {
+      this->stream_resume_pending = true;
+    } else if (this->resume_path[0]) {
       int idx = findTrack(this->resume_path);
       if (idx >= 0) {
         this->current        = idx;
@@ -474,7 +480,11 @@ public:
   }
 
   void shutdown() {
-    stopLive();
+    char saved_mode[8];
+    char saved_stream[kMaxLiveUrl];
+    snprintf(saved_mode, sizeof(saved_mode), "%s", this->playback_mode);
+    snprintf(saved_stream, sizeof(saved_stream), "%s", this->stream_url);
+    stopLive(true);
     sinkPlaybackStop();
     this->sink.stop();
     this->sink_node_active = false;
@@ -489,6 +499,9 @@ public:
     }
     this->player_timer_fd = -1;
     inputStop(false);
+    snprintf(this->playback_mode, sizeof(this->playback_mode), "%s", saved_mode);
+    snprintf(this->stream_url, sizeof(this->stream_url), "%s", saved_stream);
+    configSave();
     micReset();
   }
 
@@ -557,6 +570,18 @@ public:
   void tick() {
     serviceLiveAudio();
     long now = nowMs();
+    if (this->stream_resume_pending && !this->live_active && now >= this->stream_resume_at) {
+      if (!this->player) playerStart();
+      if (this->player && this->player.fd() >= 0) {
+        int idx = findLiveUrl(this->stream_url);
+        bool ok = idx >= 0 ? startLive(idx) : startLiveDirect(this->stream_url);
+        if (ok) {
+          this->stream_resume_pending = false;
+        } else {
+          this->stream_resume_at = now + 2000;
+        }
+      }
+    }
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
     serviceOutput();
@@ -739,6 +764,8 @@ public:
     kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.current", "%d", this->live_current >= 0 ? this->live_current + 1 : 0);
     kvText(buf, cap, &o, "live.error", this->live_error);
+    kvText(buf, cap, &o, "playback.mode", this->playback_mode);
+    kvText(buf, cap, &o, "playback.stream_url", this->stream_url);
 
     kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
     kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");
@@ -1906,7 +1933,7 @@ done:
     free(body);
   }
 
-  void stopLive() {
+  void stopLive(bool preserve_mode = false) {
     this->live_active      = false;
     this->live_current     = -1;
     this->live_audio_synced = false;
@@ -1914,7 +1941,12 @@ done:
     this->live_audio_at    = 0;
     this->live_decoded[0]  = 0;
     this->live_error[0]    = 0;
+    if (!preserve_mode) {
+      snprintf(this->playback_mode, sizeof(this->playback_mode), "idle");
+      this->stream_url[0] = 0;
+    }
     this->sinkPlaybackStop();
+    if (!preserve_mode) configSave();
   }
 
   bool startLiveSource(const char *channel_url) {
@@ -1931,6 +1963,9 @@ done:
     this->live_audio_at     = 0;
     this->live_error[0]     = 0;
     this->live_active       = true;
+    snprintf(this->playback_mode, sizeof(this->playback_mode), "stream");
+    snprintf(this->stream_url, sizeof(this->stream_url), "%s", channel_url);
+    configSave();
     return true;
   }
 
@@ -2011,6 +2046,12 @@ done:
     } else {
       this->live_audio_at = now + 500;
     }
+  }
+
+  int findLiveUrl(const char *url) const {
+    for (int i = 0; i < this->live_count; i++)
+      if (strcmp(this->live_channels[i].url, url) == 0) return i;
+    return -1;
   }
 
   bool startLive(int index) {
@@ -2216,6 +2257,8 @@ done:
 
     if (this->current >= 0 && this->current != index && this->history_len == 0)
       pushHistory(this->current);
+    snprintf(this->playback_mode, sizeof(this->playback_mode), "file");
+    this->stream_url[0]  = 0;
     this->current        = index;
     this->playing        = true;
     this->paused         = false;
@@ -2644,6 +2687,10 @@ done:
       } else if (strcmp(line, "speed") == 0) {
         int v       = atoi(value);
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
+      } else if (strcmp(line, "playback_mode") == 0) {
+        snprintf(this->playback_mode, sizeof(this->playback_mode), "%s", value);
+      } else if (strcmp(line, "stream_url") == 0) {
+        snprintf(this->stream_url, sizeof(this->stream_url), "%s", value);
       } else if (strcmp(line, "live_url") == 0) {
         snprintf(this->live_url, sizeof(this->live_url), "%s", value);
       } else if (strcmp(line, "live_direct_url") == 0) {
@@ -2695,6 +2742,8 @@ done:
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
+    fprintf(f, "playback_mode=%s\n", this->playback_mode);
+    fprintf(f, "stream_url=%s\n", this->stream_url);
     fprintf(f, "live_url=%s\n", this->live_url);
     fprintf(f, "live_direct_url=%s\n", this->live_direct_url);
     fprintf(f, "live_proxy=%s\n", this->live_proxy);

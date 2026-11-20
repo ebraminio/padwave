@@ -214,6 +214,8 @@ The live commands are `live_url` (value), `live_refresh`, `live_play` (id),
 the trimmed source HLS directly for video, and decodes cached source TS
 segments in-process for the controller. The parsed playlist is cached at
 `~/.cache/padwave/live.m3u`, so opening the tab does not refetch it.
+The active playback mode (`file`, `stream`, or `idle`) and the stream URL are
+persisted in the config; a stream resumes once the controller is available.
 
 ## Behavior
 
