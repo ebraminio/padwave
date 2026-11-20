@@ -233,6 +233,7 @@ private:
   char live_url[kMaxLiveUrl] = "";
   char live_error[160]       = "";
   pid_t live_pid             = -1;
+  pid_t live_video_pid       = -1;
   int live_current           = -1;
   bool live_active           = false;
   int history[kMaxHistory];
@@ -534,6 +535,7 @@ public:
   }
 
   void tick() {
+    reapLive();
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
     serviceOutput();
@@ -711,6 +713,8 @@ public:
     kvText(buf, cap, &o, "live.url", this->live_url);
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.video", "%s", this->live_video_pid > 0 ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.video_port", "%d", 8090);
     kvAdd(buf, cap, &o, "live.current", "%d", this->live_current >= 0 ? this->live_current + 1 : 0);
     kvText(buf, cap, &o, "live.error", this->live_error);
 
@@ -1454,12 +1458,48 @@ private:
     return true;
   }
 
+  static pid_t spawnProcess(const char *const argv[]) {
+    pid_t pid = fork();
+    if (pid != 0) return pid;
+    for (int fd = 3; fd < 1024; fd++) close(fd);
+    int nullfd = open("/dev/null", O_WRONLY);
+    if (nullfd >= 0) {
+      dup2(nullfd, STDOUT_FILENO);
+      dup2(nullfd, STDERR_FILENO);
+      if (nullfd > STDERR_FILENO) close(nullfd);
+    }
+    execvp(argv[0], const_cast<char *const *>(argv));
+    _exit(127);
+  }
+
+  static void terminateProcess(pid_t *pid) {
+    if (!pid || *pid <= 0) return;
+    kill(*pid, SIGTERM);
+    int status = 0;
+    for (int i = 0; i < 20; i++) {
+      if (waitpid(*pid, &status, WNOHANG) == *pid) {
+        *pid = -1;
+        return;
+      }
+      usleep(10000);
+    }
+    kill(*pid, SIGKILL);
+    waitpid(*pid, &status, 0);
+    *pid = -1;
+  }
+
   void reapLive() {
+    if (this->live_video_pid > 0) {
+      int vstatus = 0;
+      if (waitpid(this->live_video_pid, &vstatus, WNOHANG) == this->live_video_pid)
+        this->live_video_pid = -1;
+    }
     if (this->live_pid <= 0) return;
     int status = 0;
     pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
     if (r != this->live_pid) return;
     this->live_pid = -1;
+    terminateProcess(&this->live_video_pid);
     if (this->live_active) {
       this->live_active  = false;
       this->live_current = -1;
@@ -1468,25 +1508,19 @@ private:
   }
 
   void stopLive() {
-    if (this->live_pid > 0) {
-      kill(this->live_pid, SIGTERM);
-      int status = 0;
-      for (int i = 0; i < 20; i++) {
-        if (waitpid(this->live_pid, &status, WNOHANG) == this->live_pid) {
-          this->live_pid = -1;
-          break;
-        }
-        usleep(10000);
-      }
-      if (this->live_pid > 0) {
-        kill(this->live_pid, SIGKILL);
-        waitpid(this->live_pid, &status, 0);
-        this->live_pid = -1;
-      }
-    }
+    terminateProcess(&this->live_pid);
+    terminateProcess(&this->live_video_pid);
     this->live_active  = false;
     this->live_current = -1;
     this->sinkPlaybackStop();
+  }
+
+  void startLiveVideo(int index) {
+    const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+                          "-i", this->live_channels[index].url, "-c", "copy",
+                          "-f", "mpegts", "-flush_packets", "1", "-listen", "1",
+                          "http://0.0.0.0:8090", nullptr};
+    this->live_video_pid = spawnProcess(args);
   }
 
   bool startLive(int index) {
@@ -1498,21 +1532,11 @@ private:
       return false;
     }
     this->live_error[0] = 0;
-    pid_t pid           = fork();
-    if (pid == 0) {
-      for (int fd = 3; fd < 1024; fd++) close(fd);
-      int nullfd = open("/dev/null", O_WRONLY);
-      if (nullfd >= 0) {
-        dup2(nullfd, STDOUT_FILENO);
-        dup2(nullfd, STDERR_FILENO);
-        if (nullfd > STDERR_FILENO) close(nullfd);
-      }
-      execlp("mpv", "mpv", "--no-video", "--no-terminal", "--really-quiet",
-             "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
-             "--cache=yes", "--network-timeout=20", "--", this->live_channels[index].url,
-             static_cast<char *>(nullptr));
-      _exit(127);
-    }
+    const char *args[] = {"mpv", "--no-video", "--no-terminal", "--really-quiet",
+                          "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
+                          "--cache=yes", "--network-timeout=20", "--",
+                          this->live_channels[index].url, nullptr};
+    pid_t pid = spawnProcess(args);
     if (pid < 0) {
       snprintf(this->live_error, sizeof(this->live_error), "could not start mpv");
       this->sinkPlaybackStop();
@@ -1521,6 +1545,9 @@ private:
     this->live_pid     = pid;
     this->live_active  = true;
     this->live_current = index;
+    this->startLiveVideo(index);
+    if (this->live_video_pid < 0)
+      snprintf(this->live_error, sizeof(this->live_error), "video restream failed to start");
     return true;
   }
 

@@ -263,6 +263,7 @@
   }
   .live-config input[type=url]:focus { border-color: var(--accent); }
   .live-meta { margin-top: 12px; color: var(--muted); font-size: 12px; }
+  .live-video-link { display: inline-block; margin-top: 8px; color: var(--accent-2); font-size: 12px; }
   #liveChannels { max-height: 520px; }
   #liveChannels .g { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
 </style>
@@ -613,6 +614,7 @@
       <button id="liveStop">stop</button>
     </div>
     <div class="live-meta" id="liveMeta">No playlist configured.</div>
+    <a id="liveVideoLink" class="live-video-link" target="_blank" rel="noreferrer" hidden>open video stream</a>
     <ul class="tracks" id="liveChannels"></ul>
   </section>
 
@@ -773,6 +775,13 @@ function renderLiveStatus(s) {
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
     : (live.playing ? `mpv → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
+  const video = $("#liveVideoLink");
+  video.hidden = live.video !== true;
+  if (live.video === true) {
+    const port = live.video_port || 8090;
+    video.href = `http://${location.hostname}:${port}`;
+    video.textContent = `open video stream :${port} (VLC)`;
+  }
   if (live.current !== lastLiveCurrent) {
     lastLiveCurrent = live.current;
     if (liveLoaded) buildLive();

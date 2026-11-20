@@ -45,7 +45,12 @@ The **Live** tab is optional and uses the external `mpv` player. Paste an
 M3U/M3U8 playlist URL into the tab, save it, and select a channel; padwave saves
 the URL in its config and runs `mpv` with its audio output routed to the
 `padwave` PipeWire sink. No playlist URL is compiled into the binary. Install
-mpv at runtime with `sudo apt install mpv`.
+mpv at runtime with `sudo apt install mpv`. While a live channel is playing,
+the same tab also starts an `ffmpeg -c copy` MPEG-TS listener on port 8090;
+open `http://<pi>:8090` in VLC or ffplay for the video. The listener accepts one
+client and is stopped with the channel. This is a second independent HLS client,
+so it roughly doubles upstream bandwidth; the TS also carries audio, so mute
+VLC if you are listening through the controller.
 
 ## Build and run
 
