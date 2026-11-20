@@ -328,40 +328,6 @@
       <ul class="tracks" id="tracks"></ul>
     </section>
 
-    <section class="card full-width">
-      <div class="card-head"><h2>triggers</h2></div>
-      <div class="trigger-columns">
-        <div class="trigger-side">
-          <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div><div class="meta"><span>stop <b id="l2stop">—</b></span><span>status <b id="l2status">—</b></span><span>effect <b id="l2effect">—</b></span></div></div>
-          <div class="lab-row" data-trigger="left">
-            <b>L2 effect</b>
-            <select class="trigMode" title="TriggerEffect method"></select>
-            <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
-            <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
-            <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
-            <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
-            <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-            <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-            <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
-          </div>
-        </div>
-        <div class="trigger-side">
-          <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div><div class="meta"><span>stop <b id="r2stop">—</b></span><span>status <b id="r2status">—</b></span><span>effect <b id="r2effect">—</b></span></div></div>
-          <div class="lab-row" data-trigger="right">
-            <b>R2 effect</b>
-            <select class="trigMode" title="TriggerEffect method"></select>
-            <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
-            <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
-            <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
-            <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
-            <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-            <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-            <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section class="card">
       <div class="card-head">
         <h2>controller</h2>
@@ -439,9 +405,42 @@
         </p>
       </details>
     </section>
-  </div>
 
-    <section class="card">
+    <section class="card full-width">
+      <div class="card-head"><h2>triggers</h2></div>
+      <div class="trigger-columns">
+        <div class="trigger-side">
+          <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div><div class="meta"><span>stop <b id="l2stop">—</b></span><span>status <b id="l2status">—</b></span><span>effect <b id="l2effect">—</b></span></div></div>
+          <div class="lab-row" data-trigger="left">
+            <b>L2 effect</b>
+            <select class="trigMode" title="TriggerEffect method"></select>
+            <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+            <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+            <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+            <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+            <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+            <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+            <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
+          </div>
+        </div>
+        <div class="trigger-side">
+          <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div><div class="meta"><span>stop <b id="r2stop">—</b></span><span>status <b id="r2status">—</b></span><span>effect <b id="r2effect">—</b></span></div></div>
+          <div class="lab-row" data-trigger="right">
+            <b>R2 effect</b>
+            <select class="trigMode" title="TriggerEffect method"></select>
+            <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+            <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+            <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+            <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+            <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+            <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+            <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card full-width">
       <div class="card-head"><h2>controller lab</h2><span class="chip" id="labMsg">raw 0x31</span></div>
 
       <div class="lab-row">
@@ -582,6 +581,7 @@
         <div class="lab-row"><button id="labRawSend">send report</button><span id="labRawMsg"></span></div>
       </details>
     </section>
+  </div>
 
   <footer>
     <span>padwave · built for a DualSense whose ✕ gave up</span>
