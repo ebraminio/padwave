@@ -233,9 +233,11 @@ private:
   char live_url[kMaxLiveUrl] = "";
   char live_error[160]       = "";
   pid_t live_pid             = -1;
-  pid_t live_video_pid       = -1;
   int live_current           = -1;
   bool live_active           = false;
+  long live_started_at       = 0;
+  long live_restart_at        = 0;
+  int live_restarts          = 0;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -536,6 +538,16 @@ public:
 
   void tick() {
     reapLive();
+    long now = nowMs();
+    if (this->live_active && this->live_pid < 0 && this->live_restart_at > 0 &&
+        now >= this->live_restart_at && this->live_current >= 0) {
+      this->live_restart_at = 0;
+      if (!this->startLiveProcess(this->live_current)) {
+        this->live_active  = false;
+        this->live_current = -1;
+        this->sinkPlaybackStop();
+      }
+    }
     // Invariant: playback running means the mic monitor is off, regardless of
     // which resume path got us here.
     serviceOutput();
@@ -569,7 +581,6 @@ public:
     }
     if (this->input.fd() < 0 && static_cast<int>(nowMs()) >= this->reconnect_at) inputStart();
 
-    long now = nowMs();
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
       this->playhead_dirty    = false;
       this->playhead_saved_at = now;
@@ -713,7 +724,7 @@ public:
     kvText(buf, cap, &o, "live.url", this->live_url);
     kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
     kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
-    kvAdd(buf, cap, &o, "live.video", "%s", this->live_video_pid > 0 ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.video", "%s", this->live_active ? "true" : "false");
     kvAdd(buf, cap, &o, "live.video_port", "%d", 8090);
     kvAdd(buf, cap, &o, "live.current", "%d", this->live_current >= 0 ? this->live_current + 1 : 0);
     kvText(buf, cap, &o, "live.error", this->live_error);
@@ -1488,39 +1499,110 @@ private:
     *pid = -1;
   }
 
-  void reapLive() {
-    if (this->live_video_pid > 0) {
-      int vstatus = 0;
-      if (waitpid(this->live_video_pid, &vstatus, WNOHANG) == this->live_video_pid)
-        this->live_video_pid = -1;
+  static void resolveRelative(const char *base, const char *ref, char *out, size_t cap) {
+    if (strncasecmp(ref, "http://", 7) == 0 || strncasecmp(ref, "https://", 8) == 0) {
+      snprintf(out, cap, "%s", ref);
+      return;
     }
+    const char *q     = strchr(base, '?');
+    size_t base_len   = q ? static_cast<size_t>(q - base) : strlen(base);
+    const char *slash = nullptr;
+    for (const char *p = base; p < base + base_len; p++)
+      if (*p == '/') slash = p;
+    size_t dir_len = slash ? static_cast<size_t>(slash - base) + 1 : 0;
+    if (dir_len >= cap) dir_len = cap - 1;
+    memcpy(out, base, dir_len);
+    out[dir_len] = 0;
+    snprintf(out + dir_len, cap - dir_len, "%s", ref);
+  }
+
+  static void resolveLiveStream(const char *channel_url, char *out, size_t cap) {
+    snprintf(out, cap, "%s", channel_url);
+    constexpr size_t kPlaylistMax = 512 * 1024;
+    char *body                   = static_cast<char *>(malloc(kPlaylistMax));
+    if (!body) return;
+    int n = fetchUrl(channel_url, body, kPlaylistMax);
+    if (n <= 0) {
+      free(body);
+      return;
+    }
+    char *p = strstr(body, "#EXT-X-STREAM-INF");
+    if (p) {
+      p = strchr(p, '\n');
+      if (p) p++;
+      while (p && *p) {
+        char *eol = strpbrk(p, "\r\n");
+        char *end = eol ? eol : p + strlen(p);
+        char save = *end;
+        *end      = 0;
+        char *uri = trimLine(p);
+        if (*uri && *uri != '#') {
+          resolveRelative(channel_url, uri, out, cap);
+          *end = save;
+          break;
+        }
+        *end = save;
+        if (!eol) break;
+        p = eol + 1;
+        while (*p == '\r' || *p == '\n') p++;
+      }
+    }
+    free(body);
+  }
+
+  void reapLive() {
     if (this->live_pid <= 0) return;
     int status = 0;
     pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
     if (r != this->live_pid) return;
     this->live_pid = -1;
-    terminateProcess(&this->live_video_pid);
-    if (this->live_active) {
+    if (!this->live_active) return;
+    long now = nowMs();
+    if (now - this->live_started_at >= 30000) this->live_restarts = 0;
+    if (this->live_restarts >= 3) {
+      snprintf(this->live_error, sizeof(this->live_error), "live player stopped");
       this->live_active  = false;
       this->live_current = -1;
+      this->live_restart_at = 0;
       this->sinkPlaybackStop();
+      return;
     }
+    this->live_restarts++;
+    this->live_restart_at = now + 1500;
   }
 
   void stopLive() {
     terminateProcess(&this->live_pid);
-    terminateProcess(&this->live_video_pid);
-    this->live_active  = false;
-    this->live_current = -1;
+    this->live_active    = false;
+    this->live_current   = -1;
+    this->live_restart_at = 0;
+    this->live_restarts   = 0;
+    this->live_error[0]   = 0;
     this->sinkPlaybackStop();
   }
 
-  void startLiveVideo(int index) {
+  bool startLiveProcess(int index) {
+    if (index < 0 || index >= this->live_count) return false;
+    char stream[kMaxPath];
+    resolveLiveStream(this->live_channels[index].url, stream, sizeof(stream));
+    this->live_error[0] = 0;
     const char *args[] = {"ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                          "-i", this->live_channels[index].url, "-c", "copy",
-                          "-f", "mpegts", "-flush_packets", "1", "-listen", "1",
+                          "-allowed_extensions", "ALL", "-i", stream,
+                          "-map", "0:a:0", "-f", "pulse", "-device", "padwave",
+                          "-ar", "48000", "-ac", "2",
+                          "-map", "0", "-c", "copy", "-f", "mpegts",
+                          "-flush_packets", "1", "-listen", "1",
                           "http://0.0.0.0:8090", nullptr};
-    this->live_video_pid = spawnProcess(args);
+    pid_t pid = spawnProcess(args);
+    if (pid < 0) {
+      snprintf(this->live_error, sizeof(this->live_error), "could not start ffmpeg");
+      return false;
+    }
+    this->live_pid        = pid;
+    this->live_active     = true;
+    this->live_current    = index;
+    this->live_started_at = nowMs();
+    return true;
   }
 
   bool startLive(int index) {
@@ -1531,23 +1613,12 @@ private:
       snprintf(this->live_error, sizeof(this->live_error), "controller/player is not ready");
       return false;
     }
-    this->live_error[0] = 0;
-    const char *args[] = {"mpv", "--no-video", "--no-terminal", "--really-quiet",
-                          "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
-                          "--cache=yes", "--network-timeout=20", "--",
-                          this->live_channels[index].url, nullptr};
-    pid_t pid = spawnProcess(args);
-    if (pid < 0) {
-      snprintf(this->live_error, sizeof(this->live_error), "could not start mpv");
+    this->live_restarts   = 0;
+    this->live_restart_at = 0;
+    if (!this->startLiveProcess(index)) {
       this->sinkPlaybackStop();
       return false;
     }
-    this->live_pid     = pid;
-    this->live_active  = true;
-    this->live_current = index;
-    this->startLiveVideo(index);
-    if (this->live_video_pid < 0)
-      snprintf(this->live_error, sizeof(this->live_error), "video restream failed to start");
     return true;
   }
 

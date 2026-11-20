@@ -41,16 +41,14 @@ stops and the existing timer/Opus/HID path forwards the system audio to the
 controller. Pressing a local playback control switches back to the file player;
 the sink node remains available. PipeWire and WirePlumber must be running.
 
-The **Live** tab is optional and uses the external `mpv` player. Paste an
-M3U/M3U8 playlist URL into the tab, save it, and select a channel; padwave saves
-the URL in its config and runs `mpv` with its audio output routed to the
-`padwave` PipeWire sink. No playlist URL is compiled into the binary. Install
-mpv at runtime with `sudo apt install mpv`. While a live channel is playing,
-the same tab also starts an `ffmpeg -c copy` MPEG-TS listener on port 8090;
-open `http://<pi>:8090` in VLC or ffplay for the video. The listener accepts one
-client and is stopped with the channel. This is a second independent HLS client,
-so it roughly doubles upstream bandwidth; the TS also carries audio, so mute
-VLC if you are listening through the controller.
+The **Live** tab is optional. Paste an M3U/M3U8 playlist URL into the tab, save
+it, and select a channel; padwave saves the URL in its config and starts one
+`ffmpeg` process. That process resolves the master playlist to its first
+(lowest-bitrate) HLS variant, sends audio to the `padwave` PipeWire sink through
+PulseAudio, and exposes the same stream as MPEG-TS on port 8090. No playlist URL
+is compiled into the binary. Open `http://<pi>:8090` in VLC or ffplay for the
+video. The listener accepts one client and is stopped with the channel; the TS
+also carries audio, so mute VLC if you are listening through the controller.
 
 ## Build and run
 
@@ -204,7 +202,8 @@ literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `GET /api/library` and `/api/live` are TSV; `/api/config` persists settings;
 `/api/schema` describes the lab fields; `POST /api/output` is the controller lab.
 The live commands are `live_url` (value), `live_refresh`, `live_play` (id) and
-`live_stop`; playback is delegated to an external `mpv` process.
+`live_stop`; playback and restreaming are handled by one external `ffmpeg`
+process.
 
 ## Behavior
 

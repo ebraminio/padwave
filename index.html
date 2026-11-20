@@ -774,7 +774,7 @@ function renderLiveStatus(s) {
   $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
   $("#liveState").title = live.error || "";
   $("#liveMeta").textContent = live.error ? live.error
-    : (live.playing ? `mpv → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
+    : (live.playing ? `ffmpeg → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
   const video = $("#liveVideoLink");
   video.hidden = live.video !== true;
   if (live.video === true) {
