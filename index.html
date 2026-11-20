@@ -329,6 +329,28 @@
         <div class="trig"><div class="lbl"><span>L2 · volume −</span><span id="l2v">0</span></div><div class="track"><div class="val" id="l2bar"></div></div><div class="meta"><span>stop <b id="l2stop">—</b></span><span>status <b id="l2status">—</b></span><span>effect <b id="l2effect">—</b></span></div></div>
         <div class="trig"><div class="lbl"><span>R2 · volume +</span><span id="r2v">0</span></div><div class="track"><div class="val" id="r2bar"></div></div><div class="meta"><span>stop <b id="r2stop">—</b></span><span>status <b id="r2status">—</b></span><span>effect <b id="r2effect">—</b></span></div></div>
       </div>
+      <div class="lab-row" data-trigger="left">
+        <b>L2 effect</b>
+        <select class="trigMode" title="TriggerEffect method"></select>
+        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
+      </div>
+      <div class="lab-row" data-trigger="right">
+        <b>R2 effect</b>
+        <select class="trigMode" title="TriggerEffect method"></select>
+        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
+        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
+        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
+        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
+        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
+        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
+        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
+      </div>
       <div class="bitwatch" id="bitwatch"></div>
       <details>
         <summary>live packet 0x31 · 78 bytes, every field</summary>
@@ -518,28 +540,6 @@
         <button id="labRumStop">stop</button>
       </div>
 
-      <div class="lab-row" data-trigger="left">
-        <b>L trigger</b>
-        <select class="trigMode" title="TriggerEffect method"></select>
-        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
-        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
-        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
-        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
-        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
-      </div>
-      <div class="lab-row" data-trigger="right">
-        <b>R trigger</b>
-        <select class="trigMode" title="TriggerEffect method"></select>
-        <label>start <input type="number" class="trigStart" value="2" min="0" max="9" style="width:52px"></label>
-        <label>end <input type="number" class="trigEnd" value="8" min="0" max="9" style="width:52px"></label>
-        <label>level <input type="number" class="trigLevel" value="2" min="0" max="8" style="width:52px"></label>
-        <label>Hz <input type="number" class="trigFreq" value="25" min="1" max="255" style="width:58px"></label>
-        <label>period <input type="number" class="trigPeriod" value="10" min="0" max="255" style="width:58px"></label>
-        <label>B <input type="number" class="trigB" value="4" min="0" max="7" style="width:48px"></label>
-        <span class="trigHint" style="font-size:11px;color:var(--muted)" hidden></span>
-      </div>
       <div class="lab-row">
         <b>haptic sub</b>
         <label title="low-pass music into the DualSense actuators (USB channels 3/4 or BT haptic PCM)">
