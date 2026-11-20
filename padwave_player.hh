@@ -252,7 +252,7 @@ private:
 
   dualsense::OutputReport::Sequence output_sequence;
   dualsense::OutputBody state{};
-  bool mic = false;
+  bool mic              = false;
   bool sink_mode_       = false;
   bool sink_input_seen_ = false;
 
@@ -1479,9 +1479,9 @@ public:
     underruns   = 0;
     sink_mode_  = on;
     if (on) sink_input_seen_ = false;
-    playing     = on;
-    paused      = false;
-    primed      = on;
+    playing = on;
+    paused  = false;
+    primed  = on;
     setTick(on ? kPlayTickNs : kPauseTickNs);
   }
 

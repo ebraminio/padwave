@@ -1151,8 +1151,12 @@ public:
     Active = 1, // is in an active feedback zone
     Fired  = 2, // a Weapon effect has passed its stop zone
   };
-  TriggerStatus getLeftTriggerStatus() const { return static_cast<TriggerStatus>(triggerLeft.getStatus()); }
-  TriggerStatus getRightTriggerStatus() const { return static_cast<TriggerStatus>(triggerRight.getStatus()); }
+  TriggerStatus getLeftTriggerStatus() const {
+    return static_cast<TriggerStatus>(triggerLeft.getStatus());
+  }
+  TriggerStatus getRightTriggerStatus() const {
+    return static_cast<TriggerStatus>(triggerRight.getStatus());
+  }
 
   enum class TriggerEffect : uint8_t {
     None      = 0, // no feedback/status mode, or an unreported/simple/vendor mode

@@ -406,7 +406,7 @@ public:
       this->last_nonzero_volume = this->volume;
     else if (this->last_nonzero_volume <= 0)
       this->last_nonzero_volume = kDefaultVolume;
-    this->volume_dirty = false;
+    this->volume_dirty     = false;
     this->sink_node_active = this->sink.start(&App::sinkPush, &this->player);
     if (!this->sink_node_active) fprintf(stderr, "padwave: PipeWire sink unavailable\n");
     return true;
@@ -439,9 +439,9 @@ public:
     sinkPlaybackStop();
     this->sink.stop();
     this->sink_node_active = false;
-    this->playing    = false;
-    this->controller = false;
-    this->led_force  = true;
+    this->playing          = false;
+    this->controller       = false;
+    this->led_force        = true;
     serviceLeds();
     configSave();
     if (this->player) {
@@ -1722,12 +1722,12 @@ private:
     this->az                                        = accel.z;
     this->host_timestamp                            = b.getHostTime();
     this->device_timestamp                          = b.getDeviceTime();
-    this->trigger_effect_r                          = static_cast<unsigned>(b.getRightTriggerEffect());
-    this->trigger_effect_l                          = static_cast<unsigned>(b.getLeftTriggerEffect());
-    this->trigger_stop_r                            = b.getRightTriggerStopLocation();
-    this->trigger_stop_l                            = b.getLeftTriggerStopLocation();
-    this->trigger_status_r                          = static_cast<unsigned>(b.getRightTriggerStatus());
-    this->trigger_status_l                          = static_cast<unsigned>(b.getLeftTriggerStatus());
+    this->trigger_effect_r = static_cast<unsigned>(b.getRightTriggerEffect());
+    this->trigger_effect_l = static_cast<unsigned>(b.getLeftTriggerEffect());
+    this->trigger_stop_r   = b.getRightTriggerStopLocation();
+    this->trigger_stop_l   = b.getLeftTriggerStopLocation();
+    this->trigger_status_r = static_cast<unsigned>(b.getRightTriggerStatus());
+    this->trigger_status_l = static_cast<unsigned>(b.getLeftTriggerStatus());
     for (unsigned t = 0; t < 2; ++t) {
       const dualsense::InputBody::TouchPoint touch = b.getTouch(t);
       this->touch_active[t]                        = touch.isActive() ? 1 : 0;

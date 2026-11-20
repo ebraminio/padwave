@@ -20,7 +20,7 @@ struct PipeWireSink {
   PipeWireSink() = default;
   ~PipeWireSink() { stop(); }
 
-  PipeWireSink(const PipeWireSink &) = delete;
+  PipeWireSink(const PipeWireSink &)            = delete;
   PipeWireSink &operator=(const PipeWireSink &) = delete;
 
   bool active() const { return stream_ != nullptr; }
@@ -46,13 +46,13 @@ struct PipeWireSink {
     pw_loop_enter(loop);
     entered_ = true;
 
-    events_            = pw_stream_events{};
-    events_.version    = PW_VERSION_STREAM_EVENTS;
+    events_               = pw_stream_events{};
+    events_.version       = PW_VERSION_STREAM_EVENTS;
     events_.state_changed = &PipeWireSink::onState;
     events_.process       = &PipeWireSink::onProcess;
 
     pw_properties *context_props = pw_properties_new("module.rt", "false", nullptr);
-    context_ = pw_context_new(loop, context_props, 0);
+    context_                     = pw_context_new(loop, context_props, 0);
     if (!context_) {
       stop();
       return false;
@@ -64,16 +64,11 @@ struct PipeWireSink {
       return false;
     }
 
-    pw_properties *stream_props = pw_properties_new(
-        PW_KEY_MEDIA_TYPE, "Audio",
-        PW_KEY_MEDIA_CATEGORY, "Playback",
-        PW_KEY_MEDIA_CLASS, "Audio/Sink",
-        PW_KEY_NODE_NAME, "padwave",
-        PW_KEY_NODE_DESCRIPTION, "padwave DualSense",
-        PW_KEY_NODE_NICK, "padwave",
-        PW_KEY_NODE_LATENCY, "512/48000",
-        PW_KEY_MEDIA_ROLE, "Music",
-        nullptr);
+    pw_properties *stream_props =
+        pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback",
+                          PW_KEY_MEDIA_CLASS, "Audio/Sink", PW_KEY_NODE_NAME, "padwave",
+                          PW_KEY_NODE_DESCRIPTION, "padwave DualSense", PW_KEY_NODE_NICK, "padwave",
+                          PW_KEY_NODE_LATENCY, "512/48000", PW_KEY_MEDIA_ROLE, "Music", nullptr);
     stream_ = pw_stream_new(core_, "padwave", stream_props);
     if (!stream_) {
       stop();
@@ -85,16 +80,16 @@ struct PipeWireSink {
     spa_pod_builder builder{};
     spa_pod_builder_init(&builder, pod_buffer, sizeof(pod_buffer));
     spa_audio_info_raw info{};
-    info.format    = SPA_AUDIO_FORMAT_F32;
-    info.rate      = 48000;
-    info.channels  = 2;
+    info.format      = SPA_AUDIO_FORMAT_F32;
+    info.rate        = 48000;
+    info.channels    = 2;
     info.position[0] = SPA_AUDIO_CHANNEL_FL;
     info.position[1] = SPA_AUDIO_CHANNEL_FR;
     const spa_pod *params[1];
     params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &info);
 
-    enum pw_stream_flags flags = static_cast<enum pw_stream_flags>(
-        PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS);
+    enum pw_stream_flags flags =
+        static_cast<enum pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS);
     if (pw_stream_connect(stream_, PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
       stop();
       return false;
@@ -138,8 +133,7 @@ struct PipeWireSink {
   }
 
 private:
-  static void onState(void *data, pw_stream_state old, pw_stream_state state,
-                      const char *error) {
+  static void onState(void *data, pw_stream_state old, pw_stream_state state, const char *error) {
     (void)data;
     (void)old;
     if (state == PW_STREAM_STATE_ERROR && error)
@@ -155,9 +149,9 @@ private:
 
     spa_buffer *spa = buffer->buffer;
     if (spa && spa->datas && spa->datas[0].data && spa->datas[0].chunk) {
-      spa_data *d          = &spa->datas[0];
-      uint32_t offset      = d->chunk->offset;
-      uint32_t size        = d->chunk->size;
+      spa_data *d     = &spa->datas[0];
+      uint32_t offset = d->chunk->offset;
+      uint32_t size   = d->chunk->size;
       if (offset < d->maxsize) {
         if (size > d->maxsize - offset) size = d->maxsize - offset;
         size_t frames = size / (sizeof(float) * 2);
@@ -176,8 +170,8 @@ private:
   pw_stream *stream_   = nullptr;
   pw_stream_events events_{};
   spa_hook stream_listener_{};
-  Push push_           = nullptr;
-  void *owner_         = nullptr;
-  bool initialized_    = false;
-  bool entered_        = false;
+  Push push_        = nullptr;
+  void *owner_      = nullptr;
+  bool initialized_ = false;
+  bool entered_     = false;
 };
