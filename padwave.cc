@@ -450,6 +450,19 @@ private:
       return;
     }
 
+    if (strcmp(path, "/api/live") == 0) {
+      constexpr size_t kLiveBuf = 1024 * 1024;
+      char *body                = reinterpret_cast<char *>(malloc(kLiveBuf));
+      int len = body ? app->liveText(body, kLiveBuf) : 0;
+      c->static_reply = true;
+      c->out_len =
+          static_cast<size_t>(makeStatic(c->out, sizeof(c->out), "text/plain; charset=utf-8",
+                                         body ? body : "", body ? static_cast<size_t>(len) : 0));
+      free(body);
+      modFd(c->fd, EPOLLOUT);
+      return;
+    }
+
     if (strcmp(path, "/api/config") == 0) {
       if (strcmp(method, "POST") == 0) {
         app->configSet(c->in + head_len);

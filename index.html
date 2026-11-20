@@ -252,6 +252,19 @@
     border-radius: 12px; padding: 9px 12px; font-size: 12.5px; margin-top: 14px; display: none;
   }
   .warnbar.show { display: block; }
+  [hidden] { display: none !important; }
+  .view-tabs { display: flex; gap: 8px; margin: -4px 0 18px; }
+  .view-tabs button { padding: 8px 16px; border-radius: 999px; font-size: 13px; }
+  .view-tabs button.on { background: rgba(124, 92, 255, .16); border-color: rgba(124, 92, 255, .55); color: var(--text); }
+  .live-config { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .live-config input[type=url] {
+    flex: 1; min-width: 260px; background: #0e1118; border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 9px 11px; font: 13px var(--mono); outline: none;
+  }
+  .live-config input[type=url]:focus { border-color: var(--accent); }
+  .live-meta { margin-top: 12px; color: var(--muted); font-size: 12px; }
+  #liveChannels { max-height: 520px; }
+  #liveChannels .g { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -272,7 +285,12 @@
     </div>
   </header>
 
-  <div class="grid">
+  <nav class="view-tabs">
+    <button id="tabLibrary" class="on">library</button>
+    <button id="tabLive">live</button>
+  </nav>
+
+  <div class="grid" id="libraryView">
     <section class="card">
       <div class="eyebrow">now playing</div>
       <div class="folder" id="folder">—</div>
@@ -583,6 +601,21 @@
     </section>
   </div>
 
+  <section class="card full-width live-view" id="liveView" hidden>
+    <div class="card-head">
+      <h2>live</h2>
+      <span class="chip" id="liveState">—</span>
+    </div>
+    <div class="live-config">
+      <input type="url" id="liveUrl" placeholder="https://…/playlist.m3u" autocomplete="off" spellcheck="false">
+      <button id="liveSave">save &amp; refresh</button>
+      <button id="liveRefresh">refresh</button>
+      <button id="liveStop">stop</button>
+    </div>
+    <div class="live-meta" id="liveMeta">No playlist configured.</div>
+    <ul class="tracks" id="liveChannels"></ul>
+  </section>
+
   <footer>
     <span>padwave · built for a DualSense whose ✕ gave up</span>
     <span id="statusLine">connecting…</span>
@@ -642,6 +675,9 @@ let last = null;
 let serverVersion = null;
 let dragging = false;
 let tracks = [];
+let liveChannels = [];
+let liveLoaded = false;
+let lastLiveCurrent = null;
 let filterText = "";
 let lastSensorsAt = 0;
 let lastTrackId = null;
@@ -677,13 +713,77 @@ async function send(action, args = {}) {
     });
     const data = parseKV(await res.text());
     if (data.ok !== true) toast("failed: " + (data.error || "unknown"));
-  } catch (e) { toast("network: " + e.message); }
+    return data;
+  } catch (e) { toast("network: " + e.message); return null; }
+}
+
+// -- live ------------------------------------------------------------------
+
+async function setView(showLive) {
+  $("#libraryView").hidden = showLive;
+  $("#liveView").hidden = !showLive;
+  $("#tabLibrary").classList.toggle("on", !showLive);
+  $("#tabLive").classList.toggle("on", showLive);
+  if (showLive && !liveLoaded) {
+    const url = ($("#liveUrl").value || (last && last.live && last.live.url) || "").trim();
+    if (url) {
+      $("#liveUrl").value = url;
+      await send("live_refresh");
+    }
+    await loadLive();
+  }
+}
+
+function buildLive() {
+  const ul = $("#liveChannels");
+  ul.innerHTML = "";
+  for (const channel of liveChannels) {
+    const li = document.createElement("li");
+    if (last && last.live && Number(last.live.current) === Number(channel.id)) li.classList.add("active");
+    const title = document.createElement("span");
+    title.className = "t";
+    title.textContent = channel.name;
+    const group = document.createElement("span");
+    group.className = "g";
+    group.textContent = channel.group || "";
+    li.append(title, group);
+    li.onclick = () => send("live_play", { id: channel.id });
+    ul.append(li);
+  }
+}
+
+async function loadLive() {
+  try {
+    const text = await fetch("/api/live", { cache: "no-store" }).then(r => r.text());
+    liveChannels = text.split("\n").filter(Boolean).map((line) => {
+      const [id, name, group, logo, url] = line.split("\t");
+      return { id, name, group, logo, url };
+    });
+    liveLoaded = true;
+    buildLive();
+  } catch (e) {
+    toast("live: " + e.message);
+  }
+}
+
+function renderLiveStatus(s) {
+  const live = s.live || {};
+  if (document.activeElement !== $("#liveUrl")) $("#liveUrl").value = live.url || "";
+  $("#liveState").textContent = live.error ? "error" : (live.playing ? "playing" : "ready");
+  $("#liveState").title = live.error || "";
+  $("#liveMeta").textContent = live.error ? live.error
+    : (live.playing ? `mpv → padwave · ${live.count || 0} channels` : `${live.count || 0} channels`);
+  if (live.current !== lastLiveCurrent) {
+    lastLiveCurrent = live.current;
+    if (liveLoaded) buildLive();
+  }
 }
 
 // -- rendering --------------------------------------------------------------
 
 function render(s) {
   last = s;
+  renderLiveStatus(s);
   const version = s.server && s.server.version;
   if (version) {
     if (serverVersion && version !== serverVersion) {
@@ -1591,6 +1691,27 @@ $("#reloadBtn").onclick = async () => {
   const data = parseKV(await res.text());
   toast(data.ok === true ? `reloaded ${data.reloaded ?? 0} module(s)` : "reload failed");
 };
+
+$("#tabLibrary").onclick = () => setView(false);
+$("#tabLive").onclick = () => setView(true);
+$("#liveSave").onclick = async () => {
+  const url = $("#liveUrl").value.trim();
+  const saved = await send("live_url", { value: url });
+  if (!saved || saved.ok !== true) return;
+  const refreshed = await send("live_refresh");
+  if (refreshed && refreshed.ok === true) {
+    await loadLive();
+    toast(`live: ${refreshed.count || 0} channels`);
+  }
+};
+$("#liveRefresh").onclick = async () => {
+  const refreshed = await send("live_refresh");
+  if (refreshed && refreshed.ok === true) {
+    await loadLive();
+    toast(`live: ${refreshed.count || 0} channels`);
+  }
+};
+$("#liveStop").onclick = () => send("live_stop");
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;

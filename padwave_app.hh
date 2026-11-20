@@ -21,6 +21,7 @@
 #include <strings.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -53,6 +54,8 @@ private:
   static constexpr int kMaxTitle   = 160;
   static constexpr int kMaxFolder  = 96;
   static constexpr int kMaxHistory = 48;
+  static constexpr int kMaxLiveUrl = 2048;
+  static constexpr int kMaxLiveChannels = 400;
 
   struct Track {
     char path[kMaxPath];
@@ -60,6 +63,13 @@ private:
     char folder[kMaxFolder];
     char ext[8];
     char id[17];
+  };
+
+  struct LiveChannel {
+    char name[kMaxTitle];
+    char group[kMaxFolder];
+    char logo[256];
+    char url[kMaxPath];
   };
 
   static long nowMs() {
@@ -218,6 +228,13 @@ private:
   Track tracks[kMaxTracks];
   int count   = 0;
   int current = -1;
+  static inline LiveChannel live_channels[kMaxLiveChannels];
+  int live_count             = 0;
+  char live_url[kMaxLiveUrl] = "";
+  char live_error[160]       = "";
+  pid_t live_pid             = -1;
+  int live_current           = -1;
+  bool live_active           = false;
   int history[kMaxHistory];
   int history_len = 0;
 
@@ -436,6 +453,7 @@ public:
   }
 
   void shutdown() {
+    stopLive();
     sinkPlaybackStop();
     this->sink.stop();
     this->sink_node_active = false;
@@ -690,6 +708,11 @@ public:
            this->player.audioActive() ? "running" : (this->player.isValid() ? "ready" : "null"));
     kvAdd(buf, cap, &o, "audio.sink_available", "%s", sinkAvailable() ? "true" : "false");
     kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
+    kvText(buf, cap, &o, "live.url", this->live_url);
+    kvAdd(buf, cap, &o, "live.count", "%d", this->live_count);
+    kvAdd(buf, cap, &o, "live.playing", "%s", this->live_active ? "true" : "false");
+    kvAdd(buf, cap, &o, "live.current", "%d", this->live_current >= 0 ? this->live_current + 1 : 0);
+    kvText(buf, cap, &o, "live.error", this->live_error);
 
     kvAdd(buf, cap, &o, "hid.power_save", "%d", this->power_save_mask);
     kvAdd(buf, cap, &o, "hid.power_save_mode", "%s", this->power_save_mode ? "true" : "false");
@@ -923,6 +946,22 @@ public:
       tsvField(buf, cap, &o, s->folder, '\t');
       tsvField(buf, cap, &o, s->path, '\t');
       tsvField(buf, cap, &o, s->ext, '\n');
+    }
+    return static_cast<int>(o);
+  }
+
+  int liveText(char *buf, size_t cap) {
+    size_t o = 0;
+    if (cap) buf[0] = 0;
+    for (int i = 0; i < this->live_count; i++) {
+      char id[16];
+      snprintf(id, sizeof(id), "%d", i + 1);
+      const LiveChannel *c = &this->live_channels[i];
+      tsvField(buf, cap, &o, id, '\t');
+      tsvField(buf, cap, &o, c->name, '\t');
+      tsvField(buf, cap, &o, c->group, '\t');
+      tsvField(buf, cap, &o, c->logo, '\t');
+      tsvField(buf, cap, &o, c->url, '\n');
     }
     return static_cast<int>(o);
   }
@@ -1277,6 +1316,214 @@ private:
     this->count++;
   }
 
+  static bool validLiveUrl(const char *url) {
+    if (!url || !*url) return false;
+    size_t n = strlen(url);
+    if (n >= kMaxLiveUrl) return false;
+    if (strncasecmp(url, "http://", 7) != 0 && strncasecmp(url, "https://", 8) != 0)
+      return false;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(url); *p; p++)
+      if (*p <= 0x20 || *p == 0x7f) return false;
+    return true;
+  }
+
+  static char *trimLine(char *s) {
+    while (*s == ' ' || *s == '\t' || *s == '\r') s++;
+    char *e = s + strlen(s);
+    while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r')) *--e = 0;
+    return s;
+  }
+
+  static bool m3uAttr(const char *line, const char *key, char *out, size_t cap) {
+    char needle[64];
+    snprintf(needle, sizeof(needle), "%s=\"", key);
+    const char *p = strstr(line, needle);
+    if (!p) return false;
+    p += strlen(needle);
+    const char *e = strchr(p, '"');
+    if (!e) return false;
+    size_t n = static_cast<size_t>(e - p);
+    if (n >= cap) n = cap - 1;
+    memcpy(out, p, n);
+    out[n] = 0;
+    return true;
+  }
+
+  void addLiveChannel(const char *name, const char *group, const char *logo, const char *url) {
+    if (this->live_count >= kMaxLiveChannels || !url || !*url) return;
+    LiveChannel *c = &this->live_channels[this->live_count];
+    snprintf(c->name, sizeof(c->name), "%s", name && *name ? name : url);
+    snprintf(c->group, sizeof(c->group), "%s", group ? group : "");
+    snprintf(c->logo, sizeof(c->logo), "%s", logo ? logo : "");
+    snprintf(c->url, sizeof(c->url), "%s", url);
+    this->live_count++;
+  }
+
+  void parsePlaylist(char *body) {
+    this->live_count = 0;
+    char group[kMaxFolder] = "";
+    char name[kMaxTitle]   = "";
+    char logo[256]         = "";
+    bool haveInfo          = false;
+    char *save             = nullptr;
+
+    for (char *line = strtok_r(body, "\n", &save); line; line = strtok_r(nullptr, "\n", &save)) {
+      line = trimLine(line);
+      if (!*line) continue;
+      if (strncmp(line, "#EXTGRP:", 8) == 0) {
+        snprintf(group, sizeof(group), "%s", trimLine(line + 8));
+        continue;
+      }
+      if (strncmp(line, "#EXTINF:", 8) == 0) {
+        m3uAttr(line, "group-title", group, sizeof(group));
+        m3uAttr(line, "tvg-logo", logo, sizeof(logo));
+        const char *comma = strrchr(line, ',');
+        name[0]           = 0;
+        if (comma && comma[1]) snprintf(name, sizeof(name), "%s", trimLine(const_cast<char *>(comma + 1)));
+        haveInfo = true;
+        continue;
+      }
+      if (*line == '#') continue;
+      if (haveInfo) {
+        if (validLiveUrl(line)) this->addLiveChannel(name, group, logo, line);
+        haveInfo = false;
+      }
+    }
+
+    // A direct HLS playlist has no #EXTINF entries; treat it as one stream.
+    if (this->live_count == 0 && strstr(this->live_url, ".m3u8"))
+      this->addLiveChannel("Stream", "", "", this->live_url);
+  }
+
+  static int fetchUrl(const char *url, char *body, size_t cap) {
+    if (cap == 0) return -1;
+    body[0] = 0;
+    int fds[2];
+    if (pipe(fds) < 0) return -1;
+    pid_t pid = fork();
+    if (pid == 0) {
+      close(fds[0]);
+      dup2(fds[1], STDOUT_FILENO);
+      for (int fd = 3; fd < 1024; fd++) close(fd);
+      execlp("curl", "curl", "-fsSL", "--max-time", "20", "--max-filesize", "2097152", "--",
+             url, static_cast<char *>(nullptr));
+      _exit(127);
+    }
+    close(fds[1]);
+    if (pid < 0) {
+      close(fds[0]);
+      return -1;
+    }
+    size_t n = 0;
+    while (n + 1 < cap) {
+      ssize_t r = read(fds[0], body + n, cap - n - 1);
+      if (r <= 0) break;
+      n += static_cast<size_t>(r);
+    }
+    close(fds[0]);
+    int status = 0;
+    if (waitpid(pid, &status, 0) != pid) return -1;
+    body[n] = 0;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? static_cast<int>(n) : -1;
+  }
+
+  bool refreshLive() {
+    this->live_error[0] = 0;
+    if (!validLiveUrl(this->live_url)) {
+      snprintf(this->live_error, sizeof(this->live_error), "set an http(s) M3U/M3U8 URL first");
+      return false;
+    }
+    constexpr size_t kMaxBody = 2 * 1024 * 1024;
+    char *body                = static_cast<char *>(malloc(kMaxBody));
+    if (!body) {
+      snprintf(this->live_error, sizeof(this->live_error), "out of memory");
+      return false;
+    }
+    int n = fetchUrl(this->live_url, body, kMaxBody);
+    if (n <= 0) {
+      snprintf(this->live_error, sizeof(this->live_error), "could not fetch playlist");
+      free(body);
+      return false;
+    }
+    this->parsePlaylist(body);
+    free(body);
+    if (this->live_count == 0) {
+      snprintf(this->live_error, sizeof(this->live_error), "playlist has no playable entries");
+      return false;
+    }
+    return true;
+  }
+
+  void reapLive() {
+    if (this->live_pid <= 0) return;
+    int status = 0;
+    pid_t r    = waitpid(this->live_pid, &status, WNOHANG);
+    if (r != this->live_pid) return;
+    this->live_pid = -1;
+    if (this->live_active) {
+      this->live_active  = false;
+      this->live_current = -1;
+      this->sinkPlaybackStop();
+    }
+  }
+
+  void stopLive() {
+    if (this->live_pid > 0) {
+      kill(this->live_pid, SIGTERM);
+      int status = 0;
+      for (int i = 0; i < 20; i++) {
+        if (waitpid(this->live_pid, &status, WNOHANG) == this->live_pid) {
+          this->live_pid = -1;
+          break;
+        }
+        usleep(10000);
+      }
+      if (this->live_pid > 0) {
+        kill(this->live_pid, SIGKILL);
+        waitpid(this->live_pid, &status, 0);
+        this->live_pid = -1;
+      }
+    }
+    this->live_active  = false;
+    this->live_current = -1;
+    this->sinkPlaybackStop();
+  }
+
+  bool startLive(int index) {
+    if (index < 0 || index >= this->live_count)
+      return false;
+    stopLive();
+    if (!this->sinkPlaybackStart()) {
+      snprintf(this->live_error, sizeof(this->live_error), "controller/player is not ready");
+      return false;
+    }
+    this->live_error[0] = 0;
+    pid_t pid           = fork();
+    if (pid == 0) {
+      for (int fd = 3; fd < 1024; fd++) close(fd);
+      int nullfd = open("/dev/null", O_WRONLY);
+      if (nullfd >= 0) {
+        dup2(nullfd, STDOUT_FILENO);
+        dup2(nullfd, STDERR_FILENO);
+        if (nullfd > STDERR_FILENO) close(nullfd);
+      }
+      execlp("mpv", "mpv", "--no-video", "--no-terminal", "--really-quiet",
+             "--force-window=no", "--idle=no", "--audio-device=pipewire/padwave",
+             "--cache=yes", "--network-timeout=20", "--", this->live_channels[index].url,
+             static_cast<char *>(nullptr));
+      _exit(127);
+    }
+    if (pid < 0) {
+      snprintf(this->live_error, sizeof(this->live_error), "could not start mpv");
+      this->sinkPlaybackStop();
+      return false;
+    }
+    this->live_pid     = pid;
+    this->live_active  = true;
+    this->live_current = index;
+    return true;
+  }
+
   void scanDir(const char *dir, const char *folder) {
     DIR *d = opendir(dir);
     if (!d) return;
@@ -1359,6 +1606,7 @@ private:
   }
 
   void inputStop(bool pause_playback = false) {
+    stopLive();
     sinkPlaybackStop();
     this->input.close();
     if (this->player) this->player.dropDevice();
@@ -1849,7 +2097,7 @@ private:
     FILE *f = fopen(path, "r");
     if (!f) return;
 
-    char line[kMaxPath + 64];
+    char line[kMaxLiveUrl + 64];
     while (fgets(line, sizeof(line), f)) {
       char *eq = strchr(line, '=');
       if (!eq) continue;
@@ -1876,6 +2124,8 @@ private:
       } else if (strcmp(line, "speed") == 0) {
         int v       = atoi(value);
         this->speed = v < 50 ? 50 : (v > 200 ? 200 : v);
+      } else if (strcmp(line, "live_url") == 0) {
+        snprintf(this->live_url, sizeof(this->live_url), "%s", value);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -1917,6 +2167,7 @@ private:
     fprintf(f, "volume=%d\n", this->volume);
     fprintf(f, "last_nonzero_volume=%d\n", this->last_nonzero_volume);
     fprintf(f, "speed=%d\n", this->speed);
+    fprintf(f, "live_url=%s\n", this->live_url);
     fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
@@ -2300,12 +2551,47 @@ private:
 
     bool was_suspended = this->suspended;
     noteActivity();
-    if (this->sink_playback &&
-        (strcmp(action, "next") == 0 || strcmp(action, "previous") == 0 ||
-         strcmp(action, "shuffle_folder") == 0 || strcmp(action, "pause") == 0 ||
-         strcmp(action, "seek") == 0 || strcmp(action, "seek_to") == 0 ||
-         strcmp(action, "play_track") == 0))
-      sinkPlaybackStop();
+
+    bool file_action = strcmp(action, "next") == 0 || strcmp(action, "previous") == 0 ||
+                       strcmp(action, "shuffle_folder") == 0 || strcmp(action, "pause") == 0 ||
+                       strcmp(action, "seek") == 0 || strcmp(action, "seek_to") == 0 ||
+                       strcmp(action, "play_track") == 0;
+    if (this->live_active && file_action) stopLive();
+
+    if (strcmp(action, "live_url") == 0) {
+      char url[kMaxLiveUrl];
+      if (!kvGet(body, "value", url, sizeof(url)))
+        return snprintf(out, out_cap, "ok=false\nerror=missing value\n");
+      if (url[0] && !validLiveUrl(url))
+        return snprintf(out, out_cap, "ok=false\nerror=http(s) URL required\n");
+      stopLive();
+      snprintf(this->live_url, sizeof(this->live_url), "%s", url);
+      this->live_count    = 0;
+      this->live_error[0] = 0;
+      configSave();
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+    if (strcmp(action, "live_refresh") == 0) {
+      bool ok = refreshLive();
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return ok ? snprintf(out, out_cap, "ok=true\ncount=%d\n", this->live_count)
+                : snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
+    }
+    if (strcmp(action, "live_play") == 0) {
+      int id = static_cast<int>(kvNumber(body, "id", -1));
+      if (!startLive(id - 1))
+        return snprintf(out, out_cap, "ok=false\nerror=%s\n", this->live_error);
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+    if (strcmp(action, "live_stop") == 0) {
+      stopLive();
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
+
+    if (this->sink_playback && file_action) sinkPlaybackStop();
     if (was_suspended && strcmp(action, "pause") == 0) {
       snprintf(this->last_action, sizeof(this->last_action), "%s", action);
       return snprintf(out, out_cap, "ok=true\n");
@@ -2322,6 +2608,7 @@ private:
     else if (strcmp(action, "mute") == 0)
       toggleMute();
     else if (strcmp(action, "disconnect") == 0) {
+      stopLive();
       sinkPlaybackStop();
       this->playing = false;
       this->paused  = true;

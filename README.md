@@ -41,6 +41,12 @@ stops and the existing timer/Opus/HID path forwards the system audio to the
 controller. Pressing a local playback control switches back to the file player;
 the sink node remains available. PipeWire and WirePlumber must be running.
 
+The **Live** tab is optional and uses the external `mpv` player. Paste an
+M3U/M3U8 playlist URL into the tab, save it, and select a channel; padwave saves
+the URL in its config and runs `mpv` with its audio output routed to the
+`padwave` PipeWire sink. No playlist URL is compiled into the binary. Install
+mpv at runtime with `sudo apt install mpv`.
+
 ## Build and run
 
 Needs a C++23 compiler (`clang`), `pkg-config`, the FFmpeg development
@@ -190,8 +196,10 @@ literals. `GET /api/status`, `/api/events` (SSE), `/api/front` and
 `/api/front/events` are the live state. `POST /api/command` accepts `next`,
 `previous`, `pause`, `mute`, `shuffle_folder`, `disconnect`, `volume`, `speed`, `seek`,
 `seek_to` and `play_track` with the corresponding value/delta/position/id.
-`GET /api/library` is TSV; `/api/config` persists settings; `/api/schema`
-describes the lab fields; `POST /api/output` is the controller lab.
+`GET /api/library` and `/api/live` are TSV; `/api/config` persists settings;
+`/api/schema` describes the lab fields; `POST /api/output` is the controller lab.
+The live commands are `live_url` (value), `live_refresh`, `live_play` (id) and
+`live_stop`; playback is delegated to an external `mpv` process.
 
 ## Behavior
 
