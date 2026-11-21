@@ -286,8 +286,7 @@ private:
   long live_decode_ok    = 0;
   long live_decode_fail  = 0;
   static inline uint8_t web_pcm[512 * 1024];
-  size_t web_pcm_head       = 0;
-  size_t web_pcm_tail       = 0;
+  uint64_t web_pcm_head     = 0;
   int web_audio_clients     = 0;
   bool live_raw          = false;
   CURL *live_raw_curl    = nullptr;
@@ -558,7 +557,6 @@ public:
     configSave();
     micReset();
     this->web_pcm_head = 0;
-    this->web_pcm_tail = 0;
     this->web_audio_clients = 0;
     if (this->live_multi) {
       curl_multi_cleanup(this->live_multi);
@@ -1137,52 +1135,53 @@ public:
     if (this->web_audio_clients <= 0 || !pcm || frames <= 0) return;
     constexpr size_t cap = sizeof(this->web_pcm);
     size_t bytes = static_cast<size_t>(frames) * CHANNELS * sizeof(int16_t);
-    if (this->web_pcm_head + bytes > cap && this->web_pcm_tail > 0) {
-      size_t used = this->web_pcm_head - this->web_pcm_tail;
-      memmove(this->web_pcm, this->web_pcm + this->web_pcm_tail, used);
-      this->web_pcm_head = used;
-      this->web_pcm_tail = 0;
-    }
-    if (this->web_pcm_head + bytes > cap) return;
-    int16_t *out = reinterpret_cast<int16_t *>(this->web_pcm + this->web_pcm_head);
-    for (int i = 0; i < frames; i++) {
-      for (int ch = 0; ch < CHANNELS; ch++) {
-        float v = pcm[i * CHANNELS + ch];
+    size_t offset = static_cast<size_t>(this->web_pcm_head % cap);
+    size_t first = bytes < cap - offset ? bytes : cap - offset;
+    int16_t *out = reinterpret_cast<int16_t *>(this->web_pcm + offset);
+    for (size_t i = 0; i < first / sizeof(int16_t); i += CHANNELS) {
+      size_t frame = i / CHANNELS;
+      for (size_t ch = 0; ch < static_cast<size_t>(CHANNELS); ch++) {
+        float v = pcm[frame * CHANNELS + ch];
         if (v > 1.0f) v = 1.0f;
         if (v < -1.0f) v = -1.0f;
-        out[i * CHANNELS + ch] = static_cast<int16_t>(v * 32767.0f);
+        out[i + ch] = static_cast<int16_t>(v * 32767.0f);
+      }
+    }
+    if (first < bytes) {
+      size_t rest = bytes - first;
+      int16_t *second = reinterpret_cast<int16_t *>(this->web_pcm);
+      for (size_t i = 0; i < rest / sizeof(int16_t); i += CHANNELS) {
+        size_t frame = first / sizeof(int16_t) / CHANNELS + i / CHANNELS;
+        for (size_t ch = 0; ch < static_cast<size_t>(CHANNELS); ch++) {
+          float v = pcm[frame * CHANNELS + ch];
+          if (v > 1.0f) v = 1.0f;
+          if (v < -1.0f) v = -1.0f;
+          second[i + ch] = static_cast<int16_t>(v * 32767.0f);
+        }
       }
     }
     this->web_pcm_head += bytes;
   }
 
-  size_t browserAudioRead(char *out, size_t cap) {
-    size_t avail = this->web_pcm_head - this->web_pcm_tail;
-    if (avail == 0) {
-      this->web_pcm_head = this->web_pcm_tail = 0;
-      return 0;
-    }
-    size_t n = avail < cap ? avail : cap;
+  uint64_t browserAudioHead() const { return this->web_pcm_head; }
+
+  size_t browserAudioReadAt(uint64_t pos, char *out, size_t cap, uint64_t *next) {
+    constexpr uint64_t ring = sizeof(this->web_pcm);
+    if (this->web_pcm_head <= pos) return 0;
+    if (this->web_pcm_head - pos > ring) pos = this->web_pcm_head - ring;
+    size_t n = static_cast<size_t>(this->web_pcm_head - pos);
+    if (n > cap) n = cap;
     n &= ~static_cast<size_t>(1);
     if (n == 0) return 0;
-    memcpy(out, this->web_pcm + this->web_pcm_tail, n);
-    this->web_pcm_tail += n;
-    if (this->web_pcm_tail == this->web_pcm_head) {
-      this->web_pcm_head = this->web_pcm_tail = 0;
-    } else if (this->web_pcm_tail > sizeof(this->web_pcm) / 2) {
-      size_t left = this->web_pcm_head - this->web_pcm_tail;
-      memmove(this->web_pcm, this->web_pcm + this->web_pcm_tail, left);
-      this->web_pcm_head = left;
-      this->web_pcm_tail = 0;
-    }
+    size_t offset = static_cast<size_t>(pos % ring);
+    size_t first = n < ring - offset ? n : static_cast<size_t>(ring - offset);
+    memcpy(out, this->web_pcm + offset, first);
+    memcpy(out + first, this->web_pcm, n - first);
+    *next = pos + n;
     return n;
   }
 
-  bool browserAudioAddClient() {
-    if (this->web_audio_clients > 0) return false;
-    this->web_audio_clients++;
-    return true;
-  }
+  void browserAudioAddClient() { this->web_audio_clients++; }
 
   void browserAudioRemoveClient() {
     if (this->web_audio_clients > 0) this->web_audio_clients--;

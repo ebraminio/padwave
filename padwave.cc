@@ -51,6 +51,7 @@ private:
     bool client_blocked = false;
     bool file_reply     = false;
     bool web_audio      = false;
+    uint64_t web_audio_pos = 0;
     int file_fd         = -1;
     off_t file_off      = 0;
     off_t file_end      = 0;
@@ -428,19 +429,9 @@ private:
     requests++;
 
     if (strcmp(path, "/browser-pcm") == 0) {
-      if (!app->browserAudioAddClient()) {
-        for (int i = 0; i < kMaxConns; i++)
-          if (conns[i].fd >= 0 && conns[i].web_audio) closeConn(&conns[i]);
-        if (!app->browserAudioAddClient()) {
-          static const char body[] = "browser audio already in use\n";
-          c->static_reply = true;
-          c->out_len = static_cast<size_t>(makeStatic(
-              c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
-          modFd(c->fd, EPOLLOUT);
-          return;
-        }
-      }
+      app->browserAudioAddClient();
       c->web_audio = true;
+      c->web_audio_pos = app->browserAudioHead();
       c->out_len = static_cast<size_t>(snprintf(
           c->out, sizeof(c->out),
           "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
@@ -701,11 +692,13 @@ private:
 
       if (c->web_audio) {
         char pcm[8192];
-        size_t n = app->browserAudioRead(pcm, sizeof(pcm));
+        uint64_t next = c->web_audio_pos;
+        size_t n = app->browserAudioReadAt(c->web_audio_pos, pcm, sizeof(pcm), &next);
         if (n == 0) {
           modFd(c->fd, EPOLLIN);
           return;
         }
+        c->web_audio_pos = next;
         int hn = snprintf(c->out, sizeof(c->out), "%zx\r\n", n);
         if (hn <= 0 || static_cast<size_t>(hn) + n + 2 > sizeof(c->out)) {
           closeConn(c);
