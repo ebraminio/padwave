@@ -1318,6 +1318,11 @@ async function pumpBrowserAudio() {
     webAudioNext = at + buffer.duration;
     webAudioCarry = webAudioCarry.slice(frames * 4);
   }
+  webAudioReader = null;
+  if (webAudioPlaying) {
+    webAudioPlaying = false;
+    setWebAudioState("browser audio disconnected", true);
+  }
 }
 
 async function streamInBrowser(id) {

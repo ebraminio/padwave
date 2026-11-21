@@ -825,6 +825,7 @@ public:
            this->player.audioActive() ? "running" : (this->player.isValid() ? "ready" : "null"));
     kvAdd(buf, cap, &o, "audio.sink_available", "%s", sinkAvailable() ? "true" : "false");
     kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
+    kvAdd(buf, cap, &o, "audio.browser_clients", "%d", this->web_audio_clients);
     kvText(buf, cap, &o, "live.url", this->live_url);
     kvText(buf, cap, &o, "live.direct_url", this->live_direct_url);
     kvText(buf, cap, &o, "live.proxy", this->live_proxy);
@@ -2910,7 +2911,8 @@ done:
     this->input.close();
     if (this->player) this->player.dropDevice();
     this->controller = false;
-    if (pause_playback && this->player && this->playing && !this->paused) {
+    if (pause_playback && this->player && this->playing && !this->paused &&
+        this->web_audio_clients == 0) {
       this->paused               = true;
       this->paused_by_disconnect = true;
       playerSend("pause 1\n");

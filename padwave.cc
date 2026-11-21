@@ -429,12 +429,16 @@ private:
 
     if (strcmp(path, "/browser-pcm") == 0) {
       if (!app->browserAudioAddClient()) {
-        static const char body[] = "browser audio already in use\n";
-        c->static_reply = true;
-        c->out_len = static_cast<size_t>(makeStatic(
-            c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
-        modFd(c->fd, EPOLLOUT);
-        return;
+        for (int i = 0; i < kMaxConns; i++)
+          if (conns[i].fd >= 0 && conns[i].web_audio) closeConn(&conns[i]);
+        if (!app->browserAudioAddClient()) {
+          static const char body[] = "browser audio already in use\n";
+          c->static_reply = true;
+          c->out_len = static_cast<size_t>(makeStatic(
+              c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+          modFd(c->fd, EPOLLOUT);
+          return;
+        }
       }
       c->web_audio = true;
       c->out_len = static_cast<size_t>(snprintf(
