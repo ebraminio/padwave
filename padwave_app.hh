@@ -285,15 +285,10 @@ private:
   size_t live_pcm_pos    = 0;
   long live_decode_ok    = 0;
   long live_decode_fail  = 0;
-  static inline uint8_t web_mp3[512 * 1024];
-  size_t web_mp3_head       = 0;
-  size_t web_mp3_tail       = 0;
-  AVCodecContext *web_enc   = nullptr;
-  AVPacket *web_pkt         = nullptr;
-  int16_t web_carry[CHANNELS][4096];
-  int web_carry_len         = 0;
+  static inline uint8_t web_pcm[512 * 1024];
+  size_t web_pcm_head       = 0;
+  size_t web_pcm_tail       = 0;
   int web_audio_clients     = 0;
-  int64_t web_pts           = 0;
   bool live_raw          = false;
   CURL *live_raw_curl    = nullptr;
   bool live_raw_inflight = false;
@@ -562,11 +557,8 @@ public:
     snprintf(this->stream_url, sizeof(this->stream_url), "%s", saved_stream);
     configSave();
     micReset();
-    if (this->web_pkt) av_packet_free(&this->web_pkt);
-    if (this->web_enc) avcodec_free_context(&this->web_enc);
-    this->web_mp3_head = 0;
-    this->web_mp3_tail = 0;
-    this->web_carry_len = 0;
+    this->web_pcm_head = 0;
+    this->web_pcm_tail = 0;
     this->web_audio_clients = 0;
     if (this->live_multi) {
       curl_multi_cleanup(this->live_multi);
@@ -1140,103 +1132,47 @@ public:
     static_cast<App *>(owner)->webPcm(pcm, frames);
   }
 
-  bool ensureWebEncoder() {
-    if (this->web_enc) return true;
-    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MP3);
-    if (!codec) return false;
-    this->web_enc = avcodec_alloc_context3(codec);
-    this->web_pkt = av_packet_alloc();
-    if (!this->web_enc || !this->web_pkt) return false;
-    this->web_enc->sample_rate = 48000;
-    this->web_enc->bit_rate    = 128000;
-    this->web_enc->sample_fmt  = AV_SAMPLE_FMT_S16P;
-    this->web_enc->time_base   = AVRational{1, 48000};
-    av_channel_layout_default(&this->web_enc->ch_layout, CHANNELS);
-    if (avcodec_open2(this->web_enc, codec, nullptr) < 0) return false;
-    return true;
-  }
-
-  void encodeWebFrame() {
-    int frame_size = this->web_enc->frame_size > 0 ? this->web_enc->frame_size : 1152;
-    if (this->web_carry_len < frame_size) return;
-    AVFrame *frame = av_frame_alloc();
-    if (!frame) return;
-    frame->format      = this->web_enc->sample_fmt;
-    frame->sample_rate = this->web_enc->sample_rate;
-    frame->nb_samples  = frame_size;
-    av_channel_layout_copy(&frame->ch_layout, &this->web_enc->ch_layout);
-    if (av_frame_get_buffer(frame, 0) == 0) {
-      for (int ch = 0; ch < CHANNELS; ch++)
-        memcpy(frame->data[ch], this->web_carry[ch],
-               static_cast<size_t>(frame_size) * sizeof(int16_t));
-      frame->pts = this->web_pts;
-      this->web_pts += frame_size;
-      if (avcodec_send_frame(this->web_enc, frame) >= 0) {
-        while (avcodec_receive_packet(this->web_enc, this->web_pkt) == 0) {
-          size_t len = static_cast<size_t>(this->web_pkt->size);
-          constexpr size_t cap = sizeof(this->web_mp3);
-          if (this->web_mp3_head + len > cap && this->web_mp3_tail > 0) {
-            size_t used = this->web_mp3_head - this->web_mp3_tail;
-            memmove(this->web_mp3, this->web_mp3 + this->web_mp3_tail, used);
-            this->web_mp3_head = used;
-            this->web_mp3_tail = 0;
-          }
-          if (this->web_mp3_head + len <= cap) {
-            memcpy(this->web_mp3 + this->web_mp3_head, this->web_pkt->data, len);
-            this->web_mp3_head += len;
-          }
-          av_packet_unref(this->web_pkt);
-        }
-      }
-    }
-    av_frame_free(&frame);
-    memmove(this->web_carry[0], this->web_carry[0] + frame_size,
-            static_cast<size_t>(this->web_carry_len - frame_size) * sizeof(int16_t));
-    memmove(this->web_carry[1], this->web_carry[1] + frame_size,
-            static_cast<size_t>(this->web_carry_len - frame_size) * sizeof(int16_t));
-    this->web_carry_len -= frame_size;
-  }
-
   void webPcm(const float *pcm, int frames) {
     if (this->web_audio_clients <= 0 || !pcm || frames <= 0) return;
-    if (!this->ensureWebEncoder()) return;
-    int frame_size = this->web_enc->frame_size > 0 ? this->web_enc->frame_size : 1152;
-    while (frames > 0) {
-      int room = frame_size - this->web_carry_len;
-      if (room > frames) room = frames;
-      if (room > 4096 - this->web_carry_len) room = 4096 - this->web_carry_len;
-      if (room <= 0) break;
-      for (int i = 0; i < room; i++) {
-        for (int ch = 0; ch < CHANNELS; ch++) {
-          float v = pcm[i * CHANNELS + ch];
-          if (v > 1.0f) v = 1.0f;
-          if (v < -1.0f) v = -1.0f;
-          this->web_carry[ch][this->web_carry_len + i] = static_cast<int16_t>(v * 32767.0f);
-        }
-      }
-      this->web_carry_len += room;
-      pcm += room * CHANNELS;
-      frames -= room;
-      if (this->web_carry_len >= frame_size) this->encodeWebFrame();
+    constexpr size_t cap = sizeof(this->web_pcm);
+    size_t bytes = static_cast<size_t>(frames) * CHANNELS * sizeof(int16_t);
+    if (this->web_pcm_head + bytes > cap && this->web_pcm_tail > 0) {
+      size_t used = this->web_pcm_head - this->web_pcm_tail;
+      memmove(this->web_pcm, this->web_pcm + this->web_pcm_tail, used);
+      this->web_pcm_head = used;
+      this->web_pcm_tail = 0;
     }
+    if (this->web_pcm_head + bytes > cap) return;
+    int16_t *out = reinterpret_cast<int16_t *>(this->web_pcm + this->web_pcm_head);
+    for (int i = 0; i < frames; i++) {
+      for (int ch = 0; ch < CHANNELS; ch++) {
+        float v = pcm[i * CHANNELS + ch];
+        if (v > 1.0f) v = 1.0f;
+        if (v < -1.0f) v = -1.0f;
+        out[i * CHANNELS + ch] = static_cast<int16_t>(v * 32767.0f);
+      }
+    }
+    this->web_pcm_head += bytes;
   }
 
   size_t browserAudioRead(char *out, size_t cap) {
-    size_t avail = this->web_mp3_head - this->web_mp3_tail;
+    size_t avail = this->web_pcm_head - this->web_pcm_tail;
     if (avail == 0) {
-      this->web_mp3_head = this->web_mp3_tail = 0;
+      this->web_pcm_head = this->web_pcm_tail = 0;
       return 0;
     }
     size_t n = avail < cap ? avail : cap;
-    memcpy(out, this->web_mp3 + this->web_mp3_tail, n);
-    this->web_mp3_tail += n;
-    if (this->web_mp3_tail == this->web_mp3_head) {
-      this->web_mp3_head = this->web_mp3_tail = 0;
-    } else if (this->web_mp3_tail > sizeof(this->web_mp3) / 2) {
-      size_t left = this->web_mp3_head - this->web_mp3_tail;
-      memmove(this->web_mp3, this->web_mp3 + this->web_mp3_tail, left);
-      this->web_mp3_head = left;
-      this->web_mp3_tail = 0;
+    n &= ~static_cast<size_t>(1);
+    if (n == 0) return 0;
+    memcpy(out, this->web_pcm + this->web_pcm_tail, n);
+    this->web_pcm_tail += n;
+    if (this->web_pcm_tail == this->web_pcm_head) {
+      this->web_pcm_head = this->web_pcm_tail = 0;
+    } else if (this->web_pcm_tail > sizeof(this->web_pcm) / 2) {
+      size_t left = this->web_pcm_head - this->web_pcm_tail;
+      memmove(this->web_pcm, this->web_pcm + this->web_pcm_tail, left);
+      this->web_pcm_head = left;
+      this->web_pcm_tail = 0;
     }
     return n;
   }

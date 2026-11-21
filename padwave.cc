@@ -427,7 +427,7 @@ private:
 
     requests++;
 
-    if (strcmp(path, "/browser-audio") == 0) {
+    if (strcmp(path, "/browser-pcm") == 0) {
       if (!app->browserAudioAddClient()) {
         static const char body[] = "browser audio already in use\n";
         c->static_reply = true;
@@ -439,7 +439,7 @@ private:
       c->web_audio = true;
       c->out_len = static_cast<size_t>(snprintf(
           c->out, sizeof(c->out),
-          "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n"
+          "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
           "Transfer-Encoding: chunked\r\nCache-Control: no-cache\r\n"
           "Connection: close\r\n\r\n"));
       modFd(c->fd, EPOLLOUT);
