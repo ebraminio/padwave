@@ -90,6 +90,22 @@ private:
     bool radio;
   };
 
+  static void debugLog(const char *format, ...) {
+    FILE *f = fopen("/tmp/padwave-debug.log", "a");
+    if (!f) return;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    struct tm tm;
+    localtime_r(&ts.tv_sec, &tm);
+    fprintf(f, "%02d:%02d:%02d.%03ld ", tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1000000);
+    va_list ap;
+    va_start(ap, format);
+    vfprintf(f, format, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
+  }
+
   static long nowMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -518,7 +534,7 @@ public:
   bool sinkPlaybackStart() {
     if (!this->sink_node_active || this->sink_playback) return this->sink_playback;
     if (!this->player) playerStart();
-    if (!this->player || this->player.fd() < 0) return false;
+    if (!this->player) return false;
     this->player.setSinkMode(true);
     this->sink_playback = true;
     this->playing       = false;
@@ -817,6 +833,8 @@ public:
     kvAdd(buf, cap, &o, "audio.sink_available", "%s", sinkAvailable() ? "true" : "false");
     kvAdd(buf, cap, &o, "audio.system_sink", "%s", this->sink_playback ? "true" : "false");
     kvAdd(buf, cap, &o, "audio.browser_clients", "%d", this->web_audio_clients);
+    kvAdd(buf, cap, &o, "audio.player_playing", "%s", this->player.isPlaying() ? "true" : "false");
+    kvAdd(buf, cap, &o, "audio.player_fd", "%d", this->player.fd());
     kvText(buf, cap, &o, "live.url", this->live_url);
     kvText(buf, cap, &o, "live.direct_url", this->live_direct_url);
     kvText(buf, cap, &o, "live.proxy", this->live_proxy);
@@ -2883,14 +2901,19 @@ done:
   void inputStart() {
     if (this->input.fd() >= 0) return;
     if (!this->player) return;
+    debugLog("inputStart begin pfd=%d node=%s", this->player.fd(), this->player.node());
     if (this->player.fd() < 0 && !this->player.reopenDevice()) {
+      debugLog("inputStart reopen failed");
       this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
     }
     if (!this->input.open(this->player.fd(), this->player.node(), this->player.mac())) {
+      debugLog("inputStart input.open failed fd=%d", this->player.fd());
       this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
     }
+    debugLog("inputStart ok pfd=%d node=%s mac=%s", this->player.fd(), this->player.node(),
+             this->player.mac());
     snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
     snprintf(this->controller_mac, sizeof(this->controller_mac), "%s", this->input.mac());
     this->input.attach(this);
@@ -2905,6 +2928,9 @@ done:
 
   void inputStop(bool pause_playback = false) {
     (void)pause_playback;
+    debugLog("inputStop live=%d sink=%d playing=%d paused=%d web=%d pfd=%d", this->live_active,
+             this->sink_playback, this->playing, this->paused, this->web_audio_clients,
+             this->player.fd());
     if (this->live_active) stopLive();
     this->input.close();
     if (this->player) this->player.dropDevice();
@@ -2980,6 +3006,8 @@ done:
 
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
+    debugLog("play index=%d start=%ld controller=%d pfd=%d", index, start_ms, this->controller,
+             this->player.fd());
     ensureAudibleVolume();
     playerStart();
     char line[kMaxPath + 64];
@@ -3034,6 +3062,8 @@ done:
   }
 
   void togglePause() {
+    debugLog("togglePause playing=%d paused=%d playerPlaying=%d pfd=%d", this->playing,
+             this->paused, this->player.isPlaying(), this->player.fd());
     if (!this->player || !this->player.isPlaying()) {
       ensureAudibleVolume();
       if (this->current >= 0) play(this->current, this->pos_ms);

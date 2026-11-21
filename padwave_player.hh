@@ -525,6 +525,7 @@ private:
     DualSenseDevice device;
     int fd = device.open();
     if (fd < 0) return false;
+    fprintf(stderr, "padwave player: openDevice %s fd=%d\n", device.node, fd);
     hidraw = fd;
     is_usb = device.isUsb();
     snprintf(node_name, sizeof(node_name), "%s", device.node);
@@ -1538,6 +1539,8 @@ public:
   const char *audioSink() const { return usb_audio ? "usb-alsa" : ""; }
 
   void dropDevice() {
+    fprintf(stderr, "padwave player: dropDevice fd=%d playing=%d paused=%d\n", hidraw, playing,
+            paused);
     stopUsbAudio();
     if (hidraw >= 0) close(hidraw);
     hidraw            = -1;
