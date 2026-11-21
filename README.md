@@ -64,10 +64,10 @@ embedded muted HLS player (native HLS in Safari) and its upstream segment
 requests start only after pressing **watch video**.
 
 When no controller is connected, selecting a local track plays it in the
-browser instead. The page fetches `/browser-pcm`, a chunked stream of the same
-16-bit 48 kHz stereo PCM the Player is sending to the controller, and schedules
-it with Web Audio. It is a live tap, not a seekable copy; the 🌐 button attaches
-or detaches the current playback.
+browser instead. The page subscribes to `/browser-pcm`, an SSE stream of
+base64-encoded 16-bit 48 kHz stereo PCM carrying the same audio the Player is
+sending to the controller, and schedules it with Web Audio. It is a live tap,
+not a seekable copy; the 🌐 button attaches or detaches the current playback.
 Audio-only HLS streams are supported and leave the video player hidden. An
 "allow invalid TLS" option is available for servers with broken certificates.
 Clicking a channel fills the direct-URL field with its stream URL; the field

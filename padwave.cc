@@ -434,9 +434,9 @@ private:
       c->web_audio_pos = app->browserAudioHead();
       c->out_len = static_cast<size_t>(snprintf(
           c->out, sizeof(c->out),
-          "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+          "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
           "Transfer-Encoding: chunked\r\nCache-Control: no-cache\r\n"
-          "Connection: close\r\n\r\n"));
+          "Connection: keep-alive\r\n\r\n"));
       modFd(c->fd, EPOLLOUT);
       return;
     }
@@ -691,22 +691,35 @@ private:
       c->client_blocked       = false;
 
       if (c->web_audio) {
-        char pcm[8192];
+        uint8_t pcm[4096];
         uint64_t next = c->web_audio_pos;
-        size_t n = app->browserAudioReadAt(c->web_audio_pos, pcm, sizeof(pcm), &next);
+        size_t n = app->browserAudioReadAt(c->web_audio_pos, reinterpret_cast<char *>(pcm),
+                                           sizeof(pcm), &next);
         if (n == 0) {
           modFd(c->fd, EPOLLIN);
           return;
         }
         c->web_audio_pos = next;
-        int hn = snprintf(c->out, sizeof(c->out), "%zx\r\n", n);
-        if (hn <= 0 || static_cast<size_t>(hn) + n + 2 > sizeof(c->out)) {
+        char b64[8192];
+        size_t bl = base64Encode(pcm, n, b64, sizeof(b64));
+        if (bl == 0) {
           closeConn(c);
           return;
         }
-        memcpy(c->out + hn, pcm, n);
-        memcpy(c->out + hn + n, "\r\n", 2);
-        c->out_len = static_cast<size_t>(hn) + n + 2;
+        char event[8300];
+        int en = snprintf(event, sizeof(event), "data: %s\n\n", b64);
+        if (en <= 0 || static_cast<size_t>(en) >= sizeof(event)) {
+          closeConn(c);
+          return;
+        }
+        int hn = snprintf(c->out, sizeof(c->out), "%x\r\n", static_cast<unsigned>(en));
+        if (hn <= 0 || static_cast<size_t>(hn) + static_cast<size_t>(en) + 2 > sizeof(c->out)) {
+          closeConn(c);
+          return;
+        }
+        memcpy(c->out + hn, event, static_cast<size_t>(en));
+        memcpy(c->out + hn + en, "\r\n", 2);
+        c->out_len = static_cast<size_t>(hn) + static_cast<size_t>(en) + 2;
         continue;
       }
 
@@ -737,6 +750,25 @@ private:
       if (c->static_reply) closeConn(c);
       return;
     }
+  }
+
+  static size_t base64Encode(const uint8_t *in, size_t n, char *out, size_t cap) {
+    static const char table[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t need = ((n + 2) / 3) * 4;
+    if (need + 1 > cap) return 0;
+    size_t o = 0;
+    for (size_t i = 0; i < n; i += 3) {
+      uint32_t v = static_cast<uint32_t>(in[i]) << 16;
+      if (i + 1 < n) v |= static_cast<uint32_t>(in[i + 1]) << 8;
+      if (i + 2 < n) v |= in[i + 2];
+      out[o++] = table[(v >> 18) & 63];
+      out[o++] = table[(v >> 12) & 63];
+      out[o++] = i + 1 < n ? table[(v >> 6) & 63] : '=';
+      out[o++] = i + 2 < n ? table[v & 63] : '=';
+    }
+    out[o] = 0;
+    return o;
   }
 
   void flushWebAudioClients() {

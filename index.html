@@ -1266,7 +1266,7 @@ function highlightTrack(id) {
 }
 
 let webAudioCtx = null;
-let webAudioReader = null;
+let webAudioSource = null;
 let webAudioPlaying = false;
 let webAudioNext = 0;
 let webAudioCarry = new Uint8Array(0);
@@ -1280,9 +1280,9 @@ function setWebAudioState(text, visible) {
 async function stopBrowserAudio() {
   webAudioPlaying = false;
   webAudioCarry = new Uint8Array(0);
-  if (webAudioReader) {
-    try { await webAudioReader.cancel(); } catch (_) {}
-    webAudioReader = null;
+  if (webAudioSource) {
+    webAudioSource.close();
+    webAudioSource = null;
   }
   if (webAudioCtx) {
     try { await webAudioCtx.close(); } catch (_) {}
@@ -1291,38 +1291,29 @@ async function stopBrowserAudio() {
   setWebAudioState("", false);
 }
 
-async function pumpBrowserAudio() {
-  while (webAudioReader) {
-    const { value, done } = await webAudioReader.read();
-    if (done) break;
-    const merged = new Uint8Array(webAudioCarry.length + value.length);
-    merged.set(webAudioCarry);
-    merged.set(value, webAudioCarry.length);
-    webAudioCarry = merged;
-    const frames = Math.floor(webAudioCarry.length / 4);
-    if (frames < 2400) continue; // schedule in ~50 ms blocks
-    const take = new Int16Array(webAudioCarry.buffer, webAudioCarry.byteOffset, frames * 2);
-    const buffer = webAudioCtx.createBuffer(2, frames, 48000);
-    const left = buffer.getChannelData(0);
-    const right = buffer.getChannelData(1);
-    for (let i = 0; i < frames; i++) {
-      left[i] = take[i * 2] / 32768;
-      right[i] = take[i * 2 + 1] / 32768;
-    }
-    const source = webAudioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(webAudioCtx.destination);
-    const now = webAudioCtx.currentTime;
-    const at = Math.max(now + 0.08, webAudioNext > now ? webAudioNext : now + 0.08);
-    source.start(at);
-    webAudioNext = at + buffer.duration;
-    webAudioCarry = webAudioCarry.slice(frames * 4);
+function feedBrowserPcm(bytes) {
+  const merged = new Uint8Array(webAudioCarry.length + bytes.length);
+  merged.set(webAudioCarry);
+  merged.set(bytes, webAudioCarry.length);
+  webAudioCarry = merged;
+  let frames = Math.floor(webAudioCarry.length / 4);
+  if (frames < 600) return; // ~12 ms
+  const take = new Int16Array(webAudioCarry.buffer, webAudioCarry.byteOffset, frames * 2);
+  const buffer = webAudioCtx.createBuffer(2, frames, 48000);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  for (let i = 0; i < frames; i++) {
+    left[i] = take[i * 2] / 32768;
+    right[i] = take[i * 2 + 1] / 32768;
   }
-  webAudioReader = null;
-  if (webAudioPlaying) {
-    webAudioPlaying = false;
-    setWebAudioState("browser audio disconnected", true);
-  }
+  const source = webAudioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(webAudioCtx.destination);
+  const now = webAudioCtx.currentTime;
+  const at = Math.max(now + 0.08, webAudioNext > now ? webAudioNext : now + 0.08);
+  source.start(at);
+  webAudioNext = at + buffer.duration;
+  webAudioCarry = webAudioCarry.slice(frames * 4);
 }
 
 async function streamInBrowser(id) {
@@ -1338,22 +1329,28 @@ async function streamInBrowser(id) {
     toast("browser audio: " + e.message);
     return;
   }
-  const response = await fetch("/browser-pcm", { cache: "no-store" });
-  if (!response.ok || !response.body) {
-    toast("browser audio unavailable");
-    await stopBrowserAudio();
-    return;
-  }
-  webAudioReader = response.body.getReader();
   webAudioPlaying = true;
   webAudioNext = 0;
-  setWebAudioState("browser audio live · tap of controller stream", true);
-  if (id && !(last && last.controller && last.controller.connected))
-    send("play_track", { id });
-  pumpBrowserAudio().catch((e) => {
-    toast("browser audio: " + e.message);
-    stopBrowserAudio();
-  });
+  webAudioCarry = new Uint8Array(0);
+  webAudioSource = new EventSource("/browser-pcm");
+  webAudioSource.onopen = () => {
+    setWebAudioState("browser audio live · tap of controller stream", true);
+    if (id && !(last && last.controller && last.controller.connected))
+      send("play_track", { id });
+  };
+  webAudioSource.onmessage = (event) => {
+    try {
+      const bin = atob(event.data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      feedBrowserPcm(bytes);
+    } catch (e) {
+      toast("browser audio: " + e.message);
+    }
+  };
+  webAudioSource.onerror = () => {
+    setWebAudioState("browser audio reconnecting…", true);
+  };
 }
 
 $("#webStream").onclick = () => {
