@@ -389,6 +389,7 @@ private:
   unsigned rate_frames      = 0;
   char input_node[64]       = "";
   char controller_mac[32]   = "";
+  char saved_controller_mac[32] = "";
   char last_action[64]      = "";
   char raw[400]             = "";
 
@@ -891,6 +892,7 @@ public:
     kvText(buf, cap, &o, "controller.bus", this->player.isUsb() ? "usb" : "bluetooth");
     kvText(buf, cap, &o, "controller.name", "DualSense");
     kvText(buf, cap, &o, "controller.mac", this->player.isUsb() ? "" : this->controller_mac);
+    kvText(buf, cap, &o, "controller.saved_mac", this->saved_controller_mac);
     kvText(buf, cap, &o, "controller.model", "dualsense");
     kvText(buf, cap, &o, "controller.node", this->input_node);
     if (this->battery >= 0)
@@ -2914,6 +2916,12 @@ done:
     }
     debugLog("inputStart ok pfd=%d node=%s mac=%s", this->player.fd(), this->player.node(),
              this->player.mac());
+    if (this->player.mac()[0] &&
+        strcmp(this->saved_controller_mac, this->player.mac()) != 0) {
+      snprintf(this->saved_controller_mac, sizeof(this->saved_controller_mac), "%s",
+               this->player.mac());
+      configSave();
+    }
     snprintf(this->input_node, sizeof(this->input_node), "%s", this->input.node());
     snprintf(this->controller_mac, sizeof(this->controller_mac), "%s", this->input.mac());
     this->input.attach(this);
@@ -3473,6 +3481,8 @@ done:
         snprintf(this->live_proxy_pass, sizeof(this->live_proxy_pass), "%s", value);
       } else if (strcmp(line, "live_insecure") == 0) {
         this->live_insecure = strcmp(value, "true") == 0 || atoi(value) != 0;
+      } else if (strcmp(line, "controller_mac") == 0) {
+        snprintf(this->saved_controller_mac, sizeof(this->saved_controller_mac), "%s", value);
       } else if (strcmp(line, "play_path") == 0) {
         snprintf(this->resume_path, sizeof(this->resume_path), "%s", value);
       } else if (strcmp(line, "play_pos_ms") == 0) {
@@ -3522,6 +3532,7 @@ done:
     fprintf(f, "live_proxy_user=%s\n", this->live_proxy_user);
     fprintf(f, "live_proxy_pass=%s\n", this->live_proxy_pass);
     fprintf(f, "live_insecure=%s\n", this->live_insecure ? "true" : "false");
+    fprintf(f, "controller_mac=%s\n", this->saved_controller_mac);
     fprintf(f, "haptics_only=%s\n", this->haptics_only ? "true" : "false");
     fprintf(f, "power_save_mode=%s\n", this->power_save_mode ? "true" : "false");
     fclose(f);
@@ -3912,6 +3923,29 @@ done:
                        strcmp(action, "play_track") == 0;
     if (this->live_active && file_action) stopLive();
 
+    if (strcmp(action, "controller_reconnect") == 0) {
+      if (this->controller && this->player.fd() >= 0) {
+        snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+        return snprintf(out, out_cap, "ok=true\nalready=true\n");
+      }
+      const char *mac = this->saved_controller_mac[0] ? this->saved_controller_mac
+                                                      : this->controller_mac;
+      if (!mac[0])
+        return snprintf(out, out_cap, "ok=false\nerror=no saved controller MAC\n");
+      for (const char *p = mac; *p; p++)
+        if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+              (*p >= 'A' && *p <= 'F') || *p == ':'))
+          return snprintf(out, out_cap, "ok=false\nerror=invalid controller MAC\n");
+      char cmd[256];
+      snprintf(cmd, sizeof(cmd),
+               "timeout 5 bluetoothctl trust %s >/dev/null 2>&1; "
+               "timeout 10 bluetoothctl connect %s >/dev/null 2>&1",
+               mac, mac);
+      int rc = system(cmd);
+      this->inputStart();
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=%s\nmac=%s\n", rc == 0 ? "true" : "false", mac);
+    }
     if (strcmp(action, "live_url") == 0) {
       char url[kMaxLiveUrl];
       if (!kvGet(body, "value", url, sizeof(url)))

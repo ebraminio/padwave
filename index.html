@@ -69,6 +69,10 @@
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .controller-toggle { padding: 5px 9px; font-size: 11px; border-radius: 7px; }
   .controller-toggle.off { border-color: var(--warn); color: var(--warn); background: #2a2113; }
+  .controller-pairing { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .controller-pairing summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  .controller-pairing pre { white-space: pre-wrap; font-family: var(--mono); font-size: 11px;
+    background: #0f1219; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 8px; }
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
@@ -377,8 +381,16 @@
         <h2>controller</h2>
         <button id="controllerToggle" class="controller-toggle" disabled
                 title="disable controller input and lightbar while a USB data link is connected; not saved">controller: active</button>
+        <button id="controllerReconnect" class="controller-toggle" disabled
+                title="trust and reconnect the last controller through BlueZ">reconnect</button>
         <span class="chip" id="lastAction">—</span>
       </div>
+      <details class="controller-pairing">
+        <summary>pairing / reconnect guide</summary>
+        <div class="note">Normal reconnect does not need remove/untrust/pair. Use the guide below only for a fresh Pi or when the controller is paired to another host. Put the controller in pairing mode by holding PS + Create until the light bar double-flashes.</div>
+        <pre id="pairGuide"></pre>
+        <div class="lab-row"><button id="copyPairGuide">copy guide</button><span id="pairGuideMsg"></span></div>
+      </details>
       <div class="pad-grid" id="padGrid"></div>
       <div class="bitwatch" id="bitwatch"></div>
       <details>
@@ -1044,6 +1056,14 @@ function render(s) {
   controllerToggle.title = canToggle
     ? "disable controller input and lightbar while the USB data link is connected; not saved"
     : "available only while a USB data link is connected";
+  const savedMac = c.saved_mac || "";
+  const reconnect = $("#controllerReconnect");
+  reconnect.disabled = c.connected === true || !savedMac;
+  reconnect.textContent = c.connected ? "controller connected" : (savedMac ? "reconnect" : "no saved controller");
+  reconnect.title = savedMac
+    ? `trust and connect ${savedMac} through BlueZ`
+    : "pair the controller once, then padwave remembers its address";
+  renderPairGuide(savedMac);
 
   const audio = s.audio || {};
   const sinkOn = audio.system_sink === true;
@@ -1476,6 +1496,73 @@ $("#controllerToggle").onclick = async () => {
       body: `kind=controller_input\nenabled=${disabled ? 0 : 1}`
     });
   } catch (e) { toast("network: " + e.message); }
+};
+
+function pairingGuideText(mac) {
+  const address = mac || "<controller-mac>";
+  return `Fresh Pi / first pairing
+=======================
+sudo systemctl enable --now bluetooth
+sudo rfkill unblock bluetooth   # only if Bluetooth is blocked
+bluetoothctl
+
+[bluetooth]# power on
+[bluetooth]# agent on
+[bluetooth]# default-agent
+[bluetooth]# scan on
+# Put the controller in pairing mode: hold PS + Create.
+[bluetooth]# pair ${address}
+[bluetooth]# trust ${address}
+[bluetooth]# connect ${address}
+
+Re-pair after the controller was paired to another host
+=====================================================
+bluetoothctl
+
+[bluetooth]# disconnect ${address}
+[bluetooth]# remove ${address}
+[bluetooth]# untrust ${address}   # usually redundant after remove
+[bluetooth]# scan on
+# Put the controller in pairing mode: hold PS + Create.
+[bluetooth]# pair ${address}
+[bluetooth]# trust ${address}
+[bluetooth]# connect ${address}
+
+Notes
+=====
+- Normal reconnect: use the reconnect button; do not remove the bond.
+- disconnect/remove/untrust are only needed when the controller was paired elsewhere.
+- scan on must be running before pair; the controller must be in pairing mode.
+- trust before connect lets BlueZ reconnect it later.`;
+}
+
+let pairGuideShown = "";
+function renderPairGuide(mac) {
+  if (pairGuideShown === mac) return;
+  pairGuideShown = mac;
+  $("#pairGuide").textContent = pairingGuideText(mac);
+}
+
+$("#controllerReconnect").onclick = async () => {
+  const button = $("#controllerReconnect");
+  const old = button.textContent;
+  button.disabled = true;
+  button.textContent = "reconnecting…";
+  const result = await send("controller_reconnect");
+  if (result && result.ok === true) toast("controller reconnect requested");
+  else toast("controller reconnect failed");
+  button.textContent = old;
+};
+
+$("#copyPairGuide").onclick = async () => {
+  const mac = (last && last.controller && last.controller.saved_mac) || "";
+  try {
+    await navigator.clipboard.writeText(pairingGuideText(mac));
+    $("#pairGuideMsg").textContent = "copied";
+  } catch (_) {
+    $("#pairGuideMsg").textContent = "copy failed";
+  }
+  setTimeout(() => { $("#pairGuideMsg").textContent = ""; }, 1500);
 };
 
 $("#filter").addEventListener("input", (e) => {
