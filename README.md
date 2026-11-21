@@ -62,6 +62,10 @@ The tab also shows channel logos, radio markers, provider/country metadata, a
 direct-URL field, and video controls for video streams. Video is opt-in: the
 embedded muted HLS player (native HLS in Safari) and its upstream segment
 requests start only after pressing **watch video**.
+
+When no controller is connected, selecting a local track plays it in the
+browser instead: padwave decodes the file in-process to a seekable MP3 at
+`/browser/<id>` and caches it under `/tmp/padwave-browser`.
 Audio-only HLS streams are supported and leave the video player hidden. An
 "allow invalid TLS" option is available for servers with broken certificates.
 Clicking a channel fills the direct-URL field with its stream URL; the field

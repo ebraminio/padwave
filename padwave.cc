@@ -423,6 +423,21 @@ private:
 
     requests++;
 
+    if (strncmp(path, "/browser", 8) == 0 && (path[8] == 0 || path[8] == '/')) {
+      const char *id = path[8] == '/' ? path + 9 : "";
+      char file_path[512];
+      if (!app->browserTrack(id, file_path, sizeof(file_path))) {
+        static const char body[] = "track not found or decode failed\n";
+        c->static_reply = true;
+        c->out_len = static_cast<size_t>(makeStatic(
+            c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
+        modFd(c->fd, EPOLLOUT);
+        return;
+      }
+      serveFile(c, file_path, "audio/mpeg", false);
+      return;
+    }
+
     if (strncmp(path, "/stream", 7) == 0 && (path[7] == 0 || path[7] == '/')) {
       const char *id        = path[7] == '/' ? path + 8 : "";
       const char *file_path = nullptr;

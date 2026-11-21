@@ -332,7 +332,7 @@
         <button class="primary" data-action="pause" id="pauseBtn">play</button>
         <button class="icon" data-action="next" title="next track in this folder">⏭</button>
         <button class="icon" data-action="shuffle_folder" title="another folder">🎲</button>
-        <button class="icon" id="webStream" title="play the current track in this browser (works without a controller)">🌐</button>
+        <button class="icon" id="webStream" title="stream the current track to this browser (works without a controller)">🌐</button>
         <button class="icon" data-action="disconnect" title="stop and power the controller off">⏏</button>
       </div>
 
@@ -1274,7 +1274,8 @@ function streamInBrowser(id) {
     return;
   }
   $("#webAudio").style.display = "block";
-  webAudio.src = `/stream/${encodeURIComponent(trackId)}`;
+  toast("preparing browser audio…");
+  webAudio.src = `/browser/${encodeURIComponent(trackId)}`;
   webAudio.play().catch((e) => toast("browser audio: " + e.message));
 }
 
@@ -1352,7 +1353,15 @@ function frameLoop() {
 // -- wiring -----------------------------------------------------------------
 
 document.querySelectorAll("[data-action]").forEach(btn => {
-  btn.onclick = () => send(btn.dataset.action);
+  btn.onclick = () => {
+    const noController = !(last && last.controller && last.controller.connected);
+    if (noController && btn.dataset.action === "pause") {
+      if (!webAudio.paused) { webAudio.pause(); return; }
+      streamInBrowser();
+      return;
+    }
+    send(btn.dataset.action);
+  };
 });
 
 

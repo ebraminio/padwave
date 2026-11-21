@@ -1120,6 +1120,196 @@ public:
     return true;
   }
 
+  bool browserTrack(const char *id, char *out_path, size_t cap) {
+    int index = (id && *id) ? findId(id) : this->current;
+    if (index < 0 || index >= this->count) return false;
+    const Track *track = &this->tracks[index];
+    struct stat st;
+    if (stat(track->path, &st) != 0 || !S_ISREG(st.st_mode)) return false;
+    char key[kMaxPath + 64];
+    snprintf(key, sizeof(key), "%s|%lld|%lld", track->path,
+             static_cast<long long>(st.st_size), static_cast<long long>(st.st_mtime));
+    char hash[17];
+    makeId(key, hash);
+    mkdir("/tmp/padwave-browser", 0755);
+    snprintf(out_path, cap, "/tmp/padwave-browser/%s.mp3", hash);
+    if (access(out_path, R_OK) == 0) return true;
+
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.part", out_path);
+    AVFormatContext *in = nullptr;
+    AVFormatContext *out = nullptr;
+    AVCodecContext *dec = nullptr;
+    AVCodecContext *enc = nullptr;
+    SwrContext *swr = nullptr;
+    AVPacket *pkt = nullptr;
+    AVFrame *frame = nullptr;
+    int audio_index = -1;
+    bool ok = false;
+    bool io_open = false;
+    int64_t total_samples = 0;
+    if (avformat_open_input(&in, track->path, nullptr, nullptr) < 0) goto done;
+    if (avformat_find_stream_info(in, nullptr) < 0) goto done;
+    audio_index = av_find_best_stream(in, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audio_index < 0) goto done;
+    {
+      const AVCodec *codec = avcodec_find_decoder(in->streams[audio_index]->codecpar->codec_id);
+      if (!codec) goto done;
+      dec = avcodec_alloc_context3(codec);
+      if (!dec || avcodec_parameters_to_context(dec, in->streams[audio_index]->codecpar) < 0 ||
+          avcodec_open2(dec, codec, nullptr) < 0)
+        goto done;
+    }
+    {
+      const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MP3);
+      if (!codec) goto done;
+      if (avformat_alloc_output_context2(&out, nullptr, "mp3", tmp_path) < 0 || !out) goto done;
+      AVStream *ost = avformat_new_stream(out, nullptr);
+      if (!ost) goto done;
+      enc = avcodec_alloc_context3(codec);
+      if (!enc) goto done;
+      enc->sample_rate = 48000;
+      enc->bit_rate = 128000;
+      av_channel_layout_default(&enc->ch_layout, CHANNELS);
+      enc->sample_fmt = AV_SAMPLE_FMT_S16P;
+      enc->time_base = AVRational{1, 48000};
+      if (avcodec_open2(enc, codec, nullptr) < 0) goto done;
+      if (avcodec_parameters_from_context(ost->codecpar, enc) < 0) goto done;
+      ost->time_base = enc->time_base;
+      if (avio_open(&out->pb, tmp_path, AVIO_FLAG_WRITE) < 0) goto done;
+      io_open = true;
+      if (avformat_write_header(out, nullptr) < 0) goto done;
+    }
+    pkt = av_packet_alloc();
+    frame = av_frame_alloc();
+    if (!pkt || !frame) goto done;
+    {
+      static constexpr int kCarrySamples = 32768;
+      int16_t carry[CHANNELS][kCarrySamples];
+      int carry_len = 0;
+      auto drainDecoder = [&]() {
+        while (avcodec_receive_frame(dec, frame) == 0) {
+          if (!swr) {
+            AVChannelLayout in_layout;
+            AVChannelLayout out_layout;
+            av_channel_layout_copy(&in_layout, &frame->ch_layout);
+            av_channel_layout_default(&out_layout, CHANNELS);
+            int rc = swr_alloc_set_opts2(&swr, &out_layout, enc->sample_fmt, enc->sample_rate,
+                                         &in_layout, dec->sample_fmt, dec->sample_rate, 0, nullptr);
+            av_channel_layout_uninit(&in_layout);
+            av_channel_layout_uninit(&out_layout);
+            if (rc < 0 || !swr || swr_init(swr) < 0) return;
+          }
+          int out_samples = swr_get_out_samples(swr, frame->nb_samples);
+          if (out_samples > 16384) out_samples = 16384;
+          uint8_t *converted[AV_NUM_DATA_POINTERS] = {};
+          int linesize = 0;
+          if (av_samples_alloc(converted, &linesize, CHANNELS, out_samples, enc->sample_fmt, 0) < 0)
+            return;
+          const uint8_t *src[AV_NUM_DATA_POINTERS] = {};
+          int channels = dec->ch_layout.nb_channels;
+          if (channels > AV_NUM_DATA_POINTERS) channels = AV_NUM_DATA_POINTERS;
+          for (int i = 0; i < channels; i++) src[i] = frame->extended_data[i];
+          int got = swr_convert(swr, converted, out_samples, src, frame->nb_samples);
+          if (got > 0) {
+            if (carry_len + got > kCarrySamples) got = kCarrySamples - carry_len;
+            for (int ch = 0; ch < CHANNELS; ch++)
+              memcpy(carry[ch] + carry_len, converted[ch], static_cast<size_t>(got) * sizeof(int16_t));
+            carry_len += got;
+            int frame_size = enc->frame_size > 0 ? enc->frame_size : 1152;
+            while (carry_len >= frame_size) {
+              AVFrame *encoded = av_frame_alloc();
+              if (!encoded) break;
+              encoded->format = enc->sample_fmt;
+              encoded->sample_rate = enc->sample_rate;
+              encoded->nb_samples = frame_size;
+              av_channel_layout_copy(&encoded->ch_layout, &enc->ch_layout);
+              if (av_frame_get_buffer(encoded, 0) == 0) {
+                for (int ch = 0; ch < CHANNELS; ch++)
+                  memcpy(encoded->data[ch], carry[ch], static_cast<size_t>(frame_size) * sizeof(int16_t));
+                encoded->pts = total_samples;
+                total_samples += frame_size;
+                if (avcodec_send_frame(enc, encoded) >= 0) {
+                  while (avcodec_receive_packet(enc, pkt) == 0) {
+                    pkt->stream_index = 0;
+                    if (pkt->pts != AV_NOPTS_VALUE)
+                      pkt->pts = av_rescale_q(pkt->pts, enc->time_base, out->streams[0]->time_base);
+                    if (pkt->dts != AV_NOPTS_VALUE)
+                      pkt->dts = av_rescale_q(pkt->dts, enc->time_base, out->streams[0]->time_base);
+                    av_interleaved_write_frame(out, pkt);
+                    av_packet_unref(pkt);
+                  }
+                }
+              }
+              av_frame_free(&encoded);
+              for (int ch = 0; ch < CHANNELS; ch++)
+                memmove(carry[ch], carry[ch] + frame_size,
+                        static_cast<size_t>(carry_len - frame_size) * sizeof(int16_t));
+              carry_len -= frame_size;
+            }
+          }
+          av_freep(&converted[0]);
+          av_frame_unref(frame);
+        }
+      };
+      while (av_read_frame(in, pkt) >= 0) {
+        if (pkt->stream_index == audio_index) avcodec_send_packet(dec, pkt);
+        av_packet_unref(pkt);
+        drainDecoder();
+      }
+      avcodec_send_packet(dec, nullptr);
+      drainDecoder();
+      if (carry_len > 0) {
+        AVFrame *encoded = av_frame_alloc();
+        if (encoded) {
+          encoded->format = enc->sample_fmt;
+          encoded->sample_rate = enc->sample_rate;
+          encoded->nb_samples = carry_len;
+          av_channel_layout_copy(&encoded->ch_layout, &enc->ch_layout);
+          if (av_frame_get_buffer(encoded, 0) == 0) {
+            for (int ch = 0; ch < CHANNELS; ch++)
+              memcpy(encoded->data[ch], carry[ch], static_cast<size_t>(carry_len) * sizeof(int16_t));
+            encoded->pts = total_samples;
+            total_samples += carry_len;
+            avcodec_send_frame(enc, encoded);
+          }
+          av_frame_free(&encoded);
+        }
+      }
+      avcodec_send_frame(enc, nullptr);
+      while (avcodec_receive_packet(enc, pkt) == 0) {
+        pkt->stream_index = 0;
+        if (pkt->pts != AV_NOPTS_VALUE)
+          pkt->pts = av_rescale_q(pkt->pts, enc->time_base, out->streams[0]->time_base);
+        if (pkt->dts != AV_NOPTS_VALUE)
+          pkt->dts = av_rescale_q(pkt->dts, enc->time_base, out->streams[0]->time_base);
+        av_interleaved_write_frame(out, pkt);
+        av_packet_unref(pkt);
+      }
+    }
+    if (av_write_trailer(out) < 0) goto done;
+    ok = total_samples > 0;
+done:
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
+    if (swr) swr_free(&swr);
+    if (dec) avcodec_free_context(&dec);
+    if (out) {
+      if (io_open) avio_closep(&out->pb);
+      avformat_free_context(out);
+    }
+    if (in) avformat_close_input(&in);
+    if (!ok) {
+      unlink(tmp_path);
+      return false;
+    }
+    if (rename(tmp_path, out_path) != 0) {
+      unlink(tmp_path);
+      return false;
+    }
+    return true;
+  }
+
   int output(const char *body, char *out, size_t out_cap) {
     char kind[32];
     if (!kvGet(body, "kind", kind, sizeof(kind)))
