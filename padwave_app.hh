@@ -3396,10 +3396,17 @@ done:
     } else if (strcmp(name, "seek") == 0) {
       seek(this->pos_ms + static_cast<long>(value) * 1000);
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
-      debugLog("action %s playing=%d paused=%d", name, this->playing, this->paused);
-      this->playing = false;
-      this->paused  = true;
-      playerSend("pause 1\n");
+      debugLog("action %s playing=%d paused=%d web=%d", name, this->playing, this->paused,
+               this->web_audio_clients);
+      if (this->web_audio_clients > 0) {
+        // Browser listeners keep the local decode/tap alive while the
+        // controller powers down. Only controller output goes away.
+        this->resume_after_controller = true;
+      } else {
+        this->playing = false;
+        this->paused  = true;
+        playerSend("pause 1\n");
+      }
     } else if (strcmp(name, "jack_unplugged") == 0) {
       // macOS-style: a real unplug pauses playback. The input layer only emits
       // this on a stable transition, so starting with no headset does not
