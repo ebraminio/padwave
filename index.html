@@ -1338,8 +1338,10 @@ function feedBrowserPcm(bytes) {
 
 async function streamInBrowser(id) {
   if (webAudioPlaying) {
-    if (id && !(last && last.controller && last.controller.connected))
-      send("play_track", { id });
+    if (!(last && last.controller && last.controller.connected)) {
+      if (id) send("play_track", { id });
+      else if (!last || !last.radio || last.radio.paused !== false) send("resume");
+    }
     return;
   }
   try {
@@ -1453,8 +1455,15 @@ document.querySelectorAll("[data-action]").forEach(btn => {
   btn.onclick = () => {
     const noController = !(last && last.controller && last.controller.connected);
     if (noController && btn.dataset.action === "pause") {
-      if (webAudioPlaying) { stopBrowserAudio(); return; }
-      streamInBrowser();
+      const serverPaused = !last || !last.radio || last.radio.playing !== true ||
+                           last.radio.paused === true;
+      if (!webAudioPlaying) {
+        streamInBrowser();
+      } else if (serverPaused) {
+        send("resume");
+      } else {
+        stopBrowserAudio();
+      }
       return;
     }
     send(btn.dataset.action);

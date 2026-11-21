@@ -3920,9 +3920,21 @@ done:
     bool file_action = strcmp(action, "next") == 0 || strcmp(action, "previous") == 0 ||
                        strcmp(action, "shuffle_folder") == 0 || strcmp(action, "pause") == 0 ||
                        strcmp(action, "seek") == 0 || strcmp(action, "seek_to") == 0 ||
-                       strcmp(action, "play_track") == 0;
+                       strcmp(action, "play_track") == 0 || strcmp(action, "resume") == 0;
     if (this->live_active && file_action) stopLive();
 
+    if (strcmp(action, "resume") == 0) {
+      if (this->live_active) stopLive();
+      if (!this->player) playerStart();
+      int index = this->current;
+      if (index < 0 && this->count > 0) index = 0;
+      if (index >= 0 && this->player) {
+        if (!this->player.isPlaying() || this->paused || !this->playing)
+          play(index, this->pos_ms);
+      }
+      snprintf(this->last_action, sizeof(this->last_action), "%s", action);
+      return snprintf(out, out_cap, "ok=true\n");
+    }
     if (strcmp(action, "controller_reconnect") == 0) {
       if (this->controller && this->player.fd() >= 0) {
         snprintf(this->last_action, sizeof(this->last_action), "%s", action);
