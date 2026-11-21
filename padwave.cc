@@ -50,6 +50,7 @@ private:
     bool status_sse     = false;
     bool client_blocked = false;
     bool file_reply     = false;
+    bool web_audio      = false;
     int file_fd         = -1;
     off_t file_off      = 0;
     off_t file_end      = 0;
@@ -182,6 +183,7 @@ public:
           uint64_t expirations = 0;
           if (read(timer_fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
             app->tick();
+            flushWebAudioClients();
             int tick_fds[4];
             int tick_fd_count = app->fds(tick_fds, 4);
             for (int k = 0; k < tick_fd_count; k++) addFd(tick_fds[k], EPOLLIN, nullptr);
@@ -201,6 +203,7 @@ public:
 
         if (app->ownsFd(fd)) {
           app->handleFd(fd);
+          flushWebAudioClients();
           continue;
         }
 
@@ -360,6 +363,7 @@ private:
   }
 
   void closeConn(Conn *c) {
+    if (c->web_audio && app) app->browserAudioRemoveClient();
     if (c->file_fd >= 0) close(c->file_fd);
     if (c->fd >= 0) {
       epoll_ctl(epoll_fd, EPOLL_CTL_DEL, c->fd, nullptr);
@@ -423,18 +427,22 @@ private:
 
     requests++;
 
-    if (strncmp(path, "/browser", 8) == 0 && (path[8] == 0 || path[8] == '/')) {
-      const char *id = path[8] == '/' ? path + 9 : "";
-      char file_path[512];
-      if (!app->browserTrack(id, file_path, sizeof(file_path))) {
-        static const char body[] = "track not found or decode failed\n";
+    if (strcmp(path, "/browser-audio") == 0) {
+      if (!app->browserAudioAddClient()) {
+        static const char body[] = "browser audio already in use\n";
         c->static_reply = true;
         c->out_len = static_cast<size_t>(makeStatic(
             c->out, sizeof(c->out), "text/plain; charset=utf-8", body, sizeof(body) - 1));
         modFd(c->fd, EPOLLOUT);
         return;
       }
-      serveFile(c, file_path, "audio/mpeg", false);
+      c->web_audio = true;
+      c->out_len = static_cast<size_t>(snprintf(
+          c->out, sizeof(c->out),
+          "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n"
+          "Transfer-Encoding: chunked\r\nCache-Control: no-cache\r\n"
+          "Connection: close\r\n\r\n"));
+      modFd(c->fd, EPOLLOUT);
       return;
     }
 
@@ -670,47 +678,76 @@ private:
   }
 
   void flushClient(Conn *c) {
-    while (c->out_off < c->out_len) {
-      ssize_t n = write(c->fd, c->out + c->out_off, c->out_len - c->out_off);
-      if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-          c->client_blocked = true;
-          modFd(c->fd, EPOLLOUT);
+    for (;;) {
+      while (c->out_off < c->out_len) {
+        ssize_t n = write(c->fd, c->out + c->out_off, c->out_len - c->out_off);
+        if (n < 0) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            c->client_blocked = true;
+            modFd(c->fd, EPOLLOUT);
+            return;
+          }
+          closeConn(c);
           return;
         }
-        closeConn(c);
-        return;
+        c->out_off += static_cast<size_t>(n);
       }
-      c->out_off += static_cast<size_t>(n);
-    }
-    c->out_off = c->out_len = 0;
-    c->client_blocked       = false;
+      c->out_off = c->out_len = 0;
+      c->client_blocked       = false;
 
-    if (c->file_reply) {
-      if (c->file_off > c->file_end) {
-        closeConn(c);
+      if (c->web_audio) {
+        char pcm[8192];
+        size_t n = app->browserAudioRead(pcm, sizeof(pcm));
+        if (n == 0) {
+          modFd(c->fd, EPOLLIN);
+          return;
+        }
+        int hn = snprintf(c->out, sizeof(c->out), "%zx\r\n", n);
+        if (hn <= 0 || static_cast<size_t>(hn) + n + 2 > sizeof(c->out)) {
+          closeConn(c);
+          return;
+        }
+        memcpy(c->out + hn, pcm, n);
+        memcpy(c->out + hn + n, "\r\n", 2);
+        c->out_len = static_cast<size_t>(hn) + n + 2;
+        continue;
+      }
+
+      if (c->file_reply) {
+        if (c->file_off > c->file_end) {
+          closeConn(c);
+          return;
+        }
+        size_t want = static_cast<size_t>(c->file_end - c->file_off + 1);
+        if (want > sizeof(c->out)) want = sizeof(c->out);
+        ssize_t n = read(c->file_fd, c->out, want);
+        if (n <= 0) {
+          closeConn(c);
+          return;
+        }
+        c->file_off += n;
+        c->out_len = static_cast<size_t>(n);
+        c->out_off = 0;
+        modFd(c->fd, EPOLLOUT);
         return;
       }
-      size_t want = static_cast<size_t>(c->file_end - c->file_off + 1);
-      if (want > sizeof(c->out)) want = sizeof(c->out);
-      ssize_t n = read(c->file_fd, c->out, want);
-      if (n <= 0) {
-        closeConn(c);
+
+      if (c->front_sse || c->status_sse) {
+        modFd(c->fd, 0);
         return;
       }
-      c->file_off += n;
-      c->out_len = static_cast<size_t>(n);
-      c->out_off = 0;
-      modFd(c->fd, EPOLLOUT);
+
+      if (c->static_reply) closeConn(c);
       return;
     }
+  }
 
-    if (c->front_sse || c->status_sse) {
-      modFd(c->fd, 0);
-      return;
+  void flushWebAudioClients() {
+    if (!app) return;
+    for (int i = 0; i < kMaxConns; i++) {
+      Conn *c = &conns[i];
+      if (c->fd >= 0 && c->web_audio && !c->client_blocked) flushClient(c);
     }
-
-    if (c->static_reply) closeConn(c);
   }
 
   int frontText(char *buf, size_t cap) {

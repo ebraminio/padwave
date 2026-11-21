@@ -1273,10 +1273,14 @@ function streamInBrowser(id) {
     toast("select a track first");
     return;
   }
+  const controllerOn = !!(last && last.controller && last.controller.connected);
   $("#webAudio").style.display = "block";
-  toast("preparing browser audio…");
-  webAudio.src = `/browser/${encodeURIComponent(trackId)}`;
+  webAudio.src = "/browser-audio";
   webAudio.play().catch((e) => toast("browser audio: " + e.message));
+  toast("browser audio live");
+  if (!controllerOn) {
+    setTimeout(() => send("play_track", { id: trackId }), 250);
+  }
 }
 
 $("#webStream").onclick = () => streamInBrowser();

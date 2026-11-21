@@ -219,6 +219,8 @@ private:
   };
 
   int hidraw              = -1;
+  void (*pcm_tap_fn_)(void *, const float *, int) = nullptr;
+  void *pcm_tap_owner_     = nullptr;
   int hidraw_retry        = 0;
   char node_name[64]      = "";
   char controller_mac[32] = "";
@@ -672,6 +674,7 @@ private:
   // RL/RR drive the two haptic actuators. With haptic subwoofer enabled, send
   // a low-passed mono bass signal to RL/RR; otherwise leave them silent.
   void writeUsbPcm(const float block[IN_FRAMES][CHANNELS], float gain) {
+    if (pcm_tap_fn_) pcm_tap_fn_(pcm_tap_owner_, &block[0][0], IN_FRAMES);
     if (haptic_subwoofer) {
       int16_t samples[IN_FRAMES * 4];
       float hgain = static_cast<float>(haptic_gain) / 100.0f;
@@ -1084,6 +1087,7 @@ private:
   }
 
   void sendReport(const float *pcm, int frames) {
+    if (pcm_tap_fn_) pcm_tap_fn_(pcm_tap_owner_, pcm, frames);
     if (is_usb) return; // USB audio uses the ALSA endpoint, not 0x36.
     const float hgain = static_cast<float>(haptic_gain) / 100.0f;
     audio_report.setSpeakTag(speaker ? dualsense::AudioReport::SpeakerTag::Speaker
@@ -1475,6 +1479,11 @@ public:
   bool sinkInputSeen() const { return sink_input_seen_; }
 
   void clearSinkInput() { sink_input_seen_ = false; }
+
+  void setPcmTap(void (*fn)(void *, const float *, int), void *owner) {
+    pcm_tap_fn_    = fn;
+    pcm_tap_owner_ = owner;
+  }
 
   void setSinkMode(bool on) {
     closeFile();
