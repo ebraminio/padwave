@@ -410,7 +410,6 @@ private:
   bool paused_by_idle                     = false;
   bool paused_by_jack                     = false;
   bool paused_by_disconnect               = false;
-  bool resume_after_controller            = false;
   bool paused_by_mic                      = false;
   bool idle_volume_saved                  = false;
   int idle_volume                         = 0;
@@ -2921,14 +2920,6 @@ done:
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
     ensureAudibleVolume();
-    if (this->resume_after_controller && this->current >= 0) {
-      this->resume_after_controller = false;
-      debugLog("inputStart resume current=%d playerPlaying=%d", this->current,
-               this->player.isPlaying());
-      if (!this->player.isPlaying()) play(this->current, this->pos_ms);
-    } else if (this->playing && this->current >= 0 && !this->player.isPlaying()) {
-      play(this->current, this->pos_ms);
-    }
     this->led_force = true;
     serviceLeds();
   }
@@ -2938,7 +2929,12 @@ done:
     debugLog("inputStop live=%d sink=%d playing=%d paused=%d web=%d pfd=%d", this->live_active,
              this->sink_playback, this->playing, this->paused, this->web_audio_clients,
              this->player.fd());
-    if (this->current >= 0) this->resume_after_controller = true;
+    if (this->current >= 0 && !this->paused) {
+      debugLog("inputStop pausing once current=%d", this->current);
+      this->paused = true;
+      if (this->player) playerSend("pause 1\n");
+      this->playhead_dirty = true;
+    }
     if (this->live_active) stopLive();
     this->input.close();
     if (this->player) this->player.dropDevice();
@@ -3014,7 +3010,6 @@ done:
 
   void play(int index, long start_ms) {
     if (index < 0 || index >= this->count) return;
-    this->resume_after_controller = false;
     debugLog("play index=%d start=%ld controller=%d pfd=%d", index, start_ms, this->controller,
              this->player.fd());
     ensureAudibleVolume();
@@ -3090,7 +3085,6 @@ done:
       this->paused_by_mic        = false;
       this->playhead_dirty       = true;
     } else {
-      this->resume_after_controller = false;
       this->paused               = true;
       this->paused_by_volume     = false;
       this->paused_by_disconnect = false;
@@ -3398,14 +3392,11 @@ done:
     } else if (strcmp(name, "suspend") == 0 || strcmp(name, "disconnect") == 0) {
       debugLog("action %s playing=%d paused=%d web=%d", name, this->playing, this->paused,
                this->web_audio_clients);
-      if (this->web_audio_clients > 0) {
-        // Browser listeners keep the local decode/tap alive while the
-        // controller powers down. Only controller output goes away.
-        this->resume_after_controller = true;
-      } else {
+      if (!this->paused) {
         this->playing = false;
         this->paused  = true;
         playerSend("pause 1\n");
+        this->playhead_dirty = true;
       }
     } else if (strcmp(name, "jack_unplugged") == 0) {
       // macOS-style: a real unplug pauses playback. The input layer only emits
