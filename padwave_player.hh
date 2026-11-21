@@ -1520,6 +1520,11 @@ public:
 
   int fd() const { return hidraw; }
 
+  bool reopenDevice() {
+    if (hidraw >= 0) return true;
+    return openDevice();
+  }
+
   const char *node() const { return node_name; }
 
   const char *mac() const { return controller_mac; }

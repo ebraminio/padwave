@@ -2883,6 +2883,10 @@ done:
   void inputStart() {
     if (this->input.fd() >= 0) return;
     if (!this->player) return;
+    if (this->player.fd() < 0 && !this->player.reopenDevice()) {
+      this->reconnect_at = static_cast<int>((nowMs() + 1500));
+      return;
+    }
     if (!this->input.open(this->player.fd(), this->player.node(), this->player.mac())) {
       this->reconnect_at = static_cast<int>((nowMs() + 1500));
       return;
