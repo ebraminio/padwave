@@ -672,13 +672,6 @@ public:
       this->input.close();
       if (this->player.fd() >= 0) this->inputStart();
     }
-    if (this->input.fd() < 0 && this->player && this->playing && !this->paused &&
-        this->web_audio_clients == 0) {
-      this->paused               = true;
-      this->paused_by_disconnect = true;
-      playerSend("pause 1\n");
-      this->playhead_dirty = true;
-    }
     if (this->input.fd() < 0 && static_cast<int>(nowMs()) >= this->reconnect_at) inputStart();
 
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
@@ -2905,18 +2898,12 @@ done:
   }
 
   void inputStop(bool pause_playback = false) {
+    (void)pause_playback;
     stopLive();
     sinkPlaybackStop();
     this->input.close();
     if (this->player) this->player.dropDevice();
     this->controller = false;
-    if (pause_playback && this->player && this->playing && !this->paused &&
-        this->web_audio_clients == 0) {
-      this->paused               = true;
-      this->paused_by_disconnect = true;
-      playerSend("pause 1\n");
-      this->playhead_dirty = true;
-    }
     this->input_node[0]     = 0;
     this->controller_mac[0] = 0;
     resetLinkStats();

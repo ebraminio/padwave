@@ -1335,9 +1335,9 @@ async function streamInBrowser(id) {
   webAudioSource = new EventSource("/browser-pcm");
   webAudioSource.onopen = () => {
     setWebAudioState("browser audio live · tap of controller stream", true);
-    if (id && !(last && last.controller && last.controller.connected))
-      send("play_track", { id });
   };
+  if (id && !(last && last.controller && last.controller.connected))
+    send("play_track", { id });
   webAudioSource.onmessage = (event) => {
     try {
       const bin = atob(event.data);
