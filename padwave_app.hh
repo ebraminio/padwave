@@ -2897,14 +2897,15 @@ done:
     // A newly connected controller counts as a resume request: never leave it
     // connected to a zero-volume paused session.
     ensureAudibleVolume();
+    if (this->playing && this->current >= 0 && !this->player.isPlaying())
+      play(this->current, this->pos_ms);
     this->led_force = true;
     serviceLeds();
   }
 
   void inputStop(bool pause_playback = false) {
     (void)pause_playback;
-    stopLive();
-    sinkPlaybackStop();
+    if (this->live_active) stopLive();
     this->input.close();
     if (this->player) this->player.dropDevice();
     this->controller = false;
@@ -3033,7 +3034,7 @@ done:
   }
 
   void togglePause() {
-    if (!this->playing) {
+    if (!this->player || !this->player.isPlaying()) {
       ensureAudibleVolume();
       if (this->current >= 0) play(this->current, this->pos_ms);
       return;

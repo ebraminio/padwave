@@ -1432,6 +1432,8 @@ public:
 
   bool isValid() const { return enc.isValid(); }
 
+  bool isPlaying() const { return playing && !paused; }
+
   explicit operator bool() const { return isValid(); }
 
   int timerFd() const { return tfd; }
