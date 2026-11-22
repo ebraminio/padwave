@@ -82,6 +82,49 @@ struct App;
 
 typedef float block_t[IN_FRAMES][CHANNELS];
 
+// 15:16 polyphase windowed-sinc resampler for the Bluetooth 512->480 path.
+// The output is 45 kHz in effect (480 frames per 10.667 ms), so the cutoff sits
+// at the 45 kHz Nyquist (22.5 kHz) and each phase has its own FIR coefficients.
+#define PADWAVE_POLY_PHASES 15
+#define PADWAVE_POLY_TAPS   49
+#define PADWAVE_POLY_HALF   24
+
+static inline double padwave_sinc(double x)
+{
+  if (x == 0.0) return 1.0;
+  const double pi = 3.14159265358979323846;
+  x *= pi;
+  return sin(x) / x;
+}
+
+static void padwave_init_polyphase(float coeff[PADWAVE_POLY_PHASES][PADWAVE_POLY_TAPS])
+{
+  const double pi = 3.14159265358979323846;
+  const double fc = 15.0 / 32.0;  // 22.5 kHz at a 48 kHz input rate
+  for (int phase = 0; phase < PADWAVE_POLY_PHASES; phase++) {
+    const double frac = phase / static_cast<double>(PADWAVE_POLY_PHASES);
+    double sum = 0.0;
+    for (int tap = 0; tap < PADWAVE_POLY_TAPS; tap++) {
+      const int k = tap - PADWAVE_POLY_HALF;
+      const double d = k - frac;
+      const double window = 0.42 + 0.5 * cos(pi * d / PADWAVE_POLY_HALF) +
+                            0.08 * cos(2.0 * pi * d / PADWAVE_POLY_HALF);
+      const double h = 2.0 * fc * padwave_sinc(2.0 * fc * d) * window;
+      coeff[phase][tap] = static_cast<float>(h);
+      sum += h;
+    }
+    for (int tap = 0; tap < PADWAVE_POLY_TAPS; tap++)
+      coeff[phase][tap] /= static_cast<float>(sum);
+  }
+}
+
+static inline int padwave_mirror(int index)
+{
+  if (index < 0) return -index;
+  if (index >= IN_FRAMES) return 2 * (IN_FRAMES - 1) - index;
+  return index;
+}
+
 struct Player {
 private:
   struct File {
@@ -1341,17 +1384,23 @@ private:
     }
 
     float pcm[dualsense::AudioReport::pcmFrames * CHANNELS];
-    double step = (IN_FRAMES - 1) / static_cast<double>((dualsense::AudioReport::pcmFrames - 1));
+    static float coeff[PADWAVE_POLY_PHASES][PADWAVE_POLY_TAPS];
+    static bool coeff_ready = false;
+    if (!coeff_ready) {
+      padwave_init_polyphase(coeff);
+      coeff_ready = true;
+    }
 
     for (int i = 0; i < dualsense::AudioReport::pcmFrames; i++) {
-      double src      = i * step;
-      int idx         = static_cast<int>(src);
-      int next_sample = idx < IN_FRAMES - 1 ? idx + 1 : IN_FRAMES - 1;
-      float frac      = static_cast<float>((src - idx));
+      const int base  = (i * 16) / 15;
+      const int phase = (i * 16) % 15;
       for (int ch = 0; ch < CHANNELS; ch++) {
-        float a                = block[idx][ch];
-        float b                = block[next_sample][ch];
-        pcm[i * CHANNELS + ch] = (a + (b - a) * frac) * gain;
+        float v = 0.0f;
+        for (int tap = 0; tap < PADWAVE_POLY_TAPS; tap++)
+          v += coeff[phase][tap] * block[padwave_mirror(base + tap - PADWAVE_POLY_HALF)][ch];
+        if (v > 1.0f) v = 1.0f;
+        else if (v < -1.0f) v = -1.0f;
+        pcm[i * CHANNELS + ch] = v * gain;
       }
     }
 
