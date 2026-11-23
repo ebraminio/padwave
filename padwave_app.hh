@@ -81,6 +81,7 @@ private:
     int64_t size        = 0;
     int64_t mtime_sec   = 0;
     long mtime_nsec     = 0;
+    bool favorite       = false;
   };
 
   struct LiveChannel {
@@ -257,6 +258,16 @@ private:
     return true;
   }
 
+  static bool favoritesPath(char *buf, size_t cap) {
+    char config[512];
+    if (!configPath(config, sizeof(config))) return false;
+    char *slash = strrchr(config, '/');
+    if (!slash) return false;
+    snprintf(slash + 1, sizeof(config) - static_cast<size_t>(slash + 1 - config), "favorites.tsv");
+    snprintf(buf, cap, "%s", config);
+    return true;
+  }
+
   static bool cachePath(const char *name, char *buf, size_t cap) {
     const char *xdg  = getenv("XDG_CACHE_HOME");
     const char *home = getenv("HOME");
@@ -345,6 +356,53 @@ private:
       if (this->tracks[i].duration_ms <= 0) this->duration_pending++;
   }
 
+  void loadFavorites() {
+    char path[512];
+    if (!favoritesPath(path, sizeof(path))) return;
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[kMaxPath + 2];
+    while (fgets(line, sizeof(line), f)) {
+      char *nl = strchr(line, '\n');
+      if (nl) *nl = 0;
+      nl = strchr(line, '\r');
+      if (nl) *nl = 0;
+      if (!line[0]) continue;
+      int index = findTrack(line);
+      if (index >= 0) this->tracks[index].favorite = true;
+    }
+    fclose(f);
+  }
+
+  void saveFavoritesLocked() {
+    char path[512];
+    if (!favoritesPath(path, sizeof(path))) return;
+    ensureCacheDir(path);
+    char tmp[544];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    for (int i = 0; i < this->count; i++) {
+      if (!this->tracks[i].favorite) continue;
+      fileField(f, this->tracks[i].path);
+      fputc('\n', f);
+    }
+    if (fclose(f) != 0) return;
+    rename(tmp, path);
+  }
+
+  bool toggleFavorite(const char *id, bool *value) {
+    int index = findId(id);
+    if (index < 0) return false;
+    pthread_mutex_lock(&library_mutex);
+    this->tracks[index].favorite = !this->tracks[index].favorite;
+    *value                       = this->tracks[index].favorite;
+    saveFavoritesLocked();
+    writeLibraryFileLocked();
+    pthread_mutex_unlock(&library_mutex);
+    return true;
+  }
+
   void writeLibraryFileLocked() {
     char path[512];
     if (!cachePath("library.tsv", path, sizeof(path))) return;
@@ -364,7 +422,7 @@ private:
       fileField(f, s->path);
       fputc('\t', f);
       fileField(f, s->ext);
-      fprintf(f, "\t%lld\n", static_cast<long long>(s->duration_ms));
+      fprintf(f, "\t%lld\t%d\n", static_cast<long long>(s->duration_ms), s->favorite ? 1 : 0);
     }
     if (fclose(f) != 0) return;
     rename(tmp, path);
@@ -694,6 +752,7 @@ public:
 
     qsort(this->tracks, static_cast<size_t>(this->count), sizeof(Track), compareTracks);
     loadDurationCache();
+    loadFavorites();
     writeLibraryFile();
     startDurationScan();
     srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
@@ -1027,6 +1086,7 @@ public:
       kvText(buf, cap, &o, "radio.current.folder", s->folder);
       kvText(buf, cap, &o, "radio.current.path", s->path);
       kvText(buf, cap, &o, "radio.current.ext", s->ext);
+      kvAdd(buf, cap, &o, "radio.current.favorite", "%s", s->favorite ? "true" : "false");
     }
 
     kvText(buf, cap, &o, "session.phase", phase);
@@ -1314,7 +1374,8 @@ public:
       tsvField(buf, cap, &o, s->folder, '\t');
       tsvField(buf, cap, &o, s->path, '\t');
       tsvField(buf, cap, &o, s->ext, '\t');
-      tsvField(buf, cap, &o, duration, '\n');
+      tsvField(buf, cap, &o, duration, '\t');
+      tsvField(buf, cap, &o, s->favorite ? "1" : "0", '\n');
     }
     pthread_mutex_unlock(&library_mutex);
     return static_cast<int>(o);
@@ -4300,6 +4361,14 @@ done:
       seek(this->pos_ms + kvNumber(body, "delta", 0) * 1000);
     } else if (strcmp(action, "seek_to") == 0) {
       seek(kvNumber(body, "position", this->pos_ms / 1000) * 1000);
+    } else if (strcmp(action, "favorite") == 0) {
+      char id[64];
+      if (!kvGet(body, "id", id, sizeof(id)))
+        return snprintf(out, out_cap, "ok=false\nerror=missing id\n");
+      bool value = false;
+      if (!toggleFavorite(id, &value))
+        return snprintf(out, out_cap, "ok=false\nerror=track not found\n");
+      return snprintf(out, out_cap, "ok=true\nfavorite=%s\n", value ? "true" : "false");
     } else if (strcmp(action, "play_track") == 0) {
       char id[64];
       if (kvGet(body, "id", id, sizeof(id))) {

@@ -76,7 +76,14 @@
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
+  .now-title { display: flex; align-items: center; gap: 10px; }
   .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; width: 500px; overflow-x: clip; }
+  .now-title .track-title { width: auto; flex: 1; min-width: 0; }
+  .fav { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px; cursor: pointer; border-radius: 8px; flex: none; }
+  .fav:hover { background: #171c28; color: var(--text); }
+  .fav.on { color: #fbbf24; }
+  .fav:disabled { opacity: .35; cursor: default; }
+  .tracks .fav { font-size: 15px; padding: 2px; }
 
   .progress { margin: 20px 0 8px; cursor: pointer; }
   .bar { position: relative; height: 8px; border-radius: 999px; background: #1d2230; overflow: hidden; }
@@ -325,7 +332,10 @@
     <section class="card">
       <div class="eyebrow">now playing</div>
       <div class="folder" id="folder">—</div>
-      <div class="track-title" id="title">Nothing playing</div>
+      <div class="now-title">
+        <div class="track-title" id="title">Nothing playing</div>
+        <button class="fav" id="favoriteBtn" title="favorite" disabled>☆</button>
+      </div>
 
       <div class="progress" id="progress" title="click to seek">
         <div class="bar"><div class="fill" id="fill"></div></div>
@@ -974,6 +984,10 @@ function render(s) {
 
   $("#title").textContent = cur ? cur.title : "Nothing playing";
   $("#folder").textContent = cur ? cur.folder : "—";
+  const favorite = cur ? cur.favorite === true : false;
+  $("#favoriteBtn").textContent = favorite ? "★" : "☆";
+  $("#favoriteBtn").classList.toggle("on", favorite);
+  $("#favoriteBtn").disabled = !cur;
   const ps = s.hid ? s.hid.power_save : null;
   if (bootPs === undefined) bootPs = ps;
   if (!psDirty) psSetButtons(ps);
@@ -1404,13 +1418,31 @@ function fmtTrackDuration(ms) {
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+async function toggleFavorite(id) {
+  const track = tracks.find(t => t.id === id);
+  if (!track) return;
+  const data = await send("favorite", { id });
+  if (!data || data.ok !== true) return;
+  const value = data.favorite === true || data.favorite === "true";
+  track.favorite = value;
+  document.querySelectorAll(`button[data-fav-id="${id}"]`).forEach(button => {
+    button.textContent = value ? "★" : "☆";
+    button.classList.toggle("on", value);
+  });
+  if (last && last.radio && last.radio.current && last.radio.current.id === id) {
+    last.radio.current.favorite = value;
+    $("#favoriteBtn").textContent = value ? "★" : "☆";
+    $("#favoriteBtn").classList.toggle("on", value);
+  }
+}
+
 function buildTracks() {
   const list = $("#tracks");
   const items = tracks.filter(t =>
     !filterText || (t.title + " " + t.folder).toLowerCase().includes(filterText));
 
   list.innerHTML = items.map(t =>
-    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span><span class="d">${fmtTrackDuration(t.duration)}</span></li>`
+    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span><span class="d">${fmtTrackDuration(t.duration)}</span><button class="fav${t.favorite ? " on" : ""}" data-fav-id="${t.id}" title="favorite">${t.favorite ? "★" : "☆"}</button></li>`
   ).join("");
 
   list.querySelectorAll("li").forEach(li => {
@@ -1419,6 +1451,12 @@ function buildTracks() {
         send("play_track", { id: li.dataset.id });
       else
         streamInBrowser(li.dataset.id);
+    };
+  });
+  list.querySelectorAll("button.fav").forEach(button => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      toggleFavorite(button.dataset.favId);
     };
   });
 
@@ -2121,6 +2159,11 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "m") send("mute");
 });
 
+$("#favoriteBtn").onclick = () => {
+  const cur = last && last.radio && last.radio.current;
+  if (cur) toggleFavorite(cur.id);
+};
+
 // -- boot -------------------------------------------------------------------
 
 async function loadLibrary() {
@@ -2129,8 +2172,9 @@ async function loadLibrary() {
   try {
     const text = await fetch("/api/library", { cache: "no-store" }).then(r => r.text());
     tracks = text.split("\n").filter(Boolean).map((line) => {
-      const [id, title, folder, path, ext, duration] = line.split("\t");
-      return { id, title, folder, path, ext, duration: Number(duration) || 0 };
+      const [id, title, folder, path, ext, duration, favorite] = line.split("\t");
+      return { id, title, folder, path, ext, duration: Number(duration) || 0,
+               favorite: favorite === "1" || favorite === "true" };
     });
     buildTracks();
   } catch (e) { console.error(e); }
