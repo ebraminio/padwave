@@ -25,6 +25,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <curl/curl.h>
+#include <pthread.h>
 
 #ifdef __linux__
 #include <bluetooth/bluetooth.h>
@@ -76,6 +77,10 @@ private:
     char folder[kMaxFolder];
     char ext[8];
     char id[17];
+    int64_t duration_ms = 0;
+    int64_t size        = 0;
+    int64_t mtime_sec   = 0;
+    long mtime_nsec     = 0;
   };
 
   struct LiveChannel {
@@ -252,6 +257,195 @@ private:
     return true;
   }
 
+  static bool cachePath(const char *name, char *buf, size_t cap) {
+    const char *xdg  = getenv("XDG_CACHE_HOME");
+    const char *home = getenv("HOME");
+    if (xdg && *xdg)
+      snprintf(buf, cap, "%s/padwave/%s", xdg, name);
+    else if (home && *home)
+      snprintf(buf, cap, "%s/.cache/padwave/%s", home, name);
+    else
+      return false;
+    return true;
+  }
+
+  static void ensureCacheDir(const char *path) {
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (!slash) return;
+    *slash = 0;
+    for (char *p = dir + 1; *p; p++) {
+      if (*p != '/') continue;
+      *p = 0;
+      mkdir(dir, 0755);
+      *p = '/';
+    }
+    mkdir(dir, 0755);
+  }
+
+  static void fileField(FILE *f, const char *value) {
+    for (const char *p = value; p && *p; p++)
+      fputc((*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p, f);
+  }
+
+  static int64_t probeDuration(const char *path) {
+    AVFormatContext *fmt = nullptr;
+    AVDictionary *opts   = nullptr;
+    av_dict_set(&opts, "probesize", "262144", 0);
+    av_dict_set(&opts, "analyzeduration", "1000000", 0);
+    int opened = avformat_open_input(&fmt, path, nullptr, &opts);
+    av_dict_free(&opts);
+    if (opened < 0) return 0;
+    if (fmt->duration <= 0 || fmt->duration == AV_NOPTS_VALUE)
+      avformat_find_stream_info(fmt, nullptr);
+    int64_t duration = fmt->duration;
+    avformat_close_input(&fmt);
+    return duration > 0 && duration != AV_NOPTS_VALUE ? duration / 1000 : 0;
+  }
+
+  void loadDurationCache() {
+    char path[512];
+    if (!cachePath("durations.tsv", path, sizeof(path))) return;
+    FILE *f = fopen(path, "r");
+    if (f) {
+      char line[2048];
+      while (fgets(line, sizeof(line), f)) {
+        char *fields[4];
+        char *p = line;
+        bool complete = true;
+        for (int i = 0; i < 4; i++) {
+          fields[i] = p;
+          char *tab = strchr(p, '\t');
+          if (!tab) {
+            complete = false;
+            break;
+          }
+          *tab = 0;
+          p    = tab + 1;
+        }
+        if (!complete) continue;
+        char *nl = strchr(p, '\n');
+        if (nl) *nl = 0;
+        int64_t duration = strtoll(fields[0], nullptr, 10);
+        int64_t mtime_s   = strtoll(fields[1], nullptr, 10);
+        long mtime_ns     = strtol(fields[2], nullptr, 10);
+        int64_t size      = strtoll(fields[3], nullptr, 10);
+        if (duration <= 0) continue;
+        int index = findTrack(p);
+        if (index < 0) continue;
+        Track *t = &this->tracks[index];
+        if (t->size == size && t->mtime_sec == mtime_s && t->mtime_nsec == mtime_ns)
+          t->duration_ms = duration;
+      }
+      fclose(f);
+    }
+    this->duration_pending = 0;
+    for (int i = 0; i < this->count; i++)
+      if (this->tracks[i].duration_ms <= 0) this->duration_pending++;
+  }
+
+  void writeLibraryFileLocked() {
+    char path[512];
+    if (!cachePath("library.tsv", path, sizeof(path))) return;
+    ensureCacheDir(path);
+    char tmp[544];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    for (int i = 0; i < this->count; i++) {
+      const Track *s = &this->tracks[i];
+      fileField(f, s->id);
+      fputc('\t', f);
+      fileField(f, s->title);
+      fputc('\t', f);
+      fileField(f, s->folder);
+      fputc('\t', f);
+      fileField(f, s->path);
+      fputc('\t', f);
+      fileField(f, s->ext);
+      fprintf(f, "\t%lld\n", static_cast<long long>(s->duration_ms));
+    }
+    if (fclose(f) != 0) return;
+    rename(tmp, path);
+  }
+
+  void writeLibraryFile() {
+    pthread_mutex_lock(&library_mutex);
+    writeLibraryFileLocked();
+    pthread_mutex_unlock(&library_mutex);
+  }
+
+  void scanDurations() {
+    char cache[512];
+    FILE *cache_file = nullptr;
+    if (cachePath("durations.tsv", cache, sizeof(cache))) {
+      ensureCacheDir(cache);
+      cache_file = fopen(cache, "a");
+    }
+
+    for (int i = 0; i < this->count; i++) {
+      char path[kMaxPath];
+      int64_t size = 0, mtime_s = 0;
+      long mtime_ns = 0;
+      bool need = false;
+      pthread_mutex_lock(&library_mutex);
+      if (this->tracks[i].duration_ms <= 0) {
+        snprintf(path, sizeof(path), "%s", this->tracks[i].path);
+        size       = this->tracks[i].size;
+        mtime_s    = this->tracks[i].mtime_sec;
+        mtime_ns   = this->tracks[i].mtime_nsec;
+        need       = true;
+      }
+      pthread_mutex_unlock(&library_mutex);
+      if (!need) continue;
+
+      int64_t duration = probeDuration(path);
+      pthread_mutex_lock(&library_mutex);
+      if (duration > 0 && this->tracks[i].duration_ms <= 0) {
+        this->tracks[i].duration_ms = duration;
+        if (cache_file) {
+          fprintf(cache_file, "%lld\t%lld\t%ld\t%lld\t",
+                  static_cast<long long>(duration), static_cast<long long>(mtime_s), mtime_ns,
+                  static_cast<long long>(size));
+          fileField(cache_file, path);
+          fputc('\n', cache_file);
+          fflush(cache_file);
+        }
+      }
+      if (this->duration_pending > 0) this->duration_pending--;
+      pthread_mutex_unlock(&library_mutex);
+    }
+    if (cache_file) fclose(cache_file);
+
+    pthread_mutex_lock(&library_mutex);
+    writeLibraryFileLocked();
+    this->library_generation++;
+    this->duration_scanning = false;
+    pthread_mutex_unlock(&library_mutex);
+  }
+
+  static void *durationWorkerEntry(void *arg) {
+    static_cast<App *>(arg)->scanDurations();
+    return nullptr;
+  }
+
+  void startDurationScan() {
+    pthread_mutex_lock(&library_mutex);
+    bool start = !this->duration_scanning && this->duration_pending > 0;
+    if (start) this->duration_scanning = true;
+    pthread_mutex_unlock(&library_mutex);
+    if (!start) return;
+    pthread_t thread;
+    if (pthread_create(&thread, nullptr, &App::durationWorkerEntry, this) == 0) {
+      pthread_detach(thread);
+    } else {
+      pthread_mutex_lock(&library_mutex);
+      this->duration_scanning = false;
+      pthread_mutex_unlock(&library_mutex);
+    }
+  }
+
   static void tsvField(char *buf, size_t cap, size_t *o, const char *value, char sep) {
     for (const char *p = value; p && *p && *o + 2 < cap; p++)
       buf[(*o)++] = (*p == '\t' || *p == '\n' || *p == '\r') ? ' ' : *p;
@@ -262,6 +456,10 @@ private:
   Track tracks[kMaxTracks];
   int count   = 0;
   int current = -1;
+  mutable pthread_mutex_t library_mutex = PTHREAD_MUTEX_INITIALIZER;
+  int duration_pending                  = 0;
+  int library_generation                = 0;
+  bool duration_scanning                = false;
   static inline LiveChannel live_channels[kMaxLiveChannels];
   int live_count             = 0;
   char playback_mode[8]             = "idle";
@@ -495,6 +693,9 @@ public:
     }
 
     qsort(this->tracks, static_cast<size_t>(this->count), sizeof(Track), compareTracks);
+    loadDurationCache();
+    writeLibraryFile();
+    startDurationScan();
     srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
     this->player_timer_fd = -1;
     configLoad();
@@ -754,6 +955,16 @@ public:
     size_t o = 0;
     if (cap) buf[0] = 0;
     kvText(buf, cap, &o, "server.version", buildVersion);
+    pthread_mutex_lock(&library_mutex);
+    int lib_count      = this->count;
+    int lib_pending    = this->duration_pending;
+    int lib_generation = this->library_generation;
+    bool lib_scanning  = this->duration_scanning;
+    pthread_mutex_unlock(&library_mutex);
+    kvAdd(buf, cap, &o, "library.count", "%d", lib_count);
+    kvAdd(buf, cap, &o, "library.pending_durations", "%d", lib_pending);
+    kvAdd(buf, cap, &o, "library.generation", "%d", lib_generation);
+    kvAdd(buf, cap, &o, "library.scanning", "%s", lib_scanning ? "true" : "false");
     const Track *s = this->current >= 0 ? &this->tracks[this->current] : nullptr;
 
     long now             = nowMs();
@@ -1082,17 +1293,24 @@ public:
     this->volume_dirty = false;
   }
 
+  bool libraryPath(char *buf, size_t cap) const { return cachePath("library.tsv", buf, cap); }
+
   int libraryText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
+    pthread_mutex_lock(&library_mutex);
     for (int i = 0; i < this->count; i++) {
       const Track *s = &this->tracks[i];
+      char duration[32];
+      snprintf(duration, sizeof(duration), "%lld", static_cast<long long>(s->duration_ms));
       tsvField(buf, cap, &o, s->id, '\t');
       tsvField(buf, cap, &o, s->title, '\t');
       tsvField(buf, cap, &o, s->folder, '\t');
       tsvField(buf, cap, &o, s->path, '\t');
-      tsvField(buf, cap, &o, s->ext, '\n');
+      tsvField(buf, cap, &o, s->ext, '\t');
+      tsvField(buf, cap, &o, duration, '\n');
     }
+    pthread_mutex_unlock(&library_mutex);
     return static_cast<int>(o);
   }
 
@@ -1509,10 +1727,13 @@ public:
   }
 
 private:
-  void addTrack(const char *path, const char *folder) {
+  void addTrack(const char *path, const char *folder, const struct stat &st) {
     if (this->count >= kMaxTracks) return;
     Track *s = &this->tracks[this->count];
     snprintf(s->path, sizeof(s->path), "%s", path);
+    s->size       = static_cast<int64_t>(st.st_size);
+    s->mtime_sec  = static_cast<int64_t>(st.st_mtim.tv_sec);
+    s->mtime_nsec = st.st_mtim.tv_nsec;
 
     const char *base = strrchr(path, '/');
     snprintf(s->title, sizeof(s->title), "%.*s", static_cast<int>(sizeof(s->title)) - 1,
@@ -2848,7 +3069,7 @@ done:
       if (S_ISDIR(st.st_mode)) {
         scanDir(path, e->d_name);
       } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
-        addTrack(path, folder);
+        addTrack(path, folder, st);
       }
     }
     closedir(d);

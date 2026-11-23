@@ -120,6 +120,7 @@
   .tracks li.active { background: rgba(124, 92, 255, .13); border-color: rgba(124, 92, 255, .45); }
   .tracks .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .tracks .g { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .tracks .d { min-width: 42px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   .pad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; margin-top: 12px; }
   .pad-key {
@@ -745,6 +746,8 @@ let last = null;
 let serverVersion = null;
 let dragging = false;
 let tracks = [];
+let libraryGeneration = 0;
+let libraryLoading = false;
 let liveChannels = [];
 let liveLoaded = false;
 let lastLiveCurrent = null;
@@ -951,6 +954,11 @@ function renderLiveStatus(s) {
 function render(s) {
   last = s;
   renderLiveStatus(s);
+  const lib = s.library || {};
+  if (lib.generation !== undefined && lib.generation !== libraryGeneration && !libraryLoading) {
+    libraryGeneration = lib.generation;
+    loadLibrary();
+  }
   const version = s.server && s.server.version;
   if (version) {
     if (serverVersion && version !== serverVersion) {
@@ -1380,13 +1388,24 @@ $("#webStream").onclick = () => {
   else streamInBrowser();
 };
 
+function fmtTrackDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const total = Math.round(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const seconds = total % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function buildTracks() {
   const list = $("#tracks");
   const items = tracks.filter(t =>
     !filterText || (t.title + " " + t.folder).toLowerCase().includes(filterText));
 
   list.innerHTML = items.map(t =>
-    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span></li>`
+    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span><span class="d">${fmtTrackDuration(t.duration)}</span></li>`
   ).join("");
 
   list.querySelectorAll("li").forEach(li => {
@@ -2099,19 +2118,26 @@ document.addEventListener("keydown", (e) => {
 
 // -- boot -------------------------------------------------------------------
 
+async function loadLibrary() {
+  if (libraryLoading) return;
+  libraryLoading = true;
+  try {
+    const text = await fetch("/api/library", { cache: "no-store" }).then(r => r.text());
+    tracks = text.split("\n").filter(Boolean).map((line) => {
+      const [id, title, folder, path, ext, duration] = line.split("\t");
+      return { id, title, folder, path, ext, duration: Number(duration) || 0 };
+    });
+    buildTracks();
+  } catch (e) { console.error(e); }
+  finally { libraryLoading = false; }
+}
+
 async function boot() {
   buildPad();
 
   requestAnimationFrame(frameLoop);
 
-  try {
-    const text = await fetch("/api/library").then(r => r.text());
-    tracks = text.split("\n").filter(Boolean).map((line) => {
-      const [id, title, folder, path, ext] = line.split("\t");
-      return { id, title, folder, path, ext };
-    });
-    buildTracks();
-  } catch (e) { console.error(e); }
+  await loadLibrary();
 
   try {
     const schema = parseKV(await fetch("/api/schema").then(r => r.text()));

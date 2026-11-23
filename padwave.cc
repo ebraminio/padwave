@@ -508,6 +508,11 @@ private:
     }
 
     if (strcmp(path, "/api/library") == 0) {
+      char library_path[512];
+      if (app->libraryPath(library_path, sizeof(library_path))) {
+        serveFile(c, library_path, "text/plain; charset=utf-8", false);
+        return;
+      }
       char *body      = reinterpret_cast<char *>(malloc(65536));
       int len         = body ? app->libraryText(body, 65536) : 0;
       c->static_reply = true;
