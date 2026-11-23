@@ -1451,8 +1451,8 @@ async function toggleFavorite(id) {
 function updateMarquee(container) {
   const scroller = container.querySelector(".scroll");
   if (!scroller) return;
-  container.classList.remove("marquee");
-  const overflow = scroller.scrollWidth > container.clientWidth + 1;
+  container.classList.remove("marquee", "overflow");
+  const overflow = container.scrollWidth > container.clientWidth + 1;
   const isTitle = container.id === "title";
   container.classList.toggle("marquee", overflow && isTitle);
   container.classList.toggle("overflow", overflow && !isTitle);
@@ -1461,7 +1461,7 @@ function updateMarquee(container) {
     container.style.removeProperty("--marquee-duration");
     return;
   }
-  const distance = scroller.scrollWidth - container.clientWidth;
+  const distance = container.scrollWidth - container.clientWidth;
   container.style.setProperty("--marquee-distance", `-${distance}px`);
   container.style.setProperty("--marquee-duration", `${Math.max(6, distance / 32 + 4)}s`);
 }
