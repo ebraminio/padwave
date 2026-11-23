@@ -662,6 +662,7 @@ private:
   static constexpr int kPowerSaveModeMask = 0x17;
   long idle_since                         = 0;
   long last_activity_ms                   = 0;
+  long no_consumer_since_ms               = 0;
   bool idle_warning                       = false;
   bool suspended                          = false;
   bool paused_by_idle                     = false;
@@ -950,6 +951,7 @@ public:
       if (this->player.fd() >= 0) this->inputStart();
     }
     if (this->input.fd() < 0 && static_cast<int>(nowMs()) >= this->reconnect_at) inputStart();
+    updatePlaybackConsumers(nowMs());
 
     if (this->playhead_dirty && now - this->playhead_saved_at >= 1000) {
       this->playhead_dirty    = false;
@@ -3860,6 +3862,24 @@ done:
     this->idle_fade_volume = -1;
     this->poweroff_at      = 0;
     this->powered_off      = false;
+  }
+
+  void updatePlaybackConsumers(long now) {
+    bool has_consumer = this->controller || this->web_audio_clients > 0 || this->sink_playback;
+    if (has_consumer || !this->playing || this->paused) {
+      this->no_consumer_since_ms = 0;
+      return;
+    }
+    if (this->no_consumer_since_ms == 0) {
+      this->no_consumer_since_ms = now;
+      return;
+    }
+    if (now - this->no_consumer_since_ms < 2000) return;
+    this->no_consumer_since_ms = 0;
+    this->paused               = true;
+    playerSend("pause 1\n");
+    this->playhead_dirty = true;
+    debugLog("pause: no controller, browser audio client or sink");
   }
 
   void updateIdle() {
