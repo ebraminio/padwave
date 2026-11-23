@@ -1712,16 +1712,9 @@ public:
       fade_pos        = 0;
     }
 
-    if (!fading && !manual_fade && playing && !paused && fade_ms > 0 && has_next && nxt.fmt) {
-      int fade_blocks = static_cast<int>((static_cast<long>(fade_ms) * 1000 / 10667));
-      int left        = ringLen();
-      if (eof && left > 0 && left <= fade_blocks && nextRingLen() >= left) {
-        fading     = true;
-        fade_total = left;
-        fade_pos   = 0;
-      }
-    }
-
+    // Natural track boundaries are gapless, not crossfaded: drain the current
+    // track to its last frame, then promote the prefetched next ring. Manual
+    // skips and seeks still use the explicit fade path above.
     if (!fading && !manual_fade && eof && ringLen() == 0 && nextRingLen() > 0) promote();
     if (!primed && ringLen() >= RING_PRIME) primed = true;
 
