@@ -976,8 +976,13 @@ public:
     long warning_in      = (timeout + 999) / 1000;
     long shutdown_in     = 0;
     int fade_percent     = 100;
+    bool idle_enabled    = this->controller;
 
-    if (this->suspended) {
+    if (!idle_enabled) {
+      warning_in   = 0;
+      shutdown_in  = 0;
+      fade_percent = 100;
+    } else if (this->suspended) {
       phase        = "suspended";
       warning_in   = 0;
       fade_percent = 10;
@@ -1025,6 +1030,7 @@ public:
     }
 
     kvText(buf, cap, &o, "session.phase", phase);
+    kvAdd(buf, cap, &o, "session.idle_enabled", "%s", idle_enabled ? "true" : "false");
     kvAdd(buf, cap, &o, "session.idle_seconds", "%ld", idle_ms / 1000);
     kvAdd(buf, cap, &o, "session.warning_in", "%ld", warning_in);
     kvAdd(buf, cap, &o, "session.shutdown_in", "%ld", shutdown_in);
@@ -3450,6 +3456,8 @@ done:
     bool was_connected = this->controller;
     this->controller   = true;
     if (!was_connected) {
+      this->last_activity_ms = nowMs();
+      this->idle_since       = this->last_activity_ms;
       if (this->power_save_mode) {
         this->power_save_mask         = kPowerSaveModeMask;
         this->power_save_leds_applied = false;
@@ -3795,6 +3803,12 @@ done:
 
   void updateIdle() {
     long now = nowMs();
+    // The idle warning/fade exists to protect the controller. Without one,
+    // playback may be browser-only and should keep running indefinitely.
+    if (!this->controller) {
+      if (this->idle_warning || this->suspended) endIdle();
+      return;
+    }
     if (this->suspended && this->poweroff_at && now >= this->poweroff_at) {
       this->poweroff_at = 0;
       configSave();

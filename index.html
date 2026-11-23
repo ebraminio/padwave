@@ -1083,13 +1083,18 @@ function render(s) {
 
   const idle = sess.warning_in ?? 0;
   const fade = r.fade_percent ?? 100;
-  $("#idleChip").innerHTML = sess.phase === "warning"
-    ? `fading <b>${fade}%</b> · ${sess.shutdown_in ?? 0}s`
-    : sess.phase === "suspended"
-      ? (sess.powered_off ? "controller asleep · press PS" : "suspended · input to wake")
-      : `idle <b>${fmt(idle)}</b>`;
-  $("#warnbar").classList.toggle("show", sess.phase === "warning");
-  if (sess.phase === "warning") $("#warnLeft").textContent = sess.shutdown_in ?? 0;
+  if (sess.idle_enabled === false) {
+    $("#idleChip").textContent = "idle disabled · no controller";
+    $("#warnbar").classList.remove("show");
+  } else {
+    $("#idleChip").innerHTML = sess.phase === "warning"
+      ? `fading <b>${fade}%</b> · ${sess.shutdown_in ?? 0}s`
+      : sess.phase === "suspended"
+        ? (sess.powered_off ? "controller asleep · press PS" : "suspended · input to wake")
+        : `idle <b>${fmt(idle)}</b>`;
+    $("#warnbar").classList.toggle("show", sess.phase === "warning");
+    if (sess.phase === "warning") $("#warnLeft").textContent = sess.shutdown_in ?? 0;
+  }
 
   if (c.connected) {
     $("#hex").textContent = c.raw || "—";

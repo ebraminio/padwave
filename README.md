@@ -266,7 +266,8 @@ persisted in the config; a stream resumes once the controller is available.
   discharging. Charging is a solid bar.
 - **Idle:** fades the volume over the grace, suspends playback, and after
   `poweroff_when_idle_ms` asks BlueZ to disconnect the pad. Press PS to wake.
-  Without a controller, playback pauses and the player tick slows to 500 ms.
+  The idle timer runs only while a controller is connected; browser or system
+  playback without one is not faded or suspended.
 
 ## Bluetooth HID tuning
 
