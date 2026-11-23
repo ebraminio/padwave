@@ -56,10 +56,12 @@
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
   .card {
+    min-width: 0;
     background: linear-gradient(180deg, var(--panel), var(--panel-2));
     border: 1px solid var(--line); border-radius: 18px; padding: 20px;
     box-shadow: 0 18px 40px -28px #000;
   }
+  .grid > .card { min-width: 0; }
   .card h2 { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   .card.full-width { grid-column: 1 / -1; }
   .trigger-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; }
@@ -76,9 +78,9 @@
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
-  .now-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .now-title { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; overflow: hidden; }
   .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .now-title .track-title { width: auto; flex: 1; min-width: 0; }
+  .now-title .track-title { flex: 1 1 0; width: 0; min-width: 0; max-width: 100%; }
   .track-title .scroll, .tracks .t .scroll { display: inline; }
   .track-title.marquee .scroll { display: inline-block; animation: marquee-scroll var(--marquee-duration, 9s) ease-in-out infinite alternate; }
   .tracks .t.overflow:hover .scroll { display: inline-block; animation: marquee-scroll var(--marquee-duration, 9s) ease-in-out infinite alternate; }
