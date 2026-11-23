@@ -3067,7 +3067,12 @@ done:
       struct stat st;
       if (lstat(path, &st) != 0) continue;
       if (S_ISDIR(st.st_mode)) {
-        scanDir(path, e->d_name);
+        char child_folder[kMaxFolder];
+        if (folder && *folder)
+          snprintf(child_folder, sizeof(child_folder), "%s/%s", folder, e->d_name);
+        else
+          snprintf(child_folder, sizeof(child_folder), "%s", e->d_name);
+        scanDir(path, child_folder);
       } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
         addTrack(path, folder, st);
       }
