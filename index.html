@@ -76,9 +76,19 @@
 
   .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
   .folder { margin-top: 6px; color: var(--accent-2); font-size: 13px; letter-spacing: .04em; }
-  .now-title { display: flex; align-items: center; gap: 10px; }
-  .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; width: 500px; overflow-x: clip; }
+  .now-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .track-title { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 4px 0 2px; letter-spacing: -.01em; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .now-title .track-title { width: auto; flex: 1; min-width: 0; }
+  .track-title .scroll, .tracks .t .scroll { display: inline; }
+  .track-title.marquee .scroll { display: inline-block; animation: marquee-scroll var(--marquee-duration, 9s) ease-in-out infinite alternate; }
+  .tracks .t.overflow:hover .scroll { display: inline-block; animation: marquee-scroll var(--marquee-duration, 9s) ease-in-out infinite alternate; }
+  @keyframes marquee-scroll {
+    0%, 10% { transform: translateX(0); }
+    90%, 100% { transform: translateX(var(--marquee-distance, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track-title.marquee .scroll, .tracks .t.overflow:hover .scroll { animation: none; display: inline; }
+  }
   .fav { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px; cursor: pointer; border-radius: 8px; flex: none; }
   .fav:hover { background: #171c28; color: var(--text); }
   .fav.on { color: #fbbf24; }
@@ -333,7 +343,7 @@
       <div class="eyebrow">now playing</div>
       <div class="folder" id="folder">—</div>
       <div class="now-title">
-        <div class="track-title" id="title">Nothing playing</div>
+        <div class="track-title" id="title"><span class="scroll">Nothing playing</span></div>
         <button class="fav" id="favoriteBtn" title="favorite" disabled>☆</button>
       </div>
 
@@ -982,7 +992,7 @@ function render(s) {
   const sess = s.session || {};
   const cur = r.current;
 
-  $("#title").textContent = cur ? cur.title : "Nothing playing";
+  setMarqueeText($("#title"), cur ? cur.title : "Nothing playing");
   $("#folder").textContent = cur ? cur.folder : "—";
   const favorite = cur ? cur.favorite === true : false;
   $("#favoriteBtn").textContent = favorite ? "★" : "☆";
@@ -1436,13 +1446,45 @@ async function toggleFavorite(id) {
   }
 }
 
+function updateMarquee(container) {
+  const scroller = container.querySelector(".scroll");
+  if (!scroller) return;
+  container.classList.remove("marquee");
+  const overflow = scroller.scrollWidth > container.clientWidth + 1;
+  const isTitle = container.id === "title";
+  container.classList.toggle("marquee", overflow && isTitle);
+  container.classList.toggle("overflow", overflow && !isTitle);
+  if (!overflow) {
+    container.style.removeProperty("--marquee-distance");
+    container.style.removeProperty("--marquee-duration");
+    return;
+  }
+  const distance = scroller.scrollWidth - container.clientWidth;
+  container.style.setProperty("--marquee-distance", `-${distance}px`);
+  container.style.setProperty("--marquee-duration", `${Math.max(6, distance / 32 + 4)}s`);
+}
+
+function setMarqueeText(container, text) {
+  const scroller = container.querySelector(".scroll");
+  if (!scroller) return;
+  if (scroller.textContent === text) return;
+  scroller.textContent = text;
+  container.classList.remove("marquee", "overflow");
+  requestAnimationFrame(() => updateMarquee(container));
+}
+
+function setupMarquees() {
+  updateMarquee($("#title"));
+  document.querySelectorAll("#tracks .t").forEach(updateMarquee);
+}
+
 function buildTracks() {
   const list = $("#tracks");
   const items = tracks.filter(t =>
     !filterText || (t.title + " " + t.folder).toLowerCase().includes(filterText));
 
   list.innerHTML = items.map(t =>
-    `<li data-id="${t.id}"><span class="t">${escapeHtml(t.title)}</span><span class="g">${escapeHtml(t.folder)}</span><span class="d">${fmtTrackDuration(t.duration)}</span><button class="fav${t.favorite ? " on" : ""}" data-fav-id="${t.id}" title="favorite">${t.favorite ? "★" : "☆"}</button></li>`
+    `<li data-id="${t.id}" title="${escapeHtml(t.title)}"><span class="t"><span class="scroll">${escapeHtml(t.title)}</span></span><span class="g">${escapeHtml(t.folder)}</span><span class="d">${fmtTrackDuration(t.duration)}</span><button class="fav${t.favorite ? " on" : ""}" data-fav-id="${t.id}" title="favorite">${t.favorite ? "★" : "☆"}</button></li>`
   ).join("");
 
   list.querySelectorAll("li").forEach(li => {
@@ -1453,6 +1495,7 @@ function buildTracks() {
         streamInBrowser(li.dataset.id);
     };
   });
+  setupMarquees();
   list.querySelectorAll("button.fav").forEach(button => {
     button.onclick = (event) => {
       event.stopPropagation();
@@ -2163,6 +2206,8 @@ $("#favoriteBtn").onclick = () => {
   const cur = last && last.radio && last.radio.current;
   if (cur) toggleFavorite(cur.id);
 };
+
+window.addEventListener("resize", () => requestAnimationFrame(setupMarquees));
 
 // -- boot -------------------------------------------------------------------
 
