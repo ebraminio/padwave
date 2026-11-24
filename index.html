@@ -1038,6 +1038,7 @@ function render(s) {
     $("#volume").value = r.volume ?? 0;
     $("#volLabel").textContent = muted ? "muted" : (r.volume ?? 0);
   }
+  if (!dragging) updateBrowserGain(r.volume ?? 0);
   if (document.activeElement !== $("#speed")) $("#speed").value = String(r.speed ?? 100);
 
   $("#connDot").className = "dot " + (c.connected ? "on" : "off");
@@ -1340,6 +1341,7 @@ function highlightTrack(id) {
 }
 
 let webAudioCtx = null;
+let webAudioGain = null;
 let webAudioSource = null;
 let webAudioPlaying = false;
 let webAudioNext = 0;
@@ -1351,6 +1353,16 @@ function setWebAudioState(text, visible) {
   el.style.display = visible ? "block" : "none";
 }
 
+function browserGainValue(volume) {
+  const v = Math.max(0, Math.min(100, Number(volume) || 0)) / 100;
+  return v * v * v;
+}
+
+function updateBrowserGain(volume) {
+  if (!webAudioGain || !webAudioCtx) return;
+  webAudioGain.gain.setTargetAtTime(browserGainValue(volume), webAudioCtx.currentTime, 0.015);
+}
+
 async function stopBrowserAudio() {
   webAudioPlaying = false;
   webAudioCarry = new Uint8Array(0);
@@ -1358,6 +1370,7 @@ async function stopBrowserAudio() {
     webAudioSource.close();
     webAudioSource = null;
   }
+  webAudioGain = null;
   if (webAudioCtx) {
     try { await webAudioCtx.close(); } catch (_) {}
     webAudioCtx = null;
@@ -1382,7 +1395,7 @@ function feedBrowserPcm(bytes) {
   }
   const source = webAudioCtx.createBufferSource();
   source.buffer = buffer;
-  source.connect(webAudioCtx.destination);
+  source.connect(webAudioGain || webAudioCtx.destination);
   const now = webAudioCtx.currentTime;
   const at = Math.max(now + 0.08, webAudioNext > now ? webAudioNext : now + 0.08);
   source.start(at);
@@ -1408,6 +1421,9 @@ async function streamInBrowser(id) {
   webAudioPlaying = true;
   webAudioNext = 0;
   webAudioCarry = new Uint8Array(0);
+  webAudioGain = webAudioCtx.createGain();
+  webAudioGain.gain.value = browserGainValue(last && last.radio ? last.radio.volume : 15);
+  webAudioGain.connect(webAudioCtx.destination);
   webAudioSource = new EventSource("/browser-pcm");
   webAudioSource.onopen = () => {
     setWebAudioState("browser audio live · tap of controller stream", true);
@@ -1623,6 +1639,7 @@ $("#volume").addEventListener("pointerup", () => {
 });
 $("#volume").addEventListener("input", () => {
   $("#volLabel").textContent = $("#volume").value;
+  updateBrowserGain(Number($("#volume").value));
 });
 $("#volume").addEventListener("change", () => {
   dragging = false;
