@@ -1481,7 +1481,15 @@ public:
     return n;
   }
 
-  void browserAudioAddClient() { this->web_audio_clients++; }
+  void browserAudioAddClient() {
+    this->web_audio_clients++;
+    if (this->web_audio_clients == 1 && !this->controller && !this->sink_playback && this->playing &&
+        this->paused) {
+      this->paused = false;
+      playerSend("pause 0\n");
+      this->playhead_dirty = true;
+    }
+  }
 
   void browserAudioRemoveClient() {
     if (this->web_audio_clients > 0) this->web_audio_clients--;
