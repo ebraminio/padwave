@@ -1320,6 +1320,8 @@ function renderFields(fields) {
 
 function highlightTrack(id) {
   document.querySelectorAll("#tracks li").forEach(li => {
+    if (li.dataset.id === id && !li.classList.contains("active"))
+      li.scrollIntoViewIfNeeded();
     li.classList.toggle("active", li.dataset.id === id);
   });
 }
