@@ -360,6 +360,7 @@
         <button class="icon" data-action="next" title="next track in this folder">⏭</button>
         <button class="icon" data-action="shuffle_folder" title="another folder">🎲</button>
         <button class="icon" id="webStream" title="stream the current track to this browser (works without a controller)">🌐</button>
+        <button class="icon" id="downloadBtn" title="download the current track" disabled>⇩</button>
         <button class="icon" data-action="disconnect" title="stop and power the controller off">⏏</button>
       </div>
 
@@ -1000,6 +1001,7 @@ function render(s) {
   $("#favoriteBtn").textContent = favorite ? "★" : "☆";
   $("#favoriteBtn").classList.toggle("on", favorite);
   $("#favoriteBtn").disabled = !cur;
+  $("#downloadBtn").disabled = !cur || !tracks.some(t => t.id === cur.id);
   const ps = s.hid ? s.hid.power_save : null;
   if (bootPs === undefined) bootPs = ps;
   if (!psDirty) psSetButtons(ps);
@@ -1319,11 +1321,22 @@ function renderFields(fields) {
 }
 
 function highlightTrack(id) {
-  document.querySelectorAll("#tracks li").forEach(li => {
-    if (li.dataset.id === id && !li.classList.contains("active"))
-      li.scrollIntoViewIfNeeded();
+  const list = $("#tracks");
+  let target = null;
+  let wasActive = false;
+  list.querySelectorAll("li").forEach(li => {
+    if (li.dataset.id === id) {
+      target = li;
+      wasActive = li.classList.contains("active");
+    }
     li.classList.toggle("active", li.dataset.id === id);
   });
+  if (!target || wasActive) return;
+  const lr = list.getBoundingClientRect();
+  const ir = target.getBoundingClientRect();
+  if (ir.top >= lr.top && ir.bottom <= lr.bottom) return;
+  const top = list.scrollTop + (ir.top - lr.top) - (list.clientHeight - ir.height) / 2;
+  list.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
 }
 
 let webAudioCtx = null;
@@ -1418,6 +1431,19 @@ async function streamInBrowser(id) {
     setWebAudioState("browser audio reconnecting…", true);
   };
 }
+
+$("#downloadBtn").onclick = () => {
+  const cur = last && last.radio && last.radio.current;
+  if (!cur) return;
+  const track = tracks.find(t => t.id === cur.id);
+  if (!track) return;
+  const link = document.createElement("a");
+  link.href = `/stream/${encodeURIComponent(track.id)}`;
+  link.download = `${track.title}.${track.ext}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
 
 $("#webStream").onclick = () => {
   if (webAudioPlaying) stopBrowserAudio();
