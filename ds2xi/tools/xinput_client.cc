@@ -49,7 +49,12 @@ struct CapsEx {
 
 template <typename T>
 static T resolve(HMODULE module, const char *name) {
-  return reinterpret_cast<T>(GetProcAddress(module, name));
+  union {
+    FARPROC proc;
+    T function;
+  } value;
+  value.proc = GetProcAddress(module, name);
+  return value.function;
 }
 
 #ifndef DS2XI_TEST_XINPUT

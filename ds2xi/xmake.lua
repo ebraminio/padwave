@@ -41,7 +41,7 @@ for _, variant in ipairs(xinput_variants) do
         add_defines('DS2XI_SYSTEM_XINPUT="' .. variant.name .. '.dll"')
         add_defines("DS2XI_EXPORTS_" .. variant.exports)
         if is_plat("mingw") then
-            add_cxxflags("-fno-stack-protector", "-fno-rtti", {force = true})
+            add_cxxflags("-fno-stack-protector", "-fno-rtti", "-fno-exceptions", {force = true})
             local entry = is_arch("i386", "x86") and "_DllMain@12" or "DllMain"
             add_shflags("-nostartfiles", "-nodefaultlibs", "-Wl,--kill-at", "-Wl,--entry=" .. entry,
                         {force = true})
@@ -64,5 +64,8 @@ for _, variant in ipairs(xinput_variants) do
         set_warnings("allextra")
         set_basename(variant.name .. "_test")
         add_defines('DS2XI_TEST_XINPUT="' .. variant.name .. '.dll"')
+        if is_plat("mingw") then
+            add_ldflags("-static", {force = true})
+        end
     end)
 end

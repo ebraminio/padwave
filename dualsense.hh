@@ -31,7 +31,7 @@ struct NumType {
     auto v = static_cast<std::make_unsigned_t<Type>>(value);
     for (unsigned i = 0; i < sizeof(Type); ++i) {
       bytes[i] = static_cast<unsigned char>((v & 0xFF));
-      v        = static_cast<std::make_unsigned_t<Type>>((v >> 8));
+      v        = static_cast<std::make_unsigned_t<Type>>(v / 256);
     }
     return *this;
   }

@@ -6,9 +6,11 @@
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
-#include <atomic>
 
 #include "dualsense.hh"
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 
 // XINPUT_GAMEPAD_GUIDE is not defined in the official Xinput.h
 #define XINPUT_GAMEPAD_GUIDE 0x0400
@@ -40,15 +42,19 @@ typedef struct _XINPUT_SYSTEM_BUTTONS {
   DWORD MoreSystemButtons6;
 } XINPUT_SYSTEM_BUTTONS;
 
-#ifndef __WINE_XINPUT_H
-typedef struct _XINPUT_CAPABILITIES_EX {
+#if defined(__WINE_XINPUT_H)
+using DsCapabilitiesEx = XINPUT_CAPABILITIES_EX;
+#define DS2XI_CAPS_VERSION VersionNumber
+#else
+struct DsCapabilitiesEx {
   XINPUT_CAPABILITIES Capabilities;
   WORD VendorId;
   WORD ProductId;
   WORD ProductVersion;
   WORD unk1;
   DWORD unk2;
-} XINPUT_CAPABILITIES_EX;
+};
+#define DS2XI_CAPS_VERSION ProductVersion
 #endif
 
 #ifndef DS2XI_SYSTEM_XINPUT
@@ -107,25 +113,25 @@ typedef DWORD(WINAPI *PFN_XInputWaitForGuideButton)(DWORD, DWORD, LPVOID);
 typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD);
 typedef DWORD(WINAPI *PFN_XInputPowerOffController)(DWORD);
 typedef DWORD(WINAPI *PFN_XInputGetBaseBusInformation)(DWORD, XINPUT_BASE_BUS_INFORMATION *);
-typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, XINPUT_CAPABILITIES_EX *);
+typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, DsCapabilitiesEx *);
 typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_SYSTEM_BUTTONS *, PVOID);
 
 static HMODULE g_SystemXInput                                     = nullptr;
-static PFN_XInputGetState g_FpnGetState                           = nullptr;
-static PFN_XInputSetState g_FpnSetState                           = nullptr;
-static PFN_XInputGetCapabilities g_FpnGetCaps                     = nullptr;
-static PFN_XInputEnable g_FpnEnable                               = nullptr;
-static PFN_XInputGetAudioDeviceIds g_FpnGetAudioDeviceIds         = nullptr;
-static PFN_XInputGetBatteryInformation g_FpnGetBattery            = nullptr;
-static PFN_XInputGetKeystroke g_FpnGetKeystroke                   = nullptr;
-static PFN_XInputGetDSoundAudioDeviceGuids g_FpnGetDSoundAudioDeviceGuids = nullptr;
-static PFN_XInputGetStateEx g_FpnGetStateEx                       = nullptr;
-static PFN_XInputWaitForGuideButton g_FpnWaitForGuideButton       = nullptr;
-static PFN_XInputCancelGuideButtonWait g_FpnCancelGuideButtonWait = nullptr;
-static PFN_XInputPowerOffController g_FpnPowerOffController       = nullptr;
-static PFN_XInputGetBaseBusInformation g_FpnGetBaseBusInformation = nullptr;
-static PFN_XInputGetCapabilitiesEx g_FpnGetCapabilitiesEx         = nullptr;
-static PFN_XInputGetSystemButtons g_FpnGetSystemButtons           = nullptr;
+[[maybe_unused]] static PFN_XInputGetState g_FpnGetState                           = nullptr;
+[[maybe_unused]] static PFN_XInputSetState g_FpnSetState                           = nullptr;
+[[maybe_unused]] static PFN_XInputGetCapabilities g_FpnGetCaps                     = nullptr;
+[[maybe_unused]] static PFN_XInputEnable g_FpnEnable                               = nullptr;
+[[maybe_unused]] static PFN_XInputGetAudioDeviceIds g_FpnGetAudioDeviceIds         = nullptr;
+[[maybe_unused]] static PFN_XInputGetBatteryInformation g_FpnGetBattery            = nullptr;
+[[maybe_unused]] static PFN_XInputGetKeystroke g_FpnGetKeystroke                   = nullptr;
+[[maybe_unused]] static PFN_XInputGetDSoundAudioDeviceGuids g_FpnGetDSoundAudioDeviceGuids = nullptr;
+[[maybe_unused]] static PFN_XInputGetStateEx g_FpnGetStateEx                       = nullptr;
+[[maybe_unused]] static PFN_XInputWaitForGuideButton g_FpnWaitForGuideButton       = nullptr;
+[[maybe_unused]] static PFN_XInputCancelGuideButtonWait g_FpnCancelGuideButtonWait = nullptr;
+[[maybe_unused]] static PFN_XInputPowerOffController g_FpnPowerOffController       = nullptr;
+[[maybe_unused]] static PFN_XInputGetBaseBusInformation g_FpnGetBaseBusInformation = nullptr;
+[[maybe_unused]] static PFN_XInputGetCapabilitiesEx g_FpnGetCapabilitiesEx         = nullptr;
+[[maybe_unused]] static PFN_XInputGetSystemButtons g_FpnGetSystemButtons           = nullptr;
 
 // ---------------------------------------------------------------------------
 // DualSense state
@@ -149,13 +155,13 @@ struct DsControllerState {
 };
 
 static DsControllerState g_Controllers[kMaxControllers];
-static std::atomic<bool> g_CancelGuideButtonWait[kMaxControllers];
+[[maybe_unused]] static volatile LONG g_CancelGuideButtonWait[kMaxControllers] = {};
 
 struct GuideWaitContext {
   DWORD user;
   DWORD *result;
 };
-static GuideWaitContext g_GuideWaitContexts[kMaxControllers];
+[[maybe_unused]] static GuideWaitContext g_GuideWaitContexts[kMaxControllers];
 
 // LED / color state
 static uint8_t g_LedNumber = 0;
@@ -364,10 +370,10 @@ static bool readDualSenseState(DWORD userIndex, XINPUT_STATE &state) {
   size_t bytesRead = static_cast<size_t>(n);
 
   const dualsense::InputBody *input = nullptr;
-  if (auto *report = dualsense::InputReport::asFrame(buffer, bytesRead)) {
-    input = &report->getBody();
-  } else if (auto *report = dualsense::UsbInputReport::asFrame(buffer, bytesRead)) {
-    input = &report->getBody();
+  if (auto *bluetoothReport = dualsense::InputReport::asFrame(buffer, bytesRead)) {
+    input = &bluetoothReport->getBody();
+  } else if (auto *usbReport = dualsense::UsbInputReport::asFrame(buffer, bytesRead)) {
+    input = &usbReport->getBody();
   } else
     return false;
 
@@ -556,9 +562,16 @@ DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
 
 // 1.1/1.2 @2, 1.3/1.4 @5, UAP @2; absent in 9.1.0
 #ifdef DS2XI_EXPORTS_ENABLE
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4995)
+#endif
 void WINAPI XInputEnable(BOOL enable) noexcept {
   if (g_FpnEnable) g_FpnEnable(enable);
 }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 #endif
 
 // 1.4 @10, UAP @3
@@ -631,7 +644,7 @@ DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept 
 static DWORD WINAPI guideWaitThreadProc(LPVOID parameter) {
   GuideWaitContext *context = static_cast<GuideWaitContext *>(parameter);
   for (;;) {
-    if (g_CancelGuideButtonWait[context->user].exchange(false)) {
+    if (InterlockedExchange(&g_CancelGuideButtonWait[context->user], FALSE) != FALSE) {
       *context->result = ERROR_CANCELLED;
       return 0;
     }
@@ -659,7 +672,7 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
   }
 
   DWORD *result = static_cast<DWORD *>(pVoid);
-  g_CancelGuideButtonWait[dwUserIndex] = false;
+  InterlockedExchange(&g_CancelGuideButtonWait[dwUserIndex], FALSE);
 
   if (dwFlag != 0 && dwFlag != static_cast<DWORD>(-1)) {
     *result = ERROR_IO_PENDING;
@@ -677,7 +690,7 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
 
   /* dwFlag 0 (and the system's -1 alias) blocks for one Guide press. */
   for (;;) {
-    if (g_CancelGuideButtonWait[dwUserIndex].exchange(false)) {
+    if (InterlockedExchange(&g_CancelGuideButtonWait[dwUserIndex], FALSE) != FALSE) {
       *result = ERROR_CANCELLED;
       return *result;
     }
@@ -696,7 +709,7 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
   if (dwUserIndex < kMaxControllers && g_Controllers[dwUserIndex].connected) {
-    g_CancelGuideButtonWait[dwUserIndex] = true;
+    InterlockedExchange(&g_CancelGuideButtonWait[dwUserIndex], TRUE);
     return ERROR_SUCCESS;
   }
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
@@ -739,7 +752,7 @@ extern "C" DWORD WINAPI XInputGetBaseBusInformation(
 // this four-argument signature.
 #ifdef DS2XI_EXPORTS_CAPS_EX
 extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex, DWORD dwFlags,
-                                     XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
+                                     DsCapabilitiesEx *pCapabilitiesEx) noexcept {
   if (unknown != 1 || dwUserIndex >= kMaxControllers ||
       (dwFlags != 0 && dwFlags != XINPUT_CAPS_FFB_SUPPORTED) || !pCapabilitiesEx)
     return ERROR_INVALID_PARAMETER;
@@ -753,7 +766,7 @@ extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex
       pCapabilitiesEx->Capabilities = capabilities;
       pCapabilitiesEx->VendorId = controller.vendorId;
       pCapabilitiesEx->ProductId = controller.productId;
-      pCapabilitiesEx->ProductVersion = controller.releaseNumber;
+      pCapabilitiesEx->DS2XI_CAPS_VERSION = controller.releaseNumber;
       return ERROR_SUCCESS;
     }
   }
