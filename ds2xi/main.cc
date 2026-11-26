@@ -36,7 +36,7 @@ typedef struct _XINPUT_CAPABILITIES_EX {
 #endif
 
 #ifndef DS2XI_SYSTEM_XINPUT
-#define DS2XI_SYSTEM_XINPUT "XInput1_4.dll"
+#error "DS2XI_SYSTEM_XINPUT must name the matching system XInput DLL"
 #endif
 /* Each variant selects the APIs it exports. The matching .def file is the
    final filter; this keeps unrelated wrappers out of the translation unit too. */
@@ -77,23 +77,23 @@ typedef struct _XINPUT_CAPABILITIES_EX {
 // System XInput function pointers
 // ---------------------------------------------------------------------------
 
-typedef DWORD(WINAPI *PFN_XInputGetState)(DWORD, XINPUT_STATE *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputSetState)(DWORD, XINPUT_VIBRATION *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetCapabilities)(DWORD, DWORD, XINPUT_CAPABILITIES *) noexcept;
-typedef void(WINAPI *PFN_XInputEnable)(BOOL) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetAudioDeviceIds)(DWORD, LPWSTR, UINT *, LPWSTR, UINT *) noexcept;
+typedef DWORD(WINAPI *PFN_XInputGetState)(DWORD, XINPUT_STATE *);
+typedef DWORD(WINAPI *PFN_XInputSetState)(DWORD, XINPUT_VIBRATION *);
+typedef DWORD(WINAPI *PFN_XInputGetCapabilities)(DWORD, DWORD, XINPUT_CAPABILITIES *);
+typedef void(WINAPI *PFN_XInputEnable)(BOOL);
+typedef DWORD(WINAPI *PFN_XInputGetAudioDeviceIds)(DWORD, LPWSTR, UINT *, LPWSTR, UINT *);
 typedef DWORD(WINAPI *PFN_XInputGetBatteryInformation)(DWORD, BYTE,
-                                                       XINPUT_BATTERY_INFORMATION *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetKeystroke)(DWORD, DWORD, PXINPUT_KEYSTROKE) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetDSoundAudioDeviceGuids)(DWORD, GUID *, GUID *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetStateEx)(DWORD, XINPUT_STATE *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputWaitForGuideButton)(DWORD, DWORD, LPVOID) noexcept;
-typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD) noexcept;
-typedef DWORD(WINAPI *PFN_XInputPowerOffController)(DWORD) noexcept;
+                                                       XINPUT_BATTERY_INFORMATION *);
+typedef DWORD(WINAPI *PFN_XInputGetKeystroke)(DWORD, DWORD, PXINPUT_KEYSTROKE);
+typedef DWORD(WINAPI *PFN_XInputGetDSoundAudioDeviceGuids)(DWORD, GUID *, GUID *);
+typedef DWORD(WINAPI *PFN_XInputGetStateEx)(DWORD, XINPUT_STATE *);
+typedef DWORD(WINAPI *PFN_XInputWaitForGuideButton)(DWORD, DWORD, LPVOID);
+typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD);
+typedef DWORD(WINAPI *PFN_XInputPowerOffController)(DWORD);
 typedef DWORD(WINAPI *PFN_XInputGetBaseBusInformation)(DWORD, DWORD,
-                                                       XINPUT_BASE_BUS_INFORMATION *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, XINPUT_CAPABILITIES_EX *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_KEYSTROKE *) noexcept;
+                                                       XINPUT_BASE_BUS_INFORMATION *);
+typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, XINPUT_CAPABILITIES_EX *);
+typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_KEYSTROKE *);
 
 static HMODULE g_SystemXInput                                     = nullptr;
 static PFN_XInputGetState g_FpnGetState                           = nullptr;
@@ -368,6 +368,7 @@ static bool readDualSenseState(XINPUT_STATE &state) {
 // DLL entry point
 // ---------------------------------------------------------------------------
 
+// DllMain is @1 in every variant.
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
   (void)hModule;
   switch (reason) {
@@ -400,7 +401,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
 // and use a .def file instead to prevent linkage conflicts.
 // ---------------------------------------------------------------------------
 
-// Ordinal 2
+// 1.1/1.2 @5, 1.3/1.4 @2, 9.1.0 @4, UAP @7
 DWORD WINAPI XInputGetState(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
   if (dwUserIndex == 0) {
     if (!pState) return ERROR_INVALID_PARAMETER;
@@ -415,7 +416,7 @@ DWORD WINAPI XInputGetState(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
-// Ordinal 3
+// 1.1/1.2 @6, 1.3/1.4 @3, 9.1.0 @5, UAP @8
 DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noexcept {
   if (dwUserIndex == 0) {
     if (!pVibration) return ERROR_INVALID_PARAMETER;
@@ -438,7 +439,7 @@ DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noe
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
-// Ordinal 4
+// 1.1/1.2 @3, 1.3/1.4 @4, 9.1.0 @2, UAP @5
 DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
                                    XINPUT_CAPABILITIES *pCapabilities) noexcept {
   if (dwUserIndex == 0) {
@@ -474,14 +475,14 @@ DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
-// Ordinal 5
+// 1.1/1.2 @2, 1.3/1.4 @5, UAP @2; absent in 9.1.0
 #ifdef DS2XI_EXPORTS_ENABLE
 void WINAPI XInputEnable(BOOL enable) noexcept {
   if (g_FpnEnable) g_FpnEnable(enable);
 }
 #endif
 
-// Ordinal 6
+// 1.4 @10, UAP @3
 #ifdef DS2XI_EXPORTS_AUDIO
 extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRenderDeviceId, UINT *pRenderCount,
                                      LPWSTR pCaptureDeviceId, UINT *pCaptureCount) noexcept {
@@ -492,7 +493,7 @@ extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRende
 }
 #endif
 
-// Ordinal 7
+// 1.3/1.4 @7, UAP @4
 #ifdef DS2XI_EXPORTS_BATTERY
 DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
                                          XINPUT_BATTERY_INFORMATION *pBatteryInformation) noexcept {
@@ -517,7 +518,7 @@ DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
 }
 #endif
 
-// Ordinal 8
+// 1.3/1.4 @8, UAP @6
 #ifdef DS2XI_EXPORTS_KEYSTROKE
 DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved,
                                 PXINPUT_KEYSTROKE pKeystroke) noexcept {
@@ -526,7 +527,7 @@ DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved,
 }
 #endif
 
-// Deprecated in newer XInput versions, present in 1.1/1.2/1.3/9.1.0.
+// 1.1/1.2 @4, 1.3 @6, 9.1.0 @3; absent in 1.4/UAP.
 #ifdef DS2XI_EXPORTS_DSOUND
 extern "C" DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID *pDSoundRenderGuid,
                                                         GUID *pDSoundCaptureGuid) noexcept {
@@ -536,14 +537,14 @@ extern "C" DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID 
 }
 #endif
 
-// Ordinal 100 — XInputGetStateEx (undocumented)
+// Undocumented: 1.3 and 1.4 @100
 #ifdef DS2XI_EXPORTS_GUIDE
 DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
   return XInputGetState(dwUserIndex, pState);
 }
 #endif
 
-// Ordinal 101 — XInputWaitForGuideButton (undocumented)
+// Undocumented: 1.3 and 1.4 @101
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
   if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
@@ -551,7 +552,7 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
 }
 #endif
 
-// Ordinal 102 — XInputCancelGuideButtonWait (undocumented)
+// Undocumented: 1.3 and 1.4 @102
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
@@ -559,7 +560,7 @@ extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept 
 }
 #endif
 
-// Ordinal 103 — XInputPowerOffController (undocumented)
+// Undocumented: 1.3 and 1.4 @103
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
   if (g_FpnPowerOffController) return g_FpnPowerOffController(dwUserIndex);
@@ -567,7 +568,7 @@ extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
 }
 #endif
 
-// Ordinal 104 — XInputGetBaseBusInformation (undocumented)
+// Undocumented: 1.4 @104
 #ifdef DS2XI_EXPORTS_BASE_BUS
 extern "C" DWORD WINAPI XInputGetBaseBusInformation(
     DWORD dwUserIndex, DWORD dwFlags, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
@@ -577,7 +578,7 @@ extern "C" DWORD WINAPI XInputGetBaseBusInformation(
 }
 #endif
 
-// Ordinal 108 — XInputGetCapabilitiesEx (undocumented)
+// Undocumented: 1.4 @108
 // The first argument is an unknown/reserved value; Wine and MinGW both use
 // this four-argument signature.
 #ifdef DS2XI_EXPORTS_CAPS_EX
@@ -589,7 +590,7 @@ extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex
 }
 #endif
 
-// Ordinal 109 — XInputGetSystemButtons (undocumented)
+// Undocumented: 1.4 @109
 #ifdef DS2XI_EXPORTS_SYSTEM_BUTTONS
 extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
   if (g_FpnGetSystemButtons) return g_FpnGetSystemButtons(dwUserIndex, pKeystroke);
