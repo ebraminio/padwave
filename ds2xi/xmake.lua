@@ -5,9 +5,8 @@ target("hidapi", function ()
     set_kind("static")
     add_includedirs("hidapi/hidapi", "hidapi/windows", {public = true})
     add_defines("HID_API_NO_EXPORT_DEFINE", {public = true})
-    add_defines("HIDAPI_NO_CRT", "HIDAPI_CMAKE_V0_BUILD")
-    add_files("hidapi/windows/hid.c",
-              "hidapi/windows/hidapi_descriptor_reconstruct.c")
+    add_defines("HIDAPI_NO_CRT")
+    add_files("hidapi/windows/hid.c")
     set_runtimes("none")
     set_exceptions("none")
     if is_plat("mingw") then
@@ -18,9 +17,9 @@ target("hidapi", function ()
 end)
 
 local xinput_variants = {
-    { name = "XInput1_1", def = "xinput1_1.def" },
-    { name = "XInput1_2", def = "xinput1_2.def" },
-    { name = "XInput1_3", def = "xinput1_3.def" },
+    { name = "xinput1_1", def = "xinput1_1.def" },
+    { name = "xinput1_2", def = "xinput1_2.def" },
+    { name = "xinput1_3", def = "xinput1_3.def" },
     { name = "XInput1_4", def = "xinput1_4.def" },
     { name = "XInput9_1_0", def = "xinput9_1_0.def" },
     { name = "XInputUap", def = "xinputuap.def" },

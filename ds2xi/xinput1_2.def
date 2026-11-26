@@ -1,4 +1,4 @@
-LIBRARY XInput1_2
+LIBRARY xinput1_2
 EXPORTS
     DllMain                     @1
     XInputEnable                @2
