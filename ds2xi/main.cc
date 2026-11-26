@@ -53,7 +53,7 @@ typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD) noexcept;
 typedef DWORD(WINAPI *PFN_XInputPowerOffController)(DWORD) noexcept;
 typedef DWORD(WINAPI *PFN_XInputGetBaseBusInformation)(DWORD, DWORD,
                                                        XINPUT_BASE_BUS_INFORMATION *) noexcept;
-typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, XINPUT_CAPABILITIES_EX *) noexcept;
+typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, XINPUT_CAPABILITIES_EX *) noexcept;
 typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_KEYSTROKE *) noexcept;
 
 static HMODULE g_SystemXInput                                     = nullptr;
@@ -508,13 +508,14 @@ extern "C" DWORD WINAPI XInputGetBaseBusInformation(
 }
 
 // Ordinal 108 — XInputGetCapabilitiesEx (undocumented)
-#ifndef XINPUT_MINGW_NO_GET_CAPABILITIES_EX
-extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD dwUserIndex, DWORD dwFlags,
+// The first argument is an unknown/reserved value; Wine and MinGW both use
+// this four-argument signature.
+extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex, DWORD dwFlags,
                                      XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
-  if (g_FpnGetCapabilitiesEx) return g_FpnGetCapabilitiesEx(dwUserIndex, dwFlags, pCapabilitiesEx);
+  if (g_FpnGetCapabilitiesEx)
+    return g_FpnGetCapabilitiesEx(unknown, dwUserIndex, dwFlags, pCapabilitiesEx);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
-#endif
 
 // Ordinal 109 — XInputGetSystemButtons (undocumented)
 extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
