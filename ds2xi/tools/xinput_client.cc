@@ -15,13 +15,28 @@ static T resolve(HMODULE module, const char *name) {
   return reinterpret_cast<T>(GetProcAddress(module, name));
 }
 
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::printf("usage: %s <path-to-XInput-variant.dll>\n", argv[0]);
+#ifndef DS2XI_TEST_XINPUT
+#error "DS2XI_TEST_XINPUT must name the variant DLL next to the tester"
+#endif
+
+int main() {
+  char exePath[MAX_PATH];
+  char dllPath[MAX_PATH];
+  DWORD length = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+  if (length == 0 || length >= MAX_PATH) {
+    std::printf("GetModuleFileName failed\n");
     return 2;
   }
+  char *separator = std::strrchr(exePath, '\\');
+  if (!separator) {
+    std::printf("Cannot find tester directory\n");
+    return 2;
+  }
+  *separator = '\0';
+  std::snprintf(dllPath, sizeof(dllPath), "%s\\%s", exePath, DS2XI_TEST_XINPUT);
 
-  HMODULE module = LoadLibraryA(argv[1]);
+  std::printf("Loading %s\n", dllPath);
+  HMODULE module = LoadLibraryA(dllPath);
   if (!module) {
     std::printf("LoadLibrary failed: %lu\n", GetLastError());
     return 2;

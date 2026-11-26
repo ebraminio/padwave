@@ -55,10 +55,14 @@ for _, variant in ipairs(xinput_variants) do
     end)
 end
 
-target("XInputClient", function ()
-    set_kind("binary")
-    add_files("tools/xinput_client.cc")
-    add_syslinks("kernel32", "user32")
-    set_languages("c++23")
-    set_warnings("allextra")
-end)
+for _, variant in ipairs(xinput_variants) do
+    target(variant.name .. "_test", function ()
+        set_kind("binary")
+        add_files("tools/xinput_client.cc")
+        add_syslinks("kernel32", "user32")
+        set_languages("c++23")
+        set_warnings("allextra")
+        set_basename(variant.name .. "_test")
+        add_defines('DS2XI_TEST_XINPUT="' .. variant.name .. '.dll"')
+    end)
+end
