@@ -38,6 +38,40 @@ typedef struct _XINPUT_CAPABILITIES_EX {
 #ifndef DS2XI_SYSTEM_XINPUT
 #define DS2XI_SYSTEM_XINPUT "XInput1_4.dll"
 #endif
+/* Each variant selects the APIs it exports. The matching .def file is the
+   final filter; this keeps unrelated wrappers out of the translation unit too. */
+#if !defined(DS2XI_EXPORTS_XINPUT1_1) && !defined(DS2XI_EXPORTS_XINPUT1_2) && \
+    !defined(DS2XI_EXPORTS_XINPUT1_3) && !defined(DS2XI_EXPORTS_XINPUT1_4) && \
+    !defined(DS2XI_EXPORTS_XINPUT9_1_0) && !defined(DS2XI_EXPORTS_XINPUTUAP)
+#error "Select the XInput export set"
+#endif
+
+#if defined(DS2XI_EXPORTS_XINPUT1_1) || defined(DS2XI_EXPORTS_XINPUT1_2) || \
+    defined(DS2XI_EXPORTS_XINPUT1_3) || defined(DS2XI_EXPORTS_XINPUT1_4) || \
+    defined(DS2XI_EXPORTS_XINPUTUAP)
+#define DS2XI_EXPORTS_ENABLE
+#endif
+#if defined(DS2XI_EXPORTS_XINPUT1_1) || defined(DS2XI_EXPORTS_XINPUT1_2) || \
+    defined(DS2XI_EXPORTS_XINPUT1_3) || defined(DS2XI_EXPORTS_XINPUT9_1_0)
+#define DS2XI_EXPORTS_DSOUND
+#endif
+#if defined(DS2XI_EXPORTS_XINPUT1_3) || defined(DS2XI_EXPORTS_XINPUT1_4) || \
+    defined(DS2XI_EXPORTS_XINPUTUAP)
+#define DS2XI_EXPORTS_BATTERY
+#define DS2XI_EXPORTS_KEYSTROKE
+#endif
+#if defined(DS2XI_EXPORTS_XINPUT1_4) || defined(DS2XI_EXPORTS_XINPUTUAP)
+#define DS2XI_EXPORTS_AUDIO
+#endif
+#if defined(DS2XI_EXPORTS_XINPUT1_3) || defined(DS2XI_EXPORTS_XINPUT1_4)
+#define DS2XI_EXPORTS_GUIDE
+#endif
+#if defined(DS2XI_EXPORTS_XINPUT1_4)
+#define DS2XI_EXPORTS_BASE_BUS
+#define DS2XI_EXPORTS_CAPS_EX
+#define DS2XI_EXPORTS_SYSTEM_BUTTONS
+#endif
+
 
 // ---------------------------------------------------------------------------
 // System XInput function pointers
@@ -441,11 +475,14 @@ DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
 }
 
 // Ordinal 5
+#ifdef DS2XI_EXPORTS_ENABLE
 void WINAPI XInputEnable(BOOL enable) noexcept {
   if (g_FpnEnable) g_FpnEnable(enable);
 }
+#endif
 
 // Ordinal 6
+#ifdef DS2XI_EXPORTS_AUDIO
 extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRenderDeviceId, UINT *pRenderCount,
                                      LPWSTR pCaptureDeviceId, UINT *pCaptureCount) noexcept {
   if (g_FpnGetAudioDeviceIds)
@@ -453,8 +490,10 @@ extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRende
                                   pCaptureCount);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 7
+#ifdef DS2XI_EXPORTS_BATTERY
 DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
                                          XINPUT_BATTERY_INFORMATION *pBatteryInformation) noexcept {
   if (dwUserIndex == 0) {
@@ -476,65 +515,84 @@ DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
   if (g_FpnGetBattery) return g_FpnGetBattery(dwUserIndex, devType, pBatteryInformation);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 8
+#ifdef DS2XI_EXPORTS_KEYSTROKE
 DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved,
                                 PXINPUT_KEYSTROKE pKeystroke) noexcept {
   if (g_FpnGetKeystroke) return g_FpnGetKeystroke(dwUserIndex, dwReserved, pKeystroke);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Deprecated in newer XInput versions, present in 1.1/1.2/1.3/9.1.0.
+#ifdef DS2XI_EXPORTS_DSOUND
 extern "C" DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID *pDSoundRenderGuid,
                                                         GUID *pDSoundCaptureGuid) noexcept {
   if (g_FpnGetDSoundAudioDeviceGuids)
     return g_FpnGetDSoundAudioDeviceGuids(dwUserIndex, pDSoundRenderGuid, pDSoundCaptureGuid);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 100 — XInputGetStateEx (undocumented)
+#ifdef DS2XI_EXPORTS_GUIDE
 DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
   return XInputGetState(dwUserIndex, pState);
 }
+#endif
 
 // Ordinal 101 — XInputWaitForGuideButton (undocumented)
+#ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
   if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 102 — XInputCancelGuideButtonWait (undocumented)
+#ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 103 — XInputPowerOffController (undocumented)
+#ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
   if (g_FpnPowerOffController) return g_FpnPowerOffController(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 104 — XInputGetBaseBusInformation (undocumented)
+#ifdef DS2XI_EXPORTS_BASE_BUS
 extern "C" DWORD WINAPI XInputGetBaseBusInformation(
     DWORD dwUserIndex, DWORD dwFlags, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
   if (g_FpnGetBaseBusInformation)
     return g_FpnGetBaseBusInformation(dwUserIndex, dwFlags, pBaseBusInformation);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 108 — XInputGetCapabilitiesEx (undocumented)
 // The first argument is an unknown/reserved value; Wine and MinGW both use
 // this four-argument signature.
+#ifdef DS2XI_EXPORTS_CAPS_EX
 extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex, DWORD dwFlags,
                                      XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
   if (g_FpnGetCapabilitiesEx)
     return g_FpnGetCapabilitiesEx(unknown, dwUserIndex, dwFlags, pCapabilitiesEx);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 109 — XInputGetSystemButtons (undocumented)
+#ifdef DS2XI_EXPORTS_SYSTEM_BUTTONS
 extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
   if (g_FpnGetSystemButtons) return g_FpnGetSystemButtons(dwUserIndex, pKeystroke);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif

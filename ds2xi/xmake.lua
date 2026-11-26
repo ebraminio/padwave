@@ -17,12 +17,12 @@ target("hidapi", function ()
 end)
 
 local xinput_variants = {
-    { name = "xinput1_1", def = "xinput1_1.def" },
-    { name = "xinput1_2", def = "xinput1_2.def" },
-    { name = "xinput1_3", def = "xinput1_3.def" },
-    { name = "XInput1_4", def = "xinput1_4.def" },
-    { name = "XInput9_1_0", def = "xinput9_1_0.def" },
-    { name = "XInputUap", def = "xinputuap.def" },
+    { name = "xinput1_1", def = "xinput1_1.def", exports = "XINPUT1_1" },
+    { name = "xinput1_2", def = "xinput1_2.def", exports = "XINPUT1_2" },
+    { name = "xinput1_3", def = "xinput1_3.def", exports = "XINPUT1_3" },
+    { name = "XInput1_4", def = "xinput1_4.def", exports = "XINPUT1_4" },
+    { name = "XInput9_1_0", def = "xinput9_1_0.def", exports = "XINPUT9_1_0" },
+    { name = "XInputUap", def = "xinputuap.def", exports = "XINPUTUAP" },
 }
 
 for _, variant in ipairs(xinput_variants) do
@@ -39,6 +39,7 @@ for _, variant in ipairs(xinput_variants) do
         set_warnings("allextra")
         set_optimize("faster")
         add_defines('DS2XI_SYSTEM_XINPUT="' .. variant.name .. '.dll"')
+        add_defines("DS2XI_EXPORTS_" .. variant.exports)
         if is_plat("mingw") then
             add_cxxflags("-fno-stack-protector", "-fno-rtti", {force = true})
             local entry = is_arch("i386", "x86") and "_DllMain@12" or "DllMain"
