@@ -554,14 +554,27 @@ DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept 
 
 // Undocumented: 1.3 and 1.4 @101
 #ifdef DS2XI_EXPORTS_GUIDE
+static DWORD WINAPI guideWaitThreadProc(LPVOID parameter) {
+  DWORD *result = static_cast<DWORD *>(parameter);
+  for (;;) {
+    if (g_CancelGuideButtonWait.exchange(false)) {
+      *result = ERROR_CANCELLED;
+      return 0;
+    }
+    XINPUT_STATE state{};
+    if (XInputGetState(0, &state) == ERROR_SUCCESS &&
+        (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
+      *result = ERROR_SUCCESS;
+      return 0;
+    }
+    Sleep(10);
+  }
+}
+
 extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
   if (dwUserIndex != 0 || !pVoid) {
     if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
     return ERROR_BAD_ARGUMENTS;
-  }
-  if (dwFlag != 0) {
-    /* The system supports an async form here; we only implement blocking. */
-    return ERROR_CALL_NOT_IMPLEMENTED;
   }
 
   if (!g_DsConnected) tryConnectDualSense();
@@ -570,14 +583,31 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
     return ERROR_DEVICE_NOT_CONNECTED;
   }
 
+  DWORD *result = static_cast<DWORD *>(pVoid);
   g_CancelGuideButtonWait = false;
-  for (;;) {
-    if (g_CancelGuideButtonWait.exchange(false)) return ERROR_CANCELLED;
 
+  if (dwFlag != 0 && dwFlag != static_cast<DWORD>(-1)) {
+    *result = ERROR_IO_PENDING;
+    HANDLE thread = CreateThread(nullptr, 0, guideWaitThreadProc, result, 0, nullptr);
+    if (!thread) {
+      *result = GetLastError();
+      return *result;
+    }
+    CloseHandle(thread);
+    return ERROR_SUCCESS;
+  }
+
+  /* dwFlag 0 (and the system's -1 alias) blocks for one Guide press. */
+  for (;;) {
+    if (g_CancelGuideButtonWait.exchange(false)) {
+      *result = ERROR_CANCELLED;
+      return *result;
+    }
     XINPUT_STATE state{};
     if (XInputGetState(0, &state) == ERROR_SUCCESS &&
         (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
-      return ERROR_SUCCESS;
+      *result = ERROR_SUCCESS;
+      return *result;
     }
     Sleep(10);
   }

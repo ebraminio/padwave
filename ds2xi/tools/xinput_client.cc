@@ -13,6 +13,7 @@ typedef DWORD(WINAPI *GetBaseBusFn)(DWORD, DWORD, void *);
 typedef DWORD(WINAPI *GetCapsExFn)(DWORD, DWORD, DWORD, void *);
 typedef DWORD(WINAPI *GetSystemButtonsFn)(DWORD, XINPUT_KEYSTROKE *);
 typedef DWORD(WINAPI *CancelGuideFn)(DWORD);
+typedef DWORD(WINAPI *WaitGuideFn)(DWORD, DWORD, LPVOID);
 
 struct BaseBus {
   DWORD bus_type;
@@ -72,6 +73,7 @@ int main() {
   auto getCapsEx = resolve<GetCapsExFn>(module, "XInputGetCapabilitiesEx");
   auto getSystemButtons = resolve<GetSystemButtonsFn>(module, "XInputGetSystemButtons");
   auto cancelGuide = resolve<CancelGuideFn>(module, "XInputCancelGuideButtonWait");
+  auto waitGuide = resolve<WaitGuideFn>(module, "XInputWaitForGuideButton");
 
   if (!getState) {
     std::printf("XInputGetState missing\n");
@@ -135,8 +137,14 @@ int main() {
                 keystroke.VirtualKey, keystroke.Flags);
   }
 
-  if (cancelGuide) {
-    std::printf("CancelGuideButtonWait=0x%08lX\n", cancelGuide(0));
+  if (waitGuide && cancelGuide) {
+    DWORD waitResult = ERROR_IO_PENDING;
+    DWORD startResult = waitGuide(0, 1, &waitResult);
+    Sleep(50);
+    DWORD cancelResult = cancelGuide(0);
+    Sleep(100);
+    std::printf("AsyncGuide start=0x%08lX cancel=0x%08lX result=0x%08lX\n",
+                startResult, cancelResult, waitResult);
   }
 
   if (result == ERROR_SUCCESS && setState) {
