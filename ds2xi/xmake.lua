@@ -54,3 +54,11 @@ for _, variant in ipairs(xinput_variants) do
         end
     end)
 end
+
+target("XInputClient", function ()
+    set_kind("binary")
+    add_files("tools/xinput_client.cc")
+    add_syslinks("kernel32", "user32")
+    set_languages("c++23")
+    set_warnings("allextra")
+end)
