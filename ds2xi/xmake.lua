@@ -25,6 +25,14 @@ local xinput_variants = {
     { name = "XInputUap", def = "xinputuap.def", exports = "XINPUTUAP" },
 }
 
+local function strict_warnings()
+    if is_plat("mingw") then
+        add_cxflags("-Wall", "-Wextra", "-Werror", {force = true})
+    else
+        add_cxflags("/W4", "/WX", {force = true})
+    end
+end
+
 for _, variant in ipairs(xinput_variants) do
     target(variant.name, function ()
         set_kind("shared")
@@ -37,6 +45,7 @@ for _, variant in ipairs(xinput_variants) do
         set_basename(variant.name)
         set_prefixname("")
         set_warnings("allextra")
+        strict_warnings()
         set_optimize("faster")
         add_defines('DS2XI_SYSTEM_XINPUT="' .. variant.name .. '.dll"')
         add_defines("DS2XI_EXPORTS_" .. variant.exports)
@@ -62,6 +71,7 @@ for _, variant in ipairs(xinput_variants) do
         add_syslinks("kernel32", "user32")
         set_languages("c++23")
         set_warnings("allextra")
+        strict_warnings()
         set_basename(variant.name .. "_test")
         add_defines('DS2XI_TEST_XINPUT="' .. variant.name .. '.dll"')
         if is_plat("mingw") then

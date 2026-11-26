@@ -40,7 +40,8 @@ xmake discover the toolchain.
 
 ## Build
 
-Run from this directory.
+Run from this directory. All project targets are compiled with warnings as
+errors: `/W4 /WX` for MSVC/clang-cl and `-Wall -Wextra -Werror` for MinGW.
 
 ### MSVC
 
