@@ -35,6 +35,10 @@ typedef struct _XINPUT_CAPABILITIES_EX {
 } XINPUT_CAPABILITIES_EX;
 #endif
 
+#ifndef DS2XI_SYSTEM_XINPUT
+#define DS2XI_SYSTEM_XINPUT "XInput1_4.dll"
+#endif
+
 // ---------------------------------------------------------------------------
 // System XInput function pointers
 // ---------------------------------------------------------------------------
@@ -47,6 +51,7 @@ typedef DWORD(WINAPI *PFN_XInputGetAudioDeviceIds)(DWORD, LPWSTR, UINT *, LPWSTR
 typedef DWORD(WINAPI *PFN_XInputGetBatteryInformation)(DWORD, BYTE,
                                                        XINPUT_BATTERY_INFORMATION *) noexcept;
 typedef DWORD(WINAPI *PFN_XInputGetKeystroke)(DWORD, DWORD, PXINPUT_KEYSTROKE) noexcept;
+typedef DWORD(WINAPI *PFN_XInputGetDSoundAudioDeviceGuids)(DWORD, GUID *, GUID *) noexcept;
 typedef DWORD(WINAPI *PFN_XInputGetStateEx)(DWORD, XINPUT_STATE *) noexcept;
 typedef DWORD(WINAPI *PFN_XInputWaitForGuideButton)(DWORD, DWORD, LPVOID) noexcept;
 typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD) noexcept;
@@ -64,6 +69,7 @@ static PFN_XInputEnable g_FpnEnable                               = nullptr;
 static PFN_XInputGetAudioDeviceIds g_FpnGetAudioDeviceIds         = nullptr;
 static PFN_XInputGetBatteryInformation g_FpnGetBattery            = nullptr;
 static PFN_XInputGetKeystroke g_FpnGetKeystroke                   = nullptr;
+static PFN_XInputGetDSoundAudioDeviceGuids g_FpnGetDSoundAudioDeviceGuids = nullptr;
 static PFN_XInputGetStateEx g_FpnGetStateEx                       = nullptr;
 static PFN_XInputWaitForGuideButton g_FpnWaitForGuideButton       = nullptr;
 static PFN_XInputCancelGuideButtonWait g_FpnCancelGuideButtonWait = nullptr;
@@ -114,7 +120,7 @@ static bool loadSystemXInput() {
 
   char fullPath[MAX_PATH];
   zeroMemory(fullPath, sizeof(fullPath));
-  if (!PathCombineA(fullPath, sysDir, "XInput1_4.dll")) return false;
+  if (!PathCombineA(fullPath, sysDir, DS2XI_SYSTEM_XINPUT)) return false;
 
   g_SystemXInput = LoadLibraryA(fullPath);
   if (!g_SystemXInput) return false;
@@ -132,6 +138,8 @@ static bool loadSystemXInput() {
       GetProcAddress(g_SystemXInput, "XInputGetBatteryInformation"));
   g_FpnGetKeystroke = reinterpret_cast<PFN_XInputGetKeystroke>(
       GetProcAddress(g_SystemXInput, "XInputGetKeystroke"));
+  g_FpnGetDSoundAudioDeviceGuids = reinterpret_cast<PFN_XInputGetDSoundAudioDeviceGuids>(
+      GetProcAddress(g_SystemXInput, "XInputGetDSoundAudioDeviceGuids"));
   g_FpnGetStateEx = reinterpret_cast<PFN_XInputGetStateEx>(
       GetProcAddress(g_SystemXInput, reinterpret_cast<LPCSTR>(100)));
   g_FpnWaitForGuideButton = reinterpret_cast<PFN_XInputWaitForGuideButton>(
@@ -473,6 +481,14 @@ DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
 DWORD WINAPI XInputGetKeystroke(DWORD dwUserIndex, DWORD dwReserved,
                                 PXINPUT_KEYSTROKE pKeystroke) noexcept {
   if (g_FpnGetKeystroke) return g_FpnGetKeystroke(dwUserIndex, dwReserved, pKeystroke);
+  return ERROR_DEVICE_NOT_CONNECTED;
+}
+
+// Deprecated in newer XInput versions, present in 1.1/1.2/1.3/9.1.0.
+extern "C" DWORD WINAPI XInputGetDSoundAudioDeviceGuids(DWORD dwUserIndex, GUID *pDSoundRenderGuid,
+                                                        GUID *pDSoundCaptureGuid) noexcept {
+  if (g_FpnGetDSoundAudioDeviceGuids)
+    return g_FpnGetDSoundAudioDeviceGuids(dwUserIndex, pDSoundRenderGuid, pDSoundCaptureGuid);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
