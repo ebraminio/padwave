@@ -9,6 +9,27 @@ typedef DWORD(WINAPI *SetStateFn)(DWORD, XINPUT_VIBRATION *);
 typedef DWORD(WINAPI *GetCapsFn)(DWORD, DWORD, XINPUT_CAPABILITIES *);
 typedef DWORD(WINAPI *GetBatteryFn)(DWORD, BYTE, XINPUT_BATTERY_INFORMATION *);
 typedef DWORD(WINAPI *GetStateExFn)(DWORD, XINPUT_STATE *);
+typedef DWORD(WINAPI *GetBaseBusFn)(DWORD, DWORD, void *);
+typedef DWORD(WINAPI *GetCapsExFn)(DWORD, DWORD, DWORD, void *);
+typedef DWORD(WINAPI *GetSystemButtonsFn)(DWORD, XINPUT_KEYSTROKE *);
+typedef DWORD(WINAPI *CancelGuideFn)(DWORD);
+
+struct BaseBus {
+  DWORD bus_type;
+  DWORD vendor_id;
+  DWORD product_id;
+  DWORD version_number;
+  DWORD serial_number;
+};
+
+struct CapsEx {
+  XINPUT_CAPABILITIES capabilities;
+  WORD vendor_id;
+  WORD product_id;
+  WORD version_number;
+  WORD unknown1;
+  DWORD unknown2;
+};
 
 template <typename T>
 static T resolve(HMODULE module, const char *name) {
@@ -47,6 +68,10 @@ int main() {
   auto getCaps = resolve<GetCapsFn>(module, "XInputGetCapabilities");
   auto getBattery = resolve<GetBatteryFn>(module, "XInputGetBatteryInformation");
   auto getStateEx = resolve<GetStateExFn>(module, "XInputGetStateEx");
+  auto getBaseBus = resolve<GetBaseBusFn>(module, "XInputGetBaseBusInformation");
+  auto getCapsEx = resolve<GetCapsExFn>(module, "XInputGetCapabilitiesEx");
+  auto getSystemButtons = resolve<GetSystemButtonsFn>(module, "XInputGetSystemButtons");
+  auto cancelGuide = resolve<CancelGuideFn>(module, "XInputCancelGuideButtonWait");
 
   if (!getState) {
     std::printf("XInputGetState missing\n");
@@ -84,6 +109,34 @@ int main() {
     DWORD exResult = getStateEx(0, &stateEx);
     std::printf("GetStateEx=0x%08lX packet=%lu\n", exResult,
                 static_cast<unsigned long>(stateEx.dwPacketNumber));
+  }
+
+  if (getBaseBus) {
+    BaseBus bus{};
+    DWORD busResult = getBaseBus(0, 0, &bus);
+    std::printf("GetBaseBus=0x%08lX bus=%lu vendor=%04lX product=%04lX version=%lu\n",
+                busResult, static_cast<unsigned long>(bus.bus_type),
+                static_cast<unsigned long>(bus.vendor_id),
+                static_cast<unsigned long>(bus.product_id),
+                static_cast<unsigned long>(bus.version_number));
+  }
+
+  if (getCapsEx) {
+    CapsEx capsEx{};
+    DWORD capsExResult = getCapsEx(1, 0, 0, &capsEx);
+    std::printf("GetCapsEx=0x%08lX vendor=%04X product=%04X version=%u\n", capsExResult,
+                capsEx.vendor_id, capsEx.product_id, capsEx.version_number);
+  }
+
+  if (getSystemButtons) {
+    XINPUT_KEYSTROKE keystroke{};
+    DWORD buttonsResult = getSystemButtons(0, &keystroke);
+    std::printf("GetSystemButtons=0x%08lX virtualKey=0x%04X flags=0x%04X\n", buttonsResult,
+                keystroke.VirtualKey, keystroke.Flags);
+  }
+
+  if (cancelGuide) {
+    std::printf("CancelGuideButtonWait=0x%08lX\n", cancelGuide(0));
   }
 
   if (result == ERROR_SUCCESS && setState) {

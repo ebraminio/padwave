@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
+#include <atomic>
 
 #include "dualsense.hh"
 
@@ -119,6 +120,10 @@ static PFN_XInputGetSystemButtons g_FpnGetSystemButtons           = nullptr;
 static hid_device *g_DsDevice = nullptr;
 static bool g_DsConnected     = false;
 static bool g_DsIsBluetooth   = false;
+static WORD g_DsVendorId      = 0;
+static WORD g_DsProductId     = 0;
+static WORD g_DsReleaseNumber = 0;
+static std::atomic<bool> g_CancelGuideButtonWait{false};
 static DWORD g_PacketNumber   = 0;
 static dualsense::OutputReport::Sequence g_Sequence;
 
@@ -280,6 +285,9 @@ static void tryConnectDualSense() {
 
   g_DsDevice      = dev;
   g_DsIsBluetooth = chosen->bus_type == HID_API_BUS_BLUETOOTH;
+  g_DsVendorId    = chosen->vendor_id;
+  g_DsProductId   = chosen->product_id;
+  g_DsReleaseNumber = chosen->release_number;
   g_DsConnected   = true;
   g_BatteryLevel  = 0;
 
@@ -547,14 +555,42 @@ DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept 
 // Undocumented: 1.3 and 1.4 @101
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
-  if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
-  return ERROR_DEVICE_NOT_CONNECTED;
+  if (dwUserIndex != 0 || !pVoid) {
+    if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
+    return ERROR_BAD_ARGUMENTS;
+  }
+  if (dwFlag != 0) {
+    /* The system supports an async form here; we only implement blocking. */
+    return ERROR_CALL_NOT_IMPLEMENTED;
+  }
+
+  if (!g_DsConnected) tryConnectDualSense();
+  if (!g_DsConnected) {
+    if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
+    return ERROR_DEVICE_NOT_CONNECTED;
+  }
+
+  g_CancelGuideButtonWait = false;
+  for (;;) {
+    if (g_CancelGuideButtonWait.exchange(false)) return ERROR_CANCELLED;
+
+    XINPUT_STATE state{};
+    if (XInputGetState(0, &state) == ERROR_SUCCESS &&
+        (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
+      return ERROR_SUCCESS;
+    }
+    Sleep(10);
+  }
 }
 #endif
 
 // Undocumented: 1.3 and 1.4 @102
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
+  if (dwUserIndex == 0 && g_DsConnected) {
+    g_CancelGuideButtonWait = true;
+    return ERROR_SUCCESS;
+  }
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
@@ -563,8 +599,10 @@ extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept 
 // Undocumented: 1.3 and 1.4 @103
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
+  /* Windows exposes no reliable HID/Bluetooth power-off for DualSense.
+     Use the system implementation for actual Xbox controllers. */
   if (g_FpnPowerOffController) return g_FpnPowerOffController(dwUserIndex);
-  return ERROR_DEVICE_NOT_CONNECTED;
+  return ERROR_CALL_NOT_IMPLEMENTED;
 }
 #endif
 
@@ -572,9 +610,22 @@ extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
 #ifdef DS2XI_EXPORTS_BASE_BUS
 extern "C" DWORD WINAPI XInputGetBaseBusInformation(
     DWORD dwUserIndex, DWORD dwFlags, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
+  if (dwUserIndex == 0 && pBaseBusInformation) {
+    if (!g_DsConnected) tryConnectDualSense();
+    if (g_DsConnected) {
+      zeroMemory(pBaseBusInformation, sizeof(*pBaseBusInformation));
+      /* XInput's USB value is 1; Bluetooth is 2. */
+      pBaseBusInformation->dwBusType = g_DsIsBluetooth ? 2 : 1;
+      pBaseBusInformation->dwVendorId = g_DsVendorId;
+      pBaseBusInformation->dwProductId = g_DsProductId;
+      pBaseBusInformation->dwVersionNumber = g_DsReleaseNumber;
+      (void)dwFlags;
+      return ERROR_SUCCESS;
+    }
+  }
   if (g_FpnGetBaseBusInformation)
     return g_FpnGetBaseBusInformation(dwUserIndex, dwFlags, pBaseBusInformation);
-  return ERROR_DEVICE_NOT_CONNECTED;
+  return ERROR_BAD_ARGUMENTS;
 }
 #endif
 
@@ -584,6 +635,22 @@ extern "C" DWORD WINAPI XInputGetBaseBusInformation(
 #ifdef DS2XI_EXPORTS_CAPS_EX
 extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex, DWORD dwFlags,
                                      XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
+  if (unknown != 1 || dwUserIndex != 0 || dwFlags >= 2 || !pCapabilitiesEx)
+    return ERROR_INVALID_PARAMETER;
+
+  if (!g_DsConnected) tryConnectDualSense();
+  if (g_DsConnected) {
+    XINPUT_CAPABILITIES capabilities{};
+    if (XInputGetCapabilities(0, 0, &capabilities) == ERROR_SUCCESS) {
+      zeroMemory(pCapabilitiesEx, sizeof(*pCapabilitiesEx));
+      pCapabilitiesEx->Capabilities = capabilities;
+      pCapabilitiesEx->VendorId = g_DsVendorId;
+      pCapabilitiesEx->ProductId = g_DsProductId;
+      pCapabilitiesEx->VersionNumber = g_DsReleaseNumber;
+      return ERROR_SUCCESS;
+    }
+  }
+
   if (g_FpnGetCapabilitiesEx)
     return g_FpnGetCapabilitiesEx(unknown, dwUserIndex, dwFlags, pCapabilitiesEx);
   return ERROR_DEVICE_NOT_CONNECTED;
@@ -593,6 +660,17 @@ extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex
 // Undocumented: 1.4 @109
 #ifdef DS2XI_EXPORTS_SYSTEM_BUTTONS
 extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
+  if (dwUserIndex == 0 && pKeystroke && g_DsConnected) {
+    XINPUT_STATE state{};
+    if (XInputGetState(0, &state) != ERROR_SUCCESS) return ERROR_EMPTY;
+    if (!(state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) return ERROR_EMPTY;
+
+    zeroMemory(pKeystroke, sizeof(*pKeystroke));
+    pKeystroke->VirtualKey = XINPUT_GAMEPAD_GUIDE;
+    pKeystroke->Flags = XINPUT_KEYSTROKE_KEYDOWN;
+    pKeystroke->UserIndex = 0;
+    return ERROR_SUCCESS;
+  }
   if (g_FpnGetSystemButtons) return g_FpnGetSystemButtons(dwUserIndex, pKeystroke);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
