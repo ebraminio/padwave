@@ -9,25 +9,40 @@ typedef DWORD(WINAPI *SetStateFn)(DWORD, XINPUT_VIBRATION *);
 typedef DWORD(WINAPI *GetCapsFn)(DWORD, DWORD, XINPUT_CAPABILITIES *);
 typedef DWORD(WINAPI *GetBatteryFn)(DWORD, BYTE, XINPUT_BATTERY_INFORMATION *);
 typedef DWORD(WINAPI *GetStateExFn)(DWORD, XINPUT_STATE *);
-typedef DWORD(WINAPI *GetBaseBusFn)(DWORD, DWORD, void *);
+typedef DWORD(WINAPI *GetBaseBusFn)(DWORD, void *);
 typedef DWORD(WINAPI *GetCapsExFn)(DWORD, DWORD, DWORD, void *);
-typedef DWORD(WINAPI *GetSystemButtonsFn)(DWORD, XINPUT_KEYSTROKE *);
+typedef DWORD(WINAPI *GetSystemButtonsFn)(DWORD, void *, void *);
 typedef DWORD(WINAPI *CancelGuideFn)(DWORD);
 typedef DWORD(WINAPI *WaitGuideFn)(DWORD, DWORD, LPVOID);
 
 struct BaseBus {
-  DWORD bus_type;
-  DWORD vendor_id;
-  DWORD product_id;
-  DWORD version_number;
-  DWORD serial_number;
+  WORD vendor_id;
+  WORD product_id;
+  WORD product_version;
+  WORD field_6;
+  DWORD field_8;
+  BYTE field_c;
+  BYTE field_d;
+  BYTE field_e;
+  BYTE field_f;
+};
+
+struct SystemButtons {
+  DWORD standard;
+  DWORD extra;
+  DWORD more1;
+  DWORD more2;
+  DWORD more3;
+  DWORD more4;
+  DWORD more5;
+  DWORD more6;
 };
 
 struct CapsEx {
   XINPUT_CAPABILITIES capabilities;
   WORD vendor_id;
   WORD product_id;
-  WORD version_number;
+  WORD product_version;
   WORD unknown1;
   DWORD unknown2;
 };
@@ -115,26 +130,23 @@ int main() {
 
   if (getBaseBus) {
     BaseBus bus{};
-    DWORD busResult = getBaseBus(0, 0, &bus);
-    std::printf("GetBaseBus=0x%08lX bus=%lu vendor=%04lX product=%04lX version=%lu\n",
-                busResult, static_cast<unsigned long>(bus.bus_type),
-                static_cast<unsigned long>(bus.vendor_id),
-                static_cast<unsigned long>(bus.product_id),
-                static_cast<unsigned long>(bus.version_number));
+    DWORD busResult = getBaseBus(0, &bus);
+    std::printf("GetBaseBus=0x%08lX vendor=%04X product=%04X version=%u\n", busResult,
+                bus.vendor_id, bus.product_id, bus.product_version);
   }
 
   if (getCapsEx) {
     CapsEx capsEx{};
     DWORD capsExResult = getCapsEx(1, 0, 0, &capsEx);
     std::printf("GetCapsEx=0x%08lX vendor=%04X product=%04X version=%u\n", capsExResult,
-                capsEx.vendor_id, capsEx.product_id, capsEx.version_number);
+                capsEx.vendor_id, capsEx.product_id, capsEx.product_version);
   }
 
   if (getSystemButtons) {
-    XINPUT_KEYSTROKE keystroke{};
-    DWORD buttonsResult = getSystemButtons(0, &keystroke);
-    std::printf("GetSystemButtons=0x%08lX virtualKey=0x%04X flags=0x%04X\n", buttonsResult,
-                keystroke.VirtualKey, keystroke.Flags);
+    SystemButtons buttons{};
+    DWORD buttonsResult = getSystemButtons(0, &buttons, nullptr);
+    std::printf("GetSystemButtons=0x%08lX standard=0x%08lX\n", buttonsResult,
+                static_cast<unsigned long>(buttons.standard));
   }
 
   if (waitGuide && cancelGuide) {

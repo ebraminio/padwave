@@ -18,19 +18,34 @@
 // ---------------------------------------------------------------------------
 
 typedef struct _XINPUT_BASE_BUS_INFORMATION {
-  DWORD dwBusType;
-  DWORD dwVendorId;
-  DWORD dwProductId;
-  DWORD dwVersionNumber;
-  DWORD dwSerialNumber;
+  WORD vendorId;
+  WORD productId;
+  WORD productVersion;
+  WORD field_6;
+  DWORD field_8;
+  BYTE field_C;
+  BYTE field_D;
+  BYTE field_E;
+  BYTE field_F;
 } XINPUT_BASE_BUS_INFORMATION;
+
+typedef struct _XINPUT_SYSTEM_BUTTONS {
+  DWORD StandardSystemButtons;
+  DWORD ExtraSystemButtons;
+  DWORD MoreSystemButtons1;
+  DWORD MoreSystemButtons2;
+  DWORD MoreSystemButtons3;
+  DWORD MoreSystemButtons4;
+  DWORD MoreSystemButtons5;
+  DWORD MoreSystemButtons6;
+} XINPUT_SYSTEM_BUTTONS;
 
 #ifndef __WINE_XINPUT_H
 typedef struct _XINPUT_CAPABILITIES_EX {
   XINPUT_CAPABILITIES Capabilities;
   WORD VendorId;
   WORD ProductId;
-  WORD VersionNumber;
+  WORD ProductVersion;
   WORD unk1;
   DWORD unk2;
 } XINPUT_CAPABILITIES_EX;
@@ -91,10 +106,9 @@ typedef DWORD(WINAPI *PFN_XInputGetStateEx)(DWORD, XINPUT_STATE *);
 typedef DWORD(WINAPI *PFN_XInputWaitForGuideButton)(DWORD, DWORD, LPVOID);
 typedef DWORD(WINAPI *PFN_XInputCancelGuideButtonWait)(DWORD);
 typedef DWORD(WINAPI *PFN_XInputPowerOffController)(DWORD);
-typedef DWORD(WINAPI *PFN_XInputGetBaseBusInformation)(DWORD, DWORD,
-                                                       XINPUT_BASE_BUS_INFORMATION *);
+typedef DWORD(WINAPI *PFN_XInputGetBaseBusInformation)(DWORD, XINPUT_BASE_BUS_INFORMATION *);
 typedef DWORD(WINAPI *PFN_XInputGetCapabilitiesEx)(DWORD, DWORD, DWORD, XINPUT_CAPABILITIES_EX *);
-typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_KEYSTROKE *);
+typedef DWORD(WINAPI *PFN_XInputGetSystemButtons)(DWORD, XINPUT_SYSTEM_BUTTONS *, PVOID);
 
 static HMODULE g_SystemXInput                                     = nullptr;
 static PFN_XInputGetState g_FpnGetState                           = nullptr;
@@ -117,24 +131,35 @@ static PFN_XInputGetSystemButtons g_FpnGetSystemButtons           = nullptr;
 // DualSense state
 // ---------------------------------------------------------------------------
 
-static hid_device *g_DsDevice = nullptr;
-static bool g_DsConnected     = false;
-static bool g_DsIsBluetooth   = false;
-static WORD g_DsVendorId      = 0;
-static WORD g_DsProductId     = 0;
-static WORD g_DsReleaseNumber = 0;
-static std::atomic<bool> g_CancelGuideButtonWait{false};
-static DWORD g_PacketNumber   = 0;
-static dualsense::OutputReport::Sequence g_Sequence;
+static constexpr DWORD kMaxControllers = 4;
 
-// Rumble state
-static uint8_t g_SmallMotor = 0;
-static uint8_t g_LargeMotor = 0;
+struct DsControllerState {
+  hid_device *device = nullptr;
+  bool connected     = false;
+  bool isBluetooth   = false;
+  WORD vendorId      = 0;
+  WORD productId     = 0;
+  WORD releaseNumber = 0;
+  DWORD packetNumber = 0;
+  uint8_t smallMotor = 0;
+  uint8_t largeMotor = 0;
+  uint8_t batteryLevel = 0;
+  dualsense::OutputReport::Sequence sequence;
+  char path[1024] = {};
+};
+
+static DsControllerState g_Controllers[kMaxControllers];
+static std::atomic<bool> g_CancelGuideButtonWait[kMaxControllers];
+
+struct GuideWaitContext {
+  DWORD user;
+  DWORD *result;
+};
+static GuideWaitContext g_GuideWaitContexts[kMaxControllers];
 
 // LED / color state
-static uint8_t g_LedNumber    = 0;
-static DWORD g_Color          = 0xFF0000; // Default blue
-static uint8_t g_BatteryLevel = 0;
+static uint8_t g_LedNumber = 0;
+static DWORD g_Color       = 0xFF0000; // Default blue
 
 // DualSense constants
 static constexpr int SONY_VID    = 0x054c;
@@ -201,36 +226,36 @@ static bool loadSystemXInput() {
 // DualSense output report (rumble + LED)
 // ---------------------------------------------------------------------------
 
-static uint8_t playerLedMask() {
+static uint8_t playerLedMask(const DsControllerState &controller) {
   if (g_LedNumber != 0) return g_LedNumber;
 
-  if (g_BatteryLevel == 0) return 0;
-  if (g_BatteryLevel >= 100) return 0x1F;
-  return static_cast<uint8_t>((1u << ((g_BatteryLevel * 5) / 100)) - 1);
+  if (controller.batteryLevel == 0) return 0;
+  if (controller.batteryLevel >= 100) return 0x1F;
+  return static_cast<uint8_t>((1u << ((controller.batteryLevel * 5) / 100)) - 1);
 }
 
 template <typename Fill>
-static bool sendOutput(Fill fill) {
-  if (!g_DsDevice) return false;
+static bool sendOutput(DsControllerState &controller, Fill fill) {
+  if (!controller.device) return false;
 
-  if (g_DsIsBluetooth) {
-    dualsense::OutputReport report(g_Sequence);
+  if (controller.isBluetooth) {
+    dualsense::OutputReport report(controller.sequence);
     fill(report.getBody());
     report.sign();
-    return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report)) >
-           0;
+    return hid_write(controller.device, reinterpret_cast<const unsigned char *>(&report),
+                     sizeof(report)) > 0;
   } else {
     dualsense::UsbOutputReport report{};
     fill(report.getBody());
-    return hid_write(g_DsDevice, reinterpret_cast<const unsigned char *>(&report), sizeof(report)) >
-           0;
+    return hid_write(controller.device, reinterpret_cast<const unsigned char *>(&report),
+                     sizeof(report)) > 0;
   }
 }
 
-static void sendDualSenseOutput() {
-  sendOutput([](dualsense::OutputBody &body) {
-    const uint8_t leds = playerLedMask();
-    body.setCompatibleVibration(g_LargeMotor, g_SmallMotor);
+static void sendDualSenseOutput(DsControllerState &controller) {
+  sendOutput(controller, [&controller](dualsense::OutputBody &body) {
+    const uint8_t leds = playerLedMask(controller);
+    body.setCompatibleVibration(controller.largeMotor, controller.smallMotor);
     body.setPlayerLedBrightness(dualsense::OutputBody::PlayerLedBrightness::Low);
     body.setPlayerLeds((leds & 0x01) != 0, (leds & 0x02) != 0, (leds & 0x04) != 0,
                        (leds & 0x08) != 0, (leds & 0x10) != 0, false);
@@ -240,8 +265,8 @@ static void sendDualSenseOutput() {
   });
 }
 
-static void cleanControllerState() {
-  sendOutput([](dualsense::OutputBody &body) {
+static void cleanControllerState(DsControllerState &controller) {
+  sendOutput(controller, [](dualsense::OutputBody &body) {
     body.setCompatibleVibration(0, 0);
     body.setPlayerLeds(false, false, false, false, false, false);
     body.setLightbar(0, 0, 0);
@@ -257,42 +282,70 @@ static bool isDualSenseDevice(hid_device_info *info) {
          (info->product_id == DS_PID || info->product_id == DS_EDGE_PID);
 }
 
-static void tryConnectDualSense() {
-  if (g_DsConnected) return;
+static bool samePath(const DsControllerState &controller, const char *path) {
+  if (!controller.connected || !path) return false;
+  const char *a = controller.path;
+  const char *b = path;
+  while (*a && *a == *b) {
+    ++a;
+    ++b;
+  }
+  return *a == *b;
+}
+
+static void copyPath(char *destination, size_t capacity, const char *source) {
+  if (!capacity) return;
+  size_t i = 0;
+  for (; i + 1 < capacity && source[i]; ++i) destination[i] = source[i];
+  destination[i] = '\0';
+}
+
+static void ensureControllers() {
+  bool haveEmpty = false;
+  for (const auto &controller : g_Controllers)
+    if (!controller.connected) haveEmpty = true;
+  if (!haveEmpty) return;
 
   hid_device_info *devices = hid_enumerate(SONY_VID, 0);
   if (!devices) return;
 
-  const hid_device_info *chosen = nullptr;
   for (hid_device_info *cur = devices; cur; cur = cur->next) {
     if (!isDualSenseDevice(cur)) continue;
-    if (!chosen) chosen = cur;
-    if (cur->usage_page == 1 && cur->usage == 5) {
-      chosen = cur;
-      break;
+    if (cur->usage_page != 1 || cur->usage != 5) continue;
+
+    bool alreadyOpen = false;
+    for (const auto &controller : g_Controllers)
+      if (samePath(controller, cur->path)) alreadyOpen = true;
+    if (alreadyOpen) continue;
+
+    DsControllerState *slot = nullptr;
+    for (auto &controller : g_Controllers) {
+      if (!controller.connected) {
+        slot = &controller;
+        break;
+      }
     }
-  }
-  if (!chosen) {
-    hid_free_enumeration(devices);
-    return;
+    if (!slot) break;
+
+    hid_device *dev = hid_open_path(cur->path);
+    if (!dev) continue;
+
+    slot->device      = dev;
+    slot->connected   = true;
+    slot->isBluetooth = cur->bus_type == HID_API_BUS_BLUETOOTH;
+    slot->vendorId    = cur->vendor_id;
+    slot->productId   = cur->product_id;
+    slot->releaseNumber = cur->release_number;
+    slot->packetNumber  = 0;
+    slot->smallMotor    = 0;
+    slot->largeMotor    = 0;
+    slot->batteryLevel  = 0;
+    copyPath(slot->path, sizeof(slot->path), cur->path);
+
+    hid_set_nonblocking(dev, true);
+    sendDualSenseOutput(*slot);
   }
 
-  hid_device *dev = hid_open_path(chosen->path);
-  if (!dev) {
-    hid_free_enumeration(devices);
-    return;
-  }
-
-  g_DsDevice      = dev;
-  g_DsIsBluetooth = chosen->bus_type == HID_API_BUS_BLUETOOTH;
-  g_DsVendorId    = chosen->vendor_id;
-  g_DsProductId   = chosen->product_id;
-  g_DsReleaseNumber = chosen->release_number;
-  g_DsConnected   = true;
-  g_BatteryLevel  = 0;
-
-  hid_set_nonblocking(dev, true);
-  sendDualSenseOutput();
   hid_free_enumeration(devices);
 }
 
@@ -300,11 +353,13 @@ static void tryConnectDualSense() {
 // DualSense input -> XInput mapping (called directly from XInputGetState)
 // ---------------------------------------------------------------------------
 
-static bool readDualSenseState(XINPUT_STATE &state) {
-  if (!g_DsDevice) return false;
+static bool readDualSenseState(DWORD userIndex, XINPUT_STATE &state) {
+  if (userIndex >= kMaxControllers) return false;
+  DsControllerState &controller = g_Controllers[userIndex];
+  if (!controller.device) return false;
 
   uint8_t buffer[512];
-  int n = hid_read(g_DsDevice, buffer, sizeof(buffer));
+  int n = hid_read(controller.device, buffer, sizeof(buffer));
   if (n <= 0) return false;
   size_t bytesRead = static_cast<size_t>(n);
 
@@ -317,13 +372,13 @@ static bool readDualSenseState(XINPUT_STATE &state) {
     return false;
 
   const unsigned battery = input->getBatteryPercentage();
-  if (battery != g_BatteryLevel) {
-    g_BatteryLevel = battery;
-    sendDualSenseOutput();
+  if (battery != controller.batteryLevel) {
+    controller.batteryLevel = static_cast<uint8_t>(battery);
+    sendDualSenseOutput(controller);
   }
 
   zeroMemory(&state, sizeof(state));
-  state.dwPacketNumber = ++g_PacketNumber;
+  state.dwPacketNumber = ++controller.packetNumber;
 
   state.Gamepad.bLeftTrigger  = static_cast<BYTE>(input->getLeftTrigger());
   state.Gamepad.bRightTrigger = static_cast<BYTE>(input->getRightTrigger());
@@ -386,10 +441,22 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
     break;
 
   case DLL_PROCESS_DETACH:
-    if (g_DsDevice) {
-      cleanControllerState();
-      hid_close(g_DsDevice);
-      g_DsDevice = nullptr;
+    for (auto &controller : g_Controllers) {
+      if (!controller.device) continue;
+      cleanControllerState(controller);
+      hid_close(controller.device);
+      controller.device = nullptr;
+      controller.connected = false;
+      controller.isBluetooth = false;
+      controller.vendorId = 0;
+      controller.productId = 0;
+      controller.releaseNumber = 0;
+      controller.packetNumber = 0;
+      controller.smallMotor = 0;
+      controller.largeMotor = 0;
+      controller.batteryLevel = 0;
+      zeroMemory(&controller.sequence, sizeof(controller.sequence));
+      controller.path[0] = '\0';
     }
     hid_exit();
     if (g_SystemXInput) {
@@ -411,13 +478,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
 
 // 1.1/1.2 @5, 1.3/1.4 @2, 9.1.0 @4, UAP @7
 DWORD WINAPI XInputGetState(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
-  if (dwUserIndex == 0) {
+  if (dwUserIndex < kMaxControllers) {
     if (!pState) return ERROR_INVALID_PARAMETER;
 
-    // Try to connect if not already connected
-    if (!g_DsConnected) tryConnectDualSense();
+    DsControllerState &controller = g_Controllers[dwUserIndex];
+    if (!controller.connected) ensureControllers();
 
-    if (g_DsConnected && pState && readDualSenseState(*pState)) return ERROR_SUCCESS;
+    if (controller.connected && readDualSenseState(dwUserIndex, *pState)) return ERROR_SUCCESS;
   }
 
   if (g_FpnGetState) return g_FpnGetState(dwUserIndex, pState);
@@ -426,19 +493,22 @@ DWORD WINAPI XInputGetState(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept {
 
 // 1.1/1.2 @6, 1.3/1.4 @3, 9.1.0 @5, UAP @8
 DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noexcept {
-  if (dwUserIndex == 0) {
+  if (dwUserIndex < kMaxControllers) {
     if (!pVibration) return ERROR_INVALID_PARAMETER;
 
-    if (!g_DsConnected) tryConnectDualSense();
+    DsControllerState &controller = g_Controllers[dwUserIndex];
+    if (!controller.connected) ensureControllers();
 
-    if (g_DsConnected) {
-      uint32_t sm  = pVibration->wRightMotorSpeed / 257;
-      g_SmallMotor = pVibration->wRightMotorSpeed ? static_cast<uint8_t>(sm < 64 ? 64 : sm) : 0;
-      uint32_t lm  = pVibration->wLeftMotorSpeed / 257;
-      g_LargeMotor = pVibration->wLeftMotorSpeed ? static_cast<uint8_t>(lm < 40 ? 40 : lm) : 0;
+    if (controller.connected) {
+      uint32_t sm = pVibration->wRightMotorSpeed / 257;
+      controller.smallMotor =
+          pVibration->wRightMotorSpeed ? static_cast<uint8_t>(sm < 64 ? 64 : sm) : 0;
+      uint32_t lm = pVibration->wLeftMotorSpeed / 257;
+      controller.largeMotor =
+          pVibration->wLeftMotorSpeed ? static_cast<uint8_t>(lm < 40 ? 40 : lm) : 0;
 
       g_LedNumber = 0;
-      sendDualSenseOutput();
+      sendDualSenseOutput(controller);
       return ERROR_SUCCESS;
     }
   }
@@ -450,13 +520,14 @@ DWORD WINAPI XInputSetState(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration) noe
 // 1.1/1.2 @3, 1.3/1.4 @4, 9.1.0 @2, UAP @5
 DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
                                    XINPUT_CAPABILITIES *pCapabilities) noexcept {
-  if (dwUserIndex == 0) {
+  if (dwUserIndex < kMaxControllers) {
     if (!pCapabilities) return ERROR_INVALID_PARAMETER;
     if (dwFlags != 0 && dwFlags != XINPUT_FLAG_GAMEPAD) return ERROR_BAD_ARGUMENTS;
 
-    if (!g_DsConnected) tryConnectDualSense();
+    DsControllerState &controller = g_Controllers[dwUserIndex];
+    if (!controller.connected) ensureControllers();
 
-    if (g_DsConnected) {
+    if (controller.connected) {
       zeroMemory(pCapabilities, sizeof(XINPUT_CAPABILITIES));
       pCapabilities->Type    = XINPUT_DEVTYPE_GAMEPAD;
       pCapabilities->SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
@@ -505,15 +576,18 @@ extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRende
 #ifdef DS2XI_EXPORTS_BATTERY
 DWORD WINAPI XInputGetBatteryInformation(DWORD dwUserIndex, BYTE devType,
                                          XINPUT_BATTERY_INFORMATION *pBatteryInformation) noexcept {
-  if (dwUserIndex == 0) {
-    if (pBatteryInformation) {
+  if (dwUserIndex < kMaxControllers) {
+    DsControllerState &controller = g_Controllers[dwUserIndex];
+    if (!controller.connected) ensureControllers();
+
+    if (controller.connected && pBatteryInformation) {
       pBatteryInformation->BatteryType =
           BATTERY_TYPE_NIMH; // It's actually litium polymer but this is best matching
-      if (g_BatteryLevel <= 10)
+      if (controller.batteryLevel <= 10)
         pBatteryInformation->BatteryLevel = BATTERY_LEVEL_EMPTY;
-      else if (g_BatteryLevel <= 35)
+      else if (controller.batteryLevel <= 35)
         pBatteryInformation->BatteryLevel = BATTERY_LEVEL_LOW;
-      else if (g_BatteryLevel <= 75)
+      else if (controller.batteryLevel <= 75)
         pBatteryInformation->BatteryLevel = BATTERY_LEVEL_MEDIUM;
       else
         pBatteryInformation->BatteryLevel = BATTERY_LEVEL_FULL;
@@ -555,16 +629,16 @@ DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept 
 // Undocumented: 1.3 and 1.4 @101
 #ifdef DS2XI_EXPORTS_GUIDE
 static DWORD WINAPI guideWaitThreadProc(LPVOID parameter) {
-  DWORD *result = static_cast<DWORD *>(parameter);
+  GuideWaitContext *context = static_cast<GuideWaitContext *>(parameter);
   for (;;) {
-    if (g_CancelGuideButtonWait.exchange(false)) {
-      *result = ERROR_CANCELLED;
+    if (g_CancelGuideButtonWait[context->user].exchange(false)) {
+      *context->result = ERROR_CANCELLED;
       return 0;
     }
     XINPUT_STATE state{};
-    if (XInputGetState(0, &state) == ERROR_SUCCESS &&
+    if (XInputGetState(context->user, &state) == ERROR_SUCCESS &&
         (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
-      *result = ERROR_SUCCESS;
+      *context->result = ERROR_SUCCESS;
       return 0;
     }
     Sleep(10);
@@ -572,23 +646,27 @@ static DWORD WINAPI guideWaitThreadProc(LPVOID parameter) {
 }
 
 extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
-  if (dwUserIndex != 0 || !pVoid) {
+  if (dwUserIndex >= kMaxControllers || !pVoid) {
     if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
     return ERROR_BAD_ARGUMENTS;
   }
 
-  if (!g_DsConnected) tryConnectDualSense();
-  if (!g_DsConnected) {
+  DsControllerState &controller = g_Controllers[dwUserIndex];
+  if (!controller.connected) ensureControllers();
+  if (!controller.connected) {
     if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
     return ERROR_DEVICE_NOT_CONNECTED;
   }
 
   DWORD *result = static_cast<DWORD *>(pVoid);
-  g_CancelGuideButtonWait = false;
+  g_CancelGuideButtonWait[dwUserIndex] = false;
 
   if (dwFlag != 0 && dwFlag != static_cast<DWORD>(-1)) {
     *result = ERROR_IO_PENDING;
-    HANDLE thread = CreateThread(nullptr, 0, guideWaitThreadProc, result, 0, nullptr);
+    GuideWaitContext &context = g_GuideWaitContexts[dwUserIndex];
+    context.user   = dwUserIndex;
+    context.result = result;
+    HANDLE thread = CreateThread(nullptr, 0, guideWaitThreadProc, &context, 0, nullptr);
     if (!thread) {
       *result = GetLastError();
       return *result;
@@ -599,12 +677,12 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
 
   /* dwFlag 0 (and the system's -1 alias) blocks for one Guide press. */
   for (;;) {
-    if (g_CancelGuideButtonWait.exchange(false)) {
+    if (g_CancelGuideButtonWait[dwUserIndex].exchange(false)) {
       *result = ERROR_CANCELLED;
       return *result;
     }
     XINPUT_STATE state{};
-    if (XInputGetState(0, &state) == ERROR_SUCCESS &&
+    if (XInputGetState(dwUserIndex, &state) == ERROR_SUCCESS &&
         (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
       *result = ERROR_SUCCESS;
       return *result;
@@ -617,15 +695,14 @@ extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag
 // Undocumented: 1.3 and 1.4 @102
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
-  if (dwUserIndex == 0 && g_DsConnected) {
-    g_CancelGuideButtonWait = true;
+  if (dwUserIndex < kMaxControllers && g_Controllers[dwUserIndex].connected) {
+    g_CancelGuideButtonWait[dwUserIndex] = true;
     return ERROR_SUCCESS;
   }
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 #endif
-
 // Undocumented: 1.3 and 1.4 @103
 #ifdef DS2XI_EXPORTS_GUIDE
 extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
@@ -639,22 +716,20 @@ extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
 // Undocumented: 1.4 @104
 #ifdef DS2XI_EXPORTS_BASE_BUS
 extern "C" DWORD WINAPI XInputGetBaseBusInformation(
-    DWORD dwUserIndex, DWORD dwFlags, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
-  if (dwUserIndex == 0 && pBaseBusInformation) {
-    if (!g_DsConnected) tryConnectDualSense();
-    if (g_DsConnected) {
+    DWORD dwBusIndex, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
+  if (dwBusIndex < kMaxControllers && pBaseBusInformation) {
+    DsControllerState &controller = g_Controllers[dwBusIndex];
+    if (!controller.connected) ensureControllers();
+    if (controller.connected) {
       zeroMemory(pBaseBusInformation, sizeof(*pBaseBusInformation));
-      /* XInput's USB value is 1; Bluetooth is 2. */
-      pBaseBusInformation->dwBusType = g_DsIsBluetooth ? 2 : 1;
-      pBaseBusInformation->dwVendorId = g_DsVendorId;
-      pBaseBusInformation->dwProductId = g_DsProductId;
-      pBaseBusInformation->dwVersionNumber = g_DsReleaseNumber;
-      (void)dwFlags;
+      pBaseBusInformation->vendorId = controller.vendorId;
+      pBaseBusInformation->productId = controller.productId;
+      pBaseBusInformation->productVersion = controller.releaseNumber;
       return ERROR_SUCCESS;
     }
   }
   if (g_FpnGetBaseBusInformation)
-    return g_FpnGetBaseBusInformation(dwUserIndex, dwFlags, pBaseBusInformation);
+    return g_FpnGetBaseBusInformation(dwBusIndex, pBaseBusInformation);
   return ERROR_BAD_ARGUMENTS;
 }
 #endif
@@ -665,18 +740,20 @@ extern "C" DWORD WINAPI XInputGetBaseBusInformation(
 #ifdef DS2XI_EXPORTS_CAPS_EX
 extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex, DWORD dwFlags,
                                      XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
-  if (unknown != 1 || dwUserIndex != 0 || dwFlags >= 2 || !pCapabilitiesEx)
+  if (unknown != 1 || dwUserIndex >= kMaxControllers ||
+      (dwFlags != 0 && dwFlags != XINPUT_CAPS_FFB_SUPPORTED) || !pCapabilitiesEx)
     return ERROR_INVALID_PARAMETER;
 
-  if (!g_DsConnected) tryConnectDualSense();
-  if (g_DsConnected) {
+  DsControllerState &controller = g_Controllers[dwUserIndex];
+  if (!controller.connected) ensureControllers();
+  if (controller.connected) {
     XINPUT_CAPABILITIES capabilities{};
-    if (XInputGetCapabilities(0, 0, &capabilities) == ERROR_SUCCESS) {
+    if (XInputGetCapabilities(dwUserIndex, 0, &capabilities) == ERROR_SUCCESS) {
       zeroMemory(pCapabilitiesEx, sizeof(*pCapabilitiesEx));
       pCapabilitiesEx->Capabilities = capabilities;
-      pCapabilitiesEx->VendorId = g_DsVendorId;
-      pCapabilitiesEx->ProductId = g_DsProductId;
-      pCapabilitiesEx->VersionNumber = g_DsReleaseNumber;
+      pCapabilitiesEx->VendorId = controller.vendorId;
+      pCapabilitiesEx->ProductId = controller.productId;
+      pCapabilitiesEx->ProductVersion = controller.releaseNumber;
       return ERROR_SUCCESS;
     }
   }
@@ -689,19 +766,25 @@ extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD unknown, DWORD dwUserIndex
 
 // Undocumented: 1.4 @109
 #ifdef DS2XI_EXPORTS_SYSTEM_BUTTONS
-extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
-  if (dwUserIndex == 0 && pKeystroke && g_DsConnected) {
-    XINPUT_STATE state{};
-    if (XInputGetState(0, &state) != ERROR_SUCCESS) return ERROR_EMPTY;
-    if (!(state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) return ERROR_EMPTY;
-
-    zeroMemory(pKeystroke, sizeof(*pKeystroke));
-    pKeystroke->VirtualKey = XINPUT_GAMEPAD_GUIDE;
-    pKeystroke->Flags = XINPUT_KEYSTROKE_KEYDOWN;
-    pKeystroke->UserIndex = 0;
-    return ERROR_SUCCESS;
+extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex,
+                                               XINPUT_SYSTEM_BUTTONS *pSystemButtons,
+                                               PVOID reserved) noexcept {
+  if (dwUserIndex < kMaxControllers && pSystemButtons) {
+    DsControllerState &controller = g_Controllers[dwUserIndex];
+    if (!controller.connected) ensureControllers();
+    if (controller.connected) {
+      zeroMemory(pSystemButtons, sizeof(*pSystemButtons));
+      XINPUT_STATE state{};
+      if (XInputGetState(dwUserIndex, &state) == ERROR_SUCCESS &&
+          (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE)) {
+        pSystemButtons->StandardSystemButtons = XINPUT_GAMEPAD_GUIDE;
+      }
+      (void)reserved;
+      return ERROR_SUCCESS;
+    }
   }
-  if (g_FpnGetSystemButtons) return g_FpnGetSystemButtons(dwUserIndex, pKeystroke);
+  if (g_FpnGetSystemButtons)
+    return g_FpnGetSystemButtons(dwUserIndex, pSystemButtons, reserved);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 #endif

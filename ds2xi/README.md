@@ -13,10 +13,11 @@ XInput9_1_0.dll
 XInputUap.dll
 ```
 
-Each shim maps player 0 to the first DualSense found over USB or Bluetooth.
+Each shim maps up to four DualSense controllers to XInput user slots 0-3.
 Rumble, the lightbar, player LEDs, battery level, sticks, triggers, buttons,
-and the d-pad are supported. Non-player-0 calls fall through to the matching
-system DLL. The latest version also exports the undocumented XInput ordinals.
+and the d-pad are supported. Calls for unconnected slots fall through to the
+matching system DLL. The latest version also exports the undocumented XInput
+ordinals.
 
 ## Requirements
 
