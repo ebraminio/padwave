@@ -96,6 +96,11 @@ static constexpr int SONY_VID    = 0x054c;
 static constexpr int DS_PID      = 0x0ce6;
 static constexpr int DS_EDGE_PID = 0x0df2;
 
+static void zeroMemory(void *ptr, size_t size) {
+  volatile unsigned char *p = static_cast<volatile unsigned char *>(ptr);
+  while (size--) *p++ = 0;
+}
+
 // ---------------------------------------------------------------------------
 // Load system XInput
 // ---------------------------------------------------------------------------
@@ -104,11 +109,11 @@ static bool loadSystemXInput() {
   if (g_SystemXInput) return true;
 
   char sysDir[MAX_PATH];
-  SecureZeroMemory(sysDir, sizeof(sysDir));
+  zeroMemory(sysDir, sizeof(sysDir));
   if (GetSystemDirectoryA(sysDir, MAX_PATH) == 0) return false;
 
   char fullPath[MAX_PATH];
-  SecureZeroMemory(fullPath, sizeof(fullPath));
+  zeroMemory(fullPath, sizeof(fullPath));
   if (!PathCombineA(fullPath, sysDir, "XInput1_4.dll")) return false;
 
   g_SystemXInput = LoadLibraryA(fullPath);
@@ -267,7 +272,7 @@ static bool readDualSenseState(XINPUT_STATE &state) {
     sendDualSenseOutput();
   }
 
-  SecureZeroMemory(&state, sizeof(state));
+  zeroMemory(&state, sizeof(state));
   state.dwPacketNumber = ++g_PacketNumber;
 
   state.Gamepad.bLeftTrigger  = static_cast<BYTE>(input->getLeftTrigger());
@@ -401,7 +406,7 @@ DWORD WINAPI XInputGetCapabilities(DWORD dwUserIndex, DWORD dwFlags,
     if (!g_DsConnected) tryConnectDualSense();
 
     if (g_DsConnected) {
-      SecureZeroMemory(pCapabilities, sizeof(XINPUT_CAPABILITIES));
+      zeroMemory(pCapabilities, sizeof(XINPUT_CAPABILITIES));
       pCapabilities->Type    = XINPUT_DEVTYPE_GAMEPAD;
       pCapabilities->SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
       pCapabilities->Flags   = XINPUT_CAPS_FFB_SUPPORTED;
@@ -433,7 +438,7 @@ void WINAPI XInputEnable(BOOL enable) noexcept {
 }
 
 // Ordinal 6
-DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRenderDeviceId, UINT *pRenderCount,
+extern "C" DWORD WINAPI XInputGetAudioDeviceIds(DWORD dwUserIndex, LPWSTR pRenderDeviceId, UINT *pRenderCount,
                                      LPWSTR pCaptureDeviceId, UINT *pCaptureCount) noexcept {
   if (g_FpnGetAudioDeviceIds)
     return g_FpnGetAudioDeviceIds(dwUserIndex, pRenderDeviceId, pRenderCount, pCaptureDeviceId,
@@ -477,25 +482,25 @@ DWORD WINAPI XInputGetStateEx(DWORD dwUserIndex, XINPUT_STATE *pState) noexcept 
 }
 
 // Ordinal 101 — XInputWaitForGuideButton (undocumented)
-DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
+extern "C" DWORD WINAPI XInputWaitForGuideButton(DWORD dwUserIndex, DWORD dwFlag, LPVOID pVoid) noexcept {
   if (g_FpnWaitForGuideButton) return g_FpnWaitForGuideButton(dwUserIndex, dwFlag, pVoid);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
 // Ordinal 102 — XInputCancelGuideButtonWait (undocumented)
-DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
+extern "C" DWORD WINAPI XInputCancelGuideButtonWait(DWORD dwUserIndex) noexcept {
   if (g_FpnCancelGuideButtonWait) return g_FpnCancelGuideButtonWait(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
 // Ordinal 103 — XInputPowerOffController (undocumented)
-DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
+extern "C" DWORD WINAPI XInputPowerOffController(DWORD dwUserIndex) noexcept {
   if (g_FpnPowerOffController) return g_FpnPowerOffController(dwUserIndex);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
 // Ordinal 104 — XInputGetBaseBusInformation (undocumented)
-DWORD WINAPI XInputGetBaseBusInformation(
+extern "C" DWORD WINAPI XInputGetBaseBusInformation(
     DWORD dwUserIndex, DWORD dwFlags, XINPUT_BASE_BUS_INFORMATION *pBaseBusInformation) noexcept {
   if (g_FpnGetBaseBusInformation)
     return g_FpnGetBaseBusInformation(dwUserIndex, dwFlags, pBaseBusInformation);
@@ -503,14 +508,16 @@ DWORD WINAPI XInputGetBaseBusInformation(
 }
 
 // Ordinal 108 — XInputGetCapabilitiesEx (undocumented)
-DWORD WINAPI XInputGetCapabilitiesEx(DWORD dwUserIndex, DWORD dwFlags,
+#ifndef XINPUT_MINGW_NO_GET_CAPABILITIES_EX
+extern "C" DWORD WINAPI XInputGetCapabilitiesEx(DWORD dwUserIndex, DWORD dwFlags,
                                      XINPUT_CAPABILITIES_EX *pCapabilitiesEx) noexcept {
   if (g_FpnGetCapabilitiesEx) return g_FpnGetCapabilitiesEx(dwUserIndex, dwFlags, pCapabilitiesEx);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+#endif
 
 // Ordinal 109 — XInputGetSystemButtons (undocumented)
-DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
+extern "C" DWORD WINAPI XInputGetSystemButtons(DWORD dwUserIndex, XINPUT_KEYSTROKE *pKeystroke) noexcept {
   if (g_FpnGetSystemButtons) return g_FpnGetSystemButtons(dwUserIndex, pKeystroke);
   return ERROR_DEVICE_NOT_CONNECTED;
 }
