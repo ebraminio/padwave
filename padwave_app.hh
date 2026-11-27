@@ -25,7 +25,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <curl/curl.h>
-#include <pthread.h>
 
 #ifdef __linux__
 #include <bluetooth/bluetooth.h>
@@ -374,7 +373,7 @@ private:
     fclose(f);
   }
 
-  void saveFavoritesLocked() {
+  void saveFavorites() {
     char path[512];
     if (!favoritesPath(path, sizeof(path))) return;
     ensureCacheDir(path);
@@ -394,16 +393,14 @@ private:
   bool toggleFavorite(const char *id, bool *value) {
     int index = findId(id);
     if (index < 0) return false;
-    pthread_mutex_lock(&library_mutex);
     this->tracks[index].favorite = !this->tracks[index].favorite;
     *value                       = this->tracks[index].favorite;
-    saveFavoritesLocked();
-    writeLibraryFileLocked();
-    pthread_mutex_unlock(&library_mutex);
+    saveFavorites();
+    writeLibraryFile();
     return true;
   }
 
-  void writeLibraryFileLocked() {
+  void writeLibraryFile() {
     char path[512];
     if (!cachePath("library.tsv", path, sizeof(path))) return;
     ensureCacheDir(path);
@@ -428,12 +425,6 @@ private:
     rename(tmp, path);
   }
 
-  void writeLibraryFile() {
-    pthread_mutex_lock(&library_mutex);
-    writeLibraryFileLocked();
-    pthread_mutex_unlock(&library_mutex);
-  }
-
   void scanDurations() {
     char cache[512];
     FILE *cache_file = nullptr;
@@ -443,23 +434,15 @@ private:
     }
 
     for (int i = 0; i < this->count; i++) {
-      char path[kMaxPath];
-      int64_t size = 0, mtime_s = 0;
-      long mtime_ns = 0;
-      bool need = false;
-      pthread_mutex_lock(&library_mutex);
-      if (this->tracks[i].duration_ms <= 0) {
-        snprintf(path, sizeof(path), "%s", this->tracks[i].path);
-        size       = this->tracks[i].size;
-        mtime_s    = this->tracks[i].mtime_sec;
-        mtime_ns   = this->tracks[i].mtime_nsec;
-        need       = true;
-      }
-      pthread_mutex_unlock(&library_mutex);
-      if (!need) continue;
+      if (this->tracks[i].duration_ms > 0) continue;
 
-      int64_t duration = probeDuration(path);
-      pthread_mutex_lock(&library_mutex);
+      char path[kMaxPath];
+      snprintf(path, sizeof(path), "%s", this->tracks[i].path);
+      const int64_t size    = this->tracks[i].size;
+      const int64_t mtime_s = this->tracks[i].mtime_sec;
+      const long mtime_ns   = this->tracks[i].mtime_nsec;
+
+      const int64_t duration = probeDuration(path);
       if (duration > 0 && this->tracks[i].duration_ms <= 0) {
         this->tracks[i].duration_ms = duration;
         if (cache_file) {
@@ -471,37 +454,15 @@ private:
           fflush(cache_file);
         }
       }
-      if (this->duration_pending > 0) this->duration_pending--;
-      pthread_mutex_unlock(&library_mutex);
     }
     if (cache_file) fclose(cache_file);
 
-    pthread_mutex_lock(&library_mutex);
-    writeLibraryFileLocked();
+    this->duration_pending = 0;
+    for (int i = 0; i < this->count; i++)
+      if (this->tracks[i].duration_ms <= 0) this->duration_pending++;
+
+    writeLibraryFile();
     this->library_generation++;
-    this->duration_scanning = false;
-    pthread_mutex_unlock(&library_mutex);
-  }
-
-  static void *durationWorkerEntry(void *arg) {
-    static_cast<App *>(arg)->scanDurations();
-    return nullptr;
-  }
-
-  void startDurationScan() {
-    pthread_mutex_lock(&library_mutex);
-    bool start = !this->duration_scanning && this->duration_pending > 0;
-    if (start) this->duration_scanning = true;
-    pthread_mutex_unlock(&library_mutex);
-    if (!start) return;
-    pthread_t thread;
-    if (pthread_create(&thread, nullptr, &App::durationWorkerEntry, this) == 0) {
-      pthread_detach(thread);
-    } else {
-      pthread_mutex_lock(&library_mutex);
-      this->duration_scanning = false;
-      pthread_mutex_unlock(&library_mutex);
-    }
   }
 
   static void tsvField(char *buf, size_t cap, size_t *o, const char *value, char sep) {
@@ -514,10 +475,8 @@ private:
   Track tracks[kMaxTracks];
   int count   = 0;
   int current = -1;
-  mutable pthread_mutex_t library_mutex = PTHREAD_MUTEX_INITIALIZER;
   int duration_pending                  = 0;
   int library_generation                = 0;
-  bool duration_scanning                = false;
   static inline LiveChannel live_channels[kMaxLiveChannels];
   int live_count             = 0;
   char playback_mode[8]             = "idle";
@@ -755,7 +714,7 @@ public:
     loadDurationCache();
     loadFavorites();
     writeLibraryFile();
-    startDurationScan();
+    scanDurations();
     srand(static_cast<unsigned>(time(nullptr)) ^ static_cast<unsigned>(getpid()));
     this->player_timer_fd = -1;
     configLoad();
@@ -1019,12 +978,10 @@ public:
     size_t o = 0;
     if (cap) buf[0] = 0;
     kvText(buf, cap, &o, "server.version", buildVersion);
-    pthread_mutex_lock(&library_mutex);
     int lib_count      = this->count;
     int lib_pending    = this->duration_pending;
     int lib_generation = this->library_generation;
-    bool lib_scanning  = this->duration_scanning;
-    pthread_mutex_unlock(&library_mutex);
+    bool lib_scanning  = false;
     kvAdd(buf, cap, &o, "library.count", "%d", lib_count);
     kvAdd(buf, cap, &o, "library.pending_durations", "%d", lib_pending);
     kvAdd(buf, cap, &o, "library.generation", "%d", lib_generation);
@@ -1369,7 +1326,6 @@ public:
   int libraryText(char *buf, size_t cap) {
     size_t o = 0;
     if (cap) buf[0] = 0;
-    pthread_mutex_lock(&library_mutex);
     for (int i = 0; i < this->count; i++) {
       const Track *s = &this->tracks[i];
       char duration[32];
@@ -1382,7 +1338,6 @@ public:
       tsvField(buf, cap, &o, duration, '\t');
       tsvField(buf, cap, &o, s->favorite ? "1" : "0", '\n');
     }
-    pthread_mutex_unlock(&library_mutex);
     return static_cast<int>(o);
   }
 
