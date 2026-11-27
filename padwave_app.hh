@@ -54,8 +54,9 @@ private:
   static constexpr int kMaxTracks  = 4096;
   static constexpr int kMaxPath    = 1024;
   static constexpr int kMaxTitle   = 160;
-  static constexpr int kMaxFolder  = 96;
+  static constexpr int kMaxFolder  = 256;
   static constexpr int kMaxHistory = 48;
+  static constexpr int kMaxScanDepth = 16;
   static constexpr int kMaxLiveUrl = 2048;
   static constexpr int kMaxLiveChannels = 400;
 
@@ -3091,7 +3092,9 @@ done:
     return true;
   }
 
-  void scanDir(const char *dir, const char *folder) {
+  void scanDir(const char *dir, const char *folder, int depth = 0) {
+    if (depth > kMaxScanDepth) return;
+
     DIR *d = opendir(dir);
     if (!d) return;
     struct dirent *e;
@@ -3103,11 +3106,12 @@ done:
       if (lstat(path, &st) != 0) continue;
       if (S_ISDIR(st.st_mode)) {
         char child_folder[kMaxFolder];
-        if (folder && *folder)
-          snprintf(child_folder, sizeof(child_folder), "%s/%s", folder, e->d_name);
-        else
-          snprintf(child_folder, sizeof(child_folder), "%s", e->d_name);
-        scanDir(path, child_folder);
+        const int written =
+            folder && *folder
+                ? snprintf(child_folder, sizeof(child_folder), "%s/%s", folder, e->d_name)
+                : snprintf(child_folder, sizeof(child_folder), "%s", e->d_name);
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(child_folder)) continue;
+        scanDir(path, child_folder, depth + 1);
       } else if (S_ISREG(st.st_mode) && audioExt(e->d_name)) {
         addTrack(path, folder, st);
       }
