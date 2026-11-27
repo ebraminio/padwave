@@ -948,7 +948,10 @@ public:
     }
     if (this->player && this->input.fd() >= 0 && this->input.fd() != this->player.fd()) {
       this->input.close();
-      if (this->player.fd() >= 0) this->inputStart();
+      if (this->player.fd() >= 0)
+        this->inputStart();
+      else if (this->controller)
+        this->inputStop(true);
     }
     if (this->input.fd() < 0 && static_cast<int>(nowMs()) >= this->reconnect_at) inputStart();
     updatePlaybackConsumers(nowMs());
@@ -4014,6 +4017,8 @@ done:
       return false;
     }
     fprintf(stderr, "padwave: powered off controller %s after idle\n", mac);
+    this->powered_off = true;
+    this->inputStop(true);
     return true;
   }
 
